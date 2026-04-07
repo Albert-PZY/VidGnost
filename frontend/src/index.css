@@ -693,33 +693,24 @@ html[data-theme='dark'] .workbench-floating-card {
 
 html[data-theme='dark'] .workbench-stage-pill {
   border-color: color-mix(in oklab, var(--color-border) 64%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in oklab, #d8e6fb 7%, transparent);
+  box-shadow: none;
 }
 
 html[data-theme='dark'] .workbench-stage-pill:hover {
-  box-shadow:
-    inset 0 1px 0 color-mix(in oklab, #d8e6fb 14%, transparent),
-    0 20px 30px -24px rgba(2, 8, 18, 0.92);
+  box-shadow: 0 8px 14px -18px rgba(2, 8, 18, 0.88);
 }
 
 html[data-theme='dark'] .runtime-phase-tooltip__body {
   border-color: color-mix(in oklab, var(--color-border) 68%, transparent);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in oklab, var(--color-surface-elevated) 94%, transparent),
-      color-mix(in oklab, var(--color-surface-muted) 82%, transparent)
-    );
-  box-shadow:
-    inset 0 1px 0 color-mix(in oklab, #d8e6fb 10%, transparent),
-    0 22px 38px -24px rgba(2, 8, 18, 0.92);
+  background: color-mix(in oklab, var(--color-surface-elevated) 98%, transparent);
+  box-shadow: 0 16px 28px -24px rgba(2, 8, 18, 0.92);
 }
 
 html[data-theme='dark'] .runtime-phase-tooltip__tail {
   border-right-color: color-mix(in oklab, var(--color-border) 68%, transparent);
   border-bottom-color: color-mix(in oklab, var(--color-border) 68%, transparent);
-  background: color-mix(in oklab, var(--color-surface-muted) 86%, transparent);
-  box-shadow: 6px 6px 18px -14px rgba(2, 8, 18, 0.76);
+  background: color-mix(in oklab, var(--color-surface-elevated) 98%, transparent);
+  box-shadow: 5px 5px 14px -16px rgba(2, 8, 18, 0.76);
 }
 
 .workbench-sidebar-card {
@@ -870,10 +861,10 @@ html[data-theme='dark'] .workbench-brand-mark {
 }
 
 .workbench-stage-pill {
-  border: 1px solid color-mix(in oklab, var(--color-border) 72%, transparent);
-  border-radius: 0.95rem;
-  background: color-mix(in oklab, var(--color-surface-elevated) 86%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in oklab, #ffffff 30%, transparent);
+  border: 1px solid color-mix(in oklab, var(--color-border) 80%, transparent);
+  border-radius: 0.72rem;
+  background: color-mix(in oklab, var(--color-surface-elevated) 97%, transparent);
+  box-shadow: none;
   transition:
     transform var(--motion-duration-fast) ease,
     box-shadow var(--motion-duration-base) var(--motion-ease-out-quint),
@@ -884,94 +875,93 @@ html[data-theme='dark'] .workbench-brand-mark {
 
 
 .workbench-stage-pill:hover {
-  transform: translateY(-2px);
-  border-color: color-mix(in oklab, var(--color-accent) 46%, var(--color-border));
-  box-shadow:
-    inset 0 1px 0 color-mix(in oklab, #ffffff 42%, transparent),
-    0 18px 28px -24px rgba(15, 30, 49, 0.42);
+  transform: translateY(-1px);
+  border-color: color-mix(in oklab, var(--color-accent) 28%, var(--color-border));
+  background: color-mix(in oklab, var(--color-surface-muted) 54%, var(--color-surface-elevated));
+  box-shadow: 0 8px 14px -18px rgba(15, 30, 49, 0.24);
 }
 
 .workbench-stage-pill > div:first-child {
-  line-height: 1.34;
+  line-height: 1.24;
+}
+
+.runtime-phase-bubble-trigger {
+  border: 1px solid color-mix(in oklab, var(--color-border) 58%, transparent);
+  background: color-mix(in oklab, var(--color-surface-muted) 42%, transparent);
+  box-shadow: none;
+  color: color-mix(in oklab, var(--color-text-subtle) 92%, transparent);
+  opacity: 0.96;
+}
+
+.workbench-stage-pill:hover .runtime-phase-bubble-trigger,
+.workbench-stage-pill:focus-visible .runtime-phase-bubble-trigger,
+.workbench-stage-pill[data-state='selected'] .runtime-phase-bubble-trigger {
+  border-color: color-mix(in oklab, var(--color-accent) 24%, var(--color-border));
+  background: color-mix(in oklab, var(--color-accent) 9%, var(--color-surface-elevated));
+  color: var(--color-accent);
+}
+
+.runtime-phase-tooltip {
+  transform-origin: bottom right;
 }
 
 .runtime-phase-tooltip__body {
-  border: 1px solid color-mix(in oklab, var(--color-border) 78%, transparent);
-  border-radius: 1.15rem;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in oklab, var(--color-surface-elevated) 98%, transparent),
-      color-mix(in oklab, var(--color-surface-muted) 84%, transparent)
-    );
-  box-shadow:
-    inset 0 1px 0 color-mix(in oklab, #ffffff 42%, transparent),
-    0 20px 36px -24px rgba(15, 30, 49, 0.45);
-  padding: 0.82rem 0.95rem;
-  backdrop-filter: blur(16px);
+  border: 1px solid color-mix(in oklab, var(--color-border) 76%, transparent);
+  border-radius: 0.96rem 0.96rem 0.34rem 0.96rem;
+  background: color-mix(in oklab, var(--color-surface-elevated) 99%, transparent);
+  box-shadow: 0 14px 24px -24px rgba(15, 30, 49, 0.3);
+  padding: 0.72rem 0.8rem;
+  backdrop-filter: blur(10px);
 }
 
 .runtime-phase-tooltip__tail {
   position: absolute;
-  right: 1rem;
-  bottom: -0.34rem;
-  width: 0.82rem;
-  height: 0.82rem;
-  border-right: 1px solid color-mix(in oklab, var(--color-border) 78%, transparent);
-  border-bottom: 1px solid color-mix(in oklab, var(--color-border) 78%, transparent);
-  background: color-mix(in oklab, var(--color-surface-muted) 90%, transparent);
+  right: 0.98rem;
+  bottom: -0.24rem;
+  width: 0.64rem;
+  height: 0.64rem;
+  border-right: 1px solid color-mix(in oklab, var(--color-border) 76%, transparent);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-border) 76%, transparent);
+  background: color-mix(in oklab, var(--color-surface-elevated) 99%, transparent);
   transform: rotate(45deg);
-  box-shadow: 6px 6px 16px -14px rgba(15, 30, 49, 0.35);
+  box-shadow: 4px 4px 10px -12px rgba(15, 30, 49, 0.22);
 }
 
 .workbench-stage-pill:focus-visible {
   outline: none;
   box-shadow:
-    inset 0 1px 0 color-mix(in oklab, #ffffff 42%, transparent),
     0 0 0 2px color-mix(in oklab, var(--color-accent) 34%, transparent);
 }
 
 .workbench-stage-pill[data-state='selected'] {
-  border-color: color-mix(in oklab, var(--color-info) 58%, transparent);
-  background:
-    linear-gradient(
-      165deg,
-      color-mix(in oklab, var(--color-info) 14%, var(--color-surface-elevated)),
-      color-mix(in oklab, var(--color-accent-support) 10%, var(--color-surface-elevated))
-    );
-  box-shadow:
-    inset 0 1px 0 color-mix(in oklab, #ffffff 45%, transparent),
-    0 0 0 1px color-mix(in oklab, var(--color-info) 34%, transparent);
+  border-color: color-mix(in oklab, var(--color-accent) 36%, transparent);
+  background: color-mix(in oklab, var(--color-accent) 6%, var(--color-surface-elevated));
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-accent) 14%, transparent);
 }
 
 .workbench-stage-pill[data-status='running'] {
-  border-color: color-mix(in oklab, var(--color-info) 64%, transparent);
-  background:
-    linear-gradient(
-      165deg,
-      color-mix(in oklab, var(--color-info) 19%, var(--color-surface-elevated)),
-      color-mix(in oklab, var(--color-accent-support) 13%, var(--color-surface-elevated))
-    );
-  color: color-mix(in oklab, var(--color-accent-strong) 72%, var(--color-text-main));
+  border-color: color-mix(in oklab, var(--color-info) 36%, transparent);
+  background: color-mix(in oklab, var(--color-info) 5%, var(--color-surface-elevated));
+  color: var(--color-text-main);
   animation: stage-pill-running 1.8s ease-in-out infinite;
 }
 
 .workbench-stage-pill[data-status='completed'] {
-  border-color: color-mix(in oklab, var(--color-success) 48%, transparent);
-  background: color-mix(in oklab, var(--color-success) 15%, var(--color-surface-elevated));
-  color: color-mix(in oklab, var(--color-success) 72%, var(--color-text-main));
+  border-color: color-mix(in oklab, var(--color-success) 36%, transparent);
+  background: color-mix(in oklab, var(--color-success) 5%, var(--color-surface-elevated));
+  color: var(--color-text-main);
 }
 
 .workbench-stage-pill[data-status='skipped'] {
-  border-color: color-mix(in oklab, var(--color-border) 72%, transparent);
-  background: color-mix(in oklab, var(--color-surface-muted) 74%, transparent);
+  border-color: color-mix(in oklab, var(--color-border) 66%, transparent);
+  background: color-mix(in oklab, var(--color-surface-muted) 54%, transparent);
   border-style: dashed;
 }
 
 .workbench-stage-pill[data-status='failed'] {
-  border-color: color-mix(in oklab, var(--color-danger) 60%, transparent);
-  background: color-mix(in oklab, var(--color-danger) 15%, var(--color-surface-elevated));
-  color: color-mix(in oklab, var(--color-danger) 72%, var(--color-text-main));
+  border-color: color-mix(in oklab, var(--color-danger) 36%, transparent);
+  background: color-mix(in oklab, var(--color-danger) 5%, var(--color-surface-elevated));
+  color: var(--color-text-main);
 }
 
 .runtime-phase-panel {
