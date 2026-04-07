@@ -6,8 +6,10 @@ from app.config import Settings
 from app.services.exporters import render_markmap_html
 from app.services.summarizer import (
     LLMService,
+    NotesPipelineArtifacts,
     _build_text_windows,
     _build_window_groups,
+    _ensure_single_markdown_title,
     _extract_mermaid_code,
     _normalize_correction_mode,
     _normalize_summary_markdown_structure,
@@ -15,28 +17,23 @@ from app.services.summarizer import (
 )
 
 
-def test_compose_notes_contains_summary_only() -> None:
-    notes = LLMService._compose_notes(
-        title="示例视频",
-        summary="## 摘要\n- 要点 1",
+def test_ensure_single_markdown_title_does_not_duplicate_existing_h1() -> None:
+    notes = _ensure_single_markdown_title(
+        "# 示例视频\n\n## 摘要\n- 要点 1\n\n# 重复标题",
+        "示例视频",
     )
     assert notes.startswith("# 示例视频")
-    assert "## 详细笔记" in notes
-    assert "## 摘要" in notes
-    assert "- 要点 1" in notes
-    assert "## 思维导图 Mermaid" not in notes
-    assert "```mermaid" not in notes
-    assert "## 转写全文" not in notes
+    assert sum(1 for line in notes.splitlines() if line.startswith("# ")) == 1
+    assert "## 重复标题" in notes
 
 
-def test_compose_notes_does_not_embed_mindmap_text() -> None:
-    notes = LLMService._compose_notes(
-        title="示例视频",
-        summary="摘要",
+def test_ensure_single_markdown_title_adds_single_fallback_h1() -> None:
+    notes = _ensure_single_markdown_title(
+        "## 关键内容\n- 要点 1",
+        "示例视频",
     )
-    assert "mindmap" not in notes
-    assert "```" not in notes
-    assert "## 转写全文" not in notes
+    assert notes.startswith("# 示例视频")
+    assert notes.count("# 示例视频") == 1
 
 
 def test_render_markmap_html_uses_white_background() -> None:
@@ -133,8 +130,8 @@ class _DummyLLMConfigStore:
 
 
 class _DummyPromptTemplateStore:
-    async def resolve_selected_prompts(self) -> tuple[str, str]:
-        return ("summary prompt", "mindmap prompt")
+    async def resolve_selected_prompts(self) -> tuple[str, str, str]:
+        return ("summary prompt", "notes prompt", "mindmap prompt")
 
 
 def _build_settings(tmp_path: Path) -> Settings:
@@ -149,20 +146,15 @@ def _build_settings(tmp_path: Path) -> Settings:
 
 
 @pytest.mark.asyncio
-async def test_generate_fails_when_all_llm_paths_unavailable(tmp_path: Path) -> None:
+async def test_generate_raises_when_api_client_unavailable(tmp_path: Path) -> None:
     service = LLMService(
         settings=_build_settings(tmp_path),
         llm_config_store=_DummyLLMConfigStore(),
         prompt_template_store=_DummyPromptTemplateStore(),
     )
-
-    async def _raise_local(*args, **kwargs) -> str:  # type: ignore[no-untyped-def]
-        raise RuntimeError("local unavailable")
-
-    service._chat_markdown_once_local = _raise_local  # type: ignore[method-assign]
     service._build_client = lambda _config: None  # type: ignore[method-assign]
 
-    with pytest.raises(RuntimeError, match="LLM_ALL_UNAVAILABLE"):
+    with pytest.raises(RuntimeError, match="LLM API client unavailable"):
         await service.generate(
             title="demo",
             transcript_text="测试文本",
@@ -171,32 +163,46 @@ async def test_generate_fails_when_all_llm_paths_unavailable(tmp_path: Path) -> 
 
 
 @pytest.mark.asyncio
-async def test_generate_can_fallback_from_api_to_local(tmp_path: Path) -> None:
+async def test_generate_orchestrates_notes_summary_and_mindmap(tmp_path: Path) -> None:
     service = LLMService(
         settings=_build_settings(tmp_path),
         llm_config_store=_DummyLLMConfigStore(),
         prompt_template_store=_DummyPromptTemplateStore(),
     )
 
-    async def _local_response(*args, **kwargs) -> str:  # type: ignore[no-untyped-def]
-        if kwargs.get("instruction") == "summary prompt":
-            return "## summary"
-        return "# mindmap"
+    async def fake_generate_notes_pipeline(**_: object) -> NotesPipelineArtifacts:
+        return NotesPipelineArtifacts(
+            evidence_batches=[],
+            evidence_cards=[],
+            outline={"title": "demo", "sections": []},
+            outline_markdown="# demo",
+            section_markdowns=[],
+            coverage_report={"missing_items": []},
+            notes_markdown="# demo\n\n## 章节\n- 细节",
+        )
 
-    service._chat_markdown_once_local = _local_response  # type: ignore[method-assign]
-    service._build_client = lambda _config: None  # type: ignore[method-assign]
+    async def fake_generate_summary_from_notes(**_: object) -> str:
+        return "## 核心结论\n- summary"
+
+    async def fake_generate_mindmap_from_notes(**_: object) -> str:
+        return "```mindmap\nmindmap\n  root((demo))\n```"
+
+    service.generate_notes_pipeline = fake_generate_notes_pipeline  # type: ignore[method-assign]
+    service.generate_summary_from_notes = fake_generate_summary_from_notes  # type: ignore[method-assign]
+    service.generate_mindmap_from_notes = fake_generate_mindmap_from_notes  # type: ignore[method-assign]
 
     bundle = await service.generate(
         title="demo",
         transcript_text="测试文本",
-        llm_config_override={"mode": "api", "api_key": ""},
+        llm_config_override={"mode": "api", "api_key": "test", "model": "qwen3.5-flash"},
     )
-    assert bundle.summary_markdown == "## summary"
-    assert bundle.mindmap_markdown == "# mindmap"
+    assert bundle.summary_markdown == "## 核心结论\n- summary"
+    assert bundle.notes_markdown.startswith("# demo")
+    assert bundle.mindmap_markdown.startswith("```mindmap")
 
 
 @pytest.mark.asyncio
-async def test_generate_replaces_mermaid_block_with_image_markdown(tmp_path: Path) -> None:
+async def test_generate_summary_from_notes_replaces_mermaid_block_with_image_markdown(tmp_path: Path) -> None:
     service = LLMService(
         settings=_build_settings(tmp_path),
         llm_config_store=_DummyLLMConfigStore(),
@@ -204,21 +210,22 @@ async def test_generate_replaces_mermaid_block_with_image_markdown(tmp_path: Pat
     )
 
     async def _local_response(*args, **kwargs) -> str:  # type: ignore[no-untyped-def]
-        if kwargs.get("instruction") == "summary prompt":
-            return "## 笔记\n\n```mermaid\nflowchart TD\nA-->B\n```"
-        return "# mindmap"
+        _ = args
+        _ = kwargs
+        return "## 笔记\n\n```mermaid\nflowchart TD\nA-->B\n```"
 
     async def _render_ok(_code: str) -> tuple[str | None, str]:
         return ("data:image/png;base64,ZmFrZQ==", "")
 
     service._chat_markdown_once_local = _local_response  # type: ignore[method-assign]
-    service._build_client = lambda _config: None  # type: ignore[method-assign]
     service._render_mermaid_png_data_url = _render_ok  # type: ignore[method-assign]
 
-    bundle = await service.generate(
+    summary = await service.generate_summary_from_notes(
         title="demo",
-        transcript_text="测试文本",
-        llm_config_override={"mode": "local"},
+        notes_markdown="# demo\n\n## 章节\n- 细节",
+        outline_markdown="# demo",
+        summary_prompt="summary prompt",
+        llm_config_override={"mode": "local", "local_model_id": "demo-local"},
     )
-    assert "```mermaid" not in bundle.summary_markdown
-    assert "data:image/png;base64,ZmFrZQ==" in bundle.summary_markdown
+    assert "```mermaid" not in summary
+    assert "data:image/png;base64,ZmFrZQ==" in summary

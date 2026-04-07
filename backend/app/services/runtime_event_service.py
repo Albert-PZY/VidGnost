@@ -12,7 +12,15 @@ from app.services.task_artifact_persistence_service import TaskArtifactPersisten
 from app.services.task_store import TaskStore
 
 StageType = Literal["A", "B", "C", "D"]
-DSubstageType = Literal["transcript_optimize", "fusion_delivery"]
+DSubstageType = Literal[
+    "transcript_optimize",
+    "notes_extract",
+    "notes_outline",
+    "notes_sections",
+    "notes_coverage",
+    "summary_delivery",
+    "mindmap_delivery",
+]
 
 
 class TaskUpdateCallback(Protocol):
