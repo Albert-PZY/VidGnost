@@ -6,7 +6,7 @@ import orjson
 import pytest
 
 from app.config import Settings
-from app.services.prompt_constants import SUMMARY_PROMPT
+from app.services.prompt_constants import NOTES_PROMPT, SUMMARY_PROMPT
 from app.services.prompt_template_store import PromptTemplateStore
 
 
@@ -41,3 +41,16 @@ async def test_prompt_store_syncs_default_summary_template_content(tmp_path: Pat
     selected_id = bundle["selected_summary_template_id"]
     selected = next(item for item in bundle["summary_templates"] if item["id"] == selected_id)
     assert selected["content"] == SUMMARY_PROMPT
+
+
+@pytest.mark.asyncio
+async def test_prompt_store_includes_notes_channel(tmp_path: Path) -> None:
+    settings = _build_settings(tmp_path)
+    store = PromptTemplateStore(settings)
+    bundle = await store.get_bundle()
+
+    assert bundle["notes_templates"]
+    selected_id = bundle["selected_notes_template_id"]
+    assert selected_id
+    selected = next(item for item in bundle["notes_templates"] if item["id"] == selected_id)
+    assert selected["content"] == NOTES_PROMPT

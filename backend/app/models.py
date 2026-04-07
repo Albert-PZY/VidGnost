@@ -161,6 +161,7 @@ class PromptTemplateRecord:
 @dataclass(slots=True)
 class PromptTemplateSelectionRecord:
     summary_template_id: str
+    notes_template_id: str
     mindmap_template_id: str
     created_at: datetime = field(default_factory=utcnow)
     updated_at: datetime = field(default_factory=utcnow)
@@ -169,6 +170,7 @@ class PromptTemplateSelectionRecord:
     def from_dict(cls, payload: dict[str, Any]) -> "PromptTemplateSelectionRecord":
         return cls(
             summary_template_id=str(payload.get("summary_template_id", "")),
+            notes_template_id=str(payload.get("notes_template_id", "")),
             mindmap_template_id=str(payload.get("mindmap_template_id", "")),
             created_at=parse_datetime(payload.get("created_at")),
             updated_at=parse_datetime(payload.get("updated_at")),
@@ -177,6 +179,7 @@ class PromptTemplateSelectionRecord:
     def to_dict(self) -> dict[str, Any]:
         return {
             "summary_template_id": self.summary_template_id,
+            "notes_template_id": self.notes_template_id,
             "mindmap_template_id": self.mindmap_template_id,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
