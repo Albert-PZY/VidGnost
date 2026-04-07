@@ -54,6 +54,28 @@
 - 不能包含 `CRLF` / `CR`
 - 非空文本文件必须以换行结尾
 
+### 2.4 代码风格层：Prettier + Ruff
+
+仓库现已补充代码风格层，分工如下：
+
+- `Prettier`：负责前端、Markdown、JSON、YAML、TOML、仓库元文件等非 Python 文本格式化
+- `Ruff`：负责 Python 导入顺序、基础静态检查与格式化
+
+对应配置文件：
+
+- `.prettierrc.json`
+- `.prettierignore`
+- `backend/pyproject.toml` 中的 `tool.ruff`
+
+对应入口：
+
+- 前端局部格式化：
+  - `cd frontend && pnpm format`
+  - `cd frontend && pnpm format:check`
+- 仓库级统一入口：
+  - `python scripts/repository_style.py format`
+  - `python scripts/repository_style.py check`
+
 ## 3. 适用范围
 
 当前重点覆盖以下文本类型：
@@ -64,6 +86,13 @@
 - 配置：`json`、`jsonl`、`toml`、`yaml`、`yml`
 - 脚本：`sh`、`ps1`
 - 仓库元文件：`.editorconfig`、`.gitattributes`、`.gitignore`、`.npmrc`、`LICENSE`、`README*`
+
+例外说明：
+
+- `backend/storage/config.toml`
+- `backend/storage/model_config.json`
+
+这两个本地配置文件属于受保护运行时配置，不参与自动归一化改写，避免误动本地真实配置值与敏感信息。
 
 ## 4. 推荐本地启用方式
 
@@ -87,6 +116,18 @@ python scripts/git-hooks/check_text_file_policy.py --mode staged
 python scripts/git-hooks/check_text_file_policy.py --mode files .editorconfig .gitattributes README.zh-CN.md
 ```
 
+执行全仓文本归一化 + 代码格式化：
+
+```bash
+python scripts/repository_style.py format
+```
+
+执行全仓格式检查（不改文件）：
+
+```bash
+python scripts/repository_style.py check
+```
+
 ## 6. 变更建议
 
 新增文本文件时，优先遵循：
@@ -97,13 +138,16 @@ python scripts/git-hooks/check_text_file_policy.py --mode files .editorconfig .g
 4. 若为新增文本类型且希望纳入统一约束，同步补充到：
    - `.gitattributes`
    - `scripts/git-hooks/check_text_file_policy.py`
+5. 若新增了需要由 Prettier 或 Ruff 接管的文件类型 / 目录，同步更新：
+   - `.prettierignore`
+   - `scripts/repository_style.py`
+   - `backend/pyproject.toml`
 
 ## 7. 不在本策略中强制处理的内容
 
 当前不强制纳入本策略的内容：
 
-- 代码语义层格式化风格（例如是否接入 Prettier / Ruff 的自动 rewrite）
-- 缩进风格以外的细粒度代码 style 规则
+- 缩进风格以外的细粒度业务代码风格规则
 - 二进制资源内容本身的编码或压缩方式
 
-这部分如果后续需要，可以在不破坏当前轻量开发体验的前提下继续追加。
+这部分如果后续需要，可以继续在当前轻量工具链基础上追加。

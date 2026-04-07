@@ -338,9 +338,7 @@ SLIDING_WINDOW_USER_CONTENT_TEMPLATE = (
 )
 WINDOW_AGGREGATE_ENTRY_TEMPLATE = "片段 {segment_index}:\n{segment_content}"
 WINDOW_AGGREGATE_USER_CONTENT_TEMPLATE = (
-    "视频标题：{title}\n\n"
-    "聚合批次：{batch_index}/{batch_total}\n\n"
-    "{joined_content}"
+    "视频标题：{title}\n\n聚合批次：{batch_index}/{batch_total}\n\n{joined_content}"
 )
 WINDOW_COMPRESS_USER_CONTENT_TEMPLATE = (
     "视频标题：{title}\n\n"
@@ -349,9 +347,7 @@ WINDOW_COMPRESS_USER_CONTENT_TEMPLATE = (
     "{context_text}"
 )
 STRICT_CORRECTION_USER_CONTENT_TEMPLATE = (
-    "视频标题：{title}\n\n"
-    "请按要求纠错以下片段。必须只返回 JSON。\n\n"
-    "{segments_payload}"
+    "视频标题：{title}\n\n请按要求纠错以下片段。必须只返回 JSON。\n\n{segments_payload}"
 )
 REWRITE_TRANSCRIPT_USER_CONTENT_TEMPLATE = "视频标题：{title}\n\n转写文本：\n{transcript_text}"
 AGGREGATE_SUMMARY_SECTION_TEMPLATE = "## 聚合摘要片段 {section_index}\n{section_content}"

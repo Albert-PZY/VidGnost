@@ -28,10 +28,7 @@ async def test_prompt_store_syncs_default_summary_template_content(tmp_path: Pat
     _ = await store.get_bundle()
 
     default_template_path = (
-        Path(settings.storage_dir)
-        / "prompts"
-        / "templates"
-        / "summary-default-main.json"
+        Path(settings.storage_dir) / "prompts" / "templates" / "summary-default-main.json"
     )
     payload = orjson.loads(default_template_path.read_bytes())
     payload["content"] = "stale-template-content"

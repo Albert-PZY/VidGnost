@@ -643,7 +643,8 @@ export const resources = {
         modeHint: {
           url: 'Use a BV ID or full Bilibili URL. The backend will fetch the source automatically.',
           path: 'Use an absolute local path to an accessible video file (MP4/MKV recommended).',
-          upload: 'Drag a file in or pick one manually. The upload will be prepared for analysis right away.',
+          upload:
+            'Drag a file in or pick one manually. The upload will be prepared for analysis right away.',
         },
         placeholders: {
           url: 'BV ID or https://www.bilibili.com/video/...',
@@ -689,7 +690,8 @@ export const resources = {
         hideSecret: 'Hide raw value',
         promptTemplates: {
           title: 'Prompt Template Manager',
-          defaultHint: 'Templates are persisted to local files. You can create and switch templates, while default templates are read-only.',
+          defaultHint:
+            'Templates are persisted to local files. You can create and switch templates, while default templates are read-only.',
           selectedBadge: 'Active',
           defaultBadge: 'Default (Read-only)',
           copyAction: 'Copy template',
@@ -712,14 +714,16 @@ export const resources = {
           deleteModalDescription: 'Please confirm deleting the current template',
           deleteDangerTitle: 'Dangerous action',
           deleteConfirm: 'Delete template "{{name}}"? This action cannot be undone.',
-          readonlyHint: 'Default templates are built-in and cannot be edited or deleted. Copy content and create a new template for custom changes.',
+          readonlyHint:
+            'Default templates are built-in and cannot be edited or deleted. Copy content and create a new template for custom changes.',
           summary: {
             title: 'Summary Template Manager',
             description: 'Switch, edit, delete, and create multiple summary prompt templates.',
           },
           notes: {
             title: 'Detailed Notes Template Manager',
-            description: 'Switch, edit, delete, and create multiple detailed notes prompt templates.',
+            description:
+              'Switch, edit, delete, and create multiple detailed notes prompt templates.',
           },
           mindmap: {
             title: 'Mindmap Template Manager',
@@ -748,7 +752,8 @@ export const resources = {
           model: {
             label: 'Default Model',
             inputHint: 'small',
-            explanation: 'Whisper small is fixed; task start auto-checks and downloads cache when missing.',
+            explanation:
+              'Whisper small is fixed; task start auto-checks and downloads cache when missing.',
           },
           language: {
             label: 'Recognition Language',
@@ -768,7 +773,8 @@ export const resources = {
           modelLoadProfile: {
             label: 'Model Load Profile',
             inputHint: 'balanced / memory_first',
-            explanation: 'balanced keeps reuse performance; memory_first releases memory more aggressively after tasks.',
+            explanation:
+              'balanced keeps reuse performance; memory_first releases memory more aggressively after tasks.',
           },
           beamSize: {
             label: 'Beam Size',
@@ -793,7 +799,8 @@ export const resources = {
           correctionMode: {
             label: 'Transcript Optimization Mode',
             inputHint: 'off / strict / rewrite',
-            explanation: 'Controls Stage D transcript optimization before notes generation: off, strict correction, or rewrite.',
+            explanation:
+              'Controls Stage D transcript optimization before notes generation: off, strict correction, or rewrite.',
           },
           vadFilter: {
             label: 'VAD Filter',
@@ -818,7 +825,8 @@ export const resources = {
           },
           custom: 'Custom Parameters',
           customHint: 'Any manual parameter change turns the mode into custom.',
-          applyHint: 'Selecting a preset only fills the draft. Click "Save Current Config" to apply.',
+          applyHint:
+            'Selecting a preset only fills the draft. Click "Save Current Config" to apply.',
         },
         vadFilter: 'Enable VAD filter',
         correctionMode: {
@@ -873,7 +881,8 @@ export const resources = {
       selfCheck: {
         modal: {
           title: 'Environment Check & Auto Fix',
-          description: 'Run ordered checks for dependencies, config, and models, then auto-fix or follow manual actions',
+          description:
+            'Run ordered checks for dependencies, config, and models, then auto-fix or follow manual actions',
         },
         actions: {
           run: 'Run Checks Again',
@@ -1113,7 +1122,8 @@ export const resources = {
         historyTitleRequired: 'Task title cannot be empty',
         promptTemplateNameRequired: 'Template name is required',
         promptTemplateContentRequired: 'Template content is required',
-        defaultPromptTemplateReadonly: 'Default templates are read-only and cannot be edited or deleted',
+        defaultPromptTemplateReadonly:
+          'Default templates are read-only and cannot be edited or deleted',
         urlRequired: 'Please input BV ID or Bilibili URL',
         pathRequired: 'Please input local video path',
         fileRequired: 'Please select a video file first',

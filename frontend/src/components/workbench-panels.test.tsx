@@ -26,7 +26,9 @@ describe('TerminalPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /展开全部|Show all/ }))
     expect(getRuntimePre()?.textContent?.startsWith('line-1')).toBe(true)
-    expect(screen.getByText(/全部\s*520\s*条日志|showing all\s*520\s*log lines/i)).toBeInTheDocument()
+    expect(
+      screen.getByText(/全部\s*520\s*条日志|showing all\s*520\s*log lines/i),
+    ).toBeInTheDocument()
   })
 })
 

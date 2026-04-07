@@ -7,8 +7,8 @@ import os
 import shutil
 import threading
 import time
-from collections.abc import Awaitable, Callable
 from collections import OrderedDict
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote
@@ -249,7 +249,9 @@ class WhisperService:
             },
         )
 
-        temp_root = self._download_root / ".tmp" / f"{self._MODEL_DIR_NAME}-{int(time.time() * 1000)}"
+        temp_root = (
+            self._download_root / ".tmp" / f"{self._MODEL_DIR_NAME}-{int(time.time() * 1000)}"
+        )
         temp_root.mkdir(parents=True, exist_ok=True)
         target_dir = self._small_model_dir()
 
@@ -268,7 +270,11 @@ class WhisperService:
                 if not should_emit:
                     return
                 elapsed = max(0.001, now - started_at)
-                percent = 100.0 if total_bytes <= 0 else min(100.0, (downloaded_bytes / total_bytes) * 100.0)
+                percent = (
+                    100.0
+                    if total_bytes <= 0
+                    else min(100.0, (downloaded_bytes / total_bytes) * 100.0)
+                )
                 await self._emit_prepare_progress(
                     on_progress,
                     {
@@ -283,10 +289,14 @@ class WhisperService:
                 )
                 last_emit_at = now
 
-        limits = httpx.Limits(max_connections=64, max_keepalive_connections=32, keepalive_expiry=30.0)
+        limits = httpx.Limits(
+            max_connections=64, max_keepalive_connections=32, keepalive_expiry=30.0
+        )
         timeout = httpx.Timeout(connect=20.0, read=120.0, write=120.0, pool=60.0)
         try:
-            async with httpx.AsyncClient(http2=True, follow_redirects=True, limits=limits, timeout=timeout) as client:
+            async with httpx.AsyncClient(
+                http2=True, follow_redirects=True, limits=limits, timeout=timeout
+            ) as client:
                 semaphore = asyncio.Semaphore(4)
                 tasks = [
                     asyncio.create_task(
@@ -378,7 +388,9 @@ class WhisperService:
                             size = int((file_item.get("lfs") or {}).get("size", 0) or 0)
                         resolved.append((required_name, max(0, size)))
                     if missing:
-                        raise RuntimeError(f"Missing required files from manifest: {', '.join(missing)}")
+                        raise RuntimeError(
+                            f"Missing required files from manifest: {', '.join(missing)}"
+                        )
                     return endpoint, resolved
                 except Exception as exc:  # noqa: BLE001
                     errors.append(f"{endpoint}: {type(exc).__name__}: {exc}")
@@ -431,8 +443,9 @@ class WhisperService:
         current_file: str,
         report_progress: Callable[[int, str], Awaitable[None]],
     ) -> None:
-        supports_range = expected_size >= self._RANGE_SEGMENT_THRESHOLD_BYTES and await self._supports_range_download(
-            client, url
+        supports_range = (
+            expected_size >= self._RANGE_SEGMENT_THRESHOLD_BYTES
+            and await self._supports_range_download(client, url)
         )
         if supports_range:
             await self._download_file_by_ranges(

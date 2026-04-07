@@ -1,11 +1,4 @@
-import {
-  type ComponentProps,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { type ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Toaster } from 'react-hot-toast'
 import '@uiw/react-md-editor/markdown-editor.css'
@@ -13,9 +6,7 @@ import '@uiw/react-markdown-preview/markdown.css'
 
 import { WorkbenchHeader } from './components/workbench-header'
 import { WorkbenchMainView } from './components/workbench-main-view'
-import {
-  QuickStartPanel,
-} from './components/workbench-panels'
+import { QuickStartPanel } from './components/workbench-panels'
 import {
   getLLMConfig,
   getTaskArtifactContent,
@@ -104,7 +95,9 @@ function App() {
   const { t, i18n } = useTranslation()
 
   const [mainView, setMainView] = useState<MainViewMode>('workbench')
-  const [isDark, setIsDark] = useState<boolean>(() => localStorage.getItem('vidgnost-theme') === 'dark')
+  const [isDark, setIsDark] = useState<boolean>(
+    () => localStorage.getItem('vidgnost-theme') === 'dark',
+  )
   const [headerGlass, setHeaderGlass] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [menuPortalTarget, setMenuPortalTarget] = useState<HTMLElement | null>(null)
@@ -142,15 +135,22 @@ function App() {
     correction_batch_size: 24,
     correction_overlap: 3,
   })
-  const [whisperConfig, setWhisperConfig] = useState<WhisperConfig>({ ...WHISPER_PRESET_CONFIGS.balanced })
-  const [whisperDraft, setWhisperDraft] = useState<WhisperConfig>({ ...WHISPER_PRESET_CONFIGS.balanced })
+  const [whisperConfig, setWhisperConfig] = useState<WhisperConfig>({
+    ...WHISPER_PRESET_CONFIGS.balanced,
+  })
+  const [whisperDraft, setWhisperDraft] = useState<WhisperConfig>({
+    ...WHISPER_PRESET_CONFIGS.balanced,
+  })
   const [savingWhisperConfig, setSavingWhisperConfig] = useState(false)
   const [savingLlmConfig, setSavingLlmConfig] = useState(false)
   const [activeVmPhase, setActiveVmPhase] = useState<VmPhaseKey>('A')
-  const [vmPhaseMetrics, setVmPhaseMetrics] = useState<Record<VmPhaseKey, VmPhaseMetric>>(createEmptyVmPhaseMetrics)
+  const [vmPhaseMetrics, setVmPhaseMetrics] =
+    useState<Record<VmPhaseKey, VmPhaseMetric>>(createEmptyVmPhaseMetrics)
   const [transcriptSegments, setTranscriptSegments] = useState<TranscriptSegment[]>([])
   const [optimizedTranscriptStream, setOptimizedTranscriptStream] = useState('')
-  const [optimizedTranscriptSegments, setOptimizedTranscriptSegments] = useState<TranscriptSegment[]>([])
+  const [optimizedTranscriptSegments, setOptimizedTranscriptSegments] = useState<
+    TranscriptSegment[]
+  >([])
   const [fusionPromptPreview, setFusionPromptPreview] = useState('')
   const [configTab, setConfigTab] = useState<'llm' | 'whisper' | 'prompts'>('llm')
   const [showApiKey, setShowApiKey] = useState(true)
@@ -257,48 +257,55 @@ function App() {
     setTranscriptSegments((prev) => {
       const exists = prev.some(
         (item) =>
-          Math.abs(item.start - segment.start) < 0.001
-          && Math.abs(item.end - segment.end) < 0.001
-          && item.text === segment.text,
+          Math.abs(item.start - segment.start) < 0.001 &&
+          Math.abs(item.end - segment.end) < 0.001 &&
+          item.text === segment.text,
       )
       if (exists) return prev
       return prev.concat(segment).sort((left, right) => left.start - right.start)
     })
   }, [])
-  const appendTranscriptOptimized = useCallback((
-    text: string,
-    reset = false,
-    streamMode: 'realtime' | 'compat' = 'realtime',
-    start?: number,
-    end?: number,
-  ) => {
-    void streamMode
-    if (reset) {
-      setOptimizedTranscriptStream(text)
-      setOptimizedTranscriptSegments([])
-      return
-    }
-    if (!text) return
-    if (typeof start === 'number' && typeof end === 'number') {
-      const normalizedText = text.trim()
-      if (normalizedText) {
-        const segment: TranscriptSegment = {
-          start: Math.max(0, start),
-          end: Math.max(Math.max(0, start), end),
-          text: normalizedText,
-        }
-        setOptimizedTranscriptSegments((prev) => {
-          const next = prev.filter(
-            (item) => !(Math.abs(item.start - segment.start) < 0.001 && Math.abs(item.end - segment.end) < 0.001),
-          )
-          next.push(segment)
-          next.sort((left, right) => left.start - right.start)
-          return next
-        })
+  const appendTranscriptOptimized = useCallback(
+    (
+      text: string,
+      reset = false,
+      streamMode: 'realtime' | 'compat' = 'realtime',
+      start?: number,
+      end?: number,
+    ) => {
+      void streamMode
+      if (reset) {
+        setOptimizedTranscriptStream(text)
+        setOptimizedTranscriptSegments([])
+        return
       }
-    }
-    setOptimizedTranscriptStream((prev) => `${prev}${text}`)
-  }, [])
+      if (!text) return
+      if (typeof start === 'number' && typeof end === 'number') {
+        const normalizedText = text.trim()
+        if (normalizedText) {
+          const segment: TranscriptSegment = {
+            start: Math.max(0, start),
+            end: Math.max(Math.max(0, start), end),
+            text: normalizedText,
+          }
+          setOptimizedTranscriptSegments((prev) => {
+            const next = prev.filter(
+              (item) =>
+                !(
+                  Math.abs(item.start - segment.start) < 0.001 &&
+                  Math.abs(item.end - segment.end) < 0.001
+                ),
+            )
+            next.push(segment)
+            next.sort((left, right) => left.start - right.start)
+            return next
+          })
+        }
+      }
+      setOptimizedTranscriptStream((prev) => `${prev}${text}`)
+    },
+    [],
+  )
   const resetStageDRealtime = useCallback(() => {
     setOptimizedTranscriptStream('')
     setOptimizedTranscriptSegments([])
@@ -312,7 +319,9 @@ function App() {
   const isTaskCompleted = activeTask?.status === 'completed'
   const canEditStageDMarkdown = Boolean(
     activeTask &&
-      (activeTask.status === 'completed' || activeTask.status === 'failed' || activeTask.status === 'cancelled'),
+    (activeTask.status === 'completed' ||
+      activeTask.status === 'failed' ||
+      activeTask.status === 'cancelled'),
   )
   const hasUnsavedArtifactEdits = notesMarkdownDirty || mindmapMarkdownDirty
 
@@ -393,7 +402,8 @@ function App() {
       }
     }
     setVmPhaseMetrics(nextVmMetrics)
-    const runningVmPhase = VM_PHASES.find((phase) => nextVmMetrics[phase]?.status === 'running') ?? null
+    const runningVmPhase =
+      VM_PHASES.find((phase) => nextVmMetrics[phase]?.status === 'running') ?? null
     if (runningVmPhase) {
       if (detail.status === 'summarizing' && runningVmPhase === 'D') {
         setActiveVmPhase(resolveRunningDSubphase(nextVmMetrics))
@@ -401,10 +411,11 @@ function App() {
         setActiveVmPhase(runningVmPhase)
       }
     } else {
-      const terminalVmPhase = [...VM_PHASES].reverse().find((phase) => {
-        const status = nextVmMetrics[phase]?.status
-        return status === 'completed' || status === 'skipped' || status === 'failed'
-      }) ?? null
+      const terminalVmPhase =
+        [...VM_PHASES].reverse().find((phase) => {
+          const status = nextVmMetrics[phase]?.status
+          return status === 'completed' || status === 'skipped' || status === 'failed'
+        }) ?? null
       if (terminalVmPhase) {
         setActiveVmPhase(terminalVmPhase)
       } else if (detail.status === 'summarizing') {
@@ -428,7 +439,9 @@ function App() {
     }
   }
 
-  const updateActiveTaskRealtime = (patch: Partial<Pick<TaskDetail, 'status' | 'progress' | 'error_message'>>) => {
+  const updateActiveTaskRealtime = (
+    patch: Partial<Pick<TaskDetail, 'status' | 'progress' | 'error_message'>>,
+  ) => {
     setActiveTask((prev) => {
       if (!prev) return prev
       return {
@@ -439,22 +452,27 @@ function App() {
     })
   }
 
-  const updateHistoryRealtime = (taskId: string, patch: Partial<Pick<TaskSummaryItem, 'status' | 'progress'>>) => {
+  const updateHistoryRealtime = (
+    taskId: string,
+    patch: Partial<Pick<TaskSummaryItem, 'status' | 'progress'>>,
+  ) => {
     setHistory((prev) => prev.map((item) => (item.id === taskId ? { ...item, ...patch } : item)))
   }
 
-  const loadArtifactContent = useCallback(async (path: string) => {
-    if (!activeTaskId) {
-      throw new Error(t('runtime.stageD.debugArtifactsNoTask', { defaultValue: '当前没有可读取的任务产物。' }))
-    }
-    return getTaskArtifactContent(activeTaskId, path)
-  }, [activeTaskId, t])
+  const loadArtifactContent = useCallback(
+    async (path: string) => {
+      if (!activeTaskId) {
+        throw new Error(
+          t('runtime.stageD.debugArtifactsNoTask', { defaultValue: '当前没有可读取的任务产物。' }),
+        )
+      }
+      return getTaskArtifactContent(activeTaskId, path)
+    },
+    [activeTaskId, t],
+  )
 
   const refreshRuntimeConfigCenterState = useCallback(async () => {
-    const [config, whisper] = await Promise.all([
-      getLLMConfig(),
-      getWhisperConfig(),
-    ])
+    const [config, whisper] = await Promise.all([getLLMConfig(), getWhisperConfig()])
     setLLMConfig(config)
     const normalizedWhisper = normalizeWhisperConfigForCpu(whisper)
     setWhisperConfig(normalizedWhisper)
@@ -598,10 +616,7 @@ function App() {
   })
   taskEventHandlerRef.current = handleTaskEvent
 
-  const {
-    saveWhisperRuntimeConfig,
-    saveLlmConfig,
-  } = useWorkbenchConfigManager({
+  const { saveWhisperRuntimeConfig, saveLlmConfig } = useWorkbenchConfigManager({
     t,
     llmConfig,
     whisperDraft,
@@ -663,7 +678,10 @@ function App() {
     setMindmapMarkdownDirty(true)
   }
 
-  const statusText = useCallback((status: string) => t(`status.${status}`, { defaultValue: status }), [t])
+  const statusText = useCallback(
+    (status: string) => t(`status.${status}`, { defaultValue: status }),
+    [t],
+  )
   const activeTaskRuntimeStatusText = useMemo(() => {
     if (!activeTask) return ''
     if (activeTask.status === 'transcribing') {
@@ -679,12 +697,15 @@ function App() {
     }
     return statusText(activeTask.status)
   }, [activeTask, activeVmPhase, statusText, t, vmPhaseMetrics])
-  const resolveHistoryTaskStatusText = useCallback((item: TaskSummaryItem) => {
-    if (activeTaskId && item.id === activeTaskId && activeTask) {
-      return activeTaskRuntimeStatusText
-    }
-    return statusText(item.status)
-  }, [activeTask, activeTaskId, activeTaskRuntimeStatusText, statusText])
+  const resolveHistoryTaskStatusText = useCallback(
+    (item: TaskSummaryItem) => {
+      if (activeTaskId && item.id === activeTaskId && activeTask) {
+        return activeTaskRuntimeStatusText
+      }
+      return statusText(item.status)
+    },
+    [activeTask, activeTaskId, activeTaskRuntimeStatusText, statusText],
+  )
   const configModalProps = {
     onClose: closeConfigPanel,
     configTab,
@@ -881,7 +902,9 @@ function App() {
           t={t}
           headerGlass={headerGlass}
           mainView={mainView}
-          onToggleMainView={() => setMainView((prev) => (prev === 'quickstart' ? 'workbench' : 'quickstart'))}
+          onToggleMainView={() =>
+            setMainView((prev) => (prev === 'quickstart' ? 'workbench' : 'quickstart'))
+          }
           currentLocale={currentLocale}
           uiLocaleOptions={uiLocaleOptions}
           onSwitchLocale={switchLocale}

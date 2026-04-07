@@ -24,8 +24,7 @@ DSubstageType = Literal[
 
 
 class TaskUpdateCallback(Protocol):
-    def __call__(self, task_id: str, **fields: object) -> Awaitable[None]:
-        ...
+    def __call__(self, task_id: str, **fields: object) -> Awaitable[None]: ...
 
 
 class RuntimeEventService:
@@ -46,7 +45,9 @@ class RuntimeEventService:
         self._task_stage_started: dict[str, dict[StageType, float]] = {}
         self._task_stage_metrics: dict[str, dict[StageType, dict[str, object]]] = {}
 
-    def initialize_task(self, task_id: str, stage_metrics: dict[StageType, dict[str, object]]) -> None:
+    def initialize_task(
+        self, task_id: str, stage_metrics: dict[StageType, dict[str, object]]
+    ) -> None:
         self._task_stage_started[task_id] = {}
         self._task_stage_metrics[task_id] = stage_metrics
 
@@ -98,17 +99,29 @@ class RuntimeEventService:
     ) -> None:
         await self._event_bus.publish(
             task_id,
-            {"type": "stage_complete", "stage": stage, "overall_progress": progress, "stage_progress": 100},
+            {
+                "type": "stage_complete",
+                "stage": stage,
+                "overall_progress": progress,
+                "stage_progress": 100,
+            },
         )
         await self._event_bus.publish(
             task_id,
-            {"type": "progress", "stage": stage, "overall_progress": progress, "stage_progress": 100},
+            {
+                "type": "progress",
+                "stage": stage,
+                "overall_progress": progress,
+                "stage_progress": 100,
+            },
         )
         self.mark_stage_completed(task_id, stage)
         await self.persist_stage_metric(task_id, stage)
         await self.persist_analysis_result(task_id, stage, status="completed", progress=progress)
         await self.emit_log(task_id, stage, f"Stage {stage} completed", stage_logs)
-        await update_task(task_id, progress=progress, stage_logs_json=_encode_stage_logs(stage_logs))
+        await update_task(
+            task_id, progress=progress, stage_logs_json=_encode_stage_logs(stage_logs)
+        )
 
     async def d_substage_start(
         self,
@@ -201,7 +214,9 @@ class RuntimeEventService:
             payload["elapsed_seconds"] = round(elapsed_seconds, 2)
         await self._event_bus.publish(task_id, payload)
         stage_bucket = stage_logs.setdefault(stage, [])
-        stage_bucket.append(_format_stage_log_line(message, substage=substage, elapsed_seconds=elapsed_seconds))
+        stage_bucket.append(
+            _format_stage_log_line(message, substage=substage, elapsed_seconds=elapsed_seconds)
+        )
         stage_logs[stage] = stage_bucket[-1000:]
         self.increment_stage_log_count(task_id, stage)
 
@@ -264,7 +279,9 @@ class RuntimeEventService:
         stage_entry["status"] = "completed"
         stage_entry["completed_at"] = now_iso
         elapsed_seconds = self.stage_elapsed_seconds(task_id, stage)
-        stage_entry["elapsed_seconds"] = round(elapsed_seconds, 2) if elapsed_seconds is not None else None
+        stage_entry["elapsed_seconds"] = (
+            round(elapsed_seconds, 2) if elapsed_seconds is not None else None
+        )
         stage_entry["reason"] = None
 
     def mark_stage_failed(self, task_id: str, stage: StageType, reason: str) -> None:
@@ -273,7 +290,9 @@ class RuntimeEventService:
         stage_entry["status"] = "failed"
         stage_entry["completed_at"] = now_iso
         elapsed_seconds = self.stage_elapsed_seconds(task_id, stage)
-        stage_entry["elapsed_seconds"] = round(elapsed_seconds, 2) if elapsed_seconds is not None else None
+        stage_entry["elapsed_seconds"] = (
+            round(elapsed_seconds, 2) if elapsed_seconds is not None else None
+        )
         stage_entry["reason"] = reason
 
     def mark_d_substage_started(self, task_id: str, substage: DSubstageType) -> None:
@@ -300,7 +319,9 @@ class RuntimeEventService:
         else:
             metric["elapsed_seconds"] = round(max(0.0, now_dt.timestamp() - started_seconds), 2)
 
-    def mark_d_substage_skipped(self, task_id: str, substage: DSubstageType, reason: str = "") -> None:
+    def mark_d_substage_skipped(
+        self, task_id: str, substage: DSubstageType, reason: str = ""
+    ) -> None:
         metric = self.ensure_d_substage_metric_entry(task_id, substage)
         now_iso = datetime.now(timezone.utc).isoformat()
         metric["status"] = "skipped"
@@ -323,14 +344,18 @@ class RuntimeEventService:
         current = int(stage_entry.get("log_count", 0))
         stage_entry["log_count"] = current + 1
 
-    def set_stage_metric_values(self, task_id: str, stage: StageType, values: dict[str, object]) -> None:
+    def set_stage_metric_values(
+        self, task_id: str, stage: StageType, values: dict[str, object]
+    ) -> None:
         stage_entry = self.ensure_task_stage_metric_entry(task_id, stage)
         stage_entry.update(values)
 
     def record_runtime_lease(self, task_id: str, stage: StageType, wait_seconds: float) -> None:
         stage_entry = self.ensure_task_stage_metric_entry(task_id, stage)
         current_wait = float(stage_entry.get("runtime_wait_seconds", 0.0) or 0.0)
-        stage_entry["runtime_wait_seconds"] = round(max(0.0, current_wait + max(0.0, wait_seconds)), 2)
+        stage_entry["runtime_wait_seconds"] = round(
+            max(0.0, current_wait + max(0.0, wait_seconds)), 2
+        )
         current_lock_count = int(stage_entry.get("runtime_lock_count", 0) or 0)
         stage_entry["runtime_lock_count"] = current_lock_count + 1
 
@@ -384,7 +409,9 @@ class RuntimeEventService:
         }
 
         def _write_stage_metric() -> None:
-            self._task_store.upsert_stage_metric(task_id=task_id, stage=stage, payload=metric_payload)
+            self._task_store.upsert_stage_metric(
+                task_id=task_id, stage=stage, payload=metric_payload
+            )
 
         await asyncio.to_thread(_write_stage_metric)
 
@@ -428,7 +455,9 @@ class RuntimeEventService:
             },
         )
 
-    def ensure_d_substage_metric_entry(self, task_id: str, substage: DSubstageType) -> dict[str, object]:
+    def ensure_d_substage_metric_entry(
+        self, task_id: str, substage: DSubstageType
+    ) -> dict[str, object]:
         stage_entry = self.ensure_task_stage_metric_entry(task_id, "D")
         raw_metrics = stage_entry.setdefault("substage_metrics", {})
         if not isinstance(raw_metrics, dict):
@@ -452,7 +481,9 @@ def _encode_stage_logs(stage_logs: dict[str, list[str]]) -> str:
     return orjson.dumps(stage_logs).decode("utf-8")
 
 
-def _format_stage_log_line(message: str, *, substage: str | None, elapsed_seconds: float | None) -> str:
+def _format_stage_log_line(
+    message: str, *, substage: str | None, elapsed_seconds: float | None
+) -> str:
     prefixes: list[str] = []
     if substage:
         prefixes.append(f"[{substage}]")
@@ -491,4 +522,3 @@ def _empty_stage_metrics() -> dict[StageType, dict[str, object]]:
     }
     metrics["D"]["substage_metrics"] = {}
     return metrics
-

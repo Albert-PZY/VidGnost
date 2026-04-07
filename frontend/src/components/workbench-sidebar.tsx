@@ -1,5 +1,13 @@
 import type { TFunction } from 'i18next'
-import { CloudUpload, FileCog, History, PanelLeftClose, PanelLeftOpen, Settings, ShieldCheck } from 'lucide-react'
+import {
+  CloudUpload,
+  FileCog,
+  History,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Settings,
+  ShieldCheck,
+} from 'lucide-react'
 
 import { PreText } from './pretext'
 import { SidebarMenuButton } from './workbench-panels'
@@ -43,7 +51,12 @@ export function WorkbenchSidebar({
   return (
     <aside className="min-w-0 space-y-3.5">
       <section className={cn('workbench-sidebar-card', sidebarCollapsed ? 'p-2.5' : 'p-4')}>
-        <div className={cn('mb-2.5 flex items-center', sidebarCollapsed ? 'justify-center' : 'justify-between')}>
+        <div
+          className={cn(
+            'mb-2.5 flex items-center',
+            sidebarCollapsed ? 'justify-center' : 'justify-between',
+          )}
+        >
           {!sidebarCollapsed && (
             <PreText variant="timestamp" className="font-semibold text-text-main">
               {t('sidebar.menuTitle')}
@@ -54,10 +67,16 @@ export function WorkbenchSidebar({
             size="icon"
             variant="ghost"
             className="h-8 w-8 rounded-full"
-            aria-label={sidebarCollapsed ? t('sidebar.controls.expand') : t('sidebar.controls.collapse')}
+            aria-label={
+              sidebarCollapsed ? t('sidebar.controls.expand') : t('sidebar.controls.collapse')
+            }
             onClick={() => setSidebarCollapsed((prev) => !prev)}
           >
-            {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            {sidebarCollapsed ? (
+              <PanelLeftOpen className="h-4 w-4" />
+            ) : (
+              <PanelLeftClose className="h-4 w-4" />
+            )}
           </Button>
         </div>
         <SidebarMenuButton
@@ -122,7 +141,10 @@ export function WorkbenchSidebar({
                 progress: activeTask.progress,
               })}
             >
-              <PreText variant="timestamp" className="workbench-subtitle-pill mt-2 inline-flex max-w-full truncate">
+              <PreText
+                variant="timestamp"
+                className="workbench-subtitle-pill mt-2 inline-flex max-w-full truncate"
+              >
                 {t('sidebar.runtimeDefaults.activeTask', {
                   status: activeTaskStatusText,
                   progress: activeTask.progress,

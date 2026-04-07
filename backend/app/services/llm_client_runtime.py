@@ -119,7 +119,9 @@ class OpenAICompatRuntime:
 
 
 def _compute_retry_delay(policy: RetryPolicy, attempt: int) -> float:
-    exp_delay = min(policy.max_delay_seconds, policy.base_delay_seconds * (2 ** max(0, attempt - 1)))
+    exp_delay = min(
+        policy.max_delay_seconds, policy.base_delay_seconds * (2 ** max(0, attempt - 1))
+    )
     jitter = random.uniform(0.0, policy.jitter_seconds)
     return max(0.05, exp_delay + jitter)
 

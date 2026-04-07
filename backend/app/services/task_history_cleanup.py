@@ -45,9 +45,8 @@ def cleanup_task_history_once(
         if _ensure_artifact_meta(record, storage_dir=storage_dir):
             task_store.replace(record)
         artifact_bytes = max(0, int(record.artifact_total_bytes or 0))
-        should_keep = (
-            terminal_kept < report.max_tasks
-            and (report.kept_total_bytes + artifact_bytes <= report.max_total_bytes or terminal_kept == 0)
+        should_keep = terminal_kept < report.max_tasks and (
+            report.kept_total_bytes + artifact_bytes <= report.max_total_bytes or terminal_kept == 0
         )
         if should_keep:
             terminal_kept += 1

@@ -152,14 +152,18 @@ test('运行配置弹窗每次打开都会重新读取最新本地运行配置',
   await page.goto('/')
 
   await page.getByRole('button', { name: /运行配置|Runtime Config/i }).click()
-  await expect(page.getByRole('dialog', { name: /运行配置中心|Runtime Config Center/i })).toBeVisible()
+  await expect(
+    page.getByRole('dialog', { name: /运行配置中心|Runtime Config Center/i }),
+  ).toBeVisible()
   await expect(page.getByPlaceholder(/模型名|Model Name/i)).toHaveValue('qwen-second')
   await page.getByRole('tab', { name: /Faster-Whisper/i }).click()
   await expect(page.getByPlaceholder(/切分秒数|Chunk Seconds/i)).toHaveValue('240')
   await page.getByRole('button', { name: /关闭窗口|Close Window|Close/i }).click()
 
   await page.getByRole('button', { name: /运行配置|Runtime Config/i }).click()
-  await expect(page.getByRole('dialog', { name: /运行配置中心|Runtime Config Center/i })).toBeVisible()
+  await expect(
+    page.getByRole('dialog', { name: /运行配置中心|Runtime Config Center/i }),
+  ).toBeVisible()
   await expect(page.getByPlaceholder(/模型名|Model Name/i)).toHaveValue('qwen-third')
   await page.getByRole('tab', { name: /Faster-Whisper/i }).click()
   await expect(page.getByPlaceholder(/切分秒数|Chunk Seconds/i)).toHaveValue('300')
@@ -323,7 +327,9 @@ test('运行配置中心 notes 模板可新建并激活且不影响 summary/mind
   await page.goto('/')
 
   await page.getByRole('button', { name: /运行配置|Runtime Config/i }).click()
-  await expect(page.getByRole('dialog', { name: /运行配置中心|Runtime Config Center/i })).toBeVisible()
+  await expect(
+    page.getByRole('dialog', { name: /运行配置中心|Runtime Config Center/i }),
+  ).toBeVisible()
 
   await page.getByRole('tab', { name: /提示词模板|Prompt Templates/i }).click()
   await page.getByRole('tab', { name: /详细笔记模板管理|Detailed Notes Template Manager/i }).click()

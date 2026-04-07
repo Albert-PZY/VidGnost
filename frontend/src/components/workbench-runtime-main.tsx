@@ -1,6 +1,24 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react'
 import type { TFunction } from 'i18next'
-import { CheckCircle2, Expand, LoaderCircle, Maximize2, MessageCircle, Pencil, X } from 'lucide-react'
+import {
+  CheckCircle2,
+  Expand,
+  LoaderCircle,
+  Maximize2,
+  MessageCircle,
+  Pencil,
+  X,
+} from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -72,7 +90,14 @@ const D_DEBUG_ARTIFACT_MATCHERS: Partial<Record<VmPhaseKey, string[]>> = {
   notes_coverage: ['notes-coverage/'],
   summary_delivery: ['fusion/summary.md', 'fusion/index.json', 'fusion/fusion-prompt.md'],
   mindmap_delivery: ['fusion/mindmap.md', 'fusion/index.json', 'fusion/fusion-prompt.md'],
-  D: ['transcript-optimize/', 'notes-extract/', 'notes-outline/', 'notes-sections/', 'notes-coverage/', 'fusion/'],
+  D: [
+    'transcript-optimize/',
+    'notes-extract/',
+    'notes-outline/',
+    'notes-sections/',
+    'notes-coverage/',
+    'fusion/',
+  ],
 }
 
 function resolveRunningDSubphase(metrics: Record<VmPhaseKey, VmPhaseMetric>): VmPhaseKey {
@@ -168,7 +193,10 @@ function resolveArtifactPreviewMode(path: string): 'markdown' | 'json' | 'text' 
   return 'text'
 }
 
-function filterArtifactsForPhase(entries: TaskArtifactEntry[], phase: VmPhaseKey): TaskArtifactEntry[] {
+function filterArtifactsForPhase(
+  entries: TaskArtifactEntry[],
+  phase: VmPhaseKey,
+): TaskArtifactEntry[] {
   const matchers = D_DEBUG_ARTIFACT_MATCHERS[phase]
   if (!matchers?.length) return []
   return entries.filter((entry) => {
@@ -258,7 +286,10 @@ export function WorkbenchRuntimeMain({
   mindmapStream,
   onMindmapMarkdownChange,
 }: WorkbenchRuntimeMainProps) {
-  const [manualVmPhaseSelection, setManualVmPhaseSelection] = useState<{ taskId: string; phase: VmPhaseKey } | null>(null)
+  const [manualVmPhaseSelection, setManualVmPhaseSelection] = useState<{
+    taskId: string
+    phase: VmPhaseKey
+  } | null>(null)
   const [promptPreviewFullscreen, setPromptPreviewFullscreen] = useState(false)
   const [selectedArtifactPath, setSelectedArtifactPath] = useState<string | null>(null)
   const [artifactPreviewContent, setArtifactPreviewContent] = useState('')
@@ -268,16 +299,19 @@ export function WorkbenchRuntimeMain({
   const optimizedPanelRef = useRef<HTMLDivElement | null>(null)
   const strictScrollSyncLockedRef = useRef(false)
 
-  const syncTranscriptPanelScroll = useCallback((source: HTMLDivElement | null, target: HTMLDivElement | null) => {
-    if (!source || !target) return
-    if (strictScrollSyncLockedRef.current) return
-    strictScrollSyncLockedRef.current = true
-    target.scrollTop = source.scrollTop
-    target.scrollLeft = source.scrollLeft
-    window.requestAnimationFrame(() => {
-      strictScrollSyncLockedRef.current = false
-    })
-  }, [])
+  const syncTranscriptPanelScroll = useCallback(
+    (source: HTMLDivElement | null, target: HTMLDivElement | null) => {
+      if (!source || !target) return
+      if (strictScrollSyncLockedRef.current) return
+      strictScrollSyncLockedRef.current = true
+      target.scrollTop = source.scrollTop
+      target.scrollLeft = source.scrollLeft
+      window.requestAnimationFrame(() => {
+        strictScrollSyncLockedRef.current = false
+      })
+    },
+    [],
+  )
 
   const handleSourceTranscriptScroll = useCallback(() => {
     if (transcriptCorrectionMode !== 'strict') return
@@ -317,7 +351,9 @@ export function WorkbenchRuntimeMain({
 
   const selectedArtifactEntry = useMemo(() => {
     if (!selectedArtifactPath) return null
-    return debugArtifacts.find((entry) => getArtifactLogicalPath(entry) === selectedArtifactPath) ?? null
+    return (
+      debugArtifacts.find((entry) => getArtifactLogicalPath(entry) === selectedArtifactPath) ?? null
+    )
   }, [debugArtifacts, selectedArtifactPath])
 
   useEffect(() => {
@@ -334,7 +370,10 @@ export function WorkbenchRuntimeMain({
       setArtifactPreviewError(null)
       return
     }
-    if (selectedArtifactPath && debugArtifacts.some((entry) => getArtifactLogicalPath(entry) === selectedArtifactPath)) {
+    if (
+      selectedArtifactPath &&
+      debugArtifacts.some((entry) => getArtifactLogicalPath(entry) === selectedArtifactPath)
+    ) {
       return
     }
     setSelectedArtifactPath(getArtifactLogicalPath(debugArtifacts[0]))
@@ -396,9 +435,12 @@ export function WorkbenchRuntimeMain({
     const formatPhaseStatusText = (phase: VmPhaseKey, status: string) => {
       const phaseLabel = t(`stages.${phase}.label`)
       if (status === 'running') return `${phaseLabel} · ${t('runtime.working.label')}`
-      if (status === 'skipped') return `${phaseLabel} · ${t('runtime.phase.skipped', { defaultValue: '已跳过' })}`
-      if (status === 'completed') return `${phaseLabel} · ${t('runtime.phase.completed', { defaultValue: '已完成' })}`
-      if (status === 'failed') return `${phaseLabel} · ${t('runtime.phase.failed', { defaultValue: '失败' })}`
+      if (status === 'skipped')
+        return `${phaseLabel} · ${t('runtime.phase.skipped', { defaultValue: '已跳过' })}`
+      if (status === 'completed')
+        return `${phaseLabel} · ${t('runtime.phase.completed', { defaultValue: '已完成' })}`
+      if (status === 'failed')
+        return `${phaseLabel} · ${t('runtime.phase.failed', { defaultValue: '失败' })}`
       if (status === 'pending') return `${phaseLabel} · ${t('runtime.phase.pending')}`
       return `${phaseLabel} · ${status}`
     }
@@ -408,8 +450,10 @@ export function WorkbenchRuntimeMain({
       return formatPhaseStatusText(phase, phaseStatus)
     }
     if (activeTask.status === 'summarizing') {
-      const runningPhase = activeVmPhase === 'D' ? resolveRunningDSubphase(vmPhaseMetrics) : activeVmPhase
-      const phaseStatus = vmPhaseMetrics[runningPhase]?.status ?? (isTaskRunning ? 'running' : 'pending')
+      const runningPhase =
+        activeVmPhase === 'D' ? resolveRunningDSubphase(vmPhaseMetrics) : activeVmPhase
+      const phaseStatus =
+        vmPhaseMetrics[runningPhase]?.status ?? (isTaskRunning ? 'running' : 'pending')
       return formatPhaseStatusText(runningPhase, phaseStatus)
     }
     return statusText(activeTask.status)
@@ -433,18 +477,31 @@ export function WorkbenchRuntimeMain({
   const summaryCharacters = countNonWhitespaceCharacters(activeTask?.summary_markdown ?? '')
   const mindmapBlocks = countMarkdownBlocks(mindmapStream)
   const transcriptSegmentCount = optimizedTranscriptSegments.length || transcriptSegments.length
-  const taskUpdatedAtLabel = activeTask?.updated_at ? new Date(activeTask.updated_at).toLocaleString() : '—'
+  const taskUpdatedAtLabel = activeTask?.updated_at
+    ? new Date(activeTask.updated_at).toLocaleString()
+    : '—'
 
   const renderTranscriptSegments = (segments: TranscriptSegment[], emptyText: string) => {
     if (!segments.length) {
-      return <pre className="whitespace-pre-wrap font-mono leading-6">{transcriptStream || emptyText}</pre>
+      return (
+        <pre className="whitespace-pre-wrap font-mono leading-6">
+          {transcriptStream || emptyText}
+        </pre>
+      )
     }
     return (
       <div className="space-y-2">
         {segments.map((segment, index) => (
-          <div key={`${segment.start}-${segment.end}-${index}`} className="rounded-lg border border-border/60 bg-surface-muted/35 px-3 py-2">
-            <div className="mb-1 text-xs font-mono text-accent">{formatSegmentRange(segment.start, segment.end)}</div>
-            <div className="whitespace-pre-wrap text-sm leading-6 text-text-main">{segment.text}</div>
+          <div
+            key={`${segment.start}-${segment.end}-${index}`}
+            className="rounded-lg border border-border/60 bg-surface-muted/35 px-3 py-2"
+          >
+            <div className="mb-1 text-xs font-mono text-accent">
+              {formatSegmentRange(segment.start, segment.end)}
+            </div>
+            <div className="whitespace-pre-wrap text-sm leading-6 text-text-main">
+              {segment.text}
+            </div>
           </div>
         ))}
       </div>
@@ -465,21 +522,23 @@ export function WorkbenchRuntimeMain({
     </div>
   )
 
-  const renderStageLogPanel = (stage: StageKey) => renderLogPanel(
-    t('runtime.stageD.phaseLogsTitle', {
-      defaultValue: '阶段日志',
-      phase: t(`stages.${stage}.label`),
-    }),
-    stageLogs[stage] ?? [],
-  )
+  const renderStageLogPanel = (stage: StageKey) =>
+    renderLogPanel(
+      t('runtime.stageD.phaseLogsTitle', {
+        defaultValue: '阶段日志',
+        phase: t(`stages.${stage}.label`),
+      }),
+      stageLogs[stage] ?? [],
+    )
 
-  const renderPhaseLogPanel = (phase: VmPhaseKey) => renderLogPanel(
-    t('runtime.stageD.phaseLogsTitle', {
-      defaultValue: '阶段日志',
-      phase: t(`stages.${phase}.label`),
-    }),
-    vmPhaseLogs[phase] ?? [],
-  )
+  const renderPhaseLogPanel = (phase: VmPhaseKey) =>
+    renderLogPanel(
+      t('runtime.stageD.phaseLogsTitle', {
+        defaultValue: '阶段日志',
+        phase: t(`stages.${phase}.label`),
+      }),
+      vmPhaseLogs[phase] ?? [],
+    )
 
   const renderMarkdownPanel = ({
     title,
@@ -501,7 +560,12 @@ export function WorkbenchRuntimeMain({
         </PreText>
         {action}
       </div>
-      <div className={cn('overflow-auto rounded-lg border border-border/70 bg-bg-base px-3 py-2', viewportClassName)}>
+      <div
+        className={cn(
+          'overflow-auto rounded-lg border border-border/70 bg-bg-base px-3 py-2',
+          viewportClassName,
+        )}
+      >
         {content ? (
           <div className="prose prose-sm max-w-none dark:prose-invert">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
@@ -535,10 +599,15 @@ export function WorkbenchRuntimeMain({
             [t('runtime.phaseView.shared.language'), activeTask.language || 'auto'],
             [t('runtime.phaseView.shared.model'), activeTask.model_size || 'small'],
             [t('runtime.phaseView.shared.updatedAt'), taskUpdatedAtLabel],
-            [t('runtime.phaseView.shared.totalArtifacts'), `${activeTask.artifact_index.length} · ${formatArtifactSize(activeTask.artifact_total_bytes)}`],
+            [
+              t('runtime.phaseView.shared.totalArtifacts'),
+              `${activeTask.artifact_index.length} · ${formatArtifactSize(activeTask.artifact_total_bytes)}`,
+            ],
           ].map(([label, value]) => (
             <div key={label} className="rounded-xl border border-border/65 bg-bg-base/75 px-3 py-2">
-              <div className="text-[11px] uppercase tracking-[0.12em] text-text-subtle">{label}</div>
+              <div className="text-[11px] uppercase tracking-[0.12em] text-text-subtle">
+                {label}
+              </div>
               <div className="mt-1 break-all text-sm leading-6 text-text-main">{value}</div>
             </div>
           ))}
@@ -559,21 +628,27 @@ export function WorkbenchRuntimeMain({
             <div className="text-[11px] uppercase tracking-[0.12em] text-text-subtle">
               {t('runtime.phaseView.shared.phaseGoal')}
             </div>
-            <div className="mt-1 text-sm leading-6 text-text-main">{t(`stages.${phase}.description`)}</div>
+            <div className="mt-1 text-sm leading-6 text-text-main">
+              {t(`stages.${phase}.description`)}
+            </div>
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
             <div className="rounded-xl border border-border/65 bg-bg-base/75 px-3 py-2">
               <div className="text-[11px] uppercase tracking-[0.12em] text-text-subtle">
                 {t('runtime.phaseView.shared.phaseOutput')}
               </div>
-              <div className="mt-1 text-sm leading-6 text-text-main">{t(`runtime.phaseView.outputs.${phase}`)}</div>
+              <div className="mt-1 text-sm leading-6 text-text-main">
+                {t(`runtime.phaseView.outputs.${phase}`)}
+              </div>
             </div>
             <div className="rounded-xl border border-border/65 bg-bg-base/75 px-3 py-2">
               <div className="text-[11px] uppercase tracking-[0.12em] text-text-subtle">
                 {t('runtime.phaseView.shared.nextHop')}
               </div>
               <div className="mt-1 text-sm leading-6 text-text-main">
-                {nextPhase ? t(`stages.${nextPhase}.label`) : t('runtime.phaseView.shared.finalOutput')}
+                {nextPhase
+                  ? t(`stages.${nextPhase}.label`)
+                  : t('runtime.phaseView.shared.finalOutput')}
               </div>
             </div>
           </div>
@@ -628,11 +703,11 @@ export function WorkbenchRuntimeMain({
         data-color-mode={isDark ? 'dark' : 'light'}
       >
         <Suspense
-          fallback={(
+          fallback={
             <div className="flex h-[500px] items-center justify-center rounded-xl border border-border/70 bg-surface-muted/70 text-text-subtle">
               <LoaderCircle className="h-5 w-5 animate-spin" />
             </div>
-          )}
+          }
         >
           <LazyPromptMarkdownEditor
             value={notesStream}
@@ -688,7 +763,10 @@ export function WorkbenchRuntimeMain({
           <PreText variant="timestamp" className="runtime-panel-caption mb-2">
             {t('runtime.stageD.mindmapPreviewTitle')}
           </PreText>
-          <LazyMindmapViewer markdown={mindmapStream} emptyText={t('runtime.stageD.mindmapEmpty')} />
+          <LazyMindmapViewer
+            markdown={mindmapStream}
+            emptyText={t('runtime.stageD.mindmapEmpty')}
+          />
         </div>
       </Suspense>
     </div>
@@ -715,7 +793,9 @@ export function WorkbenchRuntimeMain({
 
         {!debugArtifacts.length ? (
           <div className="rounded-lg border border-dashed border-border/70 bg-surface-muted/35 px-3 py-6 text-center text-sm text-text-subtle">
-            {t('runtime.stageD.debugArtifactsEmpty', { defaultValue: '当前子阶段暂未持久化可预览产物。' })}
+            {t('runtime.stageD.debugArtifactsEmpty', {
+              defaultValue: '当前子阶段暂未持久化可预览产物。',
+            })}
           </div>
         ) : (
           <div className="grid gap-3 xl:grid-cols-[260px_minmax(0,1fr)]">
@@ -736,9 +816,12 @@ export function WorkbenchRuntimeMain({
                     )}
                     onClick={() => setSelectedArtifactPath(logicalPath)}
                   >
-                    <div className="line-clamp-2 break-all text-sm font-medium text-text-main">{relativePath || logicalPath}</div>
+                    <div className="line-clamp-2 break-all text-sm font-medium text-text-main">
+                      {relativePath || logicalPath}
+                    </div>
                     <div className="mt-1 text-[11px] text-text-subtle">
-                      {formatArtifactSize(entry.size_bytes)} · {entry.source ?? entry.stage ?? 'artifact'}
+                      {formatArtifactSize(entry.size_bytes)} ·{' '}
+                      {entry.source ?? entry.stage ?? 'artifact'}
                     </div>
                   </button>
                 )
@@ -748,7 +831,9 @@ export function WorkbenchRuntimeMain({
             <div className="overflow-hidden rounded-xl border border-border/70 bg-bg-base">
               <div className="border-b border-border/70 px-3 py-2">
                 <PreText variant="timestamp" className="break-all">
-                  {selectedArtifactEntry ? getArtifactRelativePath(selectedArtifactEntry) : t('runtime.stageD.debugArtifactsTitle')}
+                  {selectedArtifactEntry
+                    ? getArtifactRelativePath(selectedArtifactEntry)
+                    : t('runtime.stageD.debugArtifactsTitle')}
                 </PreText>
               </div>
               <div className="h-[420px] overflow-auto px-3 py-2">
@@ -762,11 +847,16 @@ export function WorkbenchRuntimeMain({
                   </div>
                 ) : !selectedArtifactEntry ? (
                   <div className="flex h-full items-center justify-center text-sm text-text-subtle">
-                    {t('runtime.stageD.debugArtifactsEmpty', { defaultValue: '当前子阶段暂未持久化可预览产物。' })}
+                    {t('runtime.stageD.debugArtifactsEmpty', {
+                      defaultValue: '当前子阶段暂未持久化可预览产物。',
+                    })}
                   </div>
-                ) : resolveArtifactPreviewMode(getArtifactRelativePath(selectedArtifactEntry)) === 'markdown' ? (
+                ) : resolveArtifactPreviewMode(getArtifactRelativePath(selectedArtifactEntry)) ===
+                  'markdown' ? (
                   <div className="prose prose-sm max-w-none dark:prose-invert">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{artifactPreviewContent}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {artifactPreviewContent}
+                    </ReactMarkdown>
                   </div>
                 ) : (
                   <pre className="whitespace-pre-wrap break-words font-mono text-[0.82rem] leading-6 text-text-main">
@@ -781,30 +871,34 @@ export function WorkbenchRuntimeMain({
     )
   }
 
-  const renderFusionPromptPanel = (viewportClassName = 'max-h-[320px]') => renderMarkdownPanel({
-    title: t('runtime.stageH.fusionPromptTitle', { defaultValue: '最终送入 LLM 的融合提示词（Markdown 预览）' }),
-    content: fusionPromptPreview,
-    emptyText: t('runtime.stageH.waitingFusionPrompt', { defaultValue: '等待融合提示词...' }),
-    viewportClassName,
-    action: (
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        onClick={() => setPromptPreviewFullscreen(true)}
-      >
-        <Maximize2 className="mr-2 h-3.5 w-3.5" />
-        {t('runtime.stageH.fullscreen', { defaultValue: '全屏查看' })}
-      </Button>
-    ),
-  })
+  const renderFusionPromptPanel = (viewportClassName = 'max-h-[320px]') =>
+    renderMarkdownPanel({
+      title: t('runtime.stageH.fusionPromptTitle', {
+        defaultValue: '最终送入 LLM 的融合提示词（Markdown 预览）',
+      }),
+      content: fusionPromptPreview,
+      emptyText: t('runtime.stageH.waitingFusionPrompt', { defaultValue: '等待融合提示词...' }),
+      viewportClassName,
+      action: (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => setPromptPreviewFullscreen(true)}
+        >
+          <Maximize2 className="mr-2 h-3.5 w-3.5" />
+          {t('runtime.stageH.fullscreen', { defaultValue: '全屏查看' })}
+        </Button>
+      ),
+    })
 
-  const renderSummaryPreviewPanel = (viewportClassName = 'max-h-[320px]') => renderMarkdownPanel({
-    title: t('runtime.phaseView.shared.summaryPreview'),
-    content: activeTask?.summary_markdown ?? '',
-    emptyText: t('runtime.phaseView.shared.emptySummary'),
-    viewportClassName,
-  })
+  const renderSummaryPreviewPanel = (viewportClassName = 'max-h-[320px]') =>
+    renderMarkdownPanel({
+      title: t('runtime.phaseView.shared.summaryPreview'),
+      content: activeTask?.summary_markdown ?? '',
+      emptyText: t('runtime.phaseView.shared.emptySummary'),
+      viewportClassName,
+    })
 
   const renderFinalDeliveryCards = () => (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -813,7 +907,10 @@ export function WorkbenchRuntimeMain({
         [t('runtime.phaseView.shared.notesLength'), `${notesCharacters}`],
         [t('runtime.phaseView.shared.summaryLength'), `${summaryCharacters}`],
         [t('runtime.phaseView.shared.mindmapLength'), `${mindmapBlocks}`],
-        [t('runtime.phaseView.shared.totalArtifacts'), `${activeTask?.artifact_index.length ?? 0} · ${formatArtifactSize(activeTask?.artifact_total_bytes ?? 0)}`],
+        [
+          t('runtime.phaseView.shared.totalArtifacts'),
+          `${activeTask?.artifact_index.length ?? 0} · ${formatArtifactSize(activeTask?.artifact_total_bytes ?? 0)}`,
+        ],
       ].map(([label, value]) => (
         <div key={label} className="runtime-panel rounded-xl border px-3 py-3 text-sm">
           <div className="text-[11px] uppercase tracking-[0.12em] text-text-subtle">{label}</div>
@@ -853,7 +950,10 @@ export function WorkbenchRuntimeMain({
         <div className="grid gap-3">
           <div className="grid gap-3 lg:grid-cols-[0.95fr_1.05fr]">
             {renderStageLogPanel('C')}
-            <div ref={transcriptPanelRef} className="runtime-panel h-[420px] overflow-auto rounded-xl border p-3 text-[0.9rem]">
+            <div
+              ref={transcriptPanelRef}
+              className="runtime-panel h-[420px] overflow-auto rounded-xl border p-3 text-[0.9rem]"
+            >
               <PreText variant="timestamp" className="mb-2 runtime-panel-caption">
                 {t('runtime.phaseView.shared.transcriptPreview')}
               </PreText>
@@ -884,18 +984,25 @@ export function WorkbenchRuntimeMain({
               className="runtime-panel h-[420px] overflow-auto rounded-xl border p-3 text-[0.9rem]"
             >
               <PreText variant="timestamp" className="mb-2 runtime-panel-caption">
-                {t('runtime.stageD.optimizeResultTitle', { defaultValue: '转录文本优化结果（实时更新）' })}
+                {t('runtime.stageD.optimizeResultTitle', {
+                  defaultValue: '转录文本优化结果（实时更新）',
+                })}
               </PreText>
-              {transcriptCorrectionMode === 'strict'
-                ? renderTranscriptSegments(
-                    optimizedTranscriptSegments,
-                    t('runtime.stageD.waitingOptimizedTranscript', { defaultValue: '等待优化文本输出...' }),
-                  )
-                : (
-                    <pre className="whitespace-pre-wrap font-mono leading-6">
-                      {optimizedTranscriptStream || t('runtime.stageD.waitingOptimizedTranscript', { defaultValue: '等待优化文本输出...' })}
-                    </pre>
-                  )}
+              {transcriptCorrectionMode === 'strict' ? (
+                renderTranscriptSegments(
+                  optimizedTranscriptSegments,
+                  t('runtime.stageD.waitingOptimizedTranscript', {
+                    defaultValue: '等待优化文本输出...',
+                  }),
+                )
+              ) : (
+                <pre className="whitespace-pre-wrap font-mono leading-6">
+                  {optimizedTranscriptStream ||
+                    t('runtime.stageD.waitingOptimizedTranscript', {
+                      defaultValue: '等待优化文本输出...',
+                    })}
+                </pre>
+              )}
             </div>
           </div>
           {renderDebugArtifactsPanel()}
@@ -910,7 +1017,9 @@ export function WorkbenchRuntimeMain({
             {renderPhaseCheckpointPanel(
               'notes_extract',
               optimizedTranscriptStream,
-              t('runtime.stageD.waitingOptimizedTranscript', { defaultValue: '等待优化文本输出...' }),
+              t('runtime.stageD.waitingOptimizedTranscript', {
+                defaultValue: '等待优化文本输出...',
+              }),
             )}
           </div>
           {renderDebugArtifactsPanel()}
@@ -1012,7 +1121,10 @@ export function WorkbenchRuntimeMain({
           <PreText as="h2" variant="h2" className="tracking-[0.01em]">
             {t('runtime.title')}
           </PreText>
-          <PreText variant="timestamp" className="workbench-subtitle-pill max-w-full line-clamp-1 text-right">
+          <PreText
+            variant="timestamp"
+            className="workbench-subtitle-pill max-w-full line-clamp-1 text-right"
+          >
             {t('runtime.taskStatus', { status: runtimeStatusLabel })}
           </PreText>
         </div>
@@ -1024,7 +1136,9 @@ export function WorkbenchRuntimeMain({
         </div>
         <div className="mb-3.5 flex items-center gap-2 text-[0.92rem]">
           {isTaskCompleted && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
-          {!isTaskCompleted && isTaskRunning && <LoaderCircle className="h-4 w-4 animate-spin text-accent" />}
+          {!isTaskCompleted && isTaskRunning && (
+            <LoaderCircle className="h-4 w-4 animate-spin text-accent" />
+          )}
           <span
             className={cn('min-w-0 flex-1 truncate', error ? 'text-red-500' : 'text-text-subtle')}
             title={runtimeStatusMessage}
@@ -1036,11 +1150,18 @@ export function WorkbenchRuntimeMain({
               type="button"
               variant="outline"
               size="sm"
-              className={cn('border-red-400/55 text-red-500 hover:bg-red-500/10', !isTaskRunning && 'ml-auto')}
+              className={cn(
+                'border-red-400/55 text-red-500 hover:bg-red-500/10',
+                !isTaskRunning && 'ml-auto',
+              )}
               disabled={cancellingTask}
               onClick={() => void onCancelTask()}
             >
-              {cancellingTask ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <X className="mr-2 h-4 w-4" />}
+              {cancellingTask ? (
+                <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <X className="mr-2 h-4 w-4" />
+              )}
               {cancellingTask ? t('runtime.cancel.requesting') : t('runtime.cancel.action')}
             </Button>
           )}
@@ -1094,23 +1215,29 @@ export function WorkbenchRuntimeMain({
                       <MessageCircle className="h-3.25 w-3.25" />
                       {t(`stages.${phase}.label`)}
                     </span>
-                    <span className="block text-[0.72rem] leading-5 text-text-main">{phaseDescription}</span>
+                    <span className="block text-[0.72rem] leading-5 text-text-main">
+                      {phaseDescription}
+                    </span>
                   </span>
                 </span>
-                <div className="max-w-[12.5ch] pr-1 font-semibold leading-[1.24] tracking-[0.002em]">{t(`stages.${phase}.label`)}</div>
+                <div className="max-w-[12.5ch] pr-1 font-semibold leading-[1.24] tracking-[0.002em]">
+                  {t(`stages.${phase}.label`)}
+                </div>
                 <div
                   className={cn(
                     'absolute inset-x-[0.72rem] bottom-[0.42rem] h-[2px] rounded-full opacity-0 transition-opacity duration-200',
                     status === 'running' && 'bg-[var(--color-info)] opacity-100',
                     status === 'completed' && 'bg-[var(--color-success)] opacity-100',
                     status === 'failed' && 'bg-[var(--color-danger)] opacity-100',
-                    isSelected && status !== 'running' && status !== 'completed' && status !== 'failed' && 'bg-[var(--color-accent)] opacity-100',
+                    isSelected &&
+                      status !== 'running' &&
+                      status !== 'completed' &&
+                      status !== 'failed' &&
+                      'bg-[var(--color-accent)] opacity-100',
                   )}
                   aria-hidden="true"
                 />
-                <div className="sr-only">
-                  {phaseDescription}
-                </div>
+                <div className="sr-only">{phaseDescription}</div>
               </button>
             )
           })}
@@ -1121,19 +1248,31 @@ export function WorkbenchRuntimeMain({
       </section>
 
       {promptPreviewFullscreen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4" onClick={() => setPromptPreviewFullscreen(false)}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
+          onClick={() => setPromptPreviewFullscreen(false)}
+        >
           <div
             className="workbench-surface-card h-[92vh] w-full max-w-6xl p-3.5"
             role="dialog"
             aria-modal="true"
-            aria-label={t('runtime.stageH.fusionPromptTitle', { defaultValue: '最终输入给 LLM 的融合提示词（Markdown 预览）' })}
+            aria-label={t('runtime.stageH.fusionPromptTitle', {
+              defaultValue: '最终输入给 LLM 的融合提示词（Markdown 预览）',
+            })}
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-2 flex items-center justify-between">
               <PreText variant="h3">
-                {t('runtime.stageH.fusionPromptTitle', { defaultValue: '最终输入给 LLM 的融合提示词（Markdown 预览）' })}
+                {t('runtime.stageH.fusionPromptTitle', {
+                  defaultValue: '最终输入给 LLM 的融合提示词（Markdown 预览）',
+                })}
               </PreText>
-              <Button type="button" size="sm" variant="outline" onClick={() => setPromptPreviewFullscreen(false)}>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setPromptPreviewFullscreen(false)}
+              >
                 <Expand className="mr-2 h-4 w-4" />
                 {t('runtime.modal.exitFullscreen', { defaultValue: '退出全屏' })}
               </Button>

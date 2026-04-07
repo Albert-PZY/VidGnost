@@ -102,7 +102,9 @@ class TaskArtifactPersistenceService:
         normalized_segments = [
             {
                 "start": round(_to_float(segment.get("start")), 2),
-                "end": round(max(_to_float(segment.get("start")), _to_float(segment.get("end"))), 2),
+                "end": round(
+                    max(_to_float(segment.get("start")), _to_float(segment.get("end"))), 2
+                ),
                 "text": str(segment.get("text", "")).strip(),
             }
             for segment in optimized_segments
@@ -167,9 +169,15 @@ class TaskArtifactPersistenceService:
         notes_markdown: str,
         mindmap_markdown: str,
     ) -> None:
-        await self.persist_stage_artifact_text(task_id, "D", "fusion/summary.md", summary_markdown or "")
-        await self.persist_stage_artifact_text(task_id, "D", "fusion/notes.md", notes_markdown or "")
-        await self.persist_stage_artifact_text(task_id, "D", "fusion/mindmap.md", mindmap_markdown or "")
+        await self.persist_stage_artifact_text(
+            task_id, "D", "fusion/summary.md", summary_markdown or ""
+        )
+        await self.persist_stage_artifact_text(
+            task_id, "D", "fusion/notes.md", notes_markdown or ""
+        )
+        await self.persist_stage_artifact_text(
+            task_id, "D", "fusion/mindmap.md", mindmap_markdown or ""
+        )
         await self.persist_stage_artifact_json(
             task_id,
             "D",
@@ -197,7 +205,9 @@ class TaskArtifactPersistenceService:
         notes_after_patch: str,
     ) -> None:
         chunk_manifest: list[dict[str, object]] = []
-        for index, (batch, card) in enumerate(zip(evidence_batches, evidence_cards, strict=False), start=1):
+        for index, (batch, card) in enumerate(
+            zip(evidence_batches, evidence_cards, strict=False), start=1
+        ):
             payload = {
                 "task_id": task_id,
                 "chunk_index": index,
@@ -232,7 +242,9 @@ class TaskArtifactPersistenceService:
             },
         )
         await self.persist_stage_artifact_json(task_id, "D", "notes-outline/outline.json", outline)
-        await self.persist_stage_artifact_text(task_id, "D", "notes-outline/outline.md", outline_markdown or "")
+        await self.persist_stage_artifact_text(
+            task_id, "D", "notes-outline/outline.md", outline_markdown or ""
+        )
 
         section_index_payload: list[dict[str, object]] = []
         for index, section in enumerate(section_markdowns, start=1):
@@ -243,7 +255,8 @@ class TaskArtifactPersistenceService:
                 {
                     "section_index": index,
                     "section_id": str(section.get("section_id", "")).strip() or f"section_{index}",
-                    "section_title": str(section.get("section_title", "")).strip() or f"章节 {index}",
+                    "section_title": str(section.get("section_title", "")).strip()
+                    or f"章节 {index}",
                     "relative_path": relative_path,
                     "source_batch_ids": section.get("source_batch_ids", []),
                 }
@@ -260,9 +273,15 @@ class TaskArtifactPersistenceService:
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             },
         )
-        await self.persist_stage_artifact_json(task_id, "D", "notes-coverage/report.json", coverage_report)
-        await self.persist_stage_artifact_text(task_id, "D", "notes-coverage/notes-before-patch.md", notes_before_patch or "")
-        await self.persist_stage_artifact_text(task_id, "D", "notes-coverage/notes-after-patch.md", notes_after_patch or "")
+        await self.persist_stage_artifact_json(
+            task_id, "D", "notes-coverage/report.json", coverage_report
+        )
+        await self.persist_stage_artifact_text(
+            task_id, "D", "notes-coverage/notes-before-patch.md", notes_before_patch or ""
+        )
+        await self.persist_stage_artifact_text(
+            task_id, "D", "notes-coverage/notes-after-patch.md", notes_after_patch or ""
+        )
 
     @staticmethod
     def build_audio_chunk_windows(audio_chunks: list[Any]) -> list[dict[str, object]]:
@@ -286,7 +305,9 @@ class TaskArtifactPersistenceService:
         task_id: str,
         transcript_segments: list[dict[str, float | str]],
     ) -> list[dict[str, object]]:
-        payload = self._stage_artifact_store.read_json(task_id, "C", "transcript/index.json", default={})
+        payload = self._stage_artifact_store.read_json(
+            task_id, "C", "transcript/index.json", default={}
+        )
         if isinstance(payload, dict):
             chunks_payload = payload.get("chunks")
             if isinstance(chunks_payload, list):
@@ -296,7 +317,9 @@ class TaskArtifactPersistenceService:
                         continue
                     windows.append(
                         {
-                            "chunk_index": int(item.get("index", len(windows) + 1) or (len(windows) + 1)),
+                            "chunk_index": int(
+                                item.get("index", len(windows) + 1) or (len(windows) + 1)
+                            ),
                             "start_seconds": round(_to_float(item.get("start_seconds")), 2),
                             "end_seconds": round(_to_float(item.get("end_seconds")), 2),
                         }
@@ -307,7 +330,13 @@ class TaskArtifactPersistenceService:
             return [{"chunk_index": 1, "start_seconds": 0.0, "end_seconds": 0.0}]
         start_seconds = round(min(_to_float(item.get("start")) for item in transcript_segments), 2)
         end_seconds = round(max(_to_float(item.get("end")) for item in transcript_segments), 2)
-        return [{"chunk_index": 1, "start_seconds": start_seconds, "end_seconds": max(start_seconds, end_seconds)}]
+        return [
+            {
+                "chunk_index": 1,
+                "start_seconds": start_seconds,
+                "end_seconds": max(start_seconds, end_seconds),
+            }
+        ]
 
     @staticmethod
     def split_segments_by_chunk_windows(
@@ -317,12 +346,22 @@ class TaskArtifactPersistenceService:
         windows = [window for window in chunk_windows if isinstance(window, dict)]
         if not windows:
             windows = [{"chunk_index": 1, "start_seconds": 0.0, "end_seconds": 0.0}]
-        windows.sort(key=lambda item: (int(item.get("chunk_index", 0) or 0), _to_float(item.get("start_seconds"))))
+        windows.sort(
+            key=lambda item: (
+                int(item.get("chunk_index", 0) or 0),
+                _to_float(item.get("start_seconds")),
+            )
+        )
         grouped: list[dict[str, object]] = [
             {
                 "chunk_index": int(window.get("chunk_index", index + 1) or (index + 1)),
                 "start_seconds": round(_to_float(window.get("start_seconds")), 2),
-                "end_seconds": round(max(_to_float(window.get("start_seconds")), _to_float(window.get("end_seconds"))), 2),
+                "end_seconds": round(
+                    max(
+                        _to_float(window.get("start_seconds")), _to_float(window.get("end_seconds"))
+                    ),
+                    2,
+                ),
                 "segments": [],
             }
             for index, window in enumerate(windows)
@@ -334,7 +373,9 @@ class TaskArtifactPersistenceService:
                 continue
             normalized = {
                 "start": round(_to_float(segment.get("start")), 2),
-                "end": round(max(_to_float(segment.get("start")), _to_float(segment.get("end"))), 2),
+                "end": round(
+                    max(_to_float(segment.get("start")), _to_float(segment.get("end"))), 2
+                ),
                 "text": str(segment.get("text", "")).strip(),
             }
             target_index = len(grouped) - 1
@@ -364,4 +405,3 @@ def _join_transcript_segment_texts(segments: list[dict[str, float | str]]) -> st
         if text:
             lines.append(text)
     return "\n".join(lines).strip()
-

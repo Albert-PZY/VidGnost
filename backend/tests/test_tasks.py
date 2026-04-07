@@ -1,8 +1,9 @@
 import io
-from pathlib import Path
-from fastapi.testclient import TestClient
-import orjson
 import zipfile
+from pathlib import Path
+
+import orjson
+from fastapi.testclient import TestClient
 
 from app.main import app
 from app.models import TaskStatus
@@ -43,6 +44,7 @@ def test_create_url_task() -> None:
 
 def test_task_detail_includes_fusion_prompt_markdown() -> None:
     with TestClient(app) as client:
+
         async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
             return
 
@@ -69,6 +71,7 @@ def test_task_detail_includes_fusion_prompt_markdown() -> None:
 
 def test_remove_analysis_results_by_prefix() -> None:
     with TestClient(app) as client:
+
         async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
             return
 
@@ -90,7 +93,9 @@ def test_remove_analysis_results_by_prefix() -> None:
         task_store.upsert_analysis_result(task_id, "D:transcript_optimize", {"status": "completed"})
         task_store.remove_analysis_results(task_id, prefixes=("D:", "D"))
 
-        analysis_dir = Path(client.app.state.settings.storage_dir) / "tasks" / "analysis-results" / task_id
+        analysis_dir = (
+            Path(client.app.state.settings.storage_dir) / "tasks" / "analysis-results" / task_id
+        )
         assert analysis_dir.exists()
         files = {path.stem for path in analysis_dir.glob("*.json")}
         assert "A" in files
@@ -100,6 +105,7 @@ def test_remove_analysis_results_by_prefix() -> None:
 
 def test_update_task_title() -> None:
     with TestClient(app) as client:
+
         async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
             return
 
@@ -130,6 +136,7 @@ def test_update_task_title() -> None:
 
 def test_task_detail_vm_phase_metrics_respects_failed_stage_status() -> None:
     with TestClient(app) as client:
+
         async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
             return
 
@@ -180,6 +187,7 @@ def test_task_detail_vm_phase_metrics_respects_failed_stage_status() -> None:
 
 def test_task_detail_vm_phase_metrics_keep_h_pending_before_final_delivery() -> None:
     with TestClient(app) as client:
+
         async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
             return
 
@@ -249,6 +257,7 @@ def test_normalize_stage_d_bundle_preserves_custom_notes() -> None:
 
 def test_delete_task_requires_terminal_status() -> None:
     with TestClient(app) as client:
+
         async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
             return
 
@@ -270,6 +279,7 @@ def test_delete_task_requires_terminal_status() -> None:
 
 def test_delete_completed_task() -> None:
     with TestClient(app) as client:
+
         async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
             return
 
@@ -290,7 +300,9 @@ def test_delete_completed_task() -> None:
         assert record is not None
         task_store.update(task_id, status=TaskStatus.COMPLETED.value)
         task_store.upsert_analysis_result(task_id, "A", {"status": "completed"})
-        event_log_path = Path(client.app.state.settings.storage_dir) / "event-logs" / f"{task_id}.jsonl"
+        event_log_path = (
+            Path(client.app.state.settings.storage_dir) / "event-logs" / f"{task_id}.jsonl"
+        )
         event_log_path.parent.mkdir(parents=True, exist_ok=True)
         event_log_path.write_text('{"type":"test"}\n', encoding="utf-8")
         stage_artifact_file = (
@@ -316,6 +328,7 @@ def test_delete_completed_task() -> None:
 
 def test_cancel_running_task() -> None:
     with TestClient(app) as client:
+
         async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
             return
 
@@ -344,6 +357,7 @@ def test_cancel_running_task() -> None:
 
 def test_rerun_stage_d_for_terminal_task() -> None:
     with TestClient(app) as client:
+
         async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
             return
 
@@ -369,7 +383,9 @@ def test_rerun_stage_d_for_terminal_task() -> None:
             task_id,
             status=TaskStatus.FAILED.value,
             transcript_text="hello",
-            transcript_segments_json=orjson.dumps([{"start": 0.0, "end": 1.0, "text": "hello"}]).decode("utf-8"),
+            transcript_segments_json=orjson.dumps(
+                [{"start": 0.0, "end": 1.0, "text": "hello"}]
+            ).decode("utf-8"),
         )
         rerun_response = client.post(f"/api/tasks/{task_id}/rerun-stage-d")
         assert rerun_response.status_code == 202
@@ -380,6 +396,7 @@ def test_rerun_stage_d_for_terminal_task() -> None:
 
 def test_rerun_stage_d_rejected_when_task_not_terminal() -> None:
     with TestClient(app) as client:
+
         async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
             return
 
@@ -402,6 +419,7 @@ def test_rerun_stage_d_rejected_when_task_not_terminal() -> None:
 
 def test_cancel_terminal_task_rejected() -> None:
     with TestClient(app) as client:
+
         async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
             return
 
@@ -428,6 +446,7 @@ def test_cancel_terminal_task_rejected() -> None:
 
 def test_export_srt_and_vtt_with_timeline_fixups() -> None:
     with TestClient(app) as client:
+
         async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
             return
 
@@ -479,6 +498,7 @@ def test_export_srt_and_vtt_with_timeline_fixups() -> None:
 
 def test_bundle_contains_subtitle_files() -> None:
     with TestClient(app) as client:
+
         async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
             return
 
@@ -525,6 +545,7 @@ def test_bundle_contains_subtitle_files() -> None:
 
 def test_export_notes_rejects_empty_artifact() -> None:
     with TestClient(app) as client:
+
         async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
             return
 
@@ -555,6 +576,7 @@ def test_export_notes_rejects_empty_artifact() -> None:
 
 def test_update_task_artifacts_after_completion() -> None:
     with TestClient(app) as client:
+
         async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
             return
 
@@ -578,7 +600,9 @@ def test_update_task_artifacts_after_completion() -> None:
             status=TaskStatus.COMPLETED.value,
             title="editable-artifacts",
             transcript_text="line one",
-            transcript_segments_json=orjson.dumps([{"start": 0.0, "end": 0.5, "text": "line one"}]).decode("utf-8"),
+            transcript_segments_json=orjson.dumps(
+                [{"start": 0.0, "end": 0.5, "text": "line one"}]
+            ).decode("utf-8"),
             summary_markdown="old summary",
             notes_markdown="old notes",
             mindmap_markdown="# Old Mindmap",
@@ -609,6 +633,7 @@ def test_update_task_artifacts_after_completion() -> None:
 
 def test_update_task_artifacts_rejects_running_task() -> None:
     with TestClient(app) as client:
+
         async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
             return
 
@@ -635,6 +660,7 @@ def test_update_task_artifacts_rejects_running_task() -> None:
 
 def test_task_detail_artifact_index_includes_stage_d_notes_pipeline_artifacts() -> None:
     with TestClient(app) as client:
+
         async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
             return
 
@@ -655,13 +681,21 @@ def test_task_detail_artifact_index_includes_stage_d_notes_pipeline_artifacts() 
             task_id,
             status=TaskStatus.COMPLETED.value,
             transcript_text="line one",
-            transcript_segments_json=orjson.dumps([{"start": 0.0, "end": 0.5, "text": "line one"}]).decode("utf-8"),
+            transcript_segments_json=orjson.dumps(
+                [{"start": 0.0, "end": 0.5, "text": "line one"}]
+            ).decode("utf-8"),
             summary_markdown="summary",
             notes_markdown="notes",
             mindmap_markdown="mindmap",
         )
 
-        stage_root = Path(client.app.state.settings.storage_dir) / "tasks" / "stage-artifacts" / task_id / "D"
+        stage_root = (
+            Path(client.app.state.settings.storage_dir)
+            / "tasks"
+            / "stage-artifacts"
+            / task_id
+            / "D"
+        )
         notes_extract_index = stage_root / "notes-extract" / "index.json"
         notes_coverage_report = stage_root / "notes-coverage" / "report.json"
         notes_extract_index.parent.mkdir(parents=True, exist_ok=True)
@@ -669,7 +703,9 @@ def test_task_detail_artifact_index_includes_stage_d_notes_pipeline_artifacts() 
         notes_extract_index.write_text('{"chunk_count":1}', encoding="utf-8")
         notes_coverage_report.write_text('{"missing_count":0}', encoding="utf-8")
 
-        patch_response = client.patch(f"/api/tasks/{task_id}/artifacts", json={"notes_markdown": "notes"})
+        patch_response = client.patch(
+            f"/api/tasks/{task_id}/artifacts", json={"notes_markdown": "notes"}
+        )
         assert patch_response.status_code == 200
 
         detail_response = client.get(f"/api/tasks/{task_id}")
@@ -682,6 +718,7 @@ def test_task_detail_artifact_index_includes_stage_d_notes_pipeline_artifacts() 
 
 def test_get_task_artifact_content_supports_db_and_stage_paths() -> None:
     with TestClient(app) as client:
+
         async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
             return
 
@@ -716,7 +753,10 @@ def test_get_task_artifact_content_supports_db_and_stage_paths() -> None:
         stage_file.parent.mkdir(parents=True, exist_ok=True)
         stage_file.write_text("# Outline", encoding="utf-8")
 
-        db_response = client.get(f"/api/tasks/{task_id}/artifacts/content", params={"path": f"db://task/{task_id}/notes.md"})
+        db_response = client.get(
+            f"/api/tasks/{task_id}/artifacts/content",
+            params={"path": f"db://task/{task_id}/notes.md"},
+        )
         assert db_response.status_code == 200
         assert db_response.text == "# Notes"
 
@@ -738,4 +778,3 @@ def test_get_task_artifact_content_supports_db_and_stage_paths() -> None:
             params={"path": f"stage://task/{task_id}/D/../../A/ingestion.json"},
         )
         assert invalid_response.status_code == 400
-

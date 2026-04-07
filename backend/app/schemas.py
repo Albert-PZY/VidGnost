@@ -5,7 +5,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 ModelSize = Literal["small"]
 SourceType = Literal["bilibili", "local_file"]
 

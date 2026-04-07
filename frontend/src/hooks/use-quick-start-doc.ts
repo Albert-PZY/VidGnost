@@ -11,10 +11,7 @@ const quickStartDocLoaders: Record<UILocale, () => Promise<QuickStartDocModule>>
 
 const quickStartDocCache: Partial<Record<UILocale, string>> = {}
 
-export function useQuickStartDoc(params: {
-  mainView: MainViewMode
-  locale: UILocale
-}): string {
+export function useQuickStartDoc(params: { mainView: MainViewMode; locale: UILocale }): string {
   const { mainView, locale } = params
   const [markdown, setMarkdown] = useState('')
 
@@ -39,4 +36,3 @@ export function useQuickStartDoc(params: {
 
   return markdown
 }
-

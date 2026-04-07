@@ -59,4 +59,3 @@ def _contains_any(message: str, patterns: tuple[str, ...]) -> bool:
 
 def _build_failure(category: TaskErrorCategory, reason: str) -> TaskFailureInfo:
     return TaskFailureInfo(category=category, reason=reason, hint=_CATEGORY_HINTS[category])
-
