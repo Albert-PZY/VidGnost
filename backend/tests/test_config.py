@@ -31,7 +31,7 @@ def test_get_and_update_whisper_config_api_only() -> None:
         assert saved["chunk_seconds"] == 300
         assert saved["beam_size"] == 4
         assert saved["vad_filter"] is False
-        assert saved["device"] == "cuda"
+        assert saved["device"] == "cpu"
 
 
 def test_get_and_update_llm_config_persists_file() -> None:

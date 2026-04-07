@@ -5,7 +5,7 @@
 The current pipeline is simplified to:
 
 1. Local audio preprocessing and chunking
-2. Local `Systran/faster-whisper-small` transcription (GPU-only)
+2. Local `Systran/faster-whisper-small` transcription (CPU)
 3. Stage D subchain: `transcript_optimize -> fusion_delivery`
 4. Online LLM generation for detailed notes and mindmap
 
@@ -21,7 +21,7 @@ Removed from this build:
 - `uv`
 - Node.js + `pnpm`
 - `ffmpeg` (required)
-- NVIDIA driver + CUDA runtime (required by GPU-only Faster-Whisper)
+- CPU runtime (Faster-Whisper is fixed to CPU inference in current build)
 
 ## 3. Startup
 
@@ -56,10 +56,10 @@ Check:
 - `model` correctness
 - `api_key` validity and quota
 
-### 5.2 CUDA warnings from bootstrap scripts
+### 5.2 Transcription is slow (CPU mode)
 
 Check:
 
-- `nvidia-smi` availability
 - backend venv dependencies installed via `uv sync`
-- CUDA runtime and driver compatibility
+- `compute_type` set to `int8` for lower CPU pressure
+- no other heavy CPU workloads are running

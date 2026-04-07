@@ -35,7 +35,7 @@
   - 通过 SSE 展示阶段进度、日志、耗时与运行告警
   - 支持任务状态流转与取消反馈
 - 语音识别：
-  - Faster-Whisper（GPU-only）
+  - Faster-Whisper（CPU）
   - 转录优化模式：`off` / `strict` / `rewrite`
 - 阶段 D 语义生成：
   - 仅保留 `transcript_optimize -> fusion_delivery`
@@ -98,7 +98,7 @@ VidGnost/
 - Node.js：`>= 18`（启用 Corepack）
 - 包管理：后端 `uv`，前端 `pnpm`
 - 系统依赖：`ffmpeg` 已在 `PATH`
-- GPU 运行时：NVIDIA 驱动 + CUDA 运行时（Faster-Whisper 为 GPU-only）
+- Faster-Whisper 转写采用 CPU 运行时
 - API 凭证：
   - LLM API Key（阶段 `D` 文本生成必需）
 
@@ -176,7 +176,7 @@ pnpm dev --host 0.0.0.0 --port 5173
 
 | 现象 | 含义 | 处理建议 |
 | --- | --- | --- |
-| `WARNING: [setup] CUDA runtime libraries were not found in backend venv.` | 后端虚拟环境中未发现可用 CUDA 运行时库路径 | 检查显卡驱动/CUDA 运行时并执行 `uv sync` 重装依赖 |
+| `Task failed: RuntimeError: Library cublas64_12.dll is not found` | 旧环境/旧配置仍按 GPU 方式初始化 | 更新到最新代码，并在运行配置中保持 Whisper 设备为 `cpu` |
 | `warning: Failed to hardlink files; falling back to full copy.` | `uv` 缓存与目标目录跨文件系统，硬链接不可用 | 设置 `UV_LINK_MODE=copy` 可消除该提示 |
 | 阶段 D 报 API 鉴权或连通性错误 | API 凭证错误或 endpoint 不可达 | 核对 LLM 的 `base_url`、`model`、`api_key` 并做连通性检查 |
 

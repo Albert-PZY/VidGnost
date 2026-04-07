@@ -35,7 +35,7 @@
   - Stage progress, logs, elapsed time, and runtime warnings via SSE
   - Task status transitions and cancellation feedback
 - Speech recognition:
-  - Faster-Whisper (GPU-only runtime)
+  - Faster-Whisper (CPU runtime)
   - Transcript correction modes: `off` / `strict` / `rewrite`
 - Stage-D generation path:
   - Keep only `transcript_optimize -> fusion_delivery`
@@ -98,7 +98,7 @@ VidGnost/
 - Node.js: `>= 18` (Corepack enabled)
 - Package management: backend `uv`, frontend `pnpm`
 - System dependency: `ffmpeg` in `PATH`
-- GPU runtime: NVIDIA driver + CUDA runtime (required by Faster-Whisper GPU-only execution)
+- CPU runtime for Faster-Whisper transcription
 - API credentials:
   - LLM API key (required for stage `D` generation)
 
@@ -176,7 +176,7 @@ Config center tabs:
 
 | Symptom | Meaning | Action |
 | --- | --- | --- |
-| `WARNING: [setup] CUDA runtime libraries were not found in backend venv.` | CUDA runtime libs not discoverable from backend venv | Verify GPU driver/CUDA runtime and reinstall backend deps via `uv sync` |
+| `Task failed: RuntimeError: Library cublas64_12.dll is not found` | Legacy GPU runtime expectation in old environment/config | Update to latest code and keep Whisper device as `cpu` in runtime config |
 | `warning: Failed to hardlink files; falling back to full copy.` | `uv` cache and target are on different filesystems; hardlink unsupported | Set `UV_LINK_MODE=copy` to suppress warning |
 | Stage D fails with API auth/connectivity errors | API credentials or endpoint unreachable | Verify `base_url/model/api_key` for LLM and test connectivity |
 

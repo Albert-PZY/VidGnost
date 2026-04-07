@@ -353,7 +353,6 @@ class SelfCheckService:
             _SelfCheckItem("ffmpeg", "FFmpeg", self._check_ffmpeg),
             _SelfCheckItem("config-files", "Runtime Config Files", self._check_config_files),
             _SelfCheckItem("whisper-config", "Faster-Whisper Runtime Config", self._check_whisper_runtime_config),
-            _SelfCheckItem("gpu-driver", "GPU Driver Visibility", self._check_gpu_driver),
             _SelfCheckItem("model-cache", "Whisper Model Cache", self._check_model_cache),
         ]
 
@@ -441,55 +440,21 @@ class SelfCheckService:
         whisper = payload.get("whisper", {})
         device = str(whisper.get("device", "")).strip().lower()
         compute_type = str(whisper.get("compute_type", "")).strip().lower()
-        if device != "cuda":
+        if device != "cpu":
             return SelfCheckOutcome(
                 status="warning",
-                message=f"whisper.device is `{device or 'empty'}` (GPU-only expects `cuda`).",
+                message=f"whisper.device is `{device or 'empty'}` (CPU-only expects `cpu`).",
                 auto_fixable=True,
-                manual_action="在前端保存运行配置，后端会归一化 device=cuda。",
+                manual_action="在前端保存运行配置，后端会归一化 device=cpu。",
             )
-        if not compute_type:
+        if compute_type not in {"int8", "float32"}:
             return SelfCheckOutcome(
                 status="warning",
-                message="whisper.compute_type is empty.",
+                message=f"whisper.compute_type is `{compute_type or 'empty'}` (allowed: int8/float32).",
                 auto_fixable=True,
-                manual_action="设置 compute_type（GPU 推荐 float16 或 int8）。",
+                manual_action="设置 compute_type 为 int8 或 float32。",
             )
-        return SelfCheckOutcome(status="passed", message=f"device=cuda, compute_type={compute_type}")
-
-    async def _check_gpu_driver(self) -> SelfCheckOutcome:
-        nvidia_smi = shutil.which("nvidia-smi")
-        if not nvidia_smi:
-            return SelfCheckOutcome(
-                status="failed",
-                message="nvidia-smi command not found.",
-                manual_action="安装 NVIDIA 驱动 / 启用 WSL GPU 透传。",
-            )
-        try:
-            result = await asyncio.to_thread(
-                subprocess.run,
-                [nvidia_smi, "--query-gpu=name", "--format=csv,noheader"],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=12,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            return SelfCheckOutcome(
-                status="failed",
-                message="nvidia-smi execution failed or timed out.",
-                manual_action="检查 GPU 驱动与运行时。",
-            )
-        if result.returncode != 0:
-            stderr = (result.stderr or "").strip() or "Unknown error"
-            return SelfCheckOutcome(
-                status="failed",
-                message=f"nvidia-smi failed: {stderr}",
-                manual_action="修复 GPU 驱动后再运行任务。",
-            )
-        gpu_name = (result.stdout or "").strip().splitlines()
-        title = gpu_name[0] if gpu_name else "GPU visible"
-        return SelfCheckOutcome(status="passed", message=title)
+        return SelfCheckOutcome(status="passed", message=f"device=cpu, compute_type={compute_type}")
 
     async def _check_model_cache(self) -> SelfCheckOutcome:
         model_dir = Path(self._settings.storage_dir) / "model-hub" / "faster-whisper-small"

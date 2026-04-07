@@ -40,8 +40,6 @@ DSubstageType = Literal["transcript_optimize", "fusion_delivery"]
 ExecutionMode = Literal["api"]
 
 _STAGE_KEYS: tuple[StageType, StageType, StageType, StageType] = ("A", "B", "C", "D")
-_GPU_RUNTIME_REQUIRED_CODE = "GPU_RUNTIME_REQUIRED"
-_GPU_RUNTIME_REQUIRED_ACTION = "abort_task"
 _RESOURCE_GUARD_WARNING_CODE = "RESOURCE_GUARD_WARNING"
 _RESOURCE_GUARD_WARNING_ACTION = "review_runtime_config"
 _CONFIG_PRECHECK_WARNING_CODE = "CONFIG_PRECHECK_WARNING"
@@ -266,20 +264,6 @@ class TaskRunner:
                         action=_CONFIG_PRECHECK_WARNING_ACTION,
                         substage="precheck",
                     )
-                gpu_runtime_failure = self._resource_guard.gpu_runtime_failure_reason()
-                if gpu_runtime_failure:
-                    message = f"GPU 运行前检测失败：{gpu_runtime_failure}"
-                    await self._emit_runtime_warning(
-                        task_id,
-                        "A",
-                        message,
-                        stage_logs,
-                        code=_GPU_RUNTIME_REQUIRED_CODE,
-                        component="resource_guard",
-                        action=_GPU_RUNTIME_REQUIRED_ACTION,
-                        substage="resource",
-                    )
-                    raise RuntimeError(f"{_GPU_RUNTIME_REQUIRED_CODE}: {gpu_runtime_failure}")
                 for runtime_warning in runtime_warnings:
                     await self._emit_runtime_warning(
                         task_id,

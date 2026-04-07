@@ -173,8 +173,8 @@ export const resources = {
         },
         placeholders: {
           language: '识别语言，例如 zh / en / ja',
-          device: '设备，仅支持 cuda',
-          computeType: '计算类型，例如 int8 / float16',
+          device: '设备，固定 cpu',
+          computeType: '计算类型，例如 int8 / float32',
           beamSize: 'Beam Size',
           chunkSeconds: '切分秒数',
           sampleRate: '采样率',
@@ -193,18 +193,18 @@ export const resources = {
           },
           device: {
             label: '推理设备',
-            inputHint: 'cuda',
-            explanation: '仅支持 GPU 推理，固定使用 cuda。',
+            inputHint: 'cpu',
+            explanation: '固定使用 CPU 推理。',
           },
           computeType: {
             label: '计算精度',
-            inputHint: 'int8 / float16 / float32',
-            explanation: 'int8 更省资源，float16 在显卡上通常更快。',
+            inputHint: 'int8 / float32',
+            explanation: 'int8 更省资源，float32 精度更高。',
           },
           modelLoadProfile: {
             label: '模型加载档位',
             inputHint: 'balanced / memory_first',
-            explanation: 'balanced 提供更高复用率，memory_first 在任务后更积极释放显存。',
+            explanation: 'balanced 提供更高复用率，memory_first 在任务后更积极释放内存。',
           },
           beamSize: {
             label: 'Beam Size',
@@ -378,7 +378,7 @@ export const resources = {
         },
         loadProfile: {
           balanced: 'balanced（均衡）',
-          memoryFirst: 'memory_first（显存优先）',
+          memoryFirst: 'memory_first（内存优先）',
         },
         working: {
           label: 'Working',
@@ -676,8 +676,8 @@ export const resources = {
         },
         placeholders: {
           language: 'ASR language, e.g. zh / en / ja',
-          device: 'Device, GPU only (cuda)',
-          computeType: 'Compute type, e.g. int8 / float16',
+          device: 'Device, fixed to cpu',
+          computeType: 'Compute type, e.g. int8 / float32',
           beamSize: 'Beam Size',
           chunkSeconds: 'Chunk Seconds',
           sampleRate: 'Sample Rate',
@@ -696,18 +696,18 @@ export const resources = {
           },
           device: {
             label: 'Inference Device',
-            inputHint: 'cuda',
-            explanation: 'GPU-only inference. Device is fixed to cuda.',
+            inputHint: 'cpu',
+            explanation: 'CPU-only inference. Device is fixed to cpu.',
           },
           computeType: {
             label: 'Compute Precision',
-            inputHint: 'int8 / float16 / float32',
-            explanation: 'int8 is lighter; float16 is usually faster on GPU.',
+            inputHint: 'int8 / float32',
+            explanation: 'int8 is lighter; float32 provides higher precision.',
           },
           modelLoadProfile: {
             label: 'Model Load Profile',
             inputHint: 'balanced / memory_first',
-            explanation: 'balanced keeps reuse performance; memory_first releases VRAM more aggressively after tasks.',
+            explanation: 'balanced keeps reuse performance; memory_first releases memory more aggressively after tasks.',
           },
           beamSize: {
             label: 'Beam Size',

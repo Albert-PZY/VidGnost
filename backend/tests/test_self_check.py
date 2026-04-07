@@ -78,6 +78,6 @@ def test_self_check_build_steps_is_api_only() -> None:
     step_ids = [item.id for item in service._build_steps()]  # type: ignore[attr-defined]
     assert "env" in step_ids
     assert "ffmpeg" in step_ids
-    assert "gpu-driver" in step_ids
+    assert "gpu-driver" not in step_ids
     assert "model-cache" in step_ids
     assert "llm-local-config" not in step_ids

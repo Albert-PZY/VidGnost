@@ -9,6 +9,7 @@ from app.config import Settings
 
 SUPPORTED_MODEL_SIZES = {"small"}
 SUPPORTED_LOAD_PROFILES = {"balanced", "memory_first"}
+SUPPORTED_COMPUTE_TYPES = {"int8", "float32"}
 
 
 class WhisperRuntimeConfig(TypedDict):
@@ -27,7 +28,7 @@ class WhisperRuntimeConfig(TypedDict):
 DEFAULT_WHISPER_RUNTIME_CONFIG: WhisperRuntimeConfig = {
     "model_default": "small",
     "language": "zh",
-    "device": "cuda",
+    "device": "cpu",
     "compute_type": "int8",
     "model_load_profile": "balanced",
     "beam_size": 5,
@@ -56,7 +57,7 @@ class RuntimeConfigStore:
                 "model_default": _normalize_model_size(payload.get("model_default", current["model_default"])),
                 "language": str(payload.get("language", current["language"])).strip() or current["language"],
                 "device": _normalize_device(payload.get("device", current["device"])),
-                "compute_type": str(payload.get("compute_type", current["compute_type"])).strip() or current["compute_type"],
+                "compute_type": _normalize_compute_type(payload.get("compute_type", current["compute_type"])),
                 "model_load_profile": _normalize_load_profile(
                     payload.get("model_load_profile", current["model_load_profile"])
                 ),
@@ -99,8 +100,9 @@ class RuntimeConfigStore:
                 "language": str(whisper.get("language", DEFAULT_WHISPER_RUNTIME_CONFIG["language"])).strip()
                 or DEFAULT_WHISPER_RUNTIME_CONFIG["language"],
                 "device": _normalize_device(whisper.get("device", DEFAULT_WHISPER_RUNTIME_CONFIG["device"])),
-                "compute_type": str(whisper.get("compute_type", DEFAULT_WHISPER_RUNTIME_CONFIG["compute_type"])).strip()
-                or DEFAULT_WHISPER_RUNTIME_CONFIG["compute_type"],
+                "compute_type": _normalize_compute_type(
+                    whisper.get("compute_type", DEFAULT_WHISPER_RUNTIME_CONFIG["compute_type"])
+                ),
                 "model_load_profile": _normalize_load_profile(
                     whisper.get("model_load_profile", DEFAULT_WHISPER_RUNTIME_CONFIG["model_load_profile"])
                 ),
@@ -164,7 +166,14 @@ def _normalize_model_size(value: object) -> str:
 
 def _normalize_device(value: object) -> str:
     _ = value
-    return "cuda"
+    return "cpu"
+
+
+def _normalize_compute_type(value: object) -> str:
+    candidate = str(value).strip().lower()
+    if candidate in SUPPORTED_COMPUTE_TYPES:
+        return candidate
+    return DEFAULT_WHISPER_RUNTIME_CONFIG["compute_type"]
 
 
 def _normalize_load_profile(value: object) -> str:

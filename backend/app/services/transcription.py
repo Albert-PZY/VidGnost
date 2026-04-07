@@ -1,13 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-import ctypes
 import gc
 import math
 import os
 import shutil
-import site
-import sys
 import threading
 import time
 from collections.abc import Awaitable, Callable
@@ -34,32 +31,6 @@ ModelPrepareProgressCallback = Callable[[ModelPrepareProgressPayload], Awaitable
 
 
 class WhisperService:
-    _CUDA_LIBRARY_RELATIVE_DIRS = (
-        "nvidia/cublas/lib",
-        "nvidia/cublas/bin",
-        "nvidia/cudnn/lib",
-        "nvidia/cudnn/bin",
-        "nvidia/cuda_runtime/lib",
-        "nvidia/cuda_runtime/bin",
-        "nvidia/cuda_nvrtc/lib",
-        "nvidia/cuda_nvrtc/bin",
-        "torch/lib",
-        "torch/bin",
-    )
-    _CUDA_LIBRARY_FILENAMES_LINUX = (
-        "libcudart.so.12",
-        "libcublas.so.12",
-        "libcublasLt.so.12",
-        "libcudnn.so.9",
-        "libcudnn_ops.so.9",
-        "libcudnn_cnn.so.9",
-    )
-    _CUDA_LIBRARY_FILENAMES_WINDOWS = (
-        "cudart64_12.dll",
-        "cublas64_12.dll",
-        "cublasLt64_12.dll",
-        "cudnn64_9.dll",
-    )
     _MODEL_REPO_ID = "Systran/faster-whisper-small"
     _MODEL_REVISION = "main"
     _MODEL_DIR_NAME = "faster-whisper-small"
@@ -224,8 +195,6 @@ class WhisperService:
                 self._models.move_to_end(cache_key)
                 return model
 
-            self._prepare_gpu_runtime()
-
             from faster_whisper import WhisperModel
 
             model = self._create_whisper_model(
@@ -262,9 +231,7 @@ class WhisperService:
                 compute_type=normalized_compute_type,
                 local_files_only=True,
             )
-        except Exception as exc:  # noqa: BLE001
-            if self._is_cuda_runtime_missing(str(exc)):
-                raise self._build_cuda_runtime_error() from exc
+        except Exception:
             raise
 
     async def _download_small_model(self, on_progress: ModelPrepareProgressCallback | None) -> None:
@@ -622,102 +589,12 @@ class WhisperService:
             self._models.clear()
         gc.collect()
 
-    def _prepare_gpu_runtime(self) -> None:
-        runtime_dirs = self._discover_cuda_runtime_dirs()
-        if not runtime_dirs:
-            return
-        self._prepend_runtime_library_path(runtime_dirs)
-        self._preload_cuda_libraries(runtime_dirs)
-
-    @classmethod
-    def _discover_cuda_runtime_dirs(cls) -> list[Path]:
-        candidates: list[Path] = []
-        site_roots = [Path(path) for path in site.getsitepackages()]
-        user_site = site.getusersitepackages()
-        if user_site:
-            site_roots.append(Path(user_site))
-        for root in site_roots:
-            for relative_dir in cls._CUDA_LIBRARY_RELATIVE_DIRS:
-                directory = root / relative_dir
-                if directory.is_dir():
-                    candidates.append(directory)
-        unique_paths: list[Path] = []
-        seen: set[str] = set()
-        for path in candidates:
-            path_str = str(path.resolve())
-            if path_str in seen:
-                continue
-            seen.add(path_str)
-            unique_paths.append(path)
-        return unique_paths
-
-    @staticmethod
-    def _prepend_runtime_library_path(directories: list[Path]) -> None:
-        ordered: list[str] = [str(directory.resolve()) for directory in directories]
-        if sys.platform == "win32":
-            env_key = "PATH"
-            separator = ";"
-        else:
-            env_key = "LD_LIBRARY_PATH"
-            separator = ":"
-        existing = os.environ.get(env_key, "").strip()
-        if existing:
-            for value in existing.split(separator):
-                value = value.strip()
-                if value and value not in ordered:
-                    ordered.append(value)
-        os.environ[env_key] = separator.join(ordered)
-
-    @classmethod
-    def _preload_cuda_libraries(cls, runtime_dirs: list[Path]) -> None:
-        mode = getattr(ctypes, "RTLD_GLOBAL", 0)
-        library_names = cls._CUDA_LIBRARY_FILENAMES_WINDOWS if sys.platform == "win32" else cls._CUDA_LIBRARY_FILENAMES_LINUX
-        for runtime_dir in runtime_dirs:
-            for library_name in library_names:
-                library_path = runtime_dir / library_name
-                if not library_path.exists():
-                    continue
-                try:
-                    ctypes.CDLL(str(library_path), mode=mode)
-                except OSError:
-                    continue
-
     @staticmethod
     def _normalize_device(device: str) -> str:
         normalized = device.strip().lower()
-        if normalized in {"", "auto", "cuda"}:
-            return "cuda"
-        if normalized == "cpu":
-            raise RuntimeError("GPU-only mode is enabled. `whisper.device` must be `cuda`, CPU is not allowed.")
-        raise RuntimeError(f"Unsupported whisper device `{normalized}`. Only `cuda` is allowed in GPU-only mode.")
-
-    @staticmethod
-    def _build_cuda_runtime_error() -> RuntimeError:
-        return RuntimeError(
-            "CUDA runtime libraries are missing or cannot be loaded (e.g. libcublas.so.12/libcudnn). "
-            "This deployment runs Faster-Whisper in GPU-only mode and will not fall back to CPU. "
-            "Please run `cd backend && uv sync --python 3.12 --index-url https://pypi.tuna.tsinghua.edu.cn/simple/` "
-            "and ensure CUDA runtime libraries are exported to process environment before retrying."
-        )
-
-    @staticmethod
-    def _is_cuda_runtime_missing(message: str) -> bool:
-        lowered = message.lower()
-        return any(
-            token in lowered
-            for token in (
-                "libcublas.so.12",
-                "libcublas",
-                "libcudnn",
-                "libcudart",
-                "cublas64_12.dll",
-                "cudnn64_9.dll",
-                "cudart64_12.dll",
-                "cannot be loaded",
-                "cuda libraries",
-                "failed to load shared library",
-            )
-        )
+        if normalized in {"", "auto", "cpu", "cuda"}:
+            return "cpu"
+        return "cpu"
 
 
 def _normalize_load_profile(raw: object) -> LoadProfile:

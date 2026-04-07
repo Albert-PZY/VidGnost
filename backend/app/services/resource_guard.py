@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import shutil
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
@@ -16,7 +15,6 @@ _MIB = 1024 * 1024
 
 _MIN_BASELINE_ANALYSIS_BYTES = 3 * _GIB
 _MIN_BASELINE_SYSTEM_MEMORY_BYTES = 2 * _GIB
-_MIN_GPU_FREE_MB = 2048
 
 
 class GuardResult(TypedDict):
@@ -68,9 +66,6 @@ class ResourceGuard:
 
     def ensure_runtime_capacity(self, whisper: WhisperRuntimeConfig, llm: LLMConfig) -> list[str]:
         warnings: list[str] = []
-        gpu_failure = self.gpu_runtime_failure_reason()
-        if gpu_failure:
-            warnings.append(f"GPU 运行前检测失败：{gpu_failure}")
 
         free_bytes = self._free_bytes()
         if free_bytes < _MIN_BASELINE_ANALYSIS_BYTES:
@@ -89,34 +84,6 @@ class ResourceGuard:
             warnings.append("LLM 本地模式已弃用，当前任务会按 API 模式执行。")
 
         return warnings
-
-    def gpu_runtime_failure_reason(self) -> str | None:
-        nvidia_smi = shutil.which("nvidia-smi")
-        if not nvidia_smi:
-            return "nvidia-smi 命令不存在，请先安装并启用 NVIDIA GPU 驱动。"
-        try:
-            result = subprocess.run(
-                [nvidia_smi, "--query-gpu=memory.free,memory.total", "--format=csv,noheader,nounits"],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            return "nvidia-smi 执行失败或超时，请检查 GPU 驱动与 WSL 透传状态。"
-        if result.returncode != 0:
-            stderr = (result.stderr or "").strip() or "Unknown error"
-            return f"nvidia-smi 返回非零状态：{stderr}"
-
-        free_mb, total_mb = _parse_first_gpu_memory_row(result.stdout or "")
-        if free_mb is None or total_mb is None:
-            return "无法解析 nvidia-smi 输出，无法确认 GPU 显存状态。"
-        if free_mb < _MIN_GPU_FREE_MB:
-            return (
-                f"可用显存不足：{free_mb} MiB。"
-                f" 当前要求至少 {_MIN_GPU_FREE_MB} MiB（总显存 {total_mb} MiB）。"
-            )
-        return None
 
     def _free_bytes(self) -> int:
         base_path = Path(self.settings.storage_dir)
@@ -144,18 +111,3 @@ def _format_bytes(value: int) -> str:
     if value >= _GIB:
         return f"{value / _GIB:.1f} GiB"
     return f"{value / _MIB:.0f} MiB"
-
-
-def _parse_first_gpu_memory_row(raw_output: str) -> tuple[int | None, int | None]:
-    lines = [line.strip() for line in raw_output.splitlines() if line.strip()]
-    if not lines:
-        return None, None
-    parts = [part.strip() for part in lines[0].split(",")]
-    if len(parts) < 2:
-        return None, None
-    try:
-        free_mb = int(float(parts[0]))
-        total_mb = int(float(parts[1]))
-    except (TypeError, ValueError):
-        return None, None
-    return free_mb, total_mb

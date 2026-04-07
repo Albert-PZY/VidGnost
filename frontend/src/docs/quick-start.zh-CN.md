@@ -5,7 +5,7 @@
 当前版本分析链路已简化为：
 
 1. 本地音频预处理与分块
-2. 本地 `Systran/faster-whisper-small`（GPU-only）转写
+2. 本地 `Systran/faster-whisper-small`（CPU）转写
 3. 阶段 D 执行 `transcript_optimize -> fusion_delivery`
 4. 在线 LLM 生成详细笔记与思维导图
 
@@ -21,7 +21,7 @@
 - `uv`
 - Node.js + `pnpm`
 - `ffmpeg`（必需）
-- NVIDIA 驱动 + CUDA 运行时（Faster-Whisper 为 GPU-only）
+- CPU 环境（Faster-Whisper 当前固定 CPU 推理）
 
 ## 3. 启动
 
@@ -56,10 +56,10 @@
 - `model` 是否正确
 - `api_key` 是否有效且额度充足
 
-### 5.2 启动脚本提示 CUDA 相关 warning
+### 5.2 转写速度偏慢（CPU 模式）
 
 检查：
 
-- `nvidia-smi` 是否可用
 - 后端虚拟环境是否完成 `uv sync`
-- CUDA 运行时与驱动版本是否匹配
+- `compute_type` 是否设置为 `int8`（通常更省资源）
+- 是否同时运行了其他高占用进程

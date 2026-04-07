@@ -136,7 +136,7 @@ export function WhisperConfigTab({
           inputHint={t('whisper.fields.device.inputHint')}
           explanation={t('whisper.fields.device.explanation')}
         >
-          <input className={fieldInputClassName} value={whisperDraft.device || 'cuda'} readOnly placeholder={t('whisper.placeholders.device')} />
+          <input className={fieldInputClassName} value={whisperDraft.device || 'cpu'} readOnly placeholder={t('whisper.placeholders.device')} />
         </ConfigField>
 
         <ConfigField

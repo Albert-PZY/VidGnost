@@ -15,7 +15,7 @@ export const LANGUAGE_OPTION_LABELS: Record<(typeof LANGUAGE_OPTIONS)[number], s
   en: 'en（英文）',
   ja: 'ja（日文）',
 }
-export const COMPUTE_TYPE_OPTIONS = ['int8', 'float16', 'float32'] as const
+export const COMPUTE_TYPE_OPTIONS = ['int8', 'float32'] as const
 export const TARGET_SAMPLE_RATE_OPTIONS = [16000, 44100] as const
 export const TARGET_CHANNEL_OPTIONS = [1, 2] as const
 export const TRANSCRIPT_CORRECTION_MODE_OPTIONS = ['off', 'strict', 'rewrite'] as const
@@ -34,7 +34,7 @@ export const FIELD_INPUT_CLASS_NAME =
 export const DEFAULT_WHISPER_CONFIG: WhisperConfig = {
   model_default: 'small',
   language: 'zh',
-  device: 'cuda',
+  device: 'cpu',
   compute_type: 'int8',
   model_load_profile: 'balanced',
   beam_size: 5,
@@ -56,7 +56,7 @@ export const WHISPER_PRESET_CONFIGS: Record<(typeof WHISPER_PRESET_KEYS)[number]
   quality: {
     ...DEFAULT_WHISPER_CONFIG,
     model_default: 'small',
-    compute_type: 'float16',
+    compute_type: 'float32',
     beam_size: 8,
     chunk_seconds: 240,
   },
@@ -193,9 +193,11 @@ export function formatRuntimeWarningLine(event: TaskEvent): string {
 }
 
 export function normalizeWhisperConfigForGpu(config: WhisperConfig): WhisperConfig {
+  const normalizedComputeType = config.compute_type === 'float32' ? 'float32' : 'int8'
   return {
     ...config,
-    device: 'cuda',
+    device: 'cpu',
+    compute_type: normalizedComputeType,
     model_load_profile:
       config.model_load_profile === 'memory_first'
         ? 'memory_first'
