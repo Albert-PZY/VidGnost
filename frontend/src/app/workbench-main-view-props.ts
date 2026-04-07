@@ -48,7 +48,7 @@ interface BuildMainViewPropsOptions {
   savingArtifacts: boolean
   persistEditedArtifacts: () => Promise<boolean>
   notesPanelRef: RefObject<HTMLDivElement | null>
-  summaryStream: string
+  notesStream: string
   handleNotesMarkdownChange: (value: string) => void
   mindmapMarkdownPanelRef: RefObject<HTMLTextAreaElement | null>
   mindmapStream: string
@@ -152,7 +152,7 @@ export function buildWorkbenchMainViewProps(options: BuildMainViewPropsOptions) 
     savingArtifacts: options.savingArtifacts,
     onPersistEditedArtifacts: options.persistEditedArtifacts,
     notesPanelRef: options.notesPanelRef,
-    summaryStream: options.summaryStream,
+    notesStream: options.notesStream,
     onNotesMarkdownChange: options.handleNotesMarkdownChange,
     mindmapMarkdownPanelRef: options.mindmapMarkdownPanelRef,
     mindmapStream: options.mindmapStream,

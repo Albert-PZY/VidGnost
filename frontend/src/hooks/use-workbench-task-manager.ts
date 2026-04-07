@@ -39,6 +39,7 @@ interface UseWorkbenchTaskManagerOptions {
   rerunningStageD: boolean
   hasUnsavedArtifactEdits: boolean
   summaryStream: string
+  notesStream: string
   mindmapStream: string
   bundleArchiveFormat: BundleArchiveFormat
   isTaskTerminalStatus: (status: string) => boolean
@@ -62,6 +63,7 @@ interface UseWorkbenchTaskManagerOptions {
   setNotesMarkdownDirty: Dispatch<SetStateAction<boolean>>
   setMindmapMarkdownDirty: Dispatch<SetStateAction<boolean>>
   setSummaryStream: Dispatch<SetStateAction<string>>
+  setNotesStream: Dispatch<SetStateAction<string>>
   setMindmapStream: Dispatch<SetStateAction<string>>
 }
 
@@ -84,6 +86,7 @@ export function useWorkbenchTaskManager({
   rerunningStageD,
   hasUnsavedArtifactEdits,
   summaryStream,
+  notesStream,
   mindmapStream,
   bundleArchiveFormat,
   isTaskTerminalStatus,
@@ -107,6 +110,7 @@ export function useWorkbenchTaskManager({
   setNotesMarkdownDirty,
   setMindmapMarkdownDirty,
   setSummaryStream,
+  setNotesStream,
   setMindmapStream,
 }: UseWorkbenchTaskManagerOptions) {
   const loadHistory = useCallback(async (query = searchText): Promise<TaskSummaryItem[] | null> => {
@@ -339,39 +343,42 @@ export function useWorkbenchTaskManager({
     try {
       const detail = await updateTaskArtifacts(activeTask.id, {
         summary_markdown: summaryStream,
-        notes_markdown: summaryStream,
+        notes_markdown: notesStream,
         mindmap_markdown: mindmapStream,
       })
       setActiveTask(detail)
-      setSummaryStream(detail.notes_markdown ?? detail.summary_markdown ?? '')
+      setSummaryStream(detail.summary_markdown ?? '')
+      setNotesStream(detail.notes_markdown ?? detail.summary_markdown ?? '')
       setMindmapStream(detail.mindmap_markdown ?? '')
-      setNotesMarkdownDirty(false)
-      setMindmapMarkdownDirty(false)
-      setHistory((prev) => prev.map((item) => (item.id === detail.id ? { ...item, updated_at: detail.updated_at } : item)))
-      return true
-    } catch (err) {
-      const message = err instanceof Error ? err.message : t('errors.saveArtifactsFailed')
-      setError(message)
-      toast.error(message)
-      return false
-    } finally {
-      setSavingArtifacts(false)
-    }
-  }, [
-    activeTask,
-    hasUnsavedArtifactEdits,
-    mindmapStream,
-    setActiveTask,
-    setError,
-    setHistory,
-    setMindmapMarkdownDirty,
-    setMindmapStream,
-    setNotesMarkdownDirty,
-    setSavingArtifacts,
-    setSummaryStream,
-    summaryStream,
-    t,
-  ])
+    setNotesMarkdownDirty(false)
+    setMindmapMarkdownDirty(false)
+    setHistory((prev) => prev.map((item) => (item.id === detail.id ? { ...item, updated_at: detail.updated_at } : item)))
+    return true
+  } catch (err) {
+    const message = err instanceof Error ? err.message : t('errors.saveArtifactsFailed')
+    setError(message)
+    toast.error(message)
+    return false
+  } finally {
+    setSavingArtifacts(false)
+  }
+}, [
+  activeTask,
+  hasUnsavedArtifactEdits,
+  mindmapStream,
+  setActiveTask,
+  setError,
+  setHistory,
+  setMindmapMarkdownDirty,
+  setMindmapStream,
+  setNotesMarkdownDirty,
+  setSavingArtifacts,
+  setSummaryStream,
+  setNotesStream,
+  summaryStream,
+  notesStream,
+  t,
+])
 
   const downloadAllArtifacts = useCallback(async () => {
     if (!activeTask) return

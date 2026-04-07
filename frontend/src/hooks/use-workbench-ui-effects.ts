@@ -14,7 +14,7 @@ interface UseWorkbenchUiEffectsOptions {
   notesPanelRef: RefObject<HTMLDivElement | null>
   mindmapMarkdownPanelRef: RefObject<HTMLTextAreaElement | null>
   transcriptStream: string
-  summaryStream: string
+  notesStream: string
   mindmapStream: string
   canEditStageDMarkdown: boolean
 }
@@ -38,7 +38,7 @@ export function useWorkbenchUiEffects({
   notesPanelRef,
   mindmapMarkdownPanelRef,
   transcriptStream,
-  summaryStream,
+  notesStream,
   mindmapStream,
   canEditStageDMarkdown,
 }: UseWorkbenchUiEffectsOptions) {
@@ -106,7 +106,7 @@ export function useWorkbenchUiEffects({
       }
     })
     return () => window.cancelAnimationFrame(frame)
-  }, [canEditStageDMarkdown, notesPanelRef, summaryStream])
+  }, [canEditStageDMarkdown, notesPanelRef, notesStream])
 
   useEffect(() => {
     if (canEditStageDMarkdown) return

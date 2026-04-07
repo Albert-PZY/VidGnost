@@ -217,6 +217,8 @@ function App() {
     setTranscriptStream,
     summaryStream,
     setSummaryStream,
+    notesStream,
+    setNotesStream,
     mindmapStream,
     setMindmapStream,
     appendLog,
@@ -365,7 +367,7 @@ function App() {
     notesPanelRef,
     mindmapMarkdownPanelRef,
     transcriptStream,
-    summaryStream,
+    notesStream,
     mindmapStream,
     canEditStageDMarkdown,
   })
@@ -401,7 +403,8 @@ function App() {
     setOptimizedTranscriptStream(detail.transcript_text ?? '')
     setOptimizedTranscriptSegments(detail.transcript_segments ?? [])
     setFusionPromptPreview(normalizeFusionPromptPreview(detail.fusion_prompt_markdown ?? ''))
-    setSummaryStream(detail.notes_markdown ?? detail.summary_markdown ?? '')
+    setSummaryStream(detail.summary_markdown ?? '')
+    setNotesStream(detail.notes_markdown ?? detail.summary_markdown ?? '')
     setMindmapStream(detail.mindmap_markdown ?? '')
     setNotesMarkdownDirty(false)
     setMindmapMarkdownDirty(false)
@@ -504,6 +507,7 @@ function App() {
     rerunningStageD,
     hasUnsavedArtifactEdits,
     summaryStream,
+    notesStream,
     mindmapStream,
     bundleArchiveFormat,
     isTaskTerminalStatus,
@@ -527,6 +531,7 @@ function App() {
     setNotesMarkdownDirty,
     setMindmapMarkdownDirty,
     setSummaryStream,
+    setNotesStream,
     setMindmapStream,
   })
 
@@ -595,6 +600,8 @@ function App() {
     appendTranscriptOptimized,
     appendSummary,
     appendMindmap,
+    appendNotes,
+    appendNotes,
     setFusionPromptPreview,
     setRerunningStageD,
     resetStageDRealtime,
@@ -653,7 +660,7 @@ function App() {
 
   const handleNotesMarkdownChange = (value: string) => {
     if (!canEditStageDMarkdown) return
-    setSummaryStream(value)
+    setNotesStream(value)
     setNotesMarkdownDirty(true)
   }
 
@@ -783,7 +790,7 @@ function App() {
     savingArtifacts,
     persistEditedArtifacts,
     notesPanelRef,
-    summaryStream,
+    notesStream,
     handleNotesMarkdownChange,
     mindmapMarkdownPanelRef,
     mindmapStream,
