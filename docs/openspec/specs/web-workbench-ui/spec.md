@@ -47,7 +47,7 @@ Stage `C` panel SHALL render incremental transcript stream and keep latest outpu
 - **THEN** transcript panel appends text incrementally and keeps bottom-follow behavior
 
 ### Requirement: UI SHALL render stage-D dual-pane editing and preview
-Stage `D` SHALL render notes and mindmap in source+preview split panes; source panes become editable after terminal status.
+Stage `D` SHALL render detailed notes and mindmap in source+preview split panes; source panes become editable after terminal status.
 
 #### Scenario: Task still running stage D
 - **WHEN** task status is non-terminal
@@ -86,7 +86,7 @@ UI SHALL expose `correction_mode` (`off|strict|rewrite`) with batch/overlap para
 - **THEN** frontend persists correction config and subsequent tasks run strict correction
 
 ### Requirement: Prompt template panel SHALL support CRUD and selection
-Prompt template panel SHALL support create/update/delete/copy/select for notes and mindmap channels.
+Prompt template panel SHALL support create/update/delete/copy/select for summary, notes, and mindmap channels.
 
 #### Scenario: Create template and set selection
 - **WHEN** user creates new template and switches active selection

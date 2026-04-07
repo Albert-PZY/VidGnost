@@ -21,7 +21,7 @@ The pipeline SHALL keep these responsibilities:
 - `A`: source ingestion and normalization
 - `B`: audio preprocessing and chunk planning
 - `C`: Faster-Whisper transcription streaming
-- `D`: transcript optimization + notes/mindmap delivery
+- `D`: transcript optimization + detailed notes extraction / outlining / section generation / coverage patching / summary / mindmap delivery
 
 #### Scenario: Phase ordering
 - **WHEN** task starts from any valid source
@@ -30,12 +30,13 @@ The pipeline SHALL keep these responsibilities:
 
 ### Requirement: Stage D SHALL execute ordered substage chain
 Inside phase `D`, backend SHALL execute in order:
-`transcript_optimize -> fusion_delivery`.
+`transcript_optimize -> notes_extract -> notes_outline -> notes_sections -> notes_coverage -> summary_delivery -> mindmap_delivery`.
 
 #### Scenario: Ordered stage-D execution
 - **WHEN** phase `D` starts
-- **THEN** `transcript_optimize` runs before `fusion_delivery`
-- **AND** `fusion_delivery` starts only after `transcript_optimize` completes or is skipped
+- **THEN** `transcript_optimize` runs before `notes_extract`
+- **AND** `notes_extract -> notes_outline -> notes_sections -> notes_coverage -> summary_delivery -> mindmap_delivery` keep strict order
+- **AND** `notes_extract` starts only after `transcript_optimize` completes or is skipped
 
 ### Requirement: Stage D context SHALL be transcript-centric
 Stage `D` generation context SHALL be composed from transcript artifacts and transcript-optimization results.
@@ -84,12 +85,12 @@ Stage `D` generation runtime SHALL use online API configuration as effective exe
 - **AND** generation behavior remains deterministic across task restarts
 
 ### Requirement: Stage metrics SHALL expose stage-D substage observability
-Task detail response SHALL include `vm_phase_metrics` entries for `transcript_optimize` and `D`.
+Task detail response SHALL include `vm_phase_metrics` entries for `transcript_optimize`, `notes_extract`, `notes_outline`, `notes_sections`, `notes_coverage`, `summary_delivery`, `mindmap_delivery`, and final `D`.
 
 #### Scenario: Query task detail after phase D
 - **WHEN** client requests task detail
-- **THEN** response includes status/timing/reason fields for `transcript_optimize`
-- **AND** final phase-`D` metric reflects `fusion_delivery` completion state
+- **THEN** response includes status/timing/reason fields for every phase-`D` substage
+- **AND** final phase-`D` metric reflects `mindmap_delivery` completion state
 
 #### Scenario: Query task detail after long runtime
 - **WHEN** client requests task detail for long-running or completed task

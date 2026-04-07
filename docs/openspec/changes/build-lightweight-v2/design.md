@@ -3,7 +3,7 @@
 VidGnost is designed as an end-to-end video-analysis workbench with two stable runtime pillars:
 
 - Local ASR execution (`faster-whisper-small` on CPU)
-- Online LLM generation for structured notes and mindmap
+- Online LLM generation for structured detailed notes, concise summary, and mindmap
 
 The architecture emphasizes deterministic phase contracts, observable runtime behavior, and replayable storage artifacts.
 
@@ -45,7 +45,7 @@ The architecture emphasizes deterministic phase contracts, observable runtime be
 
 ### 5. Pipeline contract
 - Four runtime phases: `A`, `B`, `C`, `D`.
-- Stage `D` subchain: `transcript_optimize -> fusion_delivery`.
+- Stage `D` subchain: `transcript_optimize -> notes_extract -> notes_outline -> notes_sections -> notes_coverage -> summary_delivery -> mindmap_delivery`.
 - Stage-level metrics include substage observability for phase `D`.
 
 ### 6. ASR runtime strategy
@@ -55,9 +55,9 @@ The architecture emphasizes deterministic phase contracts, observable runtime be
 - Task start performs model readiness check and downloads missing model files with progress reporting.
 
 ### 7. Generation runtime strategy
-- Notes and mindmap generation uses OpenAI-compatible online API.
+- Detailed notes, concise summary, and mindmap generation use OpenAI-compatible online API.
 - Transcript-correction mode is configurable (`off|strict|rewrite`) and applied before final delivery.
-- Prompt templates are channel-specific and selectable at runtime.
+- Prompt templates are channel-specific (`summary` / `notes` / `mindmap`) and selectable at runtime.
 
 ### 8. Streaming and observability strategy
 - SSE stream carries stage events, logs, progress, transcript/generation deltas, warnings.

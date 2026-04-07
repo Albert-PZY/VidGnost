@@ -9,7 +9,7 @@ The system SHALL expose per-task SSE endpoint and emit ordered runtime events fo
 - **AND** emits events in chronological order for the task
 
 ### Requirement: SSE events SHALL include stage-aware context
-Stage-related events SHALL carry phase key aligned with runtime model: `A`, `B`, `C`, `transcript_optimize`, `D`.
+Stage-related events SHALL carry phase key aligned with runtime model: `A`, `B`, `C`, `transcript_optimize`, `notes_extract`, `notes_outline`, `notes_sections`, `notes_coverage`, `summary_delivery`, `mindmap_delivery`, `D`.
 
 #### Scenario: Stage transition event arrives
 - **WHEN** runtime enters next phase or substage
@@ -34,7 +34,7 @@ Each task event SHALL carry `trace_id` for cross-event diagnostics.
 `log` events SHOULD include optional `substage` for fine-grained tracing inside phase `D`.
 
 #### Scenario: Stage D emits substage logs
-- **WHEN** phase `D` executes `transcript_optimize` or `fusion_delivery`
+- **WHEN** phase `D` executes any substage from `transcript_optimize` to `mindmap_delivery`
 - **THEN** backend may emit `log` with `stage="D"` and matching `substage`
 
 ### Requirement: System SHALL emit structured runtime-warning events
@@ -62,7 +62,7 @@ Terminal `task_failed` SSE events SHALL include machine-readable failure categor
 ### Requirement: Compatibility stream mode SHALL publish batch payload directly
 When backend uses compatibility mode, it SHALL publish full batch text payload and SHALL NOT split updates into pseudo character stream chunks.
 
-#### Scenario: Emit compat summary/mindmap update
+#### Scenario: Emit compat notes/summary/mindmap update
 - **WHEN** backend emits compat-mode delta
 - **THEN** payload contains full text batch for that update
 
