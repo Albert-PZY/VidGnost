@@ -47,11 +47,25 @@ function createEmptyPromptTemplateDraft(): PromptTemplateDraft {
 }
 
 function getChannelTemplates(bundle: PromptTemplateBundle, channel: PromptTemplateChannel): PromptTemplateItem[] {
-  return channel === 'summary' ? bundle.summary_templates : bundle.mindmap_templates
+  switch (channel) {
+    case 'summary':
+      return bundle.summary_templates ?? []
+    case 'notes':
+      return bundle.notes_templates ?? []
+    case 'mindmap':
+      return bundle.mindmap_templates ?? []
+  }
 }
 
 function getSelectedTemplateId(bundle: PromptTemplateBundle, channel: PromptTemplateChannel): string {
-  return channel === 'summary' ? bundle.selected_summary_template_id : bundle.selected_mindmap_template_id
+  switch (channel) {
+    case 'summary':
+      return bundle.selected_summary_template_id ?? ''
+    case 'notes':
+      return bundle.selected_notes_template_id ?? ''
+    case 'mindmap':
+      return bundle.selected_mindmap_template_id ?? ''
+  }
 }
 
 function findTemplateById(
@@ -104,7 +118,7 @@ export function usePromptTemplateManager({ t, setError }: UsePromptTemplateManag
   })
   const [promptActionChannel, setPromptActionChannel] = useState<PromptTemplateChannel | null>(null)
   const [pendingPromptDelete, setPendingPromptDelete] = useState<PendingPromptDelete | null>(null)
-  const [promptTemplateView, setPromptTemplateView] = useState<PromptTemplateChannel>('summary')
+  const [promptTemplateView, setPromptTemplateView] = useState<PromptTemplateChannel>('notes')
   const [copiedPromptTemplateId, setCopiedPromptTemplateId] = useState<string | null>(null)
 
   useEffect(() => {

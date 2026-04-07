@@ -138,6 +138,7 @@ export function useTaskStream({
     setRuntimeNowMs(Date.now())
     setTranscriptStream('')
     setSummaryStream('')
+    setNotesStream('')
     setMindmapStream('')
     onReset?.()
   }, [flushBufferedStream, onReset])
@@ -173,11 +174,14 @@ export function useTaskStream({
     setTranscriptStream,
     summaryStream,
     setSummaryStream,
+    notesStream,
+    setNotesStream,
     mindmapStream,
     setMindmapStream,
     appendLog,
     appendTranscript,
     appendSummary,
+    appendNotes,
     appendMindmap,
     flushBufferedStream,
     resetRuntimePanels,

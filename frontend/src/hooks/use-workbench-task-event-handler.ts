@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useRef } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { TFunction } from 'i18next'
 import toast from 'react-hot-toast'
@@ -44,6 +44,7 @@ interface UseWorkbenchTaskEventHandlerOptions {
   ) => void
   appendSummary: (text: string, streamMode?: 'realtime' | 'compat') => void
   appendMindmap: (text: string, streamMode?: 'realtime' | 'compat') => void
+  appendNotes: (text: string, streamMode?: 'realtime' | 'compat') => void
   setFusionPromptPreview: Dispatch<SetStateAction<string>>
   resetStageDRealtime: () => void
   flushOptimizedTranscript: () => void
@@ -73,10 +74,12 @@ export function useWorkbenchTaskEventHandler({
   appendTranscriptOptimized,
   appendSummary,
   appendMindmap,
+  appendNotes,
   setFusionPromptPreview,
   resetStageDRealtime,
   flushOptimizedTranscript,
 }: UseWorkbenchTaskEventHandlerOptions) {
+  const notesDeltaReceivedRef = useRef(false)
   const resolveVmPhaseBySubstage = useCallback((substage: string | undefined): VmPhaseKey | null => {
     if (!substage) return null
     if (substage === 'fusion_delivery') return 'D'
@@ -134,6 +137,7 @@ export function useWorkbenchTaskEventHandler({
       }
       setActiveStage(event.stage)
       if (event.stage === 'D') {
+        notesDeltaReceivedRef.current = false
         resetStageDRealtime()
       }
       setStageTimers((prev) => ({
@@ -254,6 +258,13 @@ export function useWorkbenchTaskEventHandler({
     }
     if (event.type === 'summary_delta') {
       appendSummary(event.text ?? '', event.stream_mode ?? 'realtime')
+      if (!notesDeltaReceivedRef.current) {
+        appendNotes(event.text ?? '', event.stream_mode ?? 'realtime')
+      }
+    }
+    if (event.type === 'notes_delta') {
+      notesDeltaReceivedRef.current = true
+      appendNotes(event.text ?? '', event.stream_mode ?? 'realtime')
     }
     if (event.type === 'mindmap_delta') {
       appendMindmap(event.text ?? '', event.stream_mode ?? 'realtime')
@@ -273,6 +284,7 @@ export function useWorkbenchTaskEventHandler({
       setRerunningStageD(false)
       markVmPhaseTerminal('D', 'completed')
       setActiveVmPhase('D')
+      notesDeltaReceivedRef.current = false
       flushOptimizedTranscript()
       flushBufferedStream()
       setOverallProgress(100)
@@ -290,6 +302,7 @@ export function useWorkbenchTaskEventHandler({
     if (event.type === 'task_cancelled') {
       setRerunningStageD(false)
       markVmPhaseTerminal(activeStage, 'failed', event.error ?? 'cancelled')
+      notesDeltaReceivedRef.current = false
       flushOptimizedTranscript()
       flushBufferedStream()
       setCancellingTask(false)
@@ -319,6 +332,7 @@ export function useWorkbenchTaskEventHandler({
         void refreshTaskDetail(activeTaskId)
         void loadHistory()
       }
+      notesDeltaReceivedRef.current = false
     }
   }, [
     activeStage,
@@ -326,6 +340,7 @@ export function useWorkbenchTaskEventHandler({
     appendLog,
     appendMindmap,
     appendSummary,
+    appendNotes,
     appendTranscript,
     appendTranscriptOptimized,
     appendTranscriptSegment,

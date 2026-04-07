@@ -211,7 +211,9 @@ export function PromptTemplatesTab({
                 placeholder={
                   promptTemplateView === 'summary'
                     ? t('llm.placeholders.summaryPromptName')
-                    : t('llm.placeholders.mindmapPromptName')
+                    : promptTemplateView === 'notes'
+                      ? t('llm.placeholders.notesPromptName')
+                      : t('llm.placeholders.mindmapPromptName')
                 }
                 disabled={promptActionChannel === promptTemplateView || promptDraftReadonly}
               />
@@ -236,8 +238,10 @@ export function PromptTemplatesTab({
                   textareaProps={{
                     placeholder:
                       promptTemplateView === 'summary'
-                        ? t('llm.placeholders.summaryPromptCustom')
-                        : t('llm.placeholders.mindmapPromptCustom'),
+                    ? t('llm.placeholders.summaryPromptCustom')
+                    : promptTemplateView === 'notes'
+                      ? t('llm.placeholders.notesPromptCustom')
+                      : t('llm.placeholders.mindmapPromptCustom'),
                     readOnly: promptActionChannel === promptTemplateView || promptDraftReadonly,
                   }}
                 />

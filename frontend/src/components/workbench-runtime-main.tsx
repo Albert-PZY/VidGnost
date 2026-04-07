@@ -122,7 +122,7 @@ interface WorkbenchRuntimeMainProps {
   savingArtifacts: boolean
   onPersistEditedArtifacts: () => Promise<boolean | void>
   notesPanelRef: RefObject<HTMLDivElement | null>
-  summaryStream: string
+  notesStream: string
   onNotesMarkdownChange: (value: string) => void
   mindmapMarkdownPanelRef: RefObject<HTMLTextAreaElement | null>
   mindmapStream: string
@@ -165,7 +165,7 @@ export function WorkbenchRuntimeMain({
   savingArtifacts,
   onPersistEditedArtifacts,
   notesPanelRef,
-  summaryStream,
+  notesStream,
   onNotesMarkdownChange,
   mindmapMarkdownPanelRef,
   mindmapStream,
@@ -422,7 +422,7 @@ export function WorkbenchRuntimeMain({
               )}
             >
               <LazyPromptMarkdownEditor
-                value={summaryStream}
+                value={notesStream}
                 onChange={(value) => {
                   if (!canEditStageDMarkdown || savingArtifacts) return
                   onNotesMarkdownChange(value ?? '')
