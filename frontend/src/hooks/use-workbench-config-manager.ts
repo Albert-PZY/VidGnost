@@ -18,7 +18,7 @@ interface UseWorkbenchConfigManagerOptions {
   setWhisperConfig: Dispatch<SetStateAction<WhisperConfig>>
   setWhisperDraft: Dispatch<SetStateAction<WhisperConfig>>
   setSavingWhisperConfig: Dispatch<SetStateAction<boolean>>
-  setSavingLocalModelConfig: Dispatch<SetStateAction<boolean>>
+  setSavingLlmConfig: Dispatch<SetStateAction<boolean>>
   setError: Dispatch<SetStateAction<string | null>>
   normalizeWhisperConfigForCpu: (config: WhisperConfig) => WhisperConfig
   appendLog: (stage: 'A' | 'B' | 'C' | 'D', message: string) => void
@@ -32,7 +32,7 @@ export function useWorkbenchConfigManager({
   setWhisperConfig,
   setWhisperDraft,
   setSavingWhisperConfig,
-  setSavingLocalModelConfig,
+  setSavingLlmConfig,
   setError,
   normalizeWhisperConfigForCpu,
   appendLog,
@@ -83,8 +83,8 @@ export function useWorkbenchConfigManager({
     whisperDraft,
   ])
 
-  const saveLocalModelConfig = useCallback(async () => {
-    setSavingLocalModelConfig(true)
+  const saveLlmConfig = useCallback(async () => {
+    setSavingLlmConfig(true)
     setError(null)
     try {
       const savedLLM = await updateLLMConfig(llmConfig)
@@ -104,14 +104,14 @@ export function useWorkbenchConfigManager({
       setError(message)
       toast.error(message)
     } finally {
-      setSavingLocalModelConfig(false)
+      setSavingLlmConfig(false)
     }
   }, [
     llmConfig,
     normalizeWhisperConfigForCpu,
     setError,
     setLLMConfig,
-    setSavingLocalModelConfig,
+    setSavingLlmConfig,
     setWhisperConfig,
     setWhisperDraft,
     whisperDraft,
@@ -119,6 +119,6 @@ export function useWorkbenchConfigManager({
 
   return {
     saveWhisperRuntimeConfig,
-    saveLocalModelConfig,
+    saveLlmConfig,
   }
 }

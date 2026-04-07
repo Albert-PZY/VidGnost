@@ -39,8 +39,6 @@
 | `PROMPT_TEMPLATE_CREATE_INVALID` | 创建模板失败 | 名称/内容为空或越界 |
 | `PROMPT_TEMPLATE_UPDATE_INVALID` | 更新模板失败 | 默认模板被修改、参数非法 |
 | `PROMPT_TEMPLATE_DELETE_INVALID` | 删除模板失败 | 删除默认模板或非法模板 |
-| `WARMUP_SESSION_NOT_FOUND` | 预热会话不存在 | 查询不存在的 Whisper 预热会话 |
-| `RUNTIME_PREPARE_SESSION_NOT_FOUND` | 部署会话不存在 | 查询/终止不存在的部署会话 |
 
 ## 运行时与资源相关（SSE/runtime_warning）
 
@@ -50,9 +48,8 @@
 | --- | --- | --- |
 | `GPU_RUNTIME_REQUIRED` | GPU 运行条件不满足 | 无 `nvidia-smi`、显存不足、CUDA 不可用 |
 | `RESOURCE_GUARD_WARNING` | 资源守卫触发告警 | 磁盘空间不足、配置自动回退 |
-| `VISUAL_ENRICHMENT_WARNING` | 视觉增强链路告警 | OCR/VLM 模型未就绪或降级 |
 | `LLM_API_UNAVAILABLE` | 在线 LLM API 不可用 | key/base_url/model 无效或网络不可达 |
-| `LLM_ALL_UNAVAILABLE` | 本地与在线 LLM 全不可用 | 本地推理失败且 API 不可用 |
+| `LLM_ALL_UNAVAILABLE` | LLM 不可用 | 在线 LLM API 不可用或调用失败 |
 
 ## 追踪建议
 

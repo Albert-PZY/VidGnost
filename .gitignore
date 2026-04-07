@@ -17,6 +17,7 @@ npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.pytest_cache/
 
 # Environment and secrets
 .env
@@ -43,6 +44,8 @@ frontend/.vite/
 frontend/coverage/
 frontend/.cache/
 frontend/.eslintcache
+frontend/test-results/
+frontend/playwright-report/
 frontend/**/*.tsbuildinfo
 
 # Build / cache

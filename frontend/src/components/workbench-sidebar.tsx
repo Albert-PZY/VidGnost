@@ -16,7 +16,7 @@ interface WorkbenchSidebarProps {
   activeSidebarPanel: SidebarPanelKey
   setActiveSidebarPanel: (panel: SidebarPanelKey) => void
   loadHistory: () => Promise<void>
-  openConfigPanel: (tab?: 'localModels' | 'whisper' | 'prompts') => void
+  openConfigPanel: (tab?: 'llm' | 'whisper' | 'prompts') => void
   openSelfCheckPanel: () => void
   runtimeModel: string
   runtimeLanguage: string
@@ -85,7 +85,7 @@ export function WorkbenchSidebar({
           description={t('sidebar.actions.config.description')}
           active={activeSidebarPanel === 'config'}
           collapsed={sidebarCollapsed}
-          onClick={() => openConfigPanel('localModels')}
+          onClick={() => openConfigPanel('llm')}
         />
         <SidebarMenuButton
           icon={ShieldCheck}

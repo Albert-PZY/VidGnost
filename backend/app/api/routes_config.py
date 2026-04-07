@@ -52,7 +52,6 @@ async def get_llm_config(
     return LLMConfigResponse(
         mode=payload["mode"],  # type: ignore[arg-type]
         load_profile=payload["load_profile"],  # type: ignore[arg-type]
-        local_model_id=payload["local_model_id"],
         api_key=payload["api_key"],
         api_key_configured=payload["api_key_configured"],
         base_url=payload["base_url"],
@@ -73,7 +72,6 @@ async def update_llm_config(
         {
             "mode": body.mode,
             "load_profile": body.load_profile,
-            "local_model_id": body.local_model_id,
             "api_key": body.api_key,
             "base_url": body.base_url,
             "model": body.model,
@@ -95,7 +93,6 @@ async def update_llm_config(
     return LLMConfigResponse(
         mode=response_payload["mode"],  # type: ignore[arg-type]
         load_profile=response_payload["load_profile"],  # type: ignore[arg-type]
-        local_model_id=response_payload["local_model_id"],
         api_key=response_payload["api_key"],
         api_key_configured=response_payload["api_key_configured"],
         base_url=response_payload["base_url"],

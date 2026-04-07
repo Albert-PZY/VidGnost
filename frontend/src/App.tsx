@@ -136,7 +136,6 @@ function App() {
   const [llmConfig, setLLMConfig] = useState<LLMConfig>({
     mode: 'api',
     load_profile: 'balanced',
-    local_model_id: 'Qwen/Qwen2.5-7B-Instruct',
     api_key: '',
     base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     model: 'qwen3.5-flash',
@@ -147,14 +146,14 @@ function App() {
   const [whisperConfig, setWhisperConfig] = useState<WhisperConfig>({ ...WHISPER_PRESET_CONFIGS.balanced })
   const [whisperDraft, setWhisperDraft] = useState<WhisperConfig>({ ...WHISPER_PRESET_CONFIGS.balanced })
   const [savingWhisperConfig, setSavingWhisperConfig] = useState(false)
-  const [savingLocalModelConfig, setSavingLocalModelConfig] = useState(false)
+  const [savingLlmConfig, setSavingLlmConfig] = useState(false)
   const [activeVmPhase, setActiveVmPhase] = useState<VmPhaseKey>('A')
   const [vmPhaseMetrics, setVmPhaseMetrics] = useState<Record<VmPhaseKey, VmPhaseMetric>>(createEmptyVmPhaseMetrics)
   const [transcriptSegments, setTranscriptSegments] = useState<TranscriptSegment[]>([])
   const [optimizedTranscriptStream, setOptimizedTranscriptStream] = useState('')
   const [optimizedTranscriptSegments, setOptimizedTranscriptSegments] = useState<TranscriptSegment[]>([])
   const [fusionPromptPreview, setFusionPromptPreview] = useState('')
-  const [configTab, setConfigTab] = useState<'localModels' | 'whisper' | 'prompts'>('localModels')
+  const [configTab, setConfigTab] = useState<'llm' | 'whisper' | 'prompts'>('llm')
   const [showApiKey, setShowApiKey] = useState(true)
   const currentLocale = normalizeLocale(i18n.resolvedLanguage ?? i18n.language ?? 'zh-CN')
   const quickStartMarkdown = useQuickStartDoc({ mainView, locale: currentLocale })
@@ -635,7 +634,7 @@ function App() {
 
   const {
     saveWhisperRuntimeConfig,
-    saveLocalModelConfig,
+    saveLlmConfig,
   } = useWorkbenchConfigManager({
     t,
     llmConfig,
@@ -644,7 +643,7 @@ function App() {
     setWhisperConfig,
     setWhisperDraft,
     setSavingWhisperConfig,
-    setSavingLocalModelConfig,
+    setSavingLlmConfig,
     setError,
     normalizeWhisperConfigForCpu,
     appendLog,
@@ -659,7 +658,7 @@ function App() {
     await i18n.changeLanguage(locale)
   }
 
-  const openConfigPanel = (tab: 'localModels' | 'whisper' | 'prompts' = 'localModels') => {
+  const openConfigPanel = (tab: 'llm' | 'whisper' | 'prompts' = 'llm') => {
     setConfigTab(tab)
     if (tab === 'whisper') {
       setWhisperDraft({ ...whisperConfig })
@@ -764,7 +763,7 @@ function App() {
       savingWhisperConfig,
       saveWhisperRuntimeConfig,
     },
-    localModelsConfigTabProps: {
+    llmConfigTabProps: {
       t,
       fieldInputClassName: FIELD_INPUT_CLASS_NAME,
       menuPortalTarget,
@@ -774,8 +773,8 @@ function App() {
       loadProfileOptions,
       showApiKey,
       setShowApiKey,
-      savingLocalModelConfig,
-      saveLocalModelConfig,
+      savingLlmConfig,
+      saveLlmConfig,
     },
   }
   const mainViewProps = buildWorkbenchMainViewProps({
