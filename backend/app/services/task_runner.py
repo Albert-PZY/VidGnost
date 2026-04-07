@@ -31,7 +31,7 @@ from app.services.runtime_config_store import RuntimeConfigStore
 from app.services.task_error_classifier import classify_task_failure
 from app.services.runtime_event_service import RuntimeEventService
 from app.services.stage_artifact_store import StageArtifactStore
-from app.services.summarizer import LLMService, SummaryBundle
+from app.services.summarizer import LLMService, NotesPipelineArtifacts, SummaryBundle, _ensure_single_markdown_title
 from app.services.task_artifact_persistence_service import TaskArtifactPersistenceService
 from app.services.task_artifact_index import build_task_artifact_index
 from app.services.task_store import TaskStore
@@ -39,7 +39,15 @@ from app.services.transcription import WhisperService
 
 SourceType = Literal["bilibili", "local_file", "local_path"]
 StageType = Literal["A", "B", "C", "D"]
-DSubstageType = Literal["transcript_optimize", "fusion_delivery"]
+DSubstageType = Literal[
+    "transcript_optimize",
+    "notes_extract",
+    "notes_outline",
+    "notes_sections",
+    "notes_coverage",
+    "summary_delivery",
+    "mindmap_delivery",
+]
 ExecutionMode = Literal["api"]
 
 _STAGE_KEYS: tuple[StageType, StageType, StageType, StageType] = ("A", "B", "C", "D")
@@ -49,11 +57,21 @@ _CONFIG_PRECHECK_WARNING_CODE = "CONFIG_PRECHECK_WARNING"
 _CONFIG_PRECHECK_WARNING_ACTION = "review_runtime_config"
 _D_SUBSTAGE_KEYS: tuple[DSubstageType, ...] = (
     "transcript_optimize",
-    "fusion_delivery",
+    "notes_extract",
+    "notes_outline",
+    "notes_sections",
+    "notes_coverage",
+    "summary_delivery",
+    "mindmap_delivery",
 )
 _D_SUBSTAGE_TITLES: dict[DSubstageType, str] = {
     "transcript_optimize": "转录文本优化",
-    "fusion_delivery": "融合生成与交付",
+    "notes_extract": "信息卡片提取",
+    "notes_outline": "详细笔记提纲生成",
+    "notes_sections": "详细笔记章节生成",
+    "notes_coverage": "详细笔记覆盖率补全",
+    "summary_delivery": "摘要生成",
+    "mindmap_delivery": "思维导图生成",
 }
 _PROGRESS_STAGE_A_START = 2
 _PROGRESS_STAGE_A_DONE = 10
@@ -63,8 +81,12 @@ _PROGRESS_STAGE_C_START = 24
 _PROGRESS_STAGE_C_DONE = 46
 _PROGRESS_STAGE_D_START = 48
 _PROGRESS_TRANSCRIPT_DONE = 60
-_PROGRESS_FUSION_START = 75
-_PROGRESS_FUSION_DONE = 99
+_PROGRESS_NOTES_EXTRACT_DONE = 68
+_PROGRESS_NOTES_OUTLINE_DONE = 74
+_PROGRESS_NOTES_SECTIONS_DONE = 84
+_PROGRESS_NOTES_COVERAGE_DONE = 90
+_PROGRESS_SUMMARY_DONE = 95
+_PROGRESS_MINDMAP_DONE = 99
 _PROGRESS_TASK_DONE = 100
 
 
@@ -813,6 +835,7 @@ class TaskRunner:
                         "correction_fallback_used": bool(correction.fallback_used),
                         "optimized_segment_count": len(correction.segments),
                         "summary_source_chars": len(summary_source_text),
+                        "notes_source_chars": len(transcript_text),
                     },
                 )
 
@@ -821,82 +844,15 @@ class TaskRunner:
                     progress=_PROGRESS_TRANSCRIPT_DONE,
                     stage_logs_json=_encode_stage_logs(stage_logs),
                 )
-                await self._d_substage_start(task_id, "fusion_delivery", progress=_PROGRESS_FUSION_START)
-                await self._emit_log(
-                    task_id,
-                    "D",
-                    "Generating detailed notes and mindmap in parallel...",
-                    stage_logs,
-                    substage="fusion_delivery",
+                bundle = await self._generate_stage_d_outputs(
+                    task_id=task_id,
+                    task_title=ingestion_result.title,
+                    notes_source_text=transcript_text,
+                    transcript_segments=all_segments,
+                    llm_runtime_config=llm_runtime_config,
+                    llm_model_id=llm_model_id,
+                    stage_logs=stage_logs,
                 )
-
-                try:
-                    async with self._model_runtime_manager.reserve(
-                        task_id=task_id,
-                        stage="D",
-                        component="llm",
-                        model_id=f"llm:{llm_model_id}",
-                    ) as llm_generate_lease:
-                        self._record_runtime_lease(task_id, "D", llm_generate_lease.wait_seconds)
-                        await self._handle_runtime_evictions(task_id, "D", llm_generate_lease.evictions, stage_logs)
-                        if llm_generate_lease.wait_seconds > 0:
-                            await self._emit_log(
-                                task_id,
-                                "D",
-                                f"Waiting for model runtime lock: {llm_generate_lease.wait_seconds:.2f}s",
-                                stage_logs,
-                                substage="runtime",
-                            )
-                        async def summary_delta(delta: str, stream_mode: str) -> None:
-                            await self._event_bus.publish(
-                                task_id,
-                                {"type": "summary_delta", "stage": "D", "text": delta, "stream_mode": stream_mode},
-                            )
-
-                        async def mindmap_delta(delta: str, stream_mode: str) -> None:
-                            await self._event_bus.publish(
-                                task_id,
-                                {"type": "mindmap_delta", "stage": "D", "text": delta, "stream_mode": stream_mode},
-                            )
-
-                        async def publish_fusion_prompt_preview(markdown: str) -> None:
-                            await self._publish_fusion_prompt_preview(task_id, markdown)
-
-                        bundle = await self._summarizer.generate(
-                            title=ingestion_result.title,
-                            transcript_text=summary_source_text,
-                            on_summary_delta=summary_delta,
-                            on_mindmap_delta=mindmap_delta,
-                            on_fusion_prompt_preview=publish_fusion_prompt_preview,
-                            llm_config_override=llm_runtime_config,
-                        )
-                    bundle = self._normalize_stage_d_bundle(
-                        title=ingestion_result.title,
-                        transcript_text=summary_source_text,
-                        bundle=bundle,
-                    )
-                    await self._persist_delivery_artifacts(
-                        task_id,
-                        bundle.summary_markdown,
-                        bundle.notes_markdown,
-                        bundle.mindmap_markdown,
-                    )
-                    await self._d_substage_complete(
-                        task_id,
-                        "fusion_delivery",
-                        status="completed",
-                        message="详细笔记与导图生成完成。",
-                        progress=_PROGRESS_FUSION_DONE,
-                    )
-                except Exception as generate_exc:  # noqa: BLE001
-                    await self._d_substage_complete(
-                        task_id,
-                        "fusion_delivery",
-                        status="failed",
-                        message=f"{type(generate_exc).__name__}: {generate_exc}",
-                        progress=_PROGRESS_FUSION_DONE,
-                    )
-                    raise
 
                 await self._emit_log(task_id, "D", "Detailed notes and mindmap persisted to local storage", stage_logs)
                 artifact_index_json, artifact_total_bytes = build_task_artifact_index(
@@ -1209,6 +1165,7 @@ class TaskRunner:
                         "correction_fallback_used": bool(correction.fallback_used),
                         "optimized_segment_count": len(correction.segments),
                         "summary_source_chars": len(summary_source_text),
+                        "notes_source_chars": len(transcript_text),
                         "retry_stage_d": True,
                     },
                 )
@@ -1218,64 +1175,15 @@ class TaskRunner:
                     progress=_PROGRESS_TRANSCRIPT_DONE,
                     stage_logs_json=_encode_stage_logs(stage_logs),
                 )
-
-                await self._d_substage_start(task_id, "fusion_delivery", progress=_PROGRESS_FUSION_START)
-                await self._emit_log(task_id, "D", "Generating detailed notes and mindmap in parallel...", stage_logs, substage="fusion_delivery")
-                try:
-                    async with self._model_runtime_manager.reserve(
-                        task_id=task_id,
-                        stage="D",
-                        component="llm",
-                        model_id=f"llm:{llm_model_id}",
-                    ) as llm_generate_lease:
-                        self._record_runtime_lease(task_id, "D", llm_generate_lease.wait_seconds)
-                        await self._handle_runtime_evictions(task_id, "D", llm_generate_lease.evictions, stage_logs)
-                        if llm_generate_lease.wait_seconds > 0:
-                            await self._emit_log(
-                                task_id,
-                                "D",
-                                f"Waiting for model runtime lock: {llm_generate_lease.wait_seconds:.2f}s",
-                                stage_logs,
-                                substage="runtime",
-                            )
-                        async def summary_delta(delta: str, stream_mode: str) -> None:
-                            await self._event_bus.publish(
-                                task_id,
-                                {"type": "summary_delta", "stage": "D", "text": delta, "stream_mode": stream_mode},
-                            )
-
-                        async def mindmap_delta(delta: str, stream_mode: str) -> None:
-                            await self._event_bus.publish(
-                                task_id,
-                                {"type": "mindmap_delta", "stage": "D", "text": delta, "stream_mode": stream_mode},
-                            )
-
-                        async def publish_fusion_prompt_preview(markdown: str) -> None:
-                            await self._publish_fusion_prompt_preview(task_id, markdown)
-
-                        bundle = await self._summarizer.generate(
-                            title=task_title,
-                            transcript_text=summary_source_text,
-                            on_summary_delta=summary_delta,
-                            on_mindmap_delta=mindmap_delta,
-                            on_fusion_prompt_preview=publish_fusion_prompt_preview,
-                            llm_config_override=llm_runtime_config,
-                        )
-                    bundle = self._normalize_stage_d_bundle(
-                        title=task_title,
-                        transcript_text=summary_source_text,
-                        bundle=bundle,
-                    )
-                    await self._persist_delivery_artifacts(
-                        task_id,
-                        bundle.summary_markdown,
-                        bundle.notes_markdown,
-                        bundle.mindmap_markdown,
-                    )
-                    await self._d_substage_complete(task_id, "fusion_delivery", status="completed", message="详细笔记与导图生成完成。", progress=_PROGRESS_FUSION_DONE)
-                except Exception as generate_exc:  # noqa: BLE001
-                    await self._d_substage_complete(task_id, "fusion_delivery", status="failed", message=f"{type(generate_exc).__name__}: {generate_exc}", progress=_PROGRESS_FUSION_DONE)
-                    raise
+                bundle = await self._generate_stage_d_outputs(
+                    task_id=task_id,
+                    task_title=task_title,
+                    notes_source_text=transcript_text,
+                    transcript_segments=transcript_segments,
+                    llm_runtime_config=llm_runtime_config,
+                    llm_model_id=llm_model_id,
+                    stage_logs=stage_logs,
+                )
 
                 artifact_index_json, artifact_total_bytes = build_task_artifact_index(
                     task_id=task_id,
@@ -1674,6 +1582,306 @@ class TaskRunner:
             mindmap_markdown,
         )
 
+    async def _persist_notes_pipeline_artifacts(
+        self,
+        *,
+        task_id: str,
+        notes_artifacts: NotesPipelineArtifacts,
+        notes_before_patch: str,
+    ) -> None:
+        await self._artifact_persistence.persist_notes_pipeline_artifacts(
+            task_id=task_id,
+            evidence_batches=notes_artifacts.evidence_batches,
+            evidence_cards=notes_artifacts.evidence_cards,
+            outline=notes_artifacts.outline,
+            outline_markdown=notes_artifacts.outline_markdown,
+            section_markdowns=notes_artifacts.section_markdowns,
+            coverage_report=notes_artifacts.coverage_report,
+            notes_before_patch=notes_before_patch,
+            notes_after_patch=notes_artifacts.notes_markdown,
+        )
+
+    async def _publish_markdown_stream_compat(
+        self,
+        task_id: str,
+        event_type: str,
+        text: str,
+    ) -> None:
+        normalized = (text or "").strip()
+        if not normalized:
+            return
+        await self._event_bus.publish(
+            task_id,
+            {"type": event_type, "stage": "D", "text": normalized, "stream_mode": "compat"},
+        )
+
+    async def _generate_stage_d_outputs(
+        self,
+        *,
+        task_id: str,
+        task_title: str,
+        notes_source_text: str,
+        transcript_segments: list[dict[str, float | str]],
+        llm_runtime_config: dict[str, object],
+        llm_model_id: str,
+        stage_logs: dict[str, list[str]],
+    ) -> SummaryBundle:
+        async with self._model_runtime_manager.reserve(
+            task_id=task_id,
+            stage="D",
+            component="llm",
+            model_id=f"llm:{llm_model_id}",
+        ) as llm_generate_lease:
+            self._record_runtime_lease(task_id, "D", llm_generate_lease.wait_seconds)
+            await self._handle_runtime_evictions(task_id, "D", llm_generate_lease.evictions, stage_logs)
+            if llm_generate_lease.wait_seconds > 0:
+                await self._emit_log(
+                    task_id,
+                    "D",
+                    f"Waiting for model runtime lock: {llm_generate_lease.wait_seconds:.2f}s",
+                    stage_logs,
+                    substage="runtime",
+                )
+
+            async def notes_delta(delta: str, stream_mode: str) -> None:
+                await self._event_bus.publish(
+                    task_id,
+                    {"type": "notes_delta", "stage": "D", "text": delta, "stream_mode": stream_mode},
+                )
+
+            async def mindmap_delta(delta: str, stream_mode: str) -> None:
+                await self._event_bus.publish(
+                    task_id,
+                    {"type": "mindmap_delta", "stage": "D", "text": delta, "stream_mode": stream_mode},
+                )
+
+            async def publish_fusion_prompt_preview(markdown: str) -> None:
+                await self._publish_fusion_prompt_preview(task_id, markdown)
+
+            summary_prompt, notes_prompt, mindmap_prompt = await self._summarizer._prompt_template_store.resolve_selected_prompts()
+
+            await self._d_substage_start(task_id, "notes_extract", progress=_PROGRESS_TRANSCRIPT_DONE)
+            await self._emit_log(task_id, "D", "Extracting detailed note evidence cards...", stage_logs, substage="notes_extract")
+            cards_bundle = await self._summarizer.build_notes_evidence_cards(
+                title=task_title,
+                transcript_text=notes_source_text,
+                transcript_segments=transcript_segments,
+                llm_config_override=llm_runtime_config,
+            )
+            await self._d_substage_complete(
+                task_id,
+                "notes_extract",
+                status="completed",
+                message="信息卡片提取完成。",
+                progress=_PROGRESS_NOTES_EXTRACT_DONE,
+            )
+            self._set_stage_metric_values(
+                task_id,
+                "D",
+                {
+                    "notes_extract_batch_count": len(cards_bundle["evidence_batches"]),
+                    "notes_extract_card_count": len(cards_bundle["evidence_cards"]),
+                },
+            )
+            await self._update_task(
+                task_id,
+                progress=_PROGRESS_NOTES_EXTRACT_DONE,
+                stage_logs_json=_encode_stage_logs(stage_logs),
+            )
+
+            await self._d_substage_start(task_id, "notes_outline", progress=_PROGRESS_NOTES_EXTRACT_DONE)
+            await self._emit_log(task_id, "D", "Building global outline for detailed notes...", stage_logs, substage="notes_outline")
+            outline, outline_markdown = await self._summarizer.build_notes_outline(
+                title=task_title,
+                evidence_cards=cards_bundle["evidence_cards"],
+                llm_config_override=llm_runtime_config,
+            )
+            await self._d_substage_complete(
+                task_id,
+                "notes_outline",
+                status="completed",
+                message="详细笔记提纲生成完成。",
+                progress=_PROGRESS_NOTES_OUTLINE_DONE,
+            )
+            self._set_stage_metric_values(
+                task_id,
+                "D",
+                {
+                    "notes_outline_section_count": len(outline.get("sections", [])) if isinstance(outline.get("sections"), list) else 0,
+                },
+            )
+            await self._update_task(
+                task_id,
+                progress=_PROGRESS_NOTES_OUTLINE_DONE,
+                stage_logs_json=_encode_stage_logs(stage_logs),
+            )
+
+            await self._d_substage_start(task_id, "notes_sections", progress=_PROGRESS_NOTES_OUTLINE_DONE)
+            await self._emit_log(task_id, "D", "Generating detailed notes by outline sections...", stage_logs, substage="notes_sections")
+            notes_before_patch, section_markdowns = await self._summarizer.generate_notes_sections(
+                title=task_title,
+                notes_prompt=notes_prompt,
+                evidence_cards=cards_bundle["evidence_cards"],
+                outline=outline,
+                outline_markdown=outline_markdown,
+                llm_config_override=llm_runtime_config,
+                on_notes_delta=notes_delta,
+                on_fusion_prompt_preview=publish_fusion_prompt_preview,
+            )
+            await self._d_substage_complete(
+                task_id,
+                "notes_sections",
+                status="completed",
+                message="详细笔记章节生成完成。",
+                progress=_PROGRESS_NOTES_SECTIONS_DONE,
+            )
+            self._set_stage_metric_values(
+                task_id,
+                "D",
+                {
+                    "notes_sections_count": len(section_markdowns),
+                    "notes_chars_before_coverage": len(notes_before_patch),
+                },
+            )
+            await self._update_task(
+                task_id,
+                progress=_PROGRESS_NOTES_SECTIONS_DONE,
+                stage_logs_json=_encode_stage_logs(stage_logs),
+            )
+
+            await self._d_substage_start(task_id, "notes_coverage", progress=_PROGRESS_NOTES_SECTIONS_DONE)
+            await self._emit_log(task_id, "D", "Inspecting detailed notes coverage and patching gaps...", stage_logs, substage="notes_coverage")
+            coverage_report = await self._summarizer.inspect_notes_coverage(
+                title=task_title,
+                evidence_cards=cards_bundle["evidence_cards"],
+                outline=outline,
+                outline_markdown=outline_markdown,
+                notes_markdown=notes_before_patch,
+                llm_config_override=llm_runtime_config,
+            )
+            final_notes = await self._summarizer.patch_notes_coverage(
+                title=task_title,
+                outline_markdown=outline_markdown,
+                notes_markdown=notes_before_patch,
+                coverage_report=coverage_report,
+                llm_config_override=llm_runtime_config,
+            )
+            notes_artifacts = NotesPipelineArtifacts(
+                evidence_batches=cards_bundle["evidence_batches"],
+                evidence_cards=cards_bundle["evidence_cards"],
+                outline=outline,
+                outline_markdown=outline_markdown,
+                section_markdowns=section_markdowns,
+                coverage_report=coverage_report,
+                notes_markdown=final_notes,
+            )
+            await self._persist_notes_pipeline_artifacts(
+                task_id=task_id,
+                notes_artifacts=notes_artifacts,
+                notes_before_patch=notes_before_patch,
+            )
+            await self._d_substage_complete(
+                task_id,
+                "notes_coverage",
+                status="completed",
+                message="覆盖率检查与补全完成。",
+                progress=_PROGRESS_NOTES_COVERAGE_DONE,
+            )
+            self._set_stage_metric_values(
+                task_id,
+                "D",
+                {
+                    "notes_coverage_missing_count": int(coverage_report.get("missing_count", 0) or 0),
+                    "notes_chars": len(notes_artifacts.notes_markdown),
+                },
+            )
+            await self._update_task(
+                task_id,
+                progress=_PROGRESS_NOTES_COVERAGE_DONE,
+                stage_logs_json=_encode_stage_logs(stage_logs),
+            )
+
+            await self._d_substage_start(task_id, "summary_delivery", progress=_PROGRESS_NOTES_COVERAGE_DONE)
+            await self._emit_log(task_id, "D", "Generating concise summary from detailed notes...", stage_logs, substage="summary_delivery")
+            summary_markdown = await self._summarizer.generate_summary_from_notes(
+                title=task_title,
+                notes_markdown=notes_artifacts.notes_markdown,
+                outline_markdown=notes_artifacts.outline_markdown,
+                summary_prompt=summary_prompt,
+                llm_config_override=llm_runtime_config,
+                on_summary_delta=lambda delta, stream_mode: self._event_bus.publish(
+                    task_id,
+                    {"type": "summary_delta", "stage": "D", "text": delta, "stream_mode": stream_mode},
+                ),
+            )
+            await self._d_substage_complete(
+                task_id,
+                "summary_delivery",
+                status="completed",
+                message="摘要生成完成。",
+                progress=_PROGRESS_SUMMARY_DONE,
+            )
+            self._set_stage_metric_values(
+                task_id,
+                "D",
+                {
+                    "summary_chars": len(summary_markdown),
+                },
+            )
+            await self._update_task(
+                task_id,
+                progress=_PROGRESS_SUMMARY_DONE,
+                stage_logs_json=_encode_stage_logs(stage_logs),
+            )
+
+            await self._d_substage_start(task_id, "mindmap_delivery", progress=_PROGRESS_SUMMARY_DONE)
+            await self._emit_log(task_id, "D", "Generating mindmap from outline and notes...", stage_logs, substage="mindmap_delivery")
+            mindmap_markdown = await self._summarizer.generate_mindmap_from_notes(
+                title=task_title,
+                outline_markdown=notes_artifacts.outline_markdown,
+                notes_markdown=notes_artifacts.notes_markdown,
+                mindmap_prompt=mindmap_prompt,
+                llm_config_override=llm_runtime_config,
+                on_mindmap_delta=mindmap_delta,
+            )
+            await self._d_substage_complete(
+                task_id,
+                "mindmap_delivery",
+                status="completed",
+                message="思维导图生成完成。",
+                progress=_PROGRESS_MINDMAP_DONE,
+            )
+            self._set_stage_metric_values(
+                task_id,
+                "D",
+                {
+                    "mindmap_chars": len(mindmap_markdown),
+                },
+            )
+            await self._update_task(
+                task_id,
+                progress=_PROGRESS_MINDMAP_DONE,
+                stage_logs_json=_encode_stage_logs(stage_logs),
+            )
+
+        bundle = SummaryBundle(
+            summary_markdown=summary_markdown,
+            notes_markdown=notes_artifacts.notes_markdown,
+            mindmap_markdown=mindmap_markdown,
+        )
+        bundle = self._normalize_stage_d_bundle(
+            title=task_title,
+            transcript_text=notes_source_text,
+            bundle=bundle,
+        )
+        await self._persist_delivery_artifacts(
+            task_id,
+            bundle.summary_markdown,
+            bundle.notes_markdown,
+            bundle.mindmap_markdown,
+        )
+        return bundle
+
     @staticmethod
     def _build_audio_chunk_windows(audio_chunks: list[AudioChunk]) -> list[dict[str, object]]:
         return TaskArtifactPersistenceService.build_audio_chunk_windows(audio_chunks)
@@ -1776,6 +1984,7 @@ class TaskRunner:
             summary_markdown = self._build_fallback_summary_markdown(transcript_text=transcript_text)
         if not self._is_notes_markdown_structured(notes_markdown):
             notes_markdown = self._build_fallback_notes_markdown(title=title, summary_markdown=summary_markdown)
+        notes_markdown = _ensure_single_markdown_title(notes_markdown, title)
         if not self._is_mindmap_markdown_valid(mindmap_markdown):
             mindmap_markdown = self._build_fallback_mindmap_markdown(title=title, summary_markdown=summary_markdown)
 
@@ -1821,7 +2030,9 @@ class TaskRunner:
     @staticmethod
     def _build_fallback_notes_markdown(*, title: str, summary_markdown: str) -> str:
         normalized_title = (title or "").strip() or "任务笔记"
-        normalized_summary = (summary_markdown or "").strip()
+        normalized_summary = _normalize_single_markdown_title(summary_markdown or "", normalized_title, demote_extra_h1=True)
+        if normalized_summary.startswith("# "):
+            normalized_summary = "\n".join(normalized_summary.splitlines()[1:]).strip()
         return (
             f"# {normalized_title}\n\n"
             "## 关键内容\n\n"
@@ -2021,6 +2232,33 @@ def _to_float(value: object) -> float:
         return float(value)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _normalize_single_markdown_title(markdown: str, title: str, *, demote_extra_h1: bool) -> str:
+    normalized = (markdown or "").strip()
+    normalized_title = (title or "").strip() or "任务笔记"
+    if not normalized:
+        return f"# {normalized_title}"
+    lines = normalized.splitlines()
+    first_index = next((index for index, line in enumerate(lines) if line.strip()), -1)
+    if first_index < 0:
+        return f"# {normalized_title}"
+    if not lines[first_index].strip().startswith("# "):
+        lines.insert(first_index, f"# {normalized_title}")
+    result_lines: list[str] = []
+    primary_seen = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("# "):
+            if not primary_seen:
+                primary_seen = True
+                result_lines.append(line)
+                continue
+            if demote_extra_h1:
+                result_lines.append(line.replace("# ", "## ", 1))
+            continue
+        result_lines.append(line)
+    return "\n".join(result_lines).strip()
 
 
 def _interpolate_progress(start: int, end: int, ratio: float) -> int:

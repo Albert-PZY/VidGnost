@@ -160,7 +160,7 @@ def test_task_detail_vm_phase_metrics_respects_failed_stage_status() -> None:
                 "status": "pending",
                 "substage_metrics": {
                     "transcript_optimize": {"status": "pending"},
-                    "fusion_delivery": {"status": "pending"},
+                    "mindmap_delivery": {"status": "pending"},
                 },
             },
         }
@@ -178,7 +178,7 @@ def test_task_detail_vm_phase_metrics_respects_failed_stage_status() -> None:
         assert detail["vm_phase_metrics"]["A"]["reason"] == "precheck failed"
 
 
-def test_task_detail_vm_phase_metrics_keep_h_pending_before_fusion_start() -> None:
+def test_task_detail_vm_phase_metrics_keep_h_pending_before_final_delivery() -> None:
     with TestClient(app) as client:
         async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
             return
@@ -204,7 +204,7 @@ def test_task_detail_vm_phase_metrics_keep_h_pending_before_fusion_start() -> No
                 "started_at": "2026-04-04T00:00:00+00:00",
                 "substage_metrics": {
                     "transcript_optimize": {"status": "completed"},
-                    "fusion_delivery": {"status": "pending"},
+                    "mindmap_delivery": {"status": "pending"},
                 },
             },
         }
@@ -241,7 +241,9 @@ def test_normalize_stage_d_bundle_preserves_custom_notes() -> None:
         transcript_text="文本",
         bundle=bundle,
     )
-    assert normalized.notes_markdown == bundle.notes_markdown
+    assert normalized.notes_markdown.startswith("# 任务")
+    assert "## 章节" in normalized.notes_markdown
+    assert "- 自定义笔记条目" in normalized.notes_markdown
     assert normalized.summary_markdown == bundle.summary_markdown
 
 

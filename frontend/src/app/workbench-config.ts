@@ -22,7 +22,19 @@ export const TRANSCRIPT_CORRECTION_MODE_OPTIONS = ['off', 'strict', 'rewrite'] a
 export const LLM_MODE_OPTIONS = ['api'] as const
 export const MODEL_LOAD_PROFILE_OPTIONS = ['balanced', 'memory_first'] as const
 export const STAGES: StageKey[] = ['A', 'B', 'C', 'D']
-export const VM_PHASES: VmPhaseKey[] = ['A', 'B', 'C', 'transcript_optimize', 'D']
+export const VM_PHASES: VmPhaseKey[] = [
+  'A',
+  'B',
+  'C',
+  'transcript_optimize',
+  'notes_extract',
+  'notes_outline',
+  'notes_sections',
+  'notes_coverage',
+  'summary_delivery',
+  'mindmap_delivery',
+  'D',
+]
 export const UI_LOCALES = ['zh-CN', 'en'] as const
 export const WHISPER_PRESET_KEYS = ['speed', 'balanced', 'quality'] as const
 export const TASK_STATUS_KEYS: TaskStatus[] = ['queued', 'preparing', 'transcribing', 'summarizing', 'cancelled', 'completed', 'failed']
@@ -81,6 +93,12 @@ export function createEmptyVmPhaseMetrics(): Record<VmPhaseKey, VmPhaseMetric> {
     B: create(false),
     C: create(false),
     transcript_optimize: create(true),
+    notes_extract: create(false),
+    notes_outline: create(false),
+    notes_sections: create(false),
+    notes_coverage: create(false),
+    summary_delivery: create(false),
+    mindmap_delivery: create(false),
     D: create(false),
   }
 }

@@ -10,7 +10,7 @@
 - [x] 2.2 Implement task creation APIs for URL/path/upload
 - [x] 2.3 Implement async `A/B/C/D` executor with terminal statuses
 - [x] 2.4 Implement audio conversion, chunk planning, and transcription streaming
-- [x] 2.5 Implement stage-D subchain `transcript_optimize -> fusion_delivery`
+- [x] 2.5 Implement stage-D multi-substage notes pipeline and final delivery chain
 - [x] 2.6 Implement transcript correction modes: `off`, `strict`, `rewrite`
 - [x] 2.7 Integrate online LLM notes/mindmap generation
 - [x] 2.8 Implement stage-D prompt module with template-based prompt assembly

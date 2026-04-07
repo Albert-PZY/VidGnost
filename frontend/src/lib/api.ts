@@ -242,6 +242,7 @@ export async function getPromptTemplates(): Promise<PromptTemplateBundle> {
 
 export async function updatePromptTemplateSelection(input: {
   selected_summary_template_id: string
+  selected_notes_template_id: string
   selected_mindmap_template_id: string
 }): Promise<PromptTemplateBundle> {
   return request<PromptTemplateBundle>('/config/prompts/selection', {

@@ -71,7 +71,15 @@ import type {
 } from './types'
 
 const ACTIVE_TASK_STORAGE_KEY = 'vidgnost-active-task-id'
-const D_SUBPHASE_ORDER: VmPhaseKey[] = ['transcript_optimize']
+const D_SUBPHASE_ORDER: VmPhaseKey[] = [
+  'transcript_optimize',
+  'notes_extract',
+  'notes_outline',
+  'notes_sections',
+  'notes_coverage',
+  'summary_delivery',
+  'mindmap_delivery',
+]
 
 function resolveRunningDSubphase(metrics: Record<VmPhaseKey, VmPhaseMetric>): VmPhaseKey {
   for (const phase of D_SUBPHASE_ORDER) {
@@ -404,7 +412,7 @@ function App() {
     setOptimizedTranscriptSegments(detail.transcript_segments ?? [])
     setFusionPromptPreview(normalizeFusionPromptPreview(detail.fusion_prompt_markdown ?? ''))
     setSummaryStream(detail.summary_markdown ?? '')
-    setNotesStream(detail.notes_markdown ?? detail.summary_markdown ?? '')
+    setNotesStream(detail.notes_markdown ?? '')
     setMindmapStream(detail.mindmap_markdown ?? '')
     setNotesMarkdownDirty(false)
     setMindmapMarkdownDirty(false)
@@ -600,7 +608,6 @@ function App() {
     appendTranscriptOptimized,
     appendSummary,
     appendMindmap,
-    appendNotes,
     appendNotes,
     setFusionPromptPreview,
     setRerunningStageD,

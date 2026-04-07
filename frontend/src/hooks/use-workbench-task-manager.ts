@@ -342,13 +342,12 @@ export function useWorkbenchTaskManager({
     setError(null)
     try {
       const detail = await updateTaskArtifacts(activeTask.id, {
-        summary_markdown: summaryStream,
         notes_markdown: notesStream,
         mindmap_markdown: mindmapStream,
       })
       setActiveTask(detail)
       setSummaryStream(detail.summary_markdown ?? '')
-      setNotesStream(detail.notes_markdown ?? detail.summary_markdown ?? '')
+      setNotesStream(detail.notes_markdown ?? '')
       setMindmapStream(detail.mindmap_markdown ?? '')
     setNotesMarkdownDirty(false)
     setMindmapMarkdownDirty(false)

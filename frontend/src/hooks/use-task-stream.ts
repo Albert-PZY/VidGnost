@@ -36,12 +36,14 @@ export function useTaskStream({
   const [runtimeNowMs, setRuntimeNowMs] = useState<number>(() => Date.now())
   const [transcriptStream, setTranscriptStream] = useState('')
   const [summaryStream, setSummaryStream] = useState('')
+  const [notesStream, setNotesStream] = useState('')
   const [mindmapStream, setMindmapStream] = useState('')
 
   const flushTimerRef = useRef<number | null>(null)
   const pendingLogsRef = useRef<Record<StageKey, string[]>>(createEmptyStageLogs())
   const pendingTranscriptRef = useRef<string[]>([])
   const pendingSummaryRef = useRef<string[]>([])
+  const pendingNotesRef = useRef<string[]>([])
   const pendingMindmapRef = useRef<string[]>([])
 
   const flushBufferedStream = useCallback(() => {
@@ -72,6 +74,12 @@ export function useTaskStream({
       const chunk = pendingSummaryRef.current.join('')
       pendingSummaryRef.current = []
       setSummaryStream((prev) => `${prev}${chunk}`)
+    }
+
+    if (pendingNotesRef.current.length > 0) {
+      const chunk = pendingNotesRef.current.join('')
+      pendingNotesRef.current = []
+      setNotesStream((prev) => `${prev}${chunk}`)
     }
 
     if (pendingMindmapRef.current.length > 0) {
@@ -125,11 +133,22 @@ export function useTaskStream({
     [scheduleBufferedFlush],
   )
 
+  const appendNotes = useCallback(
+    (text: string, streamMode: StreamMode = 'realtime') => {
+      void streamMode
+      if (!text) return
+      pendingNotesRef.current.push(text)
+      scheduleBufferedFlush()
+    },
+    [scheduleBufferedFlush],
+  )
+
   const resetRuntimePanels = useCallback(() => {
     flushBufferedStream()
     pendingLogsRef.current = createEmptyStageLogs()
     pendingTranscriptRef.current = []
     pendingSummaryRef.current = []
+    pendingNotesRef.current = []
     pendingMindmapRef.current = []
     setActiveStage('A')
     setOverallProgress(0)

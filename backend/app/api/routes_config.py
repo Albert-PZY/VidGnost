@@ -120,6 +120,7 @@ async def update_prompt_template_selection(
     try:
         payload = await prompt_store.update_selection(
             selected_summary_template_id=body.selected_summary_template_id,
+            selected_notes_template_id=body.selected_notes_template_id,
             selected_mindmap_template_id=body.selected_mindmap_template_id,
         )
     except ValueError as exc:

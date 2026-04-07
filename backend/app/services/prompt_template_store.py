@@ -36,19 +36,19 @@ class PromptTemplateBundle(TypedDict):
 
 _DEFAULT_TEMPLATE_NAMES: dict[PromptTemplateChannel, dict[str, str]] = {
     "summary": {
-        "default": "Default Notes",
-        "course": "Course Notes",
-        "interview": "Interview Notes",
-    },
-    "mindmap": {
-        "default": "Default Mindmap",
-        "course": "Course Mindmap",
-        "interview": "Interview Mindmap",
+        "default": "Default Summary",
+        "course": "Course Summary",
+        "interview": "Interview Summary",
     },
     "notes": {
         "default": "Detailed Notes",
         "course": "Detailed Course Notes",
         "interview": "Detailed Interview Notes",
+    },
+    "mindmap": {
+        "default": "Default Mindmap",
+        "course": "Course Mindmap",
+        "interview": "Interview Mindmap",
     },
 }
 
@@ -57,16 +57,30 @@ SUMMARY_PROMPT_TEMPLATES: dict[str, str] = {
     "course": (
         f"{SUMMARY_PROMPT}\n\n"
         "补充要求：\n"
-        "1) 以教学视角输出，包含学习目标、知识点拆解、关键术语释义。\n"
-        "2) 给出可执行的复习清单与练习建议。\n"
-        "3) 保留原有结构化标题层级。"
+        "1) 以教学视角输出，突出学习目标、核心知识点与复习建议。\n"
+        "2) 优先保留课程结论、框架和行动建议。"
     ),
     "interview": (
         f"{SUMMARY_PROMPT}\n\n"
         "补充要求：\n"
         "1) 以访谈分析视角输出，强调观点、证据、分歧点。\n"
-        "2) 输出可追问的问题列表与后续行动建议。\n"
-        "3) 保留原有结构化标题层级。"
+        "2) 输出可追问的问题列表与后续行动建议。"
+    ),
+}
+
+NOTES_PROMPT_TEMPLATES: dict[str, str] = {
+    "default": NOTES_PROMPT,
+    "course": (
+        f"{NOTES_PROMPT}\n\n"
+        "补充要求：\n"
+        "1) 按课程模块顺序展开。\n"
+        "2) 每节都保留定义、步骤、案例与复盘建议。"
+    ),
+    "interview": (
+        f"{NOTES_PROMPT}\n\n"
+        "补充要求：\n"
+        "1) 强调人物观点、争议、回应与上下文。\n"
+        "2) 补出值得继续追问的开放问题。"
     ),
 }
 
@@ -83,22 +97,6 @@ MINDMAP_PROMPT_TEMPLATES: dict[str, str] = {
         "补充要求：\n"
         "1) 主干优先体现人物观点与主题分组。\n"
         "2) 子节点突出事实依据、争议点与行动项。"
-    ),
-}
-
-NOTES_PROMPT_TEMPLATES: dict[str, str] = {
-    "default": NOTES_PROMPT,
-    "course": (
-        f"{NOTES_PROMPT}\n\n"
-        "补充要求：\n"
-        "1) 按课程模块序列梳理知识线索。\n"
-        "2) 每节提供小结与复盘建议。"
-    ),
-    "interview": (
-        f"{NOTES_PROMPT}\n\n"
-        "补充要求：\n"
-        "1) 强调人物观点、争议与回应。\n"
-        "2) 输出复盘要点与可执行行动。"
     ),
 }
 
@@ -150,20 +148,23 @@ class PromptTemplateStore:
     async def update_selection(
         self,
         selected_summary_template_id: str,
+        selected_notes_template_id: str,
         selected_mindmap_template_id: str,
     ) -> PromptTemplateBundle:
         async with self._lock:
             return await asyncio.to_thread(
                 self._update_selection_sync,
                 selected_summary_template_id,
+                selected_notes_template_id,
                 selected_mindmap_template_id,
             )
 
-    async def resolve_selected_prompts(self) -> tuple[str, str]:
+    async def resolve_selected_prompts(self) -> tuple[str, str, str]:
         bundle = await self.get_bundle()
         summary_prompt = _find_template_content(bundle["summary_templates"], bundle["selected_summary_template_id"])
+        notes_prompt = _find_template_content(bundle["notes_templates"], bundle["selected_notes_template_id"])
         mindmap_prompt = _find_template_content(bundle["mindmap_templates"], bundle["selected_mindmap_template_id"])
-        return summary_prompt, mindmap_prompt
+        return summary_prompt, notes_prompt, mindmap_prompt
 
     def _get_bundle_sync(self) -> PromptTemplateBundle:
         templates, selection = self._load_state()
@@ -209,6 +210,7 @@ class PromptTemplateStore:
             raise ValueError("Template not found")
         if _is_default_template(target):
             raise ValueError("Default template is read-only")
+
         target.name = normalized_name
         target.content = normalized_content
         target.updated_at = datetime.now(timezone.utc)
@@ -231,10 +233,10 @@ class PromptTemplateStore:
         fallback = next(item for item in templates if item.channel == target.channel)
         if target.channel == "summary" and selection.summary_template_id == template_id:
             selection.summary_template_id = fallback.id
-        if target.channel == "mindmap" and selection.mindmap_template_id == template_id:
-            selection.mindmap_template_id = fallback.id
         if target.channel == "notes" and selection.notes_template_id == template_id:
             selection.notes_template_id = fallback.id
+        if target.channel == "mindmap" and selection.mindmap_template_id == template_id:
+            selection.mindmap_template_id = fallback.id
         selection.updated_at = datetime.now(timezone.utc)
         self._write_state(templates, selection)
         return self._build_bundle(templates, selection)
@@ -242,21 +244,28 @@ class PromptTemplateStore:
     def _update_selection_sync(
         self,
         selected_summary_template_id: str,
+        selected_notes_template_id: str,
         selected_mindmap_template_id: str,
     ) -> PromptTemplateBundle:
         summary_id = selected_summary_template_id.strip()
+        notes_id = selected_notes_template_id.strip()
         mindmap_id = selected_mindmap_template_id.strip()
-        if not summary_id or not mindmap_id:
+        if not summary_id or not notes_id or not mindmap_id:
             raise ValueError("Selected template ids are required")
 
         templates, selection = self._load_state()
         summary = next((item for item in templates if item.id == summary_id), None)
+        notes = next((item for item in templates if item.id == notes_id), None)
         mindmap = next((item for item in templates if item.id == mindmap_id), None)
         if summary is None or summary.channel != "summary":
             raise ValueError("Invalid summary template id")
+        if notes is None or notes.channel != "notes":
+            raise ValueError("Invalid notes template id")
         if mindmap is None or mindmap.channel != "mindmap":
             raise ValueError("Invalid mindmap template id")
+
         selection.summary_template_id = summary_id
+        selection.notes_template_id = notes_id
         selection.mindmap_template_id = mindmap_id
         selection.updated_at = datetime.now(timezone.utc)
         self._write_state(templates, selection)
@@ -273,27 +282,19 @@ class PromptTemplateStore:
             changed = True
         templates = filtered_templates
 
-        summary_templates = [item for item in templates if item.channel == "summary"]
-        if not summary_templates:
-            templates.extend(self._build_default_templates("summary"))
-            changed = True
-
-        mindmap_templates = [item for item in templates if item.channel == "mindmap"]
-        if not mindmap_templates:
-            templates.extend(self._build_default_templates("mindmap"))
-            changed = True
-        notes_templates = [item for item in templates if item.channel == "notes"]
-        if not notes_templates:
-            templates.extend(self._build_default_templates("notes"))
-            changed = True
+        for channel in ("summary", "notes", "mindmap"):
+            typed_channel = cast(PromptTemplateChannel, channel)
+            if not any(item.channel == channel for item in templates):
+                templates.extend(self._build_default_templates(typed_channel))
+                changed = True
 
         if self._sync_default_templates(templates):
             changed = True
 
         templates.sort(key=lambda item: (item.created_at, item.id))
         selection = self._load_selection()
-        selection_changed = self._ensure_valid_selection(selection, templates)
-        changed = changed or selection_changed
+        if self._ensure_valid_selection(selection, templates):
+            changed = True
 
         if changed:
             self._write_state(templates, selection)
@@ -306,8 +307,7 @@ class PromptTemplateStore:
         now = datetime.now(timezone.utc)
         for channel in ("summary", "notes", "mindmap"):
             typed_channel = cast(PromptTemplateChannel, channel)
-            expected_defaults = self._build_default_templates(typed_channel)
-            for expected in expected_defaults:
+            for expected in self._build_default_templates(typed_channel):
                 target = next((item for item in templates if item.id == expected.id), None)
                 if target is None:
                     templates.append(expected)
@@ -335,6 +335,7 @@ class PromptTemplateStore:
         if not isinstance(payload, dict):
             self._legacy_store_path.unlink(missing_ok=True)
             return True
+
         raw_templates = payload.get("templates", [])
         templates: list[PromptTemplateRecord] = []
         if isinstance(raw_templates, list):
@@ -342,13 +343,15 @@ class PromptTemplateStore:
                 if not isinstance(raw, dict):
                     continue
                 template = PromptTemplateRecord.from_dict(raw)
-        if not template.id or template.channel not in {"summary", "notes", "mindmap"}:
+                if not template.id or template.channel not in {"summary", "notes", "mindmap"}:
                     continue
                 templates.append(template)
+
         selection = PromptTemplateSelectionRecord(summary_template_id="", notes_template_id="", mindmap_template_id="")
         raw_selection = payload.get("selection")
         if isinstance(raw_selection, dict):
             selection = PromptTemplateSelectionRecord.from_dict(raw_selection)
+
         self._write_state(templates, selection)
         self._legacy_store_path.unlink(missing_ok=True)
         return True
@@ -372,12 +375,9 @@ class PromptTemplateStore:
         return PromptTemplateSelectionRecord(summary_template_id="", notes_template_id="", mindmap_template_id="")
 
     def _build_default_templates(self, channel: PromptTemplateChannel) -> list[PromptTemplateRecord]:
-        source = _CHANNEL_PROMPT_TEMPLATES[channel]
         result: list[PromptTemplateRecord] = []
-        for key, content in source.items():
-            template_id = _DEFAULT_TEMPLATE_IDS[channel]
-            if key != "default":
-                template_id = f"{channel}-{key}"
+        for key, content in _CHANNEL_PROMPT_TEMPLATES[channel].items():
+            template_id = _DEFAULT_TEMPLATE_IDS[channel] if key == "default" else f"{channel}-{key}"
             result.append(
                 PromptTemplateRecord(
                     id=template_id,
@@ -394,27 +394,16 @@ class PromptTemplateStore:
         templates: list[PromptTemplateRecord],
     ) -> bool:
         changed = False
-        summary_templates = [item for item in templates if item.channel == "summary"]
-        notes_templates = [item for item in templates if item.channel == "notes"]
-        mindmap_templates = [item for item in templates if item.channel == "mindmap"]
-        summary_ids = {item.id for item in summary_templates}
-        notes_ids = {item.id for item in notes_templates}
-        mindmap_ids = {item.id for item in mindmap_templates}
-        if summary_templates and selection.summary_template_id not in summary_ids:
-            selection.summary_template_id = (
-                _DEFAULT_TEMPLATE_IDS["summary"] if _DEFAULT_TEMPLATE_IDS["summary"] in summary_ids else summary_templates[0].id
-            )
-            changed = True
-        if notes_templates and selection.notes_template_id not in notes_ids:
-            selection.notes_template_id = (
-                _DEFAULT_TEMPLATE_IDS["notes"] if _DEFAULT_TEMPLATE_IDS["notes"] in notes_ids else notes_templates[0].id
-            )
-            changed = True
-        if mindmap_templates and selection.mindmap_template_id not in mindmap_ids:
-            selection.mindmap_template_id = (
-                _DEFAULT_TEMPLATE_IDS["mindmap"] if _DEFAULT_TEMPLATE_IDS["mindmap"] in mindmap_ids else mindmap_templates[0].id
-            )
-            changed = True
+        for channel in ("summary", "notes", "mindmap"):
+            typed_channel = cast(PromptTemplateChannel, channel)
+            channel_templates = [item for item in templates if item.channel == channel]
+            channel_ids = {item.id for item in channel_templates}
+            selected_attr = f"{channel}_template_id"
+            current_id = str(getattr(selection, selected_attr, "") or "")
+            if channel_templates and current_id not in channel_ids:
+                fallback_id = _DEFAULT_TEMPLATE_IDS[typed_channel] if _DEFAULT_TEMPLATE_IDS[typed_channel] in channel_ids else channel_templates[0].id
+                setattr(selection, selected_attr, fallback_id)
+                changed = True
         if changed:
             selection.updated_at = datetime.now(timezone.utc)
         return changed
@@ -425,13 +414,10 @@ class PromptTemplateStore:
         selection: PromptTemplateSelectionRecord,
     ) -> PromptTemplateBundle:
         templates.sort(key=lambda item: (item.created_at, item.id))
-        summary_templates = [item for item in templates if item.channel == "summary"]
-        notes_templates = [item for item in templates if item.channel == "notes"]
-        mindmap_templates = [item for item in templates if item.channel == "mindmap"]
         return {
-            "summary_templates": [_serialize_template(item) for item in summary_templates],
-            "notes_templates": [_serialize_template(item) for item in notes_templates],
-            "mindmap_templates": [_serialize_template(item) for item in mindmap_templates],
+            "summary_templates": [_serialize_template(item) for item in templates if item.channel == "summary"],
+            "notes_templates": [_serialize_template(item) for item in templates if item.channel == "notes"],
+            "mindmap_templates": [_serialize_template(item) for item in templates if item.channel == "mindmap"],
             "selected_summary_template_id": selection.summary_template_id,
             "selected_notes_template_id": selection.notes_template_id,
             "selected_mindmap_template_id": selection.mindmap_template_id,
@@ -474,12 +460,12 @@ class PromptTemplateStore:
 
 
 def _validate_channel(channel: str) -> None:
-    if channel not in {"summary", "mindmap"}:
+    if channel not in {"summary", "notes", "mindmap"}:
         raise ValueError("Invalid template channel")
 
 
 def _serialize_template(record: PromptTemplateRecord) -> PromptTemplatePayload:
-    channel: PromptTemplateChannel = "summary" if record.channel == "summary" else "mindmap"
+    channel = cast(PromptTemplateChannel, record.channel)
     return {
         "id": record.id,
         "channel": channel,
@@ -502,19 +488,21 @@ def _find_template_content(templates: list[PromptTemplatePayload], template_id: 
 
 def _is_legacy_seed_template(record: PromptTemplateRecord) -> bool:
     legacy_name_map: dict[PromptTemplateChannel, set[str]] = {
-        "summary": {"Concise Notes", "Teaching Notes"},
+        "summary": {"Concise Notes", "Teaching Notes", "Default Notes", "Course Notes", "Interview Notes"},
+        "notes": set(),
         "mindmap": {"Compact Mindmap", "Concept Mindmap"},
     }
     legacy_id_prefix_map: dict[PromptTemplateChannel, tuple[str, ...]] = {
         "summary": ("summary-concise-", "summary-teaching-"),
+        "notes": tuple(),
         "mindmap": ("mindmap-compact-", "mindmap-concept-"),
     }
-    channel: PromptTemplateChannel = "summary" if record.channel == "summary" else "mindmap"
+    channel = cast(PromptTemplateChannel, record.channel)
     if record.name in legacy_name_map[channel]:
         return True
     return any(record.id.startswith(prefix) for prefix in legacy_id_prefix_map[channel])
 
 
 def _is_default_template(record: PromptTemplateRecord) -> bool:
-    channel: PromptTemplateChannel = "summary" if record.channel == "summary" else "mindmap"
+    channel = cast(PromptTemplateChannel, record.channel)
     return any(record.id.startswith(prefix) for prefix in _DEFAULT_TEMPLATE_ID_PREFIXES[channel])

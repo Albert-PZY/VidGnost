@@ -39,8 +39,28 @@ from app.services.task_store import TaskStore
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 StageKey = Literal["A", "B", "C", "D"]
 STAGE_KEYS: tuple[StageKey, StageKey, StageKey, StageKey] = ("A", "B", "C", "D")
-VM_PHASE_KEYS: tuple[str, ...] = ("A", "B", "C", "transcript_optimize", "D")
-D_SUBSTAGE_KEYS: tuple[str, ...] = ("transcript_optimize", "fusion_delivery")
+VM_PHASE_KEYS: tuple[str, ...] = (
+    "A",
+    "B",
+    "C",
+    "transcript_optimize",
+    "notes_extract",
+    "notes_outline",
+    "notes_sections",
+    "notes_coverage",
+    "summary_delivery",
+    "mindmap_delivery",
+    "D",
+)
+D_SUBSTAGE_KEYS: tuple[str, ...] = (
+    "transcript_optimize",
+    "notes_extract",
+    "notes_outline",
+    "notes_sections",
+    "notes_coverage",
+    "summary_delivery",
+    "mindmap_delivery",
+)
 
 
 def get_runner(request: Request) -> TaskRunner:
@@ -740,12 +760,10 @@ def _build_vm_phase_metrics(stage_metrics: dict[str, dict[str, object]]) -> dict
     if not isinstance(substage_metrics, dict):
         substage_metrics = {}
 
-    for substage in ("transcript_optimize",):
+    for substage in D_SUBSTAGE_KEYS:
         raw = substage_metrics.get(substage, {})
         metric = raw if isinstance(raw, dict) else {}
-        status = str(metric.get("status", "pending")).strip().lower() or "pending"
-        if status == "cancelled":
-            status = "failed"
+        status = to_status(metric)
         result[substage] = {
             "status": status,
             "started_at": metric.get("started_at"),
@@ -755,25 +773,20 @@ def _build_vm_phase_metrics(stage_metrics: dict[str, dict[str, object]]) -> dict
             "reason": metric.get("reason"),
         }
 
-    final_metric = substage_metrics.get("fusion_delivery", {})
+    final_metric = substage_metrics.get("mindmap_delivery", {})
     final_dict = final_metric if isinstance(final_metric, dict) else {}
-    final_status = str(final_dict.get("status", "")).strip().lower()
-    if final_status == "cancelled":
-        final_status = "failed"
-    if not final_status:
-        final_started_at = str(final_dict.get("started_at", "") or "").strip()
-        final_completed_at = str(final_dict.get("completed_at", "") or "").strip()
-        if final_completed_at:
-            final_status = "completed"
-        elif final_started_at:
-            final_status = "running"
-        else:
-            # Before fusion starts, keep H pending instead of inheriting full stage-D running state.
-            d_status = to_status(d_metric)
-            if d_status in {"completed", "failed", "skipped"}:
-                final_status = d_status
-            else:
-                final_status = "pending"
+    final_started_at = str(final_dict.get("started_at", "") or "").strip()
+    final_completed_at = str(final_dict.get("completed_at", "") or "").strip()
+    explicit_final_status = str(final_dict.get("status", "") or "").strip().lower()
+    if explicit_final_status and explicit_final_status != "pending":
+        final_status = "failed" if explicit_final_status == "cancelled" else explicit_final_status
+    elif final_completed_at:
+        final_status = "completed"
+    elif final_started_at:
+        final_status = "running"
+    else:
+        d_status = to_status(d_metric)
+        final_status = d_status if d_status in {"completed", "failed", "skipped"} else "pending"
     result["D"] = {
         "status": final_status or "pending",
         "started_at": final_dict.get("started_at", d_metric.get("started_at")),

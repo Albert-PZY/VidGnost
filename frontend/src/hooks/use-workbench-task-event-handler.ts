@@ -82,8 +82,15 @@ export function useWorkbenchTaskEventHandler({
   const notesDeltaReceivedRef = useRef(false)
   const resolveVmPhaseBySubstage = useCallback((substage: string | undefined): VmPhaseKey | null => {
     if (!substage) return null
-    if (substage === 'fusion_delivery') return 'D'
-    if (substage === 'transcript_optimize') {
+    if (
+      substage === 'transcript_optimize' ||
+      substage === 'notes_extract' ||
+      substage === 'notes_outline' ||
+      substage === 'notes_sections' ||
+      substage === 'notes_coverage' ||
+      substage === 'summary_delivery' ||
+      substage === 'mindmap_delivery'
+    ) {
       return substage
     }
     return null
@@ -258,9 +265,6 @@ export function useWorkbenchTaskEventHandler({
     }
     if (event.type === 'summary_delta') {
       appendSummary(event.text ?? '', event.stream_mode ?? 'realtime')
-      if (!notesDeltaReceivedRef.current) {
-        appendNotes(event.text ?? '', event.stream_mode ?? 'realtime')
-      }
     }
     if (event.type === 'notes_delta') {
       notesDeltaReceivedRef.current = true

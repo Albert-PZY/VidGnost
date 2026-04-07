@@ -89,7 +89,7 @@ interface BuildMainViewPropsOptions {
   removeHistoryTask: () => Promise<void>
   closePromptDeleteConfirm: () => void
   pendingPromptDelete: object | null
-  promptActionChannel: 'summary' | 'mindmap' | null
+  promptActionChannel: 'summary' | 'notes' | 'mindmap' | null
   removePromptTemplate: () => Promise<void>
   configModalProps: object
   selfCheckBusy: boolean

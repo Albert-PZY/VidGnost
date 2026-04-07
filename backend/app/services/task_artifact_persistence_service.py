@@ -183,6 +183,87 @@ class TaskArtifactPersistenceService:
             },
         )
 
+    async def persist_notes_pipeline_artifacts(
+        self,
+        *,
+        task_id: str,
+        evidence_batches: list[dict[str, object]],
+        evidence_cards: list[dict[str, object]],
+        outline: dict[str, object],
+        outline_markdown: str,
+        section_markdowns: list[dict[str, object]],
+        coverage_report: dict[str, object],
+        notes_before_patch: str,
+        notes_after_patch: str,
+    ) -> None:
+        chunk_manifest: list[dict[str, object]] = []
+        for index, (batch, card) in enumerate(zip(evidence_batches, evidence_cards, strict=False), start=1):
+            payload = {
+                "task_id": task_id,
+                "chunk_index": index,
+                "batch": batch,
+                "card": card,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            relative_path = await self.persist_stage_artifact_chunk_json(
+                task_id,
+                "D",
+                "notes-extract/chunks",
+                index - 1,
+                payload,
+            )
+            chunk_manifest.append(
+                {
+                    "chunk_index": index,
+                    "relative_path": relative_path,
+                    "batch_id": int(batch.get("batch_id", index) or index),
+                }
+            )
+
+        await self.persist_stage_artifact_json(
+            task_id,
+            "D",
+            "notes-extract/index.json",
+            {
+                "task_id": task_id,
+                "chunk_count": len(chunk_manifest),
+                "chunks": chunk_manifest,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        await self.persist_stage_artifact_json(task_id, "D", "notes-outline/outline.json", outline)
+        await self.persist_stage_artifact_text(task_id, "D", "notes-outline/outline.md", outline_markdown or "")
+
+        section_index_payload: list[dict[str, object]] = []
+        for index, section in enumerate(section_markdowns, start=1):
+            markdown = str(section.get("markdown", "")).strip()
+            relative_path = f"notes-sections/section-{index:02d}.md"
+            await self.persist_stage_artifact_text(task_id, "D", relative_path, markdown)
+            section_index_payload.append(
+                {
+                    "section_index": index,
+                    "section_id": str(section.get("section_id", "")).strip() or f"section_{index}",
+                    "section_title": str(section.get("section_title", "")).strip() or f"章节 {index}",
+                    "relative_path": relative_path,
+                    "source_batch_ids": section.get("source_batch_ids", []),
+                }
+            )
+
+        await self.persist_stage_artifact_json(
+            task_id,
+            "D",
+            "notes-sections/index.json",
+            {
+                "task_id": task_id,
+                "section_count": len(section_index_payload),
+                "sections": section_index_payload,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        await self.persist_stage_artifact_json(task_id, "D", "notes-coverage/report.json", coverage_report)
+        await self.persist_stage_artifact_text(task_id, "D", "notes-coverage/notes-before-patch.md", notes_before_patch or "")
+        await self.persist_stage_artifact_text(task_id, "D", "notes-coverage/notes-after-patch.md", notes_after_patch or "")
+
     @staticmethod
     def build_audio_chunk_windows(audio_chunks: list[Any]) -> list[dict[str, object]]:
         windows: list[dict[str, object]] = []
