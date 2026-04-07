@@ -696,6 +696,12 @@ html[data-theme='dark'] .workbench-stage-pill {
   box-shadow: inset 0 1px 0 color-mix(in oklab, #d8e6fb 7%, transparent);
 }
 
+html[data-theme='dark'] .workbench-stage-pill:hover {
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklab, #d8e6fb 14%, transparent),
+    0 20px 30px -24px rgba(2, 8, 18, 0.92);
+}
+
 .workbench-sidebar-card {
   border: 1px solid color-mix(in oklab, var(--color-border) 78%, transparent);
   border-radius: 1rem;
@@ -856,6 +862,14 @@ html[data-theme='dark'] .workbench-brand-mark {
     color var(--motion-duration-fast) ease;
 }
 
+
+.workbench-stage-pill:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in oklab, var(--color-accent) 46%, var(--color-border));
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklab, #ffffff 42%, transparent),
+    0 18px 28px -24px rgba(15, 30, 49, 0.42);
+}
 
 .workbench-stage-pill > div:first-child {
   line-height: 1.34;
