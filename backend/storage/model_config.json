@@ -1,11 +1,10 @@
 {
   "mode": "api",
   "load_profile": "balanced",
-  "local_model_id": "Qwen/Qwen2.5-7B-Instruct",
-  "api_key": "test-key",
-  "base_url": "https://example.com/v1",
-  "model": "test-model",
-  "correction_mode": "rewrite",
+  "api_key": "<masked>",
+  "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  "model": "qwen3.5-flash",
+  "correction_mode": "strict",
   "correction_batch_size": 18,
   "correction_overlap": 2
 }
