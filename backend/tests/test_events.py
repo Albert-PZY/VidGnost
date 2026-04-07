@@ -51,6 +51,7 @@ async def test_event_bus_adds_trace_id_and_writes_jsonl(tmp_path) -> None:
     assert str(first["trace_id"]).startswith("task-4-")
     assert str(second["trace_id"]).startswith("task-4-")
     assert first["trace_id"] != second["trace_id"]
+    await bus.close()
 
     log_path = tmp_path / "task-4.jsonl"
     assert log_path.exists()

@@ -35,18 +35,48 @@ class PromptTemplateBundle(TypedDict):
 _DEFAULT_TEMPLATE_NAMES: dict[PromptTemplateChannel, dict[str, str]] = {
     "summary": {
         "default": "Default Notes",
+        "course": "Course Notes",
+        "interview": "Interview Notes",
     },
     "mindmap": {
         "default": "Default Mindmap",
+        "course": "Course Mindmap",
+        "interview": "Interview Mindmap",
     },
 }
 
 SUMMARY_PROMPT_TEMPLATES: dict[str, str] = {
     "default": SUMMARY_PROMPT,
+    "course": (
+        f"{SUMMARY_PROMPT}\n\n"
+        "补充要求：\n"
+        "1) 以教学视角输出，包含学习目标、知识点拆解、关键术语释义。\n"
+        "2) 给出可执行的复习清单与练习建议。\n"
+        "3) 保留原有结构化标题层级。"
+    ),
+    "interview": (
+        f"{SUMMARY_PROMPT}\n\n"
+        "补充要求：\n"
+        "1) 以访谈分析视角输出，强调观点、证据、分歧点。\n"
+        "2) 输出可追问的问题列表与后续行动建议。\n"
+        "3) 保留原有结构化标题层级。"
+    ),
 }
 
 MINDMAP_PROMPT_TEMPLATES: dict[str, str] = {
     "default": MINDMAP_PROMPT,
+    "course": (
+        f"{MINDMAP_PROMPT}\n\n"
+        "补充要求：\n"
+        "1) 主干优先体现课程章节与知识模块。\n"
+        "2) 子节点突出定义、方法、案例。"
+    ),
+    "interview": (
+        f"{MINDMAP_PROMPT}\n\n"
+        "补充要求：\n"
+        "1) 主干优先体现人物观点与主题分组。\n"
+        "2) 子节点突出事实依据、争议点与行动项。"
+    ),
 }
 
 _DEFAULT_TEMPLATE_IDS: dict[PromptTemplateChannel, str] = {
@@ -332,10 +362,14 @@ class PromptTemplateStore:
         summary_ids = {item.id for item in summary_templates}
         mindmap_ids = {item.id for item in mindmap_templates}
         if selection.summary_template_id not in summary_ids:
-            selection.summary_template_id = summary_templates[0].id
+            selection.summary_template_id = (
+                _DEFAULT_TEMPLATE_IDS["summary"] if _DEFAULT_TEMPLATE_IDS["summary"] in summary_ids else summary_templates[0].id
+            )
             changed = True
         if selection.mindmap_template_id not in mindmap_ids:
-            selection.mindmap_template_id = mindmap_templates[0].id
+            selection.mindmap_template_id = (
+                _DEFAULT_TEMPLATE_IDS["mindmap"] if _DEFAULT_TEMPLATE_IDS["mindmap"] in mindmap_ids else mindmap_templates[0].id
+            )
             changed = True
         if changed:
             selection.updated_at = datetime.now(timezone.utc)

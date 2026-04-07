@@ -28,8 +28,11 @@ from app.services.model_runtime_manager import ModelRuntimeManager, RuntimeEvict
 from app.services.prompt_template_store import PromptTemplateStore
 from app.services.resource_guard import ResourceGuard
 from app.services.runtime_config_store import RuntimeConfigStore
+from app.services.task_error_classifier import classify_task_failure
+from app.services.runtime_event_service import RuntimeEventService
 from app.services.stage_artifact_store import StageArtifactStore
-from app.services.summarizer import LLMService
+from app.services.summarizer import LLMService, SummaryBundle
+from app.services.task_artifact_persistence_service import TaskArtifactPersistenceService
 from app.services.task_artifact_index import build_task_artifact_index
 from app.services.task_store import TaskStore
 from app.services.transcription import WhisperService
@@ -101,11 +104,20 @@ class TaskRunner:
             prompt_template_store=prompt_template_store,
         )
         self._stage_artifact_store = StageArtifactStore(settings.storage_dir)
+        self._artifact_persistence = TaskArtifactPersistenceService(
+            task_store=task_store,
+            stage_artifact_store=self._stage_artifact_store,
+        )
+        self._runtime_events = RuntimeEventService(
+            event_bus=event_bus,
+            task_store=task_store,
+            artifact_persistence=self._artifact_persistence,
+            d_substage_titles=_D_SUBSTAGE_TITLES,
+            d_optional_substages=("transcript_optimize",),
+        )
         self._jobs: dict[str, asyncio.Task[None]] = {}
         self._semaphore = asyncio.Semaphore(settings.max_concurrent_jobs)
         self._api_mode_semaphore = asyncio.Semaphore(max(1, settings.max_api_mode_jobs))
-        self._task_stage_started: dict[str, dict[StageType, float]] = {}
-        self._task_stage_metrics: dict[str, dict[StageType, dict[str, object]]] = {}
 
     async def submit(self, submission: TaskSubmission) -> None:
         job = asyncio.create_task(self._run_pipeline(submission))
@@ -219,8 +231,7 @@ class TaskRunner:
 
             selected_model = "small"
             selected_language = submission.language.strip() or whisper_config["language"]
-            self._task_stage_started[task_id] = {}
-            self._task_stage_metrics[task_id] = stage_metrics
+            self._runtime_events.initialize_task(task_id, stage_metrics)
 
             try:
                 await self._stage_start(
@@ -422,6 +433,15 @@ class TaskRunner:
                 audio_chunks = await asyncio.to_thread(split_audio_wav, audio_path, chunks_dir, whisper_config["chunk_seconds"])
                 if not audio_chunks:
                     audio_chunks = [AudioChunk(path=audio_path, start_seconds=0.0, duration_seconds=0.0)]
+                self._set_stage_metric_values(
+                    task_id,
+                    "B",
+                    {
+                        "chunk_count": len(audio_chunks),
+                        "chunk_seconds": int(whisper_config["chunk_seconds"]),
+                        "audio_path": str(audio_path),
+                    },
+                )
                 for index, chunk in enumerate(audio_chunks, start=1):
                     await self._emit_log(
                         task_id,
@@ -600,6 +620,15 @@ class TaskRunner:
                         await self._update_task(task_id, progress=chunk_progress, stage_logs_json=_encode_stage_logs(stage_logs))
 
                 transcript_text = _join_transcript_segment_texts(all_segments)
+                self._set_stage_metric_values(
+                    task_id,
+                    "C",
+                    {
+                        "segment_count": len(all_segments),
+                        "transcript_chars": len(transcript_text),
+                        "chunk_count": len(audio_chunks),
+                    },
+                )
                 await self._persist_stage_artifact_json(
                     task_id,
                     "C",
@@ -776,6 +805,16 @@ class TaskRunner:
                     optimized_segments=correction.segments,
                     chunk_windows=self._build_audio_chunk_windows(audio_chunks),
                 )
+                self._set_stage_metric_values(
+                    task_id,
+                    "D",
+                    {
+                        "correction_mode": correction.mode,
+                        "correction_fallback_used": bool(correction.fallback_used),
+                        "optimized_segment_count": len(correction.segments),
+                        "summary_source_chars": len(summary_source_text),
+                    },
+                )
 
                 await self._update_task(
                     task_id,
@@ -831,6 +870,11 @@ class TaskRunner:
                             on_fusion_prompt_preview=publish_fusion_prompt_preview,
                             llm_config_override=llm_runtime_config,
                         )
+                    bundle = self._normalize_stage_d_bundle(
+                        title=ingestion_result.title,
+                        transcript_text=summary_source_text,
+                        bundle=bundle,
+                    )
                     await self._persist_delivery_artifacts(
                         task_id,
                         bundle.summary_markdown,
@@ -898,35 +942,40 @@ class TaskRunner:
                 await self._event_bus.publish(task_id, {"type": "task_cancelled", "error": "Task cancelled by user."})
                 raise
             except Exception as exc:  # noqa: BLE001
-                await self._emit_log(task_id, active_stage, f"Task failed: {type(exc).__name__}: {exc}", stage_logs)
-                reason = f"{type(exc).__name__}: {exc}"
-                self._mark_stage_failed(task_id, active_stage, reason)
+                failure = classify_task_failure(stage=active_stage, exc=exc)
+                classified_reason = f"[{failure.category}] {failure.reason}"
+                await self._emit_log(
+                    task_id,
+                    active_stage,
+                    f"Task failed ({failure.category}): {failure.reason}",
+                    stage_logs,
+                )
+                self._mark_stage_failed(task_id, active_stage, classified_reason)
                 await self._persist_stage_metric(task_id, active_stage)
                 await self._persist_analysis_result(
                     task_id,
                     active_stage,
                     status="failed",
                     progress=100,
-                    reason=reason,
+                    reason=classified_reason,
                 )
                 await self._update_task(
                     task_id,
                     status=TaskStatus.FAILED.value,
                     progress=100,
-                    error_message=reason,
+                    error_message=f"{failure.hint} ({failure.reason})",
                     stage_logs_json=_encode_stage_logs(stage_logs),
                 )
                 await self._event_bus.publish(
                     task_id,
-                    {"type": "task_failed", "error": reason},
+                    {"type": "task_failed", "error": classified_reason, "category": failure.category, "hint": failure.hint},
                 )
             finally:
                 mode_semaphore.release()
                 if uploaded_source:
                     uploaded_source.unlink(missing_ok=True)
                 await asyncio.to_thread(shutil.rmtree, media_dir, True)
-                self._task_stage_started.pop(task_id, None)
-                self._task_stage_metrics.pop(task_id, None)
+                self._runtime_events.clear_task(task_id)
 
     async def _run_stage_d_retry(self, task_id: str) -> None:
         async with self._semaphore:
@@ -952,8 +1001,7 @@ class TaskRunner:
                 stage_metrics = _decode_stage_metrics(record.stage_metrics_json)
                 stage_logs["D"] = []
                 stage_metrics["D"] = _empty_stage_metrics()["D"]
-                self._task_stage_started[task_id] = {}
-                self._task_stage_metrics[task_id] = stage_metrics
+                self._runtime_events.initialize_task(task_id, stage_metrics)
                 transcript_segments = _decode_transcript_segments(record.transcript_segments_json)
                 transcript_text = (record.transcript_text or "").strip() or _join_transcript_segment_texts(transcript_segments)
                 if not transcript_text:
@@ -1153,6 +1201,17 @@ class TaskRunner:
                         transcript_segments=transcript_segments,
                     ),
                 )
+                self._set_stage_metric_values(
+                    task_id,
+                    "D",
+                    {
+                        "correction_mode": correction.mode,
+                        "correction_fallback_used": bool(correction.fallback_used),
+                        "optimized_segment_count": len(correction.segments),
+                        "summary_source_chars": len(summary_source_text),
+                        "retry_stage_d": True,
+                    },
+                )
 
                 await self._update_task(
                     task_id,
@@ -1202,6 +1261,11 @@ class TaskRunner:
                             on_fusion_prompt_preview=publish_fusion_prompt_preview,
                             llm_config_override=llm_runtime_config,
                         )
+                    bundle = self._normalize_stage_d_bundle(
+                        title=task_title,
+                        transcript_text=summary_source_text,
+                        bundle=bundle,
+                    )
                     await self._persist_delivery_artifacts(
                         task_id,
                         bundle.summary_markdown,
@@ -1255,30 +1319,38 @@ class TaskRunner:
                 await self._event_bus.publish(task_id, {"type": "task_cancelled", "error": "Task cancelled by user."})
                 raise
             except Exception as exc:  # noqa: BLE001
-                await self._emit_log(task_id, active_stage, f"Task failed: {type(exc).__name__}: {exc}", stage_logs)
-                reason = f"{type(exc).__name__}: {exc}"
-                self._mark_stage_failed(task_id, active_stage, reason)
+                failure = classify_task_failure(stage=active_stage, exc=exc)
+                classified_reason = f"[{failure.category}] {failure.reason}"
+                await self._emit_log(
+                    task_id,
+                    active_stage,
+                    f"Task failed ({failure.category}): {failure.reason}",
+                    stage_logs,
+                )
+                self._mark_stage_failed(task_id, active_stage, classified_reason)
                 await self._persist_stage_metric(task_id, active_stage)
                 await self._persist_analysis_result(
                     task_id,
                     active_stage,
                     status="failed",
                     progress=100,
-                    reason=reason,
+                    reason=classified_reason,
                 )
                 await self._update_task(
                     task_id,
                     status=TaskStatus.FAILED.value,
                     progress=100,
-                    error_message=reason,
+                    error_message=f"{failure.hint} ({failure.reason})",
                     stage_logs_json=_encode_stage_logs(stage_logs),
                 )
-                await self._event_bus.publish(task_id, {"type": "task_failed", "error": reason})
+                await self._event_bus.publish(
+                    task_id,
+                    {"type": "task_failed", "error": classified_reason, "category": failure.category, "hint": failure.hint},
+                )
             finally:
                 mode_semaphore.release()
                 await asyncio.to_thread(shutil.rmtree, media_dir, True)
-                self._task_stage_started.pop(task_id, None)
-                self._task_stage_metrics.pop(task_id, None)
+                self._runtime_events.clear_task(task_id)
 
     def _ingest_source(self, submission: TaskSubmission, media_dir: Path) -> IngestionResult:
         if submission.source_type == "bilibili":
@@ -1321,21 +1393,15 @@ class TaskRunner:
         status: str | None = None,
         progress: int | None = None,
     ) -> None:
-        payload: dict[str, str | int] = {"type": "stage_start", "stage": stage, "title": title}
-        if progress is not None:
-            payload["overall_progress"] = progress
-        if status:
-            payload["status"] = status
-        await self._event_bus.publish(task_id, payload)
-        self._task_stage_started.setdefault(task_id, {})[stage] = asyncio.get_running_loop().time()
-        self._mark_stage_started(task_id, stage)
-        await self._emit_log(task_id, stage, f"Stage {stage} started: {title}", stage_logs)
-        fields: dict[str, str | int] = {"stage_logs_json": _encode_stage_logs(stage_logs)}
-        if status:
-            fields["status"] = status
-        if progress is not None:
-            fields["progress"] = progress
-        await self._update_task(task_id, **fields)
+        await self._runtime_events.stage_start(
+            task_id=task_id,
+            stage=stage,
+            title=title,
+            stage_logs=stage_logs,
+            status=status,
+            progress=progress,
+            update_task=self._update_task,
+        )
 
     async def _stage_complete(
         self,
@@ -1344,19 +1410,13 @@ class TaskRunner:
         progress: int,
         stage_logs: dict[str, list[str]],
     ) -> None:
-        await self._event_bus.publish(
-            task_id,
-            {"type": "stage_complete", "stage": stage, "overall_progress": progress, "stage_progress": 100},
+        await self._runtime_events.stage_complete(
+            task_id=task_id,
+            stage=stage,
+            progress=progress,
+            stage_logs=stage_logs,
+            update_task=self._update_task,
         )
-        await self._event_bus.publish(
-            task_id,
-            {"type": "progress", "stage": stage, "overall_progress": progress, "stage_progress": 100},
-        )
-        self._mark_stage_completed(task_id, stage)
-        await self._persist_stage_metric(task_id, stage)
-        await self._persist_analysis_result(task_id, stage, status="completed", progress=progress)
-        await self._emit_log(task_id, stage, f"Stage {stage} completed", stage_logs)
-        await self._update_task(task_id, progress=progress, stage_logs_json=_encode_stage_logs(stage_logs))
 
     async def _d_substage_start(
         self,
@@ -1365,18 +1425,11 @@ class TaskRunner:
         *,
         progress: int | None = None,
     ) -> None:
-        self._mark_d_substage_started(task_id, substage)
-        payload: dict[str, object] = {
-            "type": "substage_start",
-            "stage": "D",
-            "substage": substage,
-            "title": _D_SUBSTAGE_TITLES[substage],
-            "status": "running",
-        }
-        if progress is not None:
-            payload["overall_progress"] = max(0, min(100, int(progress)))
-        await self._event_bus.publish(task_id, payload)
-        await self._persist_stage_metric(task_id, "D")
+        await self._runtime_events.d_substage_start(
+            task_id=task_id,
+            substage=substage,
+            progress=progress,
+        )
 
     async def _d_substage_complete(
         self,
@@ -1387,51 +1440,13 @@ class TaskRunner:
         message: str = "",
         progress: int | None = None,
     ) -> None:
-        if status == "completed":
-            self._mark_d_substage_completed(task_id, substage)
-        elif status == "skipped":
-            self._mark_d_substage_skipped(task_id, substage, message)
-        else:
-            self._mark_d_substage_failed(task_id, substage, message)
-        payload: dict[str, object] = {
-            "type": "substage_complete",
-            "stage": "D",
-            "substage": substage,
-            "title": _D_SUBSTAGE_TITLES[substage],
-            "status": status,
-            "message": message,
-        }
-        if progress is not None:
-            payload["overall_progress"] = max(0, min(100, int(progress)))
-        await self._event_bus.publish(task_id, payload)
-        await asyncio.to_thread(
-            self._task_store.upsert_analysis_result,
-            task_id,
-            f"D:{substage}",
-            {
-                "stage": "D",
-                "substage": substage,
-                "status": status,
-                "message": message,
-                "progress": progress,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            },
+        await self._runtime_events.d_substage_complete(
+            task_id=task_id,
+            substage=substage,
+            status=status,
+            message=message,
+            progress=progress,
         )
-        await self._persist_stage_artifact_json(
-            task_id,
-            "D",
-            f"substage/{substage}.json",
-            {
-                "task_id": task_id,
-                "stage": "D",
-                "substage": substage,
-                "status": status,
-                "message": message,
-                "progress": progress,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            },
-        )
-        await self._persist_stage_metric(task_id, "D")
 
     async def _emit_log(
         self,
@@ -1441,17 +1456,13 @@ class TaskRunner:
         stage_logs: dict[str, list[str]],
         substage: str | None = None,
     ) -> None:
-        elapsed_seconds = self._stage_elapsed_seconds(task_id, stage)
-        payload: dict[str, str | float] = {"type": "log", "stage": stage, "message": message}
-        if substage:
-            payload["substage"] = substage
-        if elapsed_seconds is not None:
-            payload["elapsed_seconds"] = round(elapsed_seconds, 2)
-        await self._event_bus.publish(task_id, payload)
-        stage_bucket = stage_logs.setdefault(stage, [])
-        stage_bucket.append(_format_stage_log_line(message, substage=substage, elapsed_seconds=elapsed_seconds))
-        stage_logs[stage] = stage_bucket[-1000:]
-        self._increment_stage_log_count(task_id, stage)
+        await self._runtime_events.emit_log(
+            task_id=task_id,
+            stage=stage,
+            message=message,
+            stage_logs=stage_logs,
+            substage=substage,
+        )
 
     async def _emit_runtime_warning(
         self,
@@ -1465,141 +1476,52 @@ class TaskRunner:
         action: str,
         substage: str | None = None,
     ) -> None:
-        await self._emit_log(task_id, stage, message, stage_logs, substage=substage)
-        payload: dict[str, str | float] = {
-            "type": "runtime_warning",
-            "stage": stage,
-            "message": message,
-            "code": code,
-            "component": component,
-            "action": action,
-        }
-        if substage:
-            payload["substage"] = substage
-        elapsed_seconds = self._stage_elapsed_seconds(task_id, stage)
-        if elapsed_seconds is not None:
-            payload["elapsed_seconds"] = round(elapsed_seconds, 2)
-        await self._event_bus.publish(task_id, payload)
-        await self._persist_runtime_warning(
+        await self._runtime_events.emit_runtime_warning(
             task_id=task_id,
             stage=stage,
+            message=message,
+            stage_logs=stage_logs,
             code=code,
             component=component,
             action=action,
             substage=substage,
-            message=message,
-            elapsed_seconds=elapsed_seconds,
         )
 
     def _stage_elapsed_seconds(self, task_id: str, stage: StageType) -> float | None:
-        stage_started = self._task_stage_started.get(task_id, {}).get(stage)
-        if stage_started is None:
-            return None
-        return max(0.0, asyncio.get_running_loop().time() - stage_started)
+        return self._runtime_events.stage_elapsed_seconds(task_id, stage)
 
     def _mark_stage_started(self, task_id: str, stage: StageType) -> None:
-        stage_entry = self._ensure_task_stage_metric_entry(task_id, stage)
-        now_iso = datetime.now(timezone.utc).isoformat()
-        stage_entry["status"] = "running"
-        stage_entry["started_at"] = now_iso
-        stage_entry["completed_at"] = None
-        stage_entry["elapsed_seconds"] = None
-        stage_entry["reason"] = None
+        self._runtime_events.mark_stage_started(task_id, stage)
 
     def _mark_stage_completed(self, task_id: str, stage: StageType) -> None:
-        stage_entry = self._ensure_task_stage_metric_entry(task_id, stage)
-        now_iso = datetime.now(timezone.utc).isoformat()
-        stage_entry["status"] = "completed"
-        stage_entry["completed_at"] = now_iso
-        elapsed_seconds = self._stage_elapsed_seconds(task_id, stage)
-        stage_entry["elapsed_seconds"] = round(elapsed_seconds, 2) if elapsed_seconds is not None else None
-        stage_entry["reason"] = None
+        self._runtime_events.mark_stage_completed(task_id, stage)
 
     def _mark_stage_failed(self, task_id: str, stage: StageType, reason: str) -> None:
-        stage_entry = self._ensure_task_stage_metric_entry(task_id, stage)
-        now_iso = datetime.now(timezone.utc).isoformat()
-        stage_entry["status"] = "failed"
-        stage_entry["completed_at"] = now_iso
-        elapsed_seconds = self._stage_elapsed_seconds(task_id, stage)
-        stage_entry["elapsed_seconds"] = round(elapsed_seconds, 2) if elapsed_seconds is not None else None
-        stage_entry["reason"] = reason
+        self._runtime_events.mark_stage_failed(task_id, stage, reason)
 
     def _ensure_d_substage_metric_entry(self, task_id: str, substage: DSubstageType) -> dict[str, object]:
-        stage_entry = self._ensure_task_stage_metric_entry(task_id, "D")
-        raw_metrics = stage_entry.setdefault("substage_metrics", {})
-        if not isinstance(raw_metrics, dict):
-            raw_metrics = {}
-            stage_entry["substage_metrics"] = raw_metrics
-        metric = raw_metrics.get(substage)
-        if not isinstance(metric, dict):
-            metric = {
-                "title": _D_SUBSTAGE_TITLES[substage],
-                "status": "pending",
-                "started_at": None,
-                "completed_at": None,
-                "elapsed_seconds": None,
-                "optional": substage in {"transcript_optimize"},
-            }
-            raw_metrics[substage] = metric
-        return metric
+        return self._runtime_events.ensure_d_substage_metric_entry(task_id, substage)
 
     def _mark_d_substage_started(self, task_id: str, substage: DSubstageType) -> None:
-        metric = self._ensure_d_substage_metric_entry(task_id, substage)
-        metric["status"] = "running"
-        metric["started_at"] = datetime.now(timezone.utc).isoformat()
-        metric["completed_at"] = None
-        metric["elapsed_seconds"] = None
+        self._runtime_events.mark_d_substage_started(task_id, substage)
 
     def _mark_d_substage_completed(self, task_id: str, substage: DSubstageType) -> None:
-        metric = self._ensure_d_substage_metric_entry(task_id, substage)
-        started_at = str(metric.get("started_at", "") or "").strip()
-        started_seconds: float | None = None
-        if started_at:
-            try:
-                started_seconds = datetime.fromisoformat(started_at).timestamp()
-            except ValueError:
-                started_seconds = None
-        now_dt = datetime.now(timezone.utc)
-        metric["status"] = "completed"
-        metric["completed_at"] = now_dt.isoformat()
-        if started_seconds is None:
-            metric["elapsed_seconds"] = None
-        else:
-            metric["elapsed_seconds"] = round(max(0.0, now_dt.timestamp() - started_seconds), 2)
+        self._runtime_events.mark_d_substage_completed(task_id, substage)
 
     def _mark_d_substage_skipped(self, task_id: str, substage: DSubstageType, reason: str = "") -> None:
-        metric = self._ensure_d_substage_metric_entry(task_id, substage)
-        now_iso = datetime.now(timezone.utc).isoformat()
-        metric["status"] = "skipped"
-        metric["started_at"] = now_iso
-        metric["completed_at"] = now_iso
-        metric["elapsed_seconds"] = 0.0
-        if reason:
-            metric["reason"] = reason
+        self._runtime_events.mark_d_substage_skipped(task_id, substage, reason)
 
     def _mark_d_substage_failed(self, task_id: str, substage: DSubstageType, reason: str) -> None:
-        metric = self._ensure_d_substage_metric_entry(task_id, substage)
-        now_iso = datetime.now(timezone.utc).isoformat()
-        metric["status"] = "failed"
-        metric["completed_at"] = now_iso
-        if reason:
-            metric["reason"] = reason
+        self._runtime_events.mark_d_substage_failed(task_id, substage, reason)
 
     def _increment_stage_log_count(self, task_id: str, stage: StageType) -> None:
-        stage_entry = self._ensure_task_stage_metric_entry(task_id, stage)
-        current = int(stage_entry.get("log_count", 0))
-        stage_entry["log_count"] = current + 1
+        self._runtime_events.increment_stage_log_count(task_id, stage)
 
     def _set_stage_metric_values(self, task_id: str, stage: StageType, values: dict[str, object]) -> None:
-        stage_entry = self._ensure_task_stage_metric_entry(task_id, stage)
-        stage_entry.update(values)
+        self._runtime_events.set_stage_metric_values(task_id, stage, values)
 
     def _record_runtime_lease(self, task_id: str, stage: StageType, wait_seconds: float) -> None:
-        stage_entry = self._ensure_task_stage_metric_entry(task_id, stage)
-        current_wait = float(stage_entry.get("runtime_wait_seconds", 0.0) or 0.0)
-        stage_entry["runtime_wait_seconds"] = round(max(0.0, current_wait + max(0.0, wait_seconds)), 2)
-        current_lock_count = int(stage_entry.get("runtime_lock_count", 0) or 0)
-        stage_entry["runtime_lock_count"] = current_lock_count + 1
+        self._runtime_events.record_runtime_lease(task_id, stage, wait_seconds)
 
     async def _handle_runtime_evictions(
         self,
@@ -1608,24 +1530,13 @@ class TaskRunner:
         evictions: tuple[RuntimeEviction, ...],
         stage_logs: dict[str, list[str]],
     ) -> None:
-        if not evictions:
-            return
-        stage_entry = self._ensure_task_stage_metric_entry(task_id, stage)
-        current_eviction_count = int(stage_entry.get("runtime_eviction_count", 0) or 0)
-        stage_entry["runtime_eviction_count"] = current_eviction_count + len(evictions)
-        for eviction in evictions:
-            released = await asyncio.to_thread(self._evict_runtime_model, eviction)
-            suffix = "released" if released else "release skipped"
-            await self._emit_log(
-                task_id,
-                stage,
-                (
-                    f"Runtime eviction ({eviction.reason}): "
-                    f"{eviction.component}:{eviction.model_id} ({suffix})"
-                ),
-                stage_logs,
-                substage="runtime",
-            )
+        await self._runtime_events.handle_runtime_evictions(
+            task_id=task_id,
+            stage=stage,
+            evictions=evictions,
+            stage_logs=stage_logs,
+            evict_runtime_model=self._evict_runtime_model,
+        )
 
     def _evict_runtime_model(self, eviction: RuntimeEviction) -> bool:
         if eviction.component == "asr":
@@ -1641,49 +1552,10 @@ class TaskRunner:
         return self._api_mode_semaphore
 
     def _ensure_task_stage_metric_entry(self, task_id: str, stage: StageType) -> dict[str, object]:
-        stage_metrics = self._task_stage_metrics.setdefault(task_id, _empty_stage_metrics())
-        return stage_metrics.setdefault(
-            stage,
-            {
-                "started_at": None,
-                "completed_at": None,
-                "elapsed_seconds": None,
-                "status": "pending",
-                "reason": None,
-                "log_count": 0,
-                "scheduler_mode": "",
-                "scheduler_wait_seconds": 0.0,
-                "runtime_wait_seconds": 0.0,
-                "runtime_lock_count": 0,
-                "runtime_eviction_count": 0,
-            },
-        )
+        return self._runtime_events.ensure_task_stage_metric_entry(task_id, stage)
 
     async def _persist_stage_metric(self, task_id: str, stage: StageType) -> None:
-        stage_metrics = self._task_stage_metrics.get(task_id)
-        if not stage_metrics:
-            return
-        stage_entry = dict(stage_metrics.get(stage) or {})
-        metric_payload = {
-            "task_id": task_id,
-            "stage": stage,
-            "started_at": str(stage_entry.get("started_at") or "").strip() or None,
-            "completed_at": str(stage_entry.get("completed_at") or "").strip() or None,
-            "elapsed_seconds": _to_optional_float(stage_entry.get("elapsed_seconds")),
-            "log_count": int(stage_entry.get("log_count", 0) or 0),
-            "scheduler_mode": str(stage_entry.get("scheduler_mode", "") or ""),
-            "scheduler_wait_seconds": float(stage_entry.get("scheduler_wait_seconds", 0.0) or 0.0),
-            "runtime_wait_seconds": float(stage_entry.get("runtime_wait_seconds", 0.0) or 0.0),
-            "runtime_lock_count": int(stage_entry.get("runtime_lock_count", 0) or 0),
-            "runtime_eviction_count": int(stage_entry.get("runtime_eviction_count", 0) or 0),
-            "metrics_json": orjson.dumps(stage_entry).decode("utf-8"),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-
-        def _write_stage_metric() -> None:
-            self._task_store.upsert_stage_metric(task_id=task_id, stage=stage, payload=metric_payload)
-
-        await asyncio.to_thread(_write_stage_metric)
+        await self._runtime_events.persist_stage_metric(task_id, stage)
 
     async def _persist_analysis_result(
         self,
@@ -1694,17 +1566,13 @@ class TaskRunner:
         progress: int,
         reason: str | None = None,
     ) -> None:
-        stage_snapshot = dict(self._task_stage_metrics.get(task_id, {}).get(stage, {}))
-        payload: dict[str, object] = {
-            "stage": stage,
-            "status": status,
-            "progress": progress,
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-            "metrics": stage_snapshot,
-        }
-        if reason:
-            payload["reason"] = reason
-        await asyncio.to_thread(self._task_store.upsert_analysis_result, task_id, stage, payload)
+        await self._runtime_events.persist_analysis_result(
+            task_id,
+            stage,
+            status=status,
+            progress=progress,
+            reason=reason,
+        )
 
     async def _persist_runtime_warning(
         self,
@@ -1718,22 +1586,16 @@ class TaskRunner:
         message: str,
         elapsed_seconds: float | None,
     ) -> None:
-        payload = {
-            "task_id": task_id,
-            "stage": stage,
-            "code": code,
-            "component": component,
-            "action": action,
-            "substage": substage,
-            "message": message,
-            "elapsed_seconds": round(elapsed_seconds, 2) if elapsed_seconds is not None else None,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-
-        def _write_runtime_warning() -> None:
-            self._task_store.append_runtime_warning(task_id=task_id, payload=payload)
-
-        await asyncio.to_thread(_write_runtime_warning)
+        await self._artifact_persistence.persist_runtime_warning(
+            task_id=task_id,
+            stage=stage,
+            code=code,
+            component=component,
+            action=action,
+            substage=substage,
+            message=message,
+            elapsed_seconds=elapsed_seconds,
+        )
 
     async def _persist_stage_artifact_json(
         self,
@@ -1742,8 +1604,7 @@ class TaskRunner:
         relative_path: str,
         payload: object,
     ) -> None:
-        await asyncio.to_thread(
-            self._stage_artifact_store.write_json,
+        await self._artifact_persistence.persist_stage_artifact_json(
             task_id,
             stage,
             relative_path,
@@ -1757,8 +1618,7 @@ class TaskRunner:
         relative_path: str,
         text: str,
     ) -> None:
-        await asyncio.to_thread(
-            self._stage_artifact_store.write_text,
+        await self._artifact_persistence.persist_stage_artifact_text(
             task_id,
             stage,
             relative_path,
@@ -1773,8 +1633,7 @@ class TaskRunner:
         chunk_index: int,
         payload: object,
     ) -> str:
-        return await asyncio.to_thread(
-            self._stage_artifact_store.write_chunk_json,
+        return await self._artifact_persistence.persist_stage_artifact_chunk_json(
             task_id,
             stage,
             chunk_group,
@@ -1792,65 +1651,13 @@ class TaskRunner:
         optimized_segments: list[dict[str, float | str]],
         chunk_windows: list[dict[str, object]],
     ) -> None:
-        normalized_segments = [
-            {
-                "start": round(_to_float(segment.get("start")), 2),
-                "end": round(max(_to_float(segment.get("start")), _to_float(segment.get("end"))), 2),
-                "text": str(segment.get("text", "")).strip(),
-            }
-            for segment in optimized_segments
-            if isinstance(segment, dict)
-        ]
-        grouped_chunks = self._split_segments_by_chunk_windows(normalized_segments, chunk_windows)
-        chunk_manifest: list[dict[str, object]] = []
-        for chunk_index, group in enumerate(grouped_chunks):
-            segments = list(group.get("segments", []))
-            payload = {
-                "task_id": task_id,
-                "chunk_index": int(group.get("chunk_index", chunk_index + 1)),
-                "chunk_total": len(grouped_chunks),
-                "start_seconds": group.get("start_seconds"),
-                "end_seconds": group.get("end_seconds"),
-                "segment_count": len(segments),
-                "segments": segments,
-                "text": _join_transcript_segment_texts(segments),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }
-            relative_path = await self._persist_stage_artifact_chunk_json(
-                task_id,
-                "D",
-                "transcript-optimize",
-                chunk_index,
-                payload,
-            )
-            chunk_manifest.append(
-                {
-                    "chunk_index": payload["chunk_index"],
-                    "relative_path": relative_path,
-                    "segment_count": payload["segment_count"],
-                    "start_seconds": payload["start_seconds"],
-                    "end_seconds": payload["end_seconds"],
-                }
-            )
-        await self._persist_stage_artifact_text(
-            task_id,
-            "D",
-            "transcript-optimize/full.txt",
-            (summary_source_text or "").strip(),
-        )
-        await self._persist_stage_artifact_json(
-            task_id,
-            "D",
-            "transcript-optimize/index.json",
-            {
-                "task_id": task_id,
-                "mode": correction_mode,
-                "fallback_used": fallback_used,
-                "chunk_count": len(grouped_chunks),
-                "segment_count": len(normalized_segments),
-                "chunks": chunk_manifest,
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            },
+        await self._artifact_persistence.persist_transcript_optimization_artifacts(
+            task_id=task_id,
+            correction_mode=correction_mode,
+            fallback_used=fallback_used,
+            summary_source_text=summary_source_text,
+            optimized_segments=optimized_segments,
+            chunk_windows=chunk_windows,
         )
 
     async def _persist_delivery_artifacts(
@@ -1860,36 +1667,16 @@ class TaskRunner:
         notes_markdown: str,
         mindmap_markdown: str,
     ) -> None:
-        await self._persist_stage_artifact_text(task_id, "D", "fusion/summary.md", summary_markdown or "")
-        await self._persist_stage_artifact_text(task_id, "D", "fusion/notes.md", notes_markdown or "")
-        await self._persist_stage_artifact_text(task_id, "D", "fusion/mindmap.md", mindmap_markdown or "")
-        await self._persist_stage_artifact_json(
+        await self._artifact_persistence.persist_delivery_artifacts(
             task_id,
-            "D",
-            "fusion/index.json",
-            {
-                "task_id": task_id,
-                "summary_chars": len(summary_markdown or ""),
-                "notes_chars": len(notes_markdown or ""),
-                "mindmap_chars": len(mindmap_markdown or ""),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            },
+            summary_markdown,
+            notes_markdown,
+            mindmap_markdown,
         )
 
     @staticmethod
     def _build_audio_chunk_windows(audio_chunks: list[AudioChunk]) -> list[dict[str, object]]:
-        windows: list[dict[str, object]] = []
-        for index, chunk in enumerate(audio_chunks, start=1):
-            start_seconds = round(max(0.0, float(chunk.start_seconds)), 2)
-            end_seconds = round(start_seconds + max(0.0, float(chunk.duration_seconds)), 2)
-            windows.append(
-                {
-                    "chunk_index": index,
-                    "start_seconds": start_seconds,
-                    "end_seconds": end_seconds,
-                }
-            )
-        return windows
+        return TaskArtifactPersistenceService.build_audio_chunk_windows(audio_chunks)
 
     def _load_audio_chunk_windows_for_task(
         self,
@@ -1897,68 +1684,20 @@ class TaskRunner:
         task_id: str,
         transcript_segments: list[dict[str, float | str]],
     ) -> list[dict[str, object]]:
-        payload = self._stage_artifact_store.read_json(task_id, "C", "transcript/index.json", default={})
-        if isinstance(payload, dict):
-            chunks_payload = payload.get("chunks")
-            if isinstance(chunks_payload, list):
-                windows: list[dict[str, object]] = []
-                for item in chunks_payload:
-                    if not isinstance(item, dict):
-                        continue
-                    windows.append(
-                        {
-                            "chunk_index": int(item.get("index", len(windows) + 1) or (len(windows) + 1)),
-                            "start_seconds": round(_to_float(item.get("start_seconds")), 2),
-                            "end_seconds": round(_to_float(item.get("end_seconds")), 2),
-                        }
-                    )
-                if windows:
-                    return windows
-        if not transcript_segments:
-            return [{"chunk_index": 1, "start_seconds": 0.0, "end_seconds": 0.0}]
-        start_seconds = round(min(_to_float(item.get("start")) for item in transcript_segments), 2)
-        end_seconds = round(max(_to_float(item.get("end")) for item in transcript_segments), 2)
-        return [{"chunk_index": 1, "start_seconds": start_seconds, "end_seconds": max(start_seconds, end_seconds)}]
+        return self._artifact_persistence.load_audio_chunk_windows_for_task(
+            task_id=task_id,
+            transcript_segments=transcript_segments,
+        )
 
     @staticmethod
     def _split_segments_by_chunk_windows(
         segments: list[dict[str, float | str]],
         chunk_windows: list[dict[str, object]],
     ) -> list[dict[str, object]]:
-        windows = [window for window in chunk_windows if isinstance(window, dict)]
-        if not windows:
-            windows = [{"chunk_index": 1, "start_seconds": 0.0, "end_seconds": 0.0}]
-        windows.sort(key=lambda item: (int(item.get("chunk_index", 0) or 0), _to_float(item.get("start_seconds"))))
-        grouped: list[dict[str, object]] = [
-            {
-                "chunk_index": int(window.get("chunk_index", index + 1) or (index + 1)),
-                "start_seconds": round(_to_float(window.get("start_seconds")), 2),
-                "end_seconds": round(max(_to_float(window.get("start_seconds")), _to_float(window.get("end_seconds"))), 2),
-                "segments": [],
-            }
-            for index, window in enumerate(windows)
-        ]
-        if not segments:
-            return grouped
-        for segment in segments:
-            if not isinstance(segment, dict):
-                continue
-            normalized = {
-                "start": round(_to_float(segment.get("start")), 2),
-                "end": round(max(_to_float(segment.get("start")), _to_float(segment.get("end"))), 2),
-                "text": str(segment.get("text", "")).strip(),
-            }
-            target_index = len(grouped) - 1
-            segment_start = _to_float(normalized.get("start"))
-            for index, group in enumerate(grouped):
-                group_end = _to_float(group.get("end_seconds"))
-                if segment_start <= group_end or index == len(grouped) - 1:
-                    target_index = index
-                    break
-            target_segments = grouped[target_index].setdefault("segments", [])
-            if isinstance(target_segments, list):
-                target_segments.append(normalized)
-        return grouped
+        return TaskArtifactPersistenceService.split_segments_by_chunk_windows(
+            segments=segments,
+            chunk_windows=chunk_windows,
+        )
 
     async def _publish_transcript_optimized_preview(self, task_id: str, text: str) -> None:
         await self._reset_transcript_optimized_preview(task_id)
@@ -2022,9 +1761,98 @@ class TaskRunner:
             },
         )
 
+    def _normalize_stage_d_bundle(
+        self,
+        *,
+        title: str,
+        transcript_text: str,
+        bundle: SummaryBundle,
+    ) -> SummaryBundle:
+        summary_markdown = (bundle.summary_markdown or "").strip()
+        notes_markdown = (bundle.notes_markdown or "").strip()
+        mindmap_markdown = (bundle.mindmap_markdown or "").strip()
+
+        if not summary_markdown:
+            summary_markdown = self._build_fallback_summary_markdown(transcript_text=transcript_text)
+        if not self._is_notes_markdown_structured(notes_markdown):
+            notes_markdown = self._build_fallback_notes_markdown(title=title, summary_markdown=summary_markdown)
+        if not self._is_mindmap_markdown_valid(mindmap_markdown):
+            mindmap_markdown = self._build_fallback_mindmap_markdown(title=title, summary_markdown=summary_markdown)
+
+        return SummaryBundle(
+            summary_markdown=summary_markdown,
+            notes_markdown=notes_markdown,
+            mindmap_markdown=mindmap_markdown,
+        )
+
+    @staticmethod
+    def _is_notes_markdown_structured(markdown: str) -> bool:
+        text = (markdown or "").strip()
+        if not text:
+            return False
+        return "## " in text or text.startswith("# ")
+
+    @staticmethod
+    def _is_mindmap_markdown_valid(markdown: str) -> bool:
+        text = (markdown or "").strip().lower()
+        if not text:
+            return False
+        return (
+            "```mindmap" in text
+            or "```mermaid" in text
+            or text.startswith("mindmap")
+            or text.startswith("graph ")
+            or text.startswith("flowchart ")
+        )
+
+    @staticmethod
+    def _build_fallback_summary_markdown(*, transcript_text: str) -> str:
+        normalized = (transcript_text or "").strip()
+        lines = [line.strip() for line in normalized.splitlines() if line.strip()]
+        preview = "\n".join(lines[:12]).strip() if lines else "无可用转录内容。"
+        return (
+            "## 核心摘要\n\n"
+            f"{preview}\n\n"
+            "## 后续建议\n\n"
+            "- 建议复核关键术语与时间点\n"
+            "- 建议补充业务上下文后再次生成\n"
+        )
+
+    @staticmethod
+    def _build_fallback_notes_markdown(*, title: str, summary_markdown: str) -> str:
+        normalized_title = (title or "").strip() or "任务笔记"
+        normalized_summary = (summary_markdown or "").strip()
+        return (
+            f"# {normalized_title}\n\n"
+            "## 关键内容\n\n"
+            f"{normalized_summary or '暂无可用内容。'}\n\n"
+            "## 行动项\n\n"
+            "- [ ] 校对摘要结构\n"
+            "- [ ] 补充重点结论\n"
+        )
+
+    @staticmethod
+    def _build_fallback_mindmap_markdown(*, title: str, summary_markdown: str) -> str:
+        normalized_title = (title or "").strip() or "任务分析"
+        lines = [line.strip("- ").strip() for line in (summary_markdown or "").splitlines() if line.strip()]
+        branch_1 = lines[0] if lines else "核心观点"
+        branch_2 = lines[1] if len(lines) > 1 else "关键事实"
+        branch_3 = lines[2] if len(lines) > 2 else "行动建议"
+        return (
+            "```mindmap\n"
+            "mindmap\n"
+            f"  root(({normalized_title}))\n"
+            f"    {branch_1}\n"
+            f"    {branch_2}\n"
+            f"    {branch_3}\n"
+            "```\n"
+        )
+
     async def _update_task(self, task_id: str, **fields) -> None:
-        if task_id in self._task_stage_metrics and "stage_metrics_json" not in fields:
-            fields["stage_metrics_json"] = _encode_stage_metrics(self._task_stage_metrics[task_id])
+        if "stage_metrics_json" not in fields:
+            stage_metrics_json = self._runtime_events.stage_metrics_json(task_id)
+            if stage_metrics_json is not None:
+                fields["stage_metrics_json"] = stage_metrics_json
 
         def _write() -> None:
             self._task_store.update(task_id, **fields)

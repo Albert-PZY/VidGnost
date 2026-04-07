@@ -192,7 +192,7 @@ export function formatRuntimeWarningLine(event: TaskEvent): string {
   return `${prefixes.join(' ')} ${body}`.trim()
 }
 
-export function normalizeWhisperConfigForGpu(config: WhisperConfig): WhisperConfig {
+export function normalizeWhisperConfigForCpu(config: WhisperConfig): WhisperConfig {
   const normalizedComputeType = config.compute_type === 'float32' ? 'float32' : 'int8'
   return {
     ...config,

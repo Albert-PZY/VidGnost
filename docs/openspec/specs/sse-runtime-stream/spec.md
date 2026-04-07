@@ -44,6 +44,14 @@ SSE stream SHALL emit `runtime_warning` for degraded-but-continuable runtime con
 - **WHEN** backend detects non-fatal runtime risk during precheck
 - **THEN** backend emits `runtime_warning` with `stage`, `message`, `code`, `component`, `action`
 
+### Requirement: Failure events SHALL include actionable classification metadata
+Terminal `task_failed` SSE events SHALL include machine-readable failure category and user-facing hint for diagnostics.
+
+#### Scenario: Pipeline emits terminal failure
+- **WHEN** backend publishes `task_failed`
+- **THEN** payload includes `error`
+- **AND** payload includes `category` and `hint`
+
 ### Requirement: Transcript optimization preview events SHALL support timeline metadata
 `transcript_optimized_preview` events SHOULD support optional `start` / `end` fields for strict-mode timeline rendering.
 

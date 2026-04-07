@@ -478,7 +478,10 @@ def test_bundle_contains_subtitle_files() -> None:
             task_id,
             status=TaskStatus.COMPLETED.value,
             title="bundle-subtitle",
+            transcript_text="hello",
             transcript_segments_json=orjson.dumps(segments).decode("utf-8"),
+            notes_markdown="note",
+            mindmap_markdown="```mindmap\nmindmap\n  root((bundle-subtitle))\n```",
         )
 
         bundle_response = client.get(f"/api/tasks/{task_id}/export/bundle?archive=zip")
@@ -491,6 +494,36 @@ def test_bundle_contains_subtitle_files() -> None:
             assert "bundle-subtitle-summary.md" not in names
             assert "bundle-subtitle-stage-logs.json" not in names
             assert "bundle-subtitle-meta.json" not in names
+
+
+def test_export_notes_rejects_empty_artifact() -> None:
+    with TestClient(app) as client:
+        async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
+            return
+
+        client.app.state.task_runner.submit = fake_submit
+        create_response = client.post(
+            "/api/tasks/url",
+            json={
+                "url": "BV1xx411c7mD",
+                "model_size": "small",
+                "language": "zh",
+            },
+        )
+        assert create_response.status_code == 202
+        task_id = create_response.json()["task_id"]
+
+        task_store = client.app.state.task_store
+        task_store.update(
+            task_id,
+            status=TaskStatus.COMPLETED.value,
+            title="empty-notes",
+        )
+
+        notes_response = client.get(f"/api/tasks/{task_id}/export/notes")
+        assert notes_response.status_code == 409
+        payload = notes_response.json()
+        assert payload["code"] == "EXPORT_NOTES_EMPTY"
 
 
 def test_update_task_artifacts_after_completion() -> None:
@@ -517,6 +550,8 @@ def test_update_task_artifacts_after_completion() -> None:
             task_id,
             status=TaskStatus.COMPLETED.value,
             title="editable-artifacts",
+            transcript_text="line one",
+            transcript_segments_json=orjson.dumps([{"start": 0.0, "end": 0.5, "text": "line one"}]).decode("utf-8"),
             summary_markdown="old summary",
             notes_markdown="old notes",
             mindmap_markdown="# Old Mindmap",

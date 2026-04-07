@@ -343,9 +343,9 @@ class WhisperService:
                     "percent": 100.0,
                 },
             )
-        except Exception:
+        except Exception as exc:
             shutil.rmtree(temp_root, ignore_errors=True)
-            raise
+            raise RuntimeError(_build_whisper_model_download_error(exc)) from exc
 
     async def _resolve_model_files(self) -> tuple[str, list[tuple[str, int]]]:
         endpoints = self._candidate_model_endpoints()
@@ -602,3 +602,17 @@ def _normalize_load_profile(raw: object) -> LoadProfile:
     if candidate in {"balanced", "memory_first"}:
         return candidate
     return "balanced"
+
+
+def _build_whisper_model_download_error(exc: Exception) -> str:
+    message = str(exc).strip() or type(exc).__name__
+    normalized = message.lower()
+    if "no space" in normalized or "disk" in normalized:
+        hint = "磁盘空间不足或无写入权限，请清理磁盘并确认 storage 目录可写。"
+    elif "timeout" in normalized or "connect" in normalized or "tls" in normalized:
+        hint = "网络连接不稳定，请检查网络后重试。"
+    elif "size mismatch" in normalized or "missing after download" in normalized:
+        hint = "模型文件校验失败，请重试下载。"
+    else:
+        hint = "请检查网络、磁盘空间和模型目录权限后重试。"
+    return f"Whisper small 模型下载失败：{message}。{hint}"
