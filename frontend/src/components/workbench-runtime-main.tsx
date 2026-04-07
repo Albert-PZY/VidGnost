@@ -10,6 +10,7 @@ import { TerminalPanel } from './workbench-panels'
 import { cn } from '../lib/utils'
 import type {
   StageKey,
+  TaskArtifactEntry,
   TaskDetail,
   TranscriptSegment,
   VmPhaseKey,
@@ -50,6 +51,16 @@ const PHASE_STAGE_MAP: Record<VmPhaseKey, StageKey> = {
   summary_delivery: 'D',
   mindmap_delivery: 'D',
   D: 'D',
+}
+const D_DEBUG_ARTIFACT_MATCHERS: Partial<Record<VmPhaseKey, string[]>> = {
+  transcript_optimize: ['transcript-optimize/'],
+  notes_extract: ['notes-extract/'],
+  notes_outline: ['notes-outline/'],
+  notes_sections: ['notes-sections/'],
+  notes_coverage: ['notes-coverage/'],
+  summary_delivery: ['fusion/summary.md', 'fusion/index.json', 'fusion/fusion-prompt.md'],
+  mindmap_delivery: ['fusion/mindmap.md', 'fusion/index.json', 'fusion/fusion-prompt.md'],
+  D: ['transcript-optimize/', 'notes-extract/', 'notes-outline/', 'notes-sections/', 'notes-coverage/', 'fusion/'],
 }
 
 function resolveRunningDSubphase(metrics: Record<VmPhaseKey, VmPhaseMetric>): VmPhaseKey {
@@ -112,6 +123,60 @@ function phaseElapsedSeconds(metric: VmPhaseMetric | undefined, runtimeNowMs: nu
   return Math.max(0, Math.floor(parseNumeric(metric.elapsed_seconds, 0)))
 }
 
+function normalizeArtifactPath(value: string): string {
+  return value.replace(/\\/g, '/').replace(/^\/+/, '')
+}
+
+function getArtifactRelativePath(entry: TaskArtifactEntry): string {
+  const relativePath = typeof entry.relative_path === 'string' ? entry.relative_path.trim() : ''
+  if (relativePath) {
+    return normalizeArtifactPath(relativePath)
+  }
+  const logicalPath = typeof entry.logical_path === 'string' ? entry.logical_path.trim() : ''
+  if (!logicalPath) return ''
+  const stageArtifactMarker = '/stage-artifacts/'
+  const markerIndex = logicalPath.indexOf(stageArtifactMarker)
+  if (markerIndex >= 0) {
+    const suffix = logicalPath.slice(markerIndex + stageArtifactMarker.length)
+    const segments = normalizeArtifactPath(suffix).split('/')
+    if (segments.length >= 3) {
+      return segments.slice(2).join('/')
+    }
+  }
+  const stagePathMatch = logicalPath.match(/\/D\/(.+)$/i)
+  if (stagePathMatch?.[1]) {
+    return normalizeArtifactPath(stagePathMatch[1])
+  }
+  return normalizeArtifactPath(logicalPath)
+}
+
+function getArtifactLogicalPath(entry: TaskArtifactEntry): string {
+  return typeof entry.logical_path === 'string' ? entry.logical_path.trim() : ''
+}
+
+function formatArtifactSize(sizeBytes: number): string {
+  if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) return '0 B'
+  if (sizeBytes < 1024) return `${Math.round(sizeBytes)} B`
+  if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)} KB`
+  return `${(sizeBytes / (1024 * 1024)).toFixed(2)} MB`
+}
+
+function resolveArtifactPreviewMode(path: string): 'markdown' | 'json' | 'text' {
+  const normalizedPath = path.toLowerCase()
+  if (normalizedPath.endsWith('.md') || normalizedPath.endsWith('.markdown')) return 'markdown'
+  if (normalizedPath.endsWith('.json')) return 'json'
+  return 'text'
+}
+
+function filterArtifactsForPhase(entries: TaskArtifactEntry[], phase: VmPhaseKey): TaskArtifactEntry[] {
+  const matchers = D_DEBUG_ARTIFACT_MATCHERS[phase]
+  if (!matchers?.length) return []
+  return entries.filter((entry) => {
+    const relativePath = getArtifactRelativePath(entry)
+    return matchers.some((matcher) => relativePath.includes(matcher))
+  })
+}
+
 interface WorkbenchRuntimeMainProps {
   t: TFunction
   isDark: boolean
@@ -136,6 +201,7 @@ interface WorkbenchRuntimeMainProps {
   activeStage: StageKey
   setActiveStage: (stage: StageKey) => void
   stageLogs: Record<StageKey, string[]>
+  vmPhaseLogs: Record<VmPhaseKey, string[]>
   transcriptPanelRef: RefObject<HTMLDivElement | null>
   transcriptStream: string
   transcriptSegments: TranscriptSegment[]
@@ -147,6 +213,7 @@ interface WorkbenchRuntimeMainProps {
   hasUnsavedArtifactEdits: boolean
   savingArtifacts: boolean
   onPersistEditedArtifacts: () => Promise<boolean | void>
+  onLoadArtifactContent: (path: string) => Promise<string>
   notesPanelRef: RefObject<HTMLDivElement | null>
   notesStream: string
   onNotesMarkdownChange: (value: string) => void
@@ -179,6 +246,7 @@ export function WorkbenchRuntimeMain({
   activeStage,
   setActiveStage,
   stageLogs,
+  vmPhaseLogs,
   transcriptPanelRef,
   transcriptStream,
   transcriptSegments,
@@ -190,6 +258,7 @@ export function WorkbenchRuntimeMain({
   hasUnsavedArtifactEdits,
   savingArtifacts,
   onPersistEditedArtifacts,
+  onLoadArtifactContent,
   notesPanelRef,
   notesStream,
   onNotesMarkdownChange,
@@ -199,6 +268,10 @@ export function WorkbenchRuntimeMain({
 }: WorkbenchRuntimeMainProps) {
   const [manualVmPhaseSelection, setManualVmPhaseSelection] = useState<{ taskId: string; phase: VmPhaseKey } | null>(null)
   const [promptPreviewFullscreen, setPromptPreviewFullscreen] = useState(false)
+  const [selectedArtifactPath, setSelectedArtifactPath] = useState<string | null>(null)
+  const [artifactPreviewContent, setArtifactPreviewContent] = useState('')
+  const [artifactPreviewError, setArtifactPreviewError] = useState<string | null>(null)
+  const [artifactPreviewLoading, setArtifactPreviewLoading] = useState(false)
   const transcriptSourcePanelRef = useRef<HTMLDivElement | null>(null)
   const optimizedPanelRef = useRef<HTMLDivElement | null>(null)
   const strictScrollSyncLockedRef = useRef(false)
@@ -245,12 +318,73 @@ export function WorkbenchRuntimeMain({
     return autoVmPhase
   }, [activeTask, autoVmPhase, isTaskRunning, manualVmPhaseSelection])
 
+  const selectedPhaseLogs = useMemo(() => {
+    if (selectedVmPhase === 'A' || selectedVmPhase === 'B' || selectedVmPhase === 'C' || selectedVmPhase === 'D') {
+      return vmPhaseLogs[selectedVmPhase] ?? stageLogs[PHASE_STAGE_MAP[selectedVmPhase]]
+    }
+    return vmPhaseLogs[selectedVmPhase] ?? []
+  }, [selectedVmPhase, stageLogs, vmPhaseLogs])
+
+  const selectedPhaseLogCount = selectedPhaseLogs.length
+
+  const debugArtifacts = useMemo(
+    () => filterArtifactsForPhase(activeTask?.artifact_index ?? [], selectedVmPhase),
+    [activeTask?.artifact_index, selectedVmPhase],
+  )
+
+  const selectedArtifactEntry = useMemo(() => {
+    if (!selectedArtifactPath) return null
+    return debugArtifacts.find((entry) => getArtifactLogicalPath(entry) === selectedArtifactPath) ?? null
+  }, [debugArtifacts, selectedArtifactPath])
+
   useEffect(() => {
     const stage = PHASE_STAGE_MAP[selectedVmPhase]
     if (activeStage !== stage) {
       setActiveStage(stage)
     }
   }, [activeStage, selectedVmPhase, setActiveStage])
+
+  useEffect(() => {
+    if (!debugArtifacts.length) {
+      setSelectedArtifactPath(null)
+      setArtifactPreviewContent('')
+      setArtifactPreviewError(null)
+      return
+    }
+    if (selectedArtifactPath && debugArtifacts.some((entry) => getArtifactLogicalPath(entry) === selectedArtifactPath)) {
+      return
+    }
+    setSelectedArtifactPath(getArtifactLogicalPath(debugArtifacts[0]))
+  }, [debugArtifacts, selectedArtifactPath])
+
+  useEffect(() => {
+    if (!selectedArtifactPath) {
+      setArtifactPreviewContent('')
+      setArtifactPreviewError(null)
+      setArtifactPreviewLoading(false)
+      return
+    }
+    let cancelled = false
+    setArtifactPreviewLoading(true)
+    setArtifactPreviewError(null)
+    void onLoadArtifactContent(selectedArtifactPath)
+      .then((content) => {
+        if (cancelled) return
+        setArtifactPreviewContent(content)
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        setArtifactPreviewError(error instanceof Error ? error.message : t('errors.taskFailed'))
+        setArtifactPreviewContent('')
+      })
+      .finally(() => {
+        if (cancelled) return
+        setArtifactPreviewLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [onLoadArtifactContent, selectedArtifactPath, t])
 
   useEffect(() => {
     if (transcriptCorrectionMode === 'strict') {
@@ -323,6 +457,114 @@ export function WorkbenchRuntimeMain({
     )
   }
 
+  const renderPhaseLogPanel = (phase: VmPhaseKey) => (
+    <div className="runtime-panel rounded-xl border p-3 text-sm">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <PreText variant="timestamp" className="runtime-panel-caption">
+          {t('runtime.stageD.phaseLogsTitle', {
+            defaultValue: '阶段日志',
+            phase: t(`stages.${phase}.label`),
+          })}
+        </PreText>
+        <span className="text-xs text-text-subtle">
+          {t('runtime.metrics.logs', { count: vmPhaseLogs[phase]?.length ?? 0 })}
+        </span>
+      </div>
+      <TerminalPanel lines={vmPhaseLogs[phase] ?? []} emptyText={t('runtime.waitingLogs')} />
+    </div>
+  )
+
+  const renderDebugArtifactsPanel = () => {
+    if (
+      selectedVmPhase === 'A'
+      || selectedVmPhase === 'B'
+      || selectedVmPhase === 'C'
+    ) {
+      return null
+    }
+
+    return (
+      <div className="runtime-panel rounded-xl border p-3 text-sm">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <PreText variant="timestamp" className="runtime-panel-caption">
+            {t('runtime.stageD.debugArtifactsTitle', { defaultValue: '调试产物预览' })}
+          </PreText>
+          <span className="text-xs text-text-subtle">
+            {t('runtime.stageD.debugArtifactsCount', {
+              defaultValue: '{{count}} 个文件',
+              count: debugArtifacts.length,
+            })}
+          </span>
+        </div>
+
+        {!debugArtifacts.length ? (
+          <div className="rounded-lg border border-dashed border-border/70 bg-surface-muted/35 px-3 py-6 text-center text-sm text-text-subtle">
+            {t('runtime.stageD.debugArtifactsEmpty', { defaultValue: '当前子阶段暂未持久化可预览产物。' })}
+          </div>
+        ) : (
+          <div className="grid gap-3 xl:grid-cols-[260px_minmax(0,1fr)]">
+            <div className="max-h-[420px] space-y-2 overflow-auto pr-1">
+              {debugArtifacts.map((entry) => {
+                const logicalPath = getArtifactLogicalPath(entry)
+                const relativePath = getArtifactRelativePath(entry)
+                const isSelected = logicalPath === selectedArtifactPath
+                return (
+                  <button
+                    key={logicalPath}
+                    type="button"
+                    className={cn(
+                      'w-full rounded-xl border px-3 py-2.5 text-left transition-colors',
+                      isSelected
+                        ? 'border-border bg-bg-base shadow-sm'
+                        : 'border-accent/45 bg-accent/10 hover:border-accent/30',
+                    )}
+                    onClick={() => setSelectedArtifactPath(logicalPath)}
+                  >
+                    <div className="line-clamp-2 break-all text-sm font-medium text-text-main">{relativePath || logicalPath}</div>
+                    <div className="mt-1 text-[11px] text-text-subtle">
+                      {formatArtifactSize(entry.size_bytes)} · {entry.source ?? entry.stage ?? 'artifact'}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-border/70 bg-bg-base">
+              <div className="border-b border-border/70 px-3 py-2">
+                <PreText variant="timestamp" className="break-all">
+                  {selectedArtifactEntry ? getArtifactRelativePath(selectedArtifactEntry) : t('runtime.stageD.debugArtifactsTitle')}
+                </PreText>
+              </div>
+              <div className="h-[420px] overflow-auto px-3 py-2">
+                {artifactPreviewLoading ? (
+                  <div className="flex h-full items-center justify-center text-text-subtle">
+                    <LoaderCircle className="h-5 w-5 animate-spin" />
+                  </div>
+                ) : artifactPreviewError ? (
+                  <div className="flex h-full items-center justify-center text-center text-sm text-red-500">
+                    {artifactPreviewError}
+                  </div>
+                ) : !selectedArtifactEntry ? (
+                  <div className="flex h-full items-center justify-center text-sm text-text-subtle">
+                    {t('runtime.stageD.debugArtifactsEmpty', { defaultValue: '当前子阶段暂未持久化可预览产物。' })}
+                  </div>
+                ) : resolveArtifactPreviewMode(getArtifactRelativePath(selectedArtifactEntry)) === 'markdown' ? (
+                  <div className="prose prose-sm max-w-none dark:prose-invert">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{artifactPreviewContent}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <pre className="whitespace-pre-wrap break-words font-mono text-[0.82rem] leading-6 text-text-main">
+                    {artifactPreviewContent}
+                  </pre>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   const renderPhasePanel = () => {
     if (selectedVmPhase === 'A') {
       return <TerminalPanel lines={stageLogs.A} emptyText={t('runtime.waitingLogs')} />
@@ -342,41 +584,47 @@ export function WorkbenchRuntimeMain({
     }
     if (selectedVmPhase === 'transcript_optimize') {
       return (
-        <div className="grid gap-3 lg:grid-cols-2">
-          <div
-            ref={transcriptSourcePanelRef}
-            onScroll={handleSourceTranscriptScroll}
-            className="runtime-panel h-[420px] overflow-auto rounded-xl border p-3 text-[0.9rem]"
-          >
-            <PreText variant="timestamp" className="mb-2 runtime-panel-caption">
-              {t('runtime.stageD.optimizeSourceTitle', { defaultValue: '语音转写原文本' })}
-            </PreText>
-            {renderTranscriptSegments(transcriptSegments, t('runtime.stageC.waitingTranscript'))}
-          </div>
-          <div
-            ref={optimizedPanelRef}
-            onScroll={handleOptimizedTranscriptScroll}
-            className="runtime-panel h-[420px] overflow-auto rounded-xl border p-3 text-[0.9rem]"
-          >
-            <PreText variant="timestamp" className="mb-2 runtime-panel-caption">
-              {t('runtime.stageD.optimizeResultTitle', { defaultValue: '转录文本优化结果（SSE 实时）' })}
-            </PreText>
-            {transcriptCorrectionMode === 'strict'
-              ? renderTranscriptSegments(
-                  optimizedTranscriptSegments,
-                  t('runtime.stageD.waitingOptimizedTranscript', { defaultValue: '等待优化文本流输出...' }),
-                )
-              : (
-                  <pre className="whitespace-pre-wrap font-mono leading-6">
-                    {optimizedTranscriptStream || t('runtime.stageD.waitingOptimizedTranscript', { defaultValue: '等待优化文本流输出...' })}
-                  </pre>
-                )}
+        <div className="grid gap-3">
+          {renderPhaseLogPanel('transcript_optimize')}
+          {renderDebugArtifactsPanel()}
+          <div className="grid gap-3 lg:grid-cols-2">
+            <div
+              ref={transcriptSourcePanelRef}
+              onScroll={handleSourceTranscriptScroll}
+              className="runtime-panel h-[420px] overflow-auto rounded-xl border p-3 text-[0.9rem]"
+            >
+              <PreText variant="timestamp" className="mb-2 runtime-panel-caption">
+                {t('runtime.stageD.optimizeSourceTitle', { defaultValue: '语音转写原文本' })}
+              </PreText>
+              {renderTranscriptSegments(transcriptSegments, t('runtime.stageC.waitingTranscript'))}
+            </div>
+            <div
+              ref={optimizedPanelRef}
+              onScroll={handleOptimizedTranscriptScroll}
+              className="runtime-panel h-[420px] overflow-auto rounded-xl border p-3 text-[0.9rem]"
+            >
+              <PreText variant="timestamp" className="mb-2 runtime-panel-caption">
+                {t('runtime.stageD.optimizeResultTitle', { defaultValue: '转录文本优化结果（SSE 实时）' })}
+              </PreText>
+              {transcriptCorrectionMode === 'strict'
+                ? renderTranscriptSegments(
+                    optimizedTranscriptSegments,
+                    t('runtime.stageD.waitingOptimizedTranscript', { defaultValue: '等待优化文本流输出...' }),
+                  )
+                : (
+                    <pre className="whitespace-pre-wrap font-mono leading-6">
+                      {optimizedTranscriptStream || t('runtime.stageD.waitingOptimizedTranscript', { defaultValue: '等待优化文本流输出...' })}
+                    </pre>
+                  )}
+            </div>
           </div>
         </div>
       )
     }
     return (
       <div className="grid gap-3">
+        {renderPhaseLogPanel(selectedVmPhase)}
+        {renderDebugArtifactsPanel()}
         <div className="runtime-panel rounded-xl border p-3 text-sm">
           <div className="mb-2 flex items-center justify-between gap-2">
             <PreText variant="timestamp" className="runtime-panel-caption">
@@ -571,7 +819,7 @@ export function WorkbenchRuntimeMain({
             </span>
           )}
           <span className="workbench-metric-chip px-2 py-1">
-            {t('runtime.metrics.logs', { count: activeStageLogCount })}
+            {t('runtime.metrics.logs', { count: selectedPhaseLogCount || activeStageLogCount })}
           </span>
         </div>
         <div className="mb-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4 xl:grid-cols-8">

@@ -632,3 +632,110 @@ def test_update_task_artifacts_rejects_running_task() -> None:
         )
         assert patch_response.status_code == 409
 
+
+def test_task_detail_artifact_index_includes_stage_d_notes_pipeline_artifacts() -> None:
+    with TestClient(app) as client:
+        async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
+            return
+
+        client.app.state.task_runner.submit = fake_submit
+        create_response = client.post(
+            "/api/tasks/url",
+            json={
+                "url": "BV1xx411c7mD",
+                "model_size": "small",
+                "language": "zh",
+            },
+        )
+        assert create_response.status_code == 202
+        task_id = create_response.json()["task_id"]
+
+        task_store = client.app.state.task_store
+        task_store.update(
+            task_id,
+            status=TaskStatus.COMPLETED.value,
+            transcript_text="line one",
+            transcript_segments_json=orjson.dumps([{"start": 0.0, "end": 0.5, "text": "line one"}]).decode("utf-8"),
+            summary_markdown="summary",
+            notes_markdown="notes",
+            mindmap_markdown="mindmap",
+        )
+
+        stage_root = Path(client.app.state.settings.storage_dir) / "tasks" / "stage-artifacts" / task_id / "D"
+        notes_extract_index = stage_root / "notes-extract" / "index.json"
+        notes_coverage_report = stage_root / "notes-coverage" / "report.json"
+        notes_extract_index.parent.mkdir(parents=True, exist_ok=True)
+        notes_coverage_report.parent.mkdir(parents=True, exist_ok=True)
+        notes_extract_index.write_text('{"chunk_count":1}', encoding="utf-8")
+        notes_coverage_report.write_text('{"missing_count":0}', encoding="utf-8")
+
+        patch_response = client.patch(f"/api/tasks/{task_id}/artifacts", json={"notes_markdown": "notes"})
+        assert patch_response.status_code == 200
+
+        detail_response = client.get(f"/api/tasks/{task_id}")
+        assert detail_response.status_code == 200
+        detail = detail_response.json()
+        paths = {str(item.get("logical_path", "")) for item in detail["artifact_index"]}
+        assert f"stage://task/{task_id}/D/notes-extract/index.json" in paths
+        assert f"stage://task/{task_id}/D/notes-coverage/report.json" in paths
+
+
+def test_get_task_artifact_content_supports_db_and_stage_paths() -> None:
+    with TestClient(app) as client:
+        async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
+            return
+
+        client.app.state.task_runner.submit = fake_submit
+        create_response = client.post(
+            "/api/tasks/url",
+            json={
+                "url": "BV1xx411c7mD",
+                "model_size": "small",
+                "language": "zh",
+            },
+        )
+        assert create_response.status_code == 202
+        task_id = create_response.json()["task_id"]
+
+        task_store = client.app.state.task_store
+        task_store.update(
+            task_id,
+            status=TaskStatus.COMPLETED.value,
+            notes_markdown="# Notes",
+        )
+
+        stage_file = (
+            Path(client.app.state.settings.storage_dir)
+            / "tasks"
+            / "stage-artifacts"
+            / task_id
+            / "D"
+            / "notes-outline"
+            / "outline.md"
+        )
+        stage_file.parent.mkdir(parents=True, exist_ok=True)
+        stage_file.write_text("# Outline", encoding="utf-8")
+
+        db_response = client.get(f"/api/tasks/{task_id}/artifacts/content", params={"path": f"db://task/{task_id}/notes.md"})
+        assert db_response.status_code == 200
+        assert db_response.text == "# Notes"
+
+        stage_response = client.get(
+            f"/api/tasks/{task_id}/artifacts/content",
+            params={"path": f"stage://task/{task_id}/D/notes-outline/outline.md"},
+        )
+        assert stage_response.status_code == 200
+        assert stage_response.text == "# Outline"
+
+        missing_response = client.get(
+            f"/api/tasks/{task_id}/artifacts/content",
+            params={"path": f"stage://task/{task_id}/D/notes-outline/missing.md"},
+        )
+        assert missing_response.status_code == 404
+
+        invalid_response = client.get(
+            f"/api/tasks/{task_id}/artifacts/content",
+            params={"path": f"stage://task/{task_id}/D/../../A/ingestion.json"},
+        )
+        assert invalid_response.status_code == 400
+

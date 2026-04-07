@@ -32,6 +32,7 @@ from app.services.events import EventBus
 from app.services.exporters import render_markmap_html
 from app.services.ingestion import ALLOWED_VIDEO_EXTENSIONS, sanitize_filename
 from app.services.naming import generate_time_key
+from app.services.stage_artifact_store import StageArtifactStore
 from app.services.task_artifact_index import build_task_artifact_index, parse_task_artifact_index
 from app.services.task_runner import TaskSubmission, TaskRunner
 from app.services.task_store import TaskStore
@@ -275,6 +276,7 @@ def update_task_title(
 
 @router.patch("/{task_id}/artifacts", response_model=TaskDetailResponse)
 def update_task_artifacts(
+    request: Request,
     task_id: str,
     payload: TaskArtifactsUpdateRequest,
     task_store: TaskStore = Depends(get_task_store),
@@ -302,12 +304,59 @@ def update_task_artifacts(
         summary_markdown=record.summary_markdown,
         notes_markdown=record.notes_markdown,
         mindmap_markdown=record.mindmap_markdown,
+        storage_dir=request.app.state.settings.storage_dir,
     )
     record.artifact_index_json = artifact_index_json
     record.artifact_total_bytes = artifact_total_bytes
     record.updated_at = datetime.now(timezone.utc)
     task_store.replace(record)
     return _to_detail(record)
+
+
+@router.get("/{task_id}/artifacts/content")
+def get_task_artifact_content(
+    request: Request,
+    task_id: str,
+    path: str = Query(..., min_length=1),
+    task_store: TaskStore = Depends(get_task_store),
+) -> PlainTextResponse:
+    record = _require_task(task_store, task_id)
+    normalized_path = str(path or "").strip()
+    if not normalized_path:
+        raise AppError.bad_request("Artifact path is required", code="ARTIFACT_PATH_REQUIRED")
+
+    db_prefix = f"db://task/{task_id}/"
+    stage_prefix = f"stage://task/{task_id}/"
+    if normalized_path.startswith(db_prefix):
+        filename = normalized_path[len(db_prefix) :].strip().replace("\\", "/")
+        content = _resolve_db_artifact_content(record, filename)
+        if content is None:
+            raise AppError.not_found("Artifact not found", code="ARTIFACT_NOT_FOUND")
+        return PlainTextResponse(content, media_type="text/plain; charset=utf-8")
+
+    stage_relative_path = normalized_path
+    if normalized_path.startswith(stage_prefix):
+        stage_relative_path = normalized_path[len(stage_prefix) :]
+    stage_relative_path = stage_relative_path.strip().replace("\\", "/").lstrip("/")
+    if not stage_relative_path or "/" not in stage_relative_path:
+        raise AppError.bad_request("Invalid stage artifact path", code="ARTIFACT_PATH_INVALID")
+    stage, _, relative_path = stage_relative_path.partition("/")
+    if not relative_path:
+        raise AppError.bad_request("Invalid stage artifact path", code="ARTIFACT_PATH_INVALID")
+    if stage not in STAGE_KEYS:
+        raise AppError.bad_request("Invalid stage artifact path", code="ARTIFACT_PATH_INVALID")
+
+    artifact_store = StageArtifactStore(request.app.state.settings.storage_dir)
+    try:
+        content = artifact_store.read_text(task_id, stage, relative_path, default="")
+        if not content:
+            raw_bytes = artifact_store.read_bytes(task_id, stage, relative_path, default=b"")
+            if not raw_bytes:
+                raise AppError.not_found("Artifact not found", code="ARTIFACT_NOT_FOUND")
+            content = raw_bytes.decode("utf-8", errors="replace")
+    except ValueError as exc:
+        raise AppError.bad_request(str(exc), code="ARTIFACT_PATH_INVALID") from exc
+    return PlainTextResponse(content, media_type="text/plain; charset=utf-8")
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -514,6 +563,21 @@ def _build_content_disposition(filename: str) -> str:
     ascii_fallback = ascii_fallback or "download.bin"
     encoded_filename = quote(filename, safe="")
     return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded_filename}"
+
+
+def _resolve_db_artifact_content(record: TaskRecord, filename: str) -> str | None:
+    normalized = filename.strip().replace("\\", "/")
+    if normalized == "transcript.txt":
+        return record.transcript_text
+    if normalized == "transcript-segments.json":
+        return record.transcript_segments_json
+    if normalized == "summary.md":
+        return record.summary_markdown
+    if normalized == "notes.md":
+        return record.notes_markdown
+    if normalized == "mindmap.md":
+        return record.mindmap_markdown
+    return None
 
 
 def _pack_zip(files: dict[str, bytes]) -> bytes:

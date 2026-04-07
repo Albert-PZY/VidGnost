@@ -39,6 +39,17 @@ export interface TaskSummaryItem {
   updated_at: string
 }
 
+export interface TaskArtifactEntry {
+  key: string
+  logical_path: string
+  relative_path?: string | null
+  stage?: string | null
+  kind?: string | null
+  source?: string | null
+  size_bytes: number
+  updated_at: string
+}
+
 export interface TaskDetail {
   id: string
   title: string | null
@@ -60,7 +71,7 @@ export interface TaskDetail {
   stage_metrics: Record<'A' | 'B' | 'C' | 'D', StageMetric>
   vm_phase_metrics: Record<VmPhaseKey, VmPhaseMetric>
   artifact_total_bytes: number
-  artifact_index: Array<Record<string, unknown>>
+  artifact_index: TaskArtifactEntry[]
   created_at: string
   updated_at: string
 }

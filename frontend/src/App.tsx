@@ -18,6 +18,7 @@ import {
 } from './components/workbench-panels'
 import {
   getLLMConfig,
+  getTaskArtifactContent,
   getPromptTemplates,
   getTask,
   getWhisperConfig,
@@ -57,6 +58,7 @@ import { useQuickStartDoc } from './hooks/use-quick-start-doc'
 import {
   createEmptyStageLogs,
   createEmptyStageTimers,
+  deriveVmPhaseLogsFromStageLogs,
   useTaskStream,
 } from './hooks/use-task-stream'
 import type {
@@ -217,6 +219,8 @@ function App() {
     setOverallProgress,
     stageLogs,
     setStageLogs,
+    vmPhaseLogs,
+    setVmPhaseLogs,
     stageTimers,
     setStageTimers,
     runtimeNowMs,
@@ -230,8 +234,10 @@ function App() {
     mindmapStream,
     setMindmapStream,
     appendLog,
+    appendVmPhaseLog,
     appendTranscript,
     appendSummary,
+    appendNotes,
     appendMindmap,
     flushBufferedStream,
     resetRuntimePanels,
@@ -449,14 +455,17 @@ function App() {
       }
     }
     if (detail.stage_logs) {
-      setStageLogs({
+      const nextStageLogs = {
         A: detail.stage_logs.A ?? [],
         B: detail.stage_logs.B ?? [],
         C: detail.stage_logs.C ?? [],
         D: detail.stage_logs.D ?? [],
-      })
+      }
+      setStageLogs(nextStageLogs)
+      setVmPhaseLogs(deriveVmPhaseLogsFromStageLogs(nextStageLogs))
     } else {
       setStageLogs(createEmptyStageLogs())
+      setVmPhaseLogs(deriveVmPhaseLogsFromStageLogs(createEmptyStageLogs()))
     }
   }
 
@@ -474,6 +483,13 @@ function App() {
   const updateHistoryRealtime = (taskId: string, patch: Partial<Pick<TaskSummaryItem, 'status' | 'progress'>>) => {
     setHistory((prev) => prev.map((item) => (item.id === taskId ? { ...item, ...patch } : item)))
   }
+
+  const loadArtifactContent = useCallback(async (path: string) => {
+    if (!activeTaskId) {
+      throw new Error(t('runtime.stageD.debugArtifactsNoTask', { defaultValue: '当前没有可读取的任务产物。' }))
+    }
+    return getTaskArtifactContent(activeTaskId, path)
+  }, [activeTaskId, t])
 
   useEffect(() => {
     if (activeTaskId) {
@@ -603,6 +619,7 @@ function App() {
     updateActiveTaskRealtime,
     updateHistoryRealtime,
     appendLog,
+    appendVmPhaseLog,
     appendTranscript,
     appendTranscriptSegment,
     appendTranscriptOptimized,
@@ -786,6 +803,7 @@ function App() {
     activeStage,
     setActiveStage,
     stageLogs,
+    vmPhaseLogs,
     transcriptPanelRef,
     transcriptStream,
     transcriptSegments,
@@ -796,6 +814,7 @@ function App() {
     hasUnsavedArtifactEdits,
     savingArtifacts,
     persistEditedArtifacts,
+    loadArtifactContent,
     notesPanelRef,
     notesStream,
     handleNotesMarkdownChange,
