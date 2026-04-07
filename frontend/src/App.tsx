@@ -490,6 +490,17 @@ function App() {
     return getTaskArtifactContent(activeTaskId, path)
   }, [activeTaskId, t])
 
+  const refreshRuntimeConfigCenterState = useCallback(async () => {
+    const [config, whisper] = await Promise.all([
+      getLLMConfig(),
+      getWhisperConfig(),
+    ])
+    setLLMConfig(config)
+    const normalizedWhisper = normalizeWhisperConfigForCpu(whisper)
+    setWhisperConfig(normalizedWhisper)
+    setWhisperDraft(normalizedWhisper)
+  }, [normalizeWhisperConfigForCpu])
+
   useEffect(() => {
     if (activeTaskId) {
       localStorage.setItem(ACTIVE_TASK_STORAGE_KEY, activeTaskId)
@@ -583,20 +594,15 @@ function App() {
     })()
     void (async () => {
       try {
-        const config = await getLLMConfig()
-        setLLMConfig(config)
         const promptTemplates = await getPromptTemplates()
         applyPromptTemplateBundle(promptTemplates)
-        const whisper = await getWhisperConfig()
-        const normalizedWhisper = normalizeWhisperConfigForCpu(whisper)
-        setWhisperConfig(normalizedWhisper)
-        setWhisperDraft(normalizedWhisper)
+        await refreshRuntimeConfigCenterState()
       } catch {
         // ignore first load failure
       }
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [applyPromptTemplateBundle])
+  }, [applyPromptTemplateBundle, refreshRuntimeConfigCenterState])
 
   const handleTaskEvent = useWorkbenchTaskEventHandler({
     t,
@@ -660,10 +666,14 @@ function App() {
 
   const openConfigPanel = (tab: 'llm' | 'whisper' | 'prompts' = 'llm') => {
     setConfigTab(tab)
-    if (tab === 'whisper') {
-      setWhisperDraft({ ...whisperConfig })
-    }
     setActiveSidebarPanel('config')
+    void (async () => {
+      try {
+        await refreshRuntimeConfigCenterState()
+      } catch {
+        // ignore config refresh failure and keep last-known local state
+      }
+    })()
   }
 
   const closeConfigPanel = () => {

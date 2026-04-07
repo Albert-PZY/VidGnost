@@ -6,6 +6,165 @@ test('首页工作台可加载', async ({ page }) => {
   await expect(page.getByRole('button', { name: /开始分析|Start/i })).toBeVisible()
 })
 
+test('运行配置弹窗每次打开都会重新读取最新本地运行配置', async ({ page }) => {
+  const llmResponses = [
+    {
+      mode: 'api',
+      load_profile: 'balanced',
+      api_key: 'test-key-old',
+      base_url: 'https://example.com/v1',
+      model: 'qwen-first',
+      correction_mode: 'strict',
+      correction_batch_size: 24,
+      correction_overlap: 3,
+    },
+    {
+      mode: 'api',
+      load_profile: 'balanced',
+      api_key: 'test-key-old',
+      base_url: 'https://example.com/v1',
+      model: 'qwen-first',
+      correction_mode: 'strict',
+      correction_batch_size: 24,
+      correction_overlap: 3,
+    },
+    {
+      mode: 'api',
+      load_profile: 'memory_first',
+      api_key: 'test-key-new',
+      base_url: 'https://example.com/v2',
+      model: 'qwen-second',
+      correction_mode: 'rewrite',
+      correction_batch_size: 18,
+      correction_overlap: 2,
+    },
+    {
+      mode: 'api',
+      load_profile: 'balanced',
+      api_key: 'test-key-latest',
+      base_url: 'https://example.com/v3',
+      model: 'qwen-third',
+      correction_mode: 'off',
+      correction_batch_size: 12,
+      correction_overlap: 1,
+    },
+  ]
+  const whisperResponses = [
+    {
+      model_default: 'small',
+      language: 'zh',
+      device: 'cpu',
+      compute_type: 'int8',
+      model_load_profile: 'balanced',
+      beam_size: 1,
+      vad_filter: true,
+      chunk_seconds: 180,
+      target_sample_rate: 16000,
+      target_channels: 1,
+    },
+    {
+      model_default: 'small',
+      language: 'zh',
+      device: 'cpu',
+      compute_type: 'int8',
+      model_load_profile: 'balanced',
+      beam_size: 1,
+      vad_filter: true,
+      chunk_seconds: 180,
+      target_sample_rate: 16000,
+      target_channels: 1,
+    },
+    {
+      model_default: 'small',
+      language: 'en',
+      device: 'cpu',
+      compute_type: 'float32',
+      model_load_profile: 'memory_first',
+      beam_size: 2,
+      vad_filter: false,
+      chunk_seconds: 240,
+      target_sample_rate: 16000,
+      target_channels: 1,
+    },
+    {
+      model_default: 'small',
+      language: 'ja',
+      device: 'cpu',
+      compute_type: 'int8',
+      model_load_profile: 'balanced',
+      beam_size: 3,
+      vad_filter: true,
+      chunk_seconds: 300,
+      target_sample_rate: 16000,
+      target_channels: 1,
+    },
+  ]
+  let llmGetCount = 0
+  let whisperGetCount = 0
+
+  await page.route('**/api/config/llm', async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback()
+      return
+    }
+    const payload = llmResponses[Math.min(llmGetCount, llmResponses.length - 1)]
+    llmGetCount += 1
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(payload),
+    })
+  })
+
+  await page.route('**/api/config/whisper', async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback()
+      return
+    }
+    const payload = whisperResponses[Math.min(whisperGetCount, whisperResponses.length - 1)]
+    whisperGetCount += 1
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(payload),
+    })
+  })
+
+  await page.route('**/api/config/prompts', async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback()
+      return
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        summary_templates: [],
+        notes_templates: [],
+        mindmap_templates: [],
+        selected_summary_template_id: '',
+        selected_notes_template_id: '',
+        selected_mindmap_template_id: '',
+      }),
+    })
+  })
+
+  await page.goto('/')
+
+  await page.getByRole('button', { name: /运行配置|Runtime Config/i }).click()
+  await expect(page.getByRole('dialog', { name: /运行配置中心|Runtime Config Center/i })).toBeVisible()
+  await expect(page.getByPlaceholder(/模型名|Model Name/i)).toHaveValue('qwen-second')
+  await page.getByRole('tab', { name: /Faster-Whisper/i }).click()
+  await expect(page.getByPlaceholder(/切分秒数|Chunk Seconds/i)).toHaveValue('240')
+  await page.getByRole('button', { name: /关闭窗口|Close Window|Close/i }).click()
+
+  await page.getByRole('button', { name: /运行配置|Runtime Config/i }).click()
+  await expect(page.getByRole('dialog', { name: /运行配置中心|Runtime Config Center/i })).toBeVisible()
+  await expect(page.getByPlaceholder(/模型名|Model Name/i)).toHaveValue('qwen-third')
+  await page.getByRole('tab', { name: /Faster-Whisper/i }).click()
+  await expect(page.getByPlaceholder(/切分秒数|Chunk Seconds/i)).toHaveValue('300')
+})
+
 test('运行配置中心 notes 模板可新建并激活且不影响 summary/mindmap 选中态', async ({ page }) => {
   const state = {
     bundle: {
