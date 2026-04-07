@@ -54,6 +54,21 @@ Notes:
 - Enforce a single-operation-at-a-time policy for the repository.
 - On any lock conflict (for example `index.lock`), stop and retry instead of proceeding.
 
+### 2.2 GitHub Operation Rules (`gh` CLI by default)
+
+- Default to GitHub CLI (`gh`) for GitHub remote operations (for example PR create/view/merge, remote branch inspection, workflow checks).
+- Keep local repository operations on `git` (commit, rebase, local merge, local branch cleanup), and use `gh` when the action targets GitHub platform resources.
+- If a specific GitHub action cannot be completed with `gh`, document the reason in the task log and then use the minimum necessary fallback command.
+
+Examples:
+
+```bash
+gh pr create --fill
+gh pr view --web
+gh pr merge --squash --delete-branch
+gh run list --limit 20
+```
+
 ## 3. Allowed Types
 
 - `feat`: new feature (`MINOR` in SemVer).
