@@ -26,7 +26,6 @@ interface BuildMainViewPropsOptions {
   isTaskCompleted: boolean
   error: string | null
   isTaskRunning: boolean
-  runtimeNowMs: number
   isTaskTerminalStatus: (status: string) => boolean
   cancellingTask: boolean
   cancelActiveTask: () => Promise<void>
@@ -34,9 +33,6 @@ interface BuildMainViewPropsOptions {
   rerunActiveTaskStageD: () => Promise<void>
   vmPhaseMetrics: Record<VmPhaseKey, VmPhaseMetric>
   activeVmPhase: VmPhaseKey
-  totalVmElapsedSeconds: number
-  displayedStageElapsedSeconds: number
-  activeStageLogCount: number
   activeStage: StageKey
   setActiveStage: (stage: StageKey) => void
   stageLogs: Record<StageKey, string[]>
@@ -125,7 +121,6 @@ export function buildWorkbenchMainViewProps(options: BuildMainViewPropsOptions) 
     isTaskCompleted: Boolean(options.isTaskCompleted),
     error: options.error,
     isTaskRunning: options.isTaskRunning,
-    runtimeNowMs: options.runtimeNowMs,
     canCancelTask: Boolean(options.activeTask && !options.isTaskTerminalStatus(options.activeTask.status)),
     cancellingTask: options.cancellingTask,
     onCancelTask: options.cancelActiveTask,
@@ -139,9 +134,6 @@ export function buildWorkbenchMainViewProps(options: BuildMainViewPropsOptions) 
     rerunningStageD: options.rerunningStageD,
     vmPhaseMetrics: options.vmPhaseMetrics,
     activeVmPhase: options.activeVmPhase,
-    totalVmElapsedSeconds: options.totalVmElapsedSeconds,
-    displayedStageElapsedSeconds: options.displayedStageElapsedSeconds,
-    activeStageLogCount: options.activeStageLogCount,
     activeStage: options.activeStage,
     setActiveStage: options.setActiveStage,
     stageLogs: options.stageLogs,

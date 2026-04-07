@@ -702,6 +702,26 @@ html[data-theme='dark'] .workbench-stage-pill:hover {
     0 20px 30px -24px rgba(2, 8, 18, 0.92);
 }
 
+html[data-theme='dark'] .runtime-phase-tooltip__body {
+  border-color: color-mix(in oklab, var(--color-border) 68%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--color-surface-elevated) 94%, transparent),
+      color-mix(in oklab, var(--color-surface-muted) 82%, transparent)
+    );
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklab, #d8e6fb 10%, transparent),
+    0 22px 38px -24px rgba(2, 8, 18, 0.92);
+}
+
+html[data-theme='dark'] .runtime-phase-tooltip__tail {
+  border-right-color: color-mix(in oklab, var(--color-border) 68%, transparent);
+  border-bottom-color: color-mix(in oklab, var(--color-border) 68%, transparent);
+  background: color-mix(in oklab, var(--color-surface-muted) 86%, transparent);
+  box-shadow: 6px 6px 18px -14px rgba(2, 8, 18, 0.76);
+}
+
 .workbench-sidebar-card {
   border: 1px solid color-mix(in oklab, var(--color-border) 78%, transparent);
   border-radius: 1rem;
@@ -873,6 +893,35 @@ html[data-theme='dark'] .workbench-brand-mark {
 
 .workbench-stage-pill > div:first-child {
   line-height: 1.34;
+}
+
+.runtime-phase-tooltip__body {
+  border: 1px solid color-mix(in oklab, var(--color-border) 78%, transparent);
+  border-radius: 1.15rem;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--color-surface-elevated) 98%, transparent),
+      color-mix(in oklab, var(--color-surface-muted) 84%, transparent)
+    );
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklab, #ffffff 42%, transparent),
+    0 20px 36px -24px rgba(15, 30, 49, 0.45);
+  padding: 0.82rem 0.95rem;
+  backdrop-filter: blur(16px);
+}
+
+.runtime-phase-tooltip__tail {
+  position: absolute;
+  right: 1rem;
+  bottom: -0.34rem;
+  width: 0.82rem;
+  height: 0.82rem;
+  border-right: 1px solid color-mix(in oklab, var(--color-border) 78%, transparent);
+  border-bottom: 1px solid color-mix(in oklab, var(--color-border) 78%, transparent);
+  background: color-mix(in oklab, var(--color-surface-muted) 90%, transparent);
+  transform: rotate(45deg);
+  box-shadow: 6px 6px 16px -14px rgba(15, 30, 49, 0.35);
 }
 
 .workbench-stage-pill:focus-visible {
