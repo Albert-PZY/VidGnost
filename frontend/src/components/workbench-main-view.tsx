@@ -31,7 +31,7 @@ interface WorkbenchMainViewProps {
   sidebarCollapsed: boolean
   setSidebarCollapsed: Dispatch<SetStateAction<boolean>>
   activeSidebarPanel: SidebarPanelKey
-  setActiveSidebarPanel: Dispatch<SetStateAction<SidebarPanelKey>>
+  setActiveSidebarPanel: (panel: SidebarPanelKey) => void
   loadHistory: (query?: string) => Promise<void>
   openConfigPanel: (tab?: 'llm' | 'whisper' | 'prompts') => void
   openSelfCheckPanel: () => void

@@ -1,9 +1,12 @@
-import type { RefObject } from 'react'
+import type { ComponentProps, RefObject } from 'react'
 import type { TFunction } from 'i18next'
 
 import type { SidebarPanelKey, WhisperPresetKey } from './workbench-config'
+import { WorkbenchConfigModal } from '../components/workbench-config-modal'
 import type {
   LLMConfig,
+  PromptTemplateChannel,
+  SelfCheckReport,
   StageKey,
   TaskDetail,
   TaskSummaryItem,
@@ -90,14 +93,14 @@ interface BuildMainViewPropsOptions {
   pendingDeleteTask: TaskSummaryItem | null
   removeHistoryTask: () => Promise<void>
   closePromptDeleteConfirm: () => void
-  pendingPromptDelete: object | null
+  pendingPromptDelete: { channel: PromptTemplateChannel; templateId: string; name: string } | null
   promptActionChannel: 'summary' | 'notes' | 'mindmap' | null
   removePromptTemplate: () => Promise<void>
-  configModalProps: object
+  configModalProps: Omit<ComponentProps<typeof WorkbenchConfigModal>, 'open' | 't'>
   selfCheckBusy: boolean
   selfFixBusy: boolean
   selfCheckSessionId: string | null
-  selfCheckReport: object | null
+  selfCheckReport: SelfCheckReport
   selfCheckError: string | null
   selfCheckLogs: string[]
   runSelfCheck: () => Promise<void>
@@ -108,7 +111,7 @@ interface BuildMainViewPropsOptions {
   setSidebarCollapsed: (value: boolean | ((prev: boolean) => boolean)) => void
   openConfigPanel: (tab?: 'llm' | 'whisper' | 'prompts') => void
   openSelfCheckPanel: () => void
-  whisperPreset: WhisperPresetKey
+  whisperPreset: WhisperPresetKey | 'custom'
   bundleArchiveFormat: string
   downloadAllArtifacts: () => Promise<void>
 }
@@ -253,4 +256,3 @@ export function buildWorkbenchMainViewProps(options: BuildMainViewPropsOptions) 
     },
   }
 }
-

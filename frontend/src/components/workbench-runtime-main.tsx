@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
 import type { TFunction } from 'i18next'
 import { CheckCircle2, Expand, LoaderCircle, Maximize2, Pencil, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -51,6 +51,18 @@ const PHASE_STAGE_MAP: Record<VmPhaseKey, StageKey> = {
   summary_delivery: 'D',
   mindmap_delivery: 'D',
   D: 'D',
+}
+const PHASE_NEXT_MAP: Partial<Record<VmPhaseKey, VmPhaseKey>> = {
+  A: 'B',
+  B: 'C',
+  C: 'transcript_optimize',
+  transcript_optimize: 'notes_extract',
+  notes_extract: 'notes_outline',
+  notes_outline: 'notes_sections',
+  notes_sections: 'notes_coverage',
+  notes_coverage: 'summary_delivery',
+  summary_delivery: 'mindmap_delivery',
+  mindmap_delivery: 'D',
 }
 const D_DEBUG_ARTIFACT_MATCHERS: Partial<Record<VmPhaseKey, string[]>> = {
   transcript_optimize: ['transcript-optimize/'],
@@ -159,6 +171,18 @@ function formatArtifactSize(sizeBytes: number): string {
   if (sizeBytes < 1024) return `${Math.round(sizeBytes)} B`
   if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)} KB`
   return `${(sizeBytes / (1024 * 1024)).toFixed(2)} MB`
+}
+
+function countMarkdownBlocks(value: string): number {
+  if (!value.trim()) return 0
+  return value
+    .split(/\r?\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean).length
+}
+
+function countNonWhitespaceCharacters(value: string): number {
+  return value.replace(/\s+/g, '').length
 }
 
 function resolveArtifactPreviewMode(path: string): 'markdown' | 'json' | 'text' {
@@ -441,6 +465,34 @@ export function WorkbenchRuntimeMain({
     setActiveStage(PHASE_STAGE_MAP[phase])
   }
 
+  const getPhaseStatusLabel = useCallback((status: string) => {
+    if (status === 'running') return t('runtime.working.label')
+    if (status === 'skipped') return t('runtime.phase.skipped', { defaultValue: '已跳过' })
+    if (status === 'completed') return t('runtime.phase.completed', { defaultValue: '已完成' })
+    if (status === 'failed') return t('runtime.phase.failed', { defaultValue: '失败' })
+    if (status === 'pending') return t('runtime.phase.pending')
+    return status
+  }, [t])
+
+  const sourceTypeLabel = activeTask
+    ? activeTask.source_type === 'local_file'
+      ? t('source.mode.path')
+      : t('source.mode.url')
+    : '—'
+  const selectedPhaseMetric = vmPhaseMetrics[selectedVmPhase]
+  const selectedPhaseStatusLabel = getPhaseStatusLabel(selectedPhaseMetric?.status ?? 'pending')
+  const selectedPhaseElapsed = phaseElapsedSeconds(selectedPhaseMetric, runtimeNowMs)
+  const selectedPhaseOutput = t(`runtime.phaseView.outputs.${selectedVmPhase}`)
+  const selectedPhaseNext = PHASE_NEXT_MAP[selectedVmPhase]
+  const selectedPhaseNextLabel = selectedPhaseNext
+    ? t(`stages.${selectedPhaseNext}.label`)
+    : t('runtime.phaseView.shared.finalOutput')
+  const notesCharacters = countNonWhitespaceCharacters(notesStream)
+  const summaryCharacters = countNonWhitespaceCharacters(activeTask?.summary_markdown ?? '')
+  const mindmapBlocks = countMarkdownBlocks(mindmapStream)
+  const transcriptSegmentCount = optimizedTranscriptSegments.length || transcriptSegments.length
+  const taskUpdatedAtLabel = activeTask?.updated_at ? new Date(activeTask.updated_at).toLocaleString() : '—'
+
   const renderTranscriptSegments = (segments: TranscriptSegment[], emptyText: string) => {
     if (!segments.length) {
       return <pre className="whitespace-pre-wrap font-mono leading-6">{transcriptStream || emptyText}</pre>
@@ -457,29 +509,315 @@ export function WorkbenchRuntimeMain({
     )
   }
 
-  const renderPhaseLogPanel = (phase: VmPhaseKey) => (
+  const renderLogPanel = (title: string, lines: string[]) => (
     <div className="runtime-panel rounded-xl border p-3 text-sm">
       <div className="mb-2 flex items-center justify-between gap-2">
         <PreText variant="timestamp" className="runtime-panel-caption">
-          {t('runtime.stageD.phaseLogsTitle', {
-            defaultValue: '阶段日志',
-            phase: t(`stages.${phase}.label`),
-          })}
+          {title}
         </PreText>
         <span className="text-xs text-text-subtle">
-          {t('runtime.metrics.logs', { count: vmPhaseLogs[phase]?.length ?? 0 })}
+          {t('runtime.metrics.logs', { count: lines.length })}
         </span>
       </div>
-      <TerminalPanel lines={vmPhaseLogs[phase] ?? []} emptyText={t('runtime.waitingLogs')} />
+      <TerminalPanel lines={lines} emptyText={t('runtime.waitingLogs')} />
+    </div>
+  )
+
+  const renderStageLogPanel = (stage: StageKey) => renderLogPanel(
+    t('runtime.stageD.phaseLogsTitle', {
+      defaultValue: '阶段日志',
+      phase: t(`stages.${stage}.label`),
+    }),
+    stageLogs[stage] ?? [],
+  )
+
+  const renderPhaseLogPanel = (phase: VmPhaseKey) => renderLogPanel(
+    t('runtime.stageD.phaseLogsTitle', {
+      defaultValue: '阶段日志',
+      phase: t(`stages.${phase}.label`),
+    }),
+    vmPhaseLogs[phase] ?? [],
+  )
+
+  const renderMarkdownPanel = ({
+    title,
+    content,
+    emptyText,
+    action,
+    viewportClassName = 'max-h-[320px]',
+  }: {
+    title: string
+    content: string
+    emptyText: string
+    action?: ReactNode
+    viewportClassName?: string
+  }) => (
+    <div className="runtime-panel rounded-xl border p-3 text-sm">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <PreText variant="timestamp" className="runtime-panel-caption">
+          {title}
+        </PreText>
+        {action}
+      </div>
+      <div className={cn('overflow-auto rounded-lg border border-border/70 bg-bg-base px-3 py-2', viewportClassName)}>
+        {content ? (
+          <div className="prose prose-sm max-w-none dark:prose-invert">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+          </div>
+        ) : (
+          <div className="flex h-full min-h-[160px] items-center justify-center py-6 text-center text-sm text-text-subtle">
+            {emptyText}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
+  const renderTaskContextPanel = (title = t('runtime.phaseView.shared.taskContext')) => (
+    <div className="runtime-panel rounded-xl border p-3 text-sm">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <PreText variant="timestamp" className="runtime-panel-caption">
+          {title}
+        </PreText>
+        <span className="text-xs text-text-subtle">{activeTask?.id?.slice(0, 8) ?? '—'}</span>
+      </div>
+      {!activeTask ? (
+        <div className="rounded-xl border border-dashed border-border/70 bg-surface-muted/35 px-3 py-6 text-center text-sm text-text-subtle">
+          {t('runtime.phaseView.shared.noActiveTask')}
+        </div>
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {[
+            [t('runtime.phaseView.shared.sourceType'), sourceTypeLabel],
+            [t('runtime.phaseView.shared.sourceInput'), activeTask.source_input],
+            [t('runtime.phaseView.shared.language'), activeTask.language || 'auto'],
+            [t('runtime.phaseView.shared.model'), activeTask.model_size || 'small'],
+            [t('runtime.phaseView.shared.updatedAt'), taskUpdatedAtLabel],
+            [t('runtime.phaseView.shared.totalArtifacts'), `${activeTask.artifact_index.length} · ${formatArtifactSize(activeTask.artifact_total_bytes)}`],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-xl border border-border/65 bg-bg-base/75 px-3 py-2">
+              <div className="text-[11px] uppercase tracking-[0.12em] text-text-subtle">{label}</div>
+              <div className="mt-1 break-all text-sm leading-6 text-text-main">{value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+
+  const renderPhaseCheckpointPanel = (phase: VmPhaseKey, detailText: string, emptyText: string) => {
+    const nextPhase = PHASE_NEXT_MAP[phase]
+    return (
+      <div className="runtime-panel rounded-xl border p-3 text-sm">
+        <PreText variant="timestamp" className="runtime-panel-caption mb-2">
+          {t('runtime.phaseView.shared.phaseGoal')}
+        </PreText>
+        <div className="space-y-3">
+          <div className="rounded-xl border border-border/65 bg-bg-base/75 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-[0.12em] text-text-subtle">
+              {t('runtime.phaseView.shared.phaseGoal')}
+            </div>
+            <div className="mt-1 text-sm leading-6 text-text-main">{t(`stages.${phase}.description`)}</div>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="rounded-xl border border-border/65 bg-bg-base/75 px-3 py-2">
+              <div className="text-[11px] uppercase tracking-[0.12em] text-text-subtle">
+                {t('runtime.phaseView.shared.phaseOutput')}
+              </div>
+              <div className="mt-1 text-sm leading-6 text-text-main">{t(`runtime.phaseView.outputs.${phase}`)}</div>
+            </div>
+            <div className="rounded-xl border border-border/65 bg-bg-base/75 px-3 py-2">
+              <div className="text-[11px] uppercase tracking-[0.12em] text-text-subtle">
+                {t('runtime.phaseView.shared.nextHop')}
+              </div>
+              <div className="mt-1 text-sm leading-6 text-text-main">
+                {nextPhase ? t(`stages.${nextPhase}.label`) : t('runtime.phaseView.shared.finalOutput')}
+              </div>
+            </div>
+          </div>
+          <div className="rounded-xl border border-dashed border-border/70 bg-surface-muted/35 px-3 py-3">
+            <div className="mb-1 text-[11px] uppercase tracking-[0.12em] text-text-subtle">
+              {t('runtime.phaseView.shared.currentExcerpt')}
+            </div>
+            <pre className="whitespace-pre-wrap break-words font-mono text-[0.82rem] leading-6 text-text-main">
+              {detailText || emptyText}
+            </pre>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderPhaseOverviewHero = (phase: VmPhaseKey) => {
+    const metric = vmPhaseMetrics[phase]
+    const status = metric?.status ?? 'pending'
+    const reason = typeof metric?.reason === 'string' ? metric.reason.trim() : ''
+    const elapsed = phaseElapsedSeconds(metric, runtimeNowMs)
+    const nextPhase = PHASE_NEXT_MAP[phase]
+    return (
+      <div className="runtime-panel relative overflow-hidden rounded-2xl border p-4 text-sm">
+        <div className="absolute inset-x-4 top-0 h-px bg-[linear-gradient(90deg,transparent,var(--color-accent),transparent)] opacity-70" />
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <PreText as="h3" variant="h3" className="tracking-[0.01em]">
+                {t(`stages.${phase}.label`)}
+              </PreText>
+              <span className="workbench-subtitle-pill inline-flex text-[0.7rem]">
+                {getPhaseStatusLabel(status)}
+              </span>
+              <span className="workbench-metric-chip inline-flex px-2 py-1 font-mono text-[0.7rem] tabular-nums">
+                {elapsed}s
+              </span>
+            </div>
+            <p className="max-w-3xl text-sm leading-6 text-text-subtle">
+              {t(`stages.${phase}.description`)}
+            </p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[24rem] lg:max-w-[30rem]">
+            <div className="rounded-xl border border-border/65 bg-bg-base/75 px-3 py-2">
+              <div className="text-[11px] uppercase tracking-[0.12em] text-text-subtle">
+                {t('runtime.phaseView.shared.phaseOutput')}
+              </div>
+              <div className="mt-1 text-sm leading-6 text-text-main">{t(`runtime.phaseView.outputs.${phase}`)}</div>
+            </div>
+            <div className="rounded-xl border border-border/65 bg-bg-base/75 px-3 py-2">
+              <div className="text-[11px] uppercase tracking-[0.12em] text-text-subtle">
+                {t('runtime.phaseView.shared.nextHop')}
+              </div>
+              <div className="mt-1 text-sm leading-6 text-text-main">
+                {nextPhase ? t(`stages.${nextPhase}.label`) : t('runtime.phaseView.shared.finalOutput')}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-[0.75rem] text-text-subtle">
+          <span className="workbench-metric-chip px-2 py-1">
+            {t('runtime.phaseView.shared.sourceType')}: {sourceTypeLabel}
+          </span>
+          <span className="workbench-metric-chip px-2 py-1">
+            {t('runtime.phaseView.shared.segmentCount')}: {transcriptSegmentCount}
+          </span>
+          <span className="workbench-metric-chip px-2 py-1">
+            {t('runtime.phaseView.shared.clickHint')}
+          </span>
+        </div>
+        {reason && (
+          <div className="mt-3 rounded-xl border border-amber-400/45 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
+            <span className="font-medium">{t('runtime.phaseView.shared.reason')}：</span>
+            {reason}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const renderNotesEditorPanel = (title = t('runtime.stageD.summaryTitle')) => (
+    <div className="runtime-panel rounded-xl border p-3 text-sm">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <PreText variant="timestamp" className="runtime-panel-caption">
+          {title}
+        </PreText>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-text-subtle">
+            {canEditStageDMarkdown
+              ? hasUnsavedArtifactEdits
+                ? t('runtime.stageD.unsaved')
+                : t('runtime.stageD.editable')
+              : t('runtime.stageD.readonly')}
+          </span>
+          {canEditStageDMarkdown && (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={!hasUnsavedArtifactEdits || savingArtifacts}
+              onClick={() => void onPersistEditedArtifacts()}
+            >
+              {savingArtifacts ? (
+                <LoaderCircle className="mr-2 h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Pencil className="mr-2 h-3.5 w-3.5" />
+              )}
+              {savingArtifacts ? t('runtime.stageD.saving') : t('runtime.stageD.saveAction')}
+            </Button>
+          )}
+        </div>
+      </div>
+      <div
+        ref={notesPanelRef}
+        className="prompt-markdown-editor mt-2"
+        data-color-mode={isDark ? 'dark' : 'light'}
+      >
+        <Suspense
+          fallback={(
+            <div className="flex h-[500px] items-center justify-center rounded-xl border border-border/70 bg-surface-muted/70 text-text-subtle">
+              <LoaderCircle className="h-5 w-5 animate-spin" />
+            </div>
+          )}
+        >
+          <LazyPromptMarkdownEditor
+            value={notesStream}
+            onChange={(value) => {
+              if (!canEditStageDMarkdown || savingArtifacts) return
+              onNotesMarkdownChange(value ?? '')
+            }}
+            preview="edit"
+            height={500}
+            visibleDragbar={false}
+            textareaProps={{
+              placeholder: t('runtime.stageD.waitingSummary'),
+              readOnly: !canEditStageDMarkdown || savingArtifacts,
+            }}
+          />
+        </Suspense>
+      </div>
+    </div>
+  )
+
+  const renderMindmapWorkbench = () => (
+    <div className="grid gap-3 xl:grid-cols-2">
+      <div className="runtime-panel h-[420px] rounded-xl border p-3 text-sm">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <PreText variant="timestamp" className="runtime-panel-caption">
+            {t('runtime.stageD.mindmapTitle')}
+          </PreText>
+          <span className="text-xs text-text-subtle">
+            {canEditStageDMarkdown
+              ? hasUnsavedArtifactEdits
+                ? t('runtime.stageD.unsaved')
+                : t('runtime.stageD.editable')
+              : t('runtime.stageD.readonly')}
+          </span>
+        </div>
+        <textarea
+          ref={mindmapMarkdownPanelRef}
+          className="h-[368px] w-full resize-none rounded-lg border border-border/80 bg-bg-base px-3 py-2 font-mono text-sm leading-6 text-text-main outline-none transition-colors focus:border-accent/70 disabled:cursor-not-allowed disabled:opacity-80"
+          value={mindmapStream}
+          readOnly={!canEditStageDMarkdown || savingArtifacts}
+          onChange={(event) => onMindmapMarkdownChange(event.target.value)}
+          placeholder={t('runtime.stageD.waitingMindmap')}
+        />
+      </div>
+      <Suspense
+        fallback={
+          <div className="flex h-[420px] items-center justify-center rounded-xl border border-border bg-surface-muted text-sm text-text-subtle">
+            {t('runtime.stageD.mindmapEmpty')}
+          </div>
+        }
+      >
+        <div>
+          <PreText variant="timestamp" className="runtime-panel-caption mb-2">
+            {t('runtime.stageD.mindmapPreviewTitle')}
+          </PreText>
+          <LazyMindmapViewer markdown={mindmapStream} emptyText={t('runtime.stageD.mindmapEmpty')} />
+        </div>
+      </Suspense>
     </div>
   )
 
   const renderDebugArtifactsPanel = () => {
-    if (
-      selectedVmPhase === 'A'
-      || selectedVmPhase === 'B'
-      || selectedVmPhase === 'C'
-    ) {
+    if (selectedVmPhase === 'A' || selectedVmPhase === 'B' || selectedVmPhase === 'C') {
       return null
     }
 
@@ -565,19 +903,87 @@ export function WorkbenchRuntimeMain({
     )
   }
 
+  const renderFusionPromptPanel = (viewportClassName = 'max-h-[320px]') => renderMarkdownPanel({
+    title: t('runtime.stageH.fusionPromptTitle', { defaultValue: '最终送入 LLM 的融合提示词（Markdown 预览）' }),
+    content: fusionPromptPreview,
+    emptyText: t('runtime.stageH.waitingFusionPrompt', { defaultValue: '等待融合提示词...' }),
+    viewportClassName,
+    action: (
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        onClick={() => setPromptPreviewFullscreen(true)}
+      >
+        <Maximize2 className="mr-2 h-3.5 w-3.5" />
+        {t('runtime.stageH.fullscreen', { defaultValue: '全屏查看' })}
+      </Button>
+    ),
+  })
+
+  const renderSummaryPreviewPanel = (viewportClassName = 'max-h-[320px]') => renderMarkdownPanel({
+    title: t('runtime.phaseView.shared.summaryPreview'),
+    content: activeTask?.summary_markdown ?? '',
+    emptyText: t('runtime.phaseView.shared.emptySummary'),
+    viewportClassName,
+  })
+
+  const renderFinalDeliveryCards = () => (
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      {[
+        [t('runtime.phaseView.shared.segmentCount'), `${transcriptSegmentCount}`],
+        [t('runtime.phaseView.shared.notesLength'), `${notesCharacters}`],
+        [t('runtime.phaseView.shared.summaryLength'), `${summaryCharacters}`],
+        [t('runtime.phaseView.shared.mindmapLength'), `${mindmapBlocks}`],
+        [t('runtime.phaseView.shared.totalArtifacts'), `${activeTask?.artifact_index.length ?? 0} · ${formatArtifactSize(activeTask?.artifact_total_bytes ?? 0)}`],
+      ].map(([label, value]) => (
+        <div key={label} className="runtime-panel rounded-xl border px-3 py-3 text-sm">
+          <div className="text-[11px] uppercase tracking-[0.12em] text-text-subtle">{label}</div>
+          <div className="mt-2 text-xl font-semibold tracking-tight text-text-main">{value}</div>
+        </div>
+      ))}
+    </div>
+  )
+
   const renderPhasePanel = () => {
     if (selectedVmPhase === 'A') {
-      return <TerminalPanel lines={stageLogs.A} emptyText={t('runtime.waitingLogs')} />
+      return (
+        <div className="grid gap-3">
+          {renderPhaseOverviewHero('A')}
+          <div className="grid gap-3 xl:grid-cols-[0.92fr_1.08fr]">
+            {renderTaskContextPanel()}
+            {renderStageLogPanel('A')}
+          </div>
+        </div>
+      )
     }
     if (selectedVmPhase === 'B') {
-      return <TerminalPanel lines={stageLogs.B} emptyText={t('runtime.waitingLogs')} />
+      return (
+        <div className="grid gap-3">
+          {renderPhaseOverviewHero('B')}
+          <div className="grid gap-3 xl:grid-cols-[0.96fr_1.04fr]">
+            {renderPhaseCheckpointPanel(
+              'B',
+              activeTask?.source_input ?? '',
+              t('runtime.phaseView.shared.emptyExcerpt'),
+            )}
+            {renderStageLogPanel('B')}
+          </div>
+        </div>
+      )
     }
     if (selectedVmPhase === 'C') {
       return (
-        <div className="grid gap-3 lg:grid-cols-[0.95fr_1.05fr]">
-          <TerminalPanel lines={stageLogs.C} emptyText={t('runtime.waitingLogs')} />
-          <div ref={transcriptPanelRef} className="runtime-panel h-[420px] overflow-auto rounded-xl border p-3 text-[0.9rem]">
-            {renderTranscriptSegments(transcriptSegments, t('runtime.stageC.waitingTranscript'))}
+        <div className="grid gap-3">
+          {renderPhaseOverviewHero('C')}
+          <div className="grid gap-3 lg:grid-cols-[0.95fr_1.05fr]">
+            {renderStageLogPanel('C')}
+            <div ref={transcriptPanelRef} className="runtime-panel h-[420px] overflow-auto rounded-xl border p-3 text-[0.9rem]">
+              <PreText variant="timestamp" className="mb-2 runtime-panel-caption">
+                {t('runtime.phaseView.shared.transcriptPreview')}
+              </PreText>
+              {renderTranscriptSegments(transcriptSegments, t('runtime.stageC.waitingTranscript'))}
+            </div>
           </div>
         </div>
       )
@@ -585,8 +991,8 @@ export function WorkbenchRuntimeMain({
     if (selectedVmPhase === 'transcript_optimize') {
       return (
         <div className="grid gap-3">
+          {renderPhaseOverviewHero('transcript_optimize')}
           {renderPhaseLogPanel('transcript_optimize')}
-          {renderDebugArtifactsPanel()}
           <div className="grid gap-3 lg:grid-cols-2">
             <div
               ref={transcriptSourcePanelRef}
@@ -604,152 +1010,130 @@ export function WorkbenchRuntimeMain({
               className="runtime-panel h-[420px] overflow-auto rounded-xl border p-3 text-[0.9rem]"
             >
               <PreText variant="timestamp" className="mb-2 runtime-panel-caption">
-                {t('runtime.stageD.optimizeResultTitle', { defaultValue: '转录文本优化结果（SSE 实时）' })}
+                {t('runtime.stageD.optimizeResultTitle', { defaultValue: '转录文本优化结果（实时更新）' })}
               </PreText>
               {transcriptCorrectionMode === 'strict'
                 ? renderTranscriptSegments(
                     optimizedTranscriptSegments,
-                    t('runtime.stageD.waitingOptimizedTranscript', { defaultValue: '等待优化文本流输出...' }),
+                    t('runtime.stageD.waitingOptimizedTranscript', { defaultValue: '等待优化文本输出...' }),
                   )
                 : (
                     <pre className="whitespace-pre-wrap font-mono leading-6">
-                      {optimizedTranscriptStream || t('runtime.stageD.waitingOptimizedTranscript', { defaultValue: '等待优化文本流输出...' })}
+                      {optimizedTranscriptStream || t('runtime.stageD.waitingOptimizedTranscript', { defaultValue: '等待优化文本输出...' })}
                     </pre>
                   )}
             </div>
           </div>
+          {renderDebugArtifactsPanel()}
+        </div>
+      )
+    }
+    if (selectedVmPhase === 'notes_extract') {
+      return (
+        <div className="grid gap-3">
+          {renderPhaseOverviewHero('notes_extract')}
+          <div className="grid gap-3 xl:grid-cols-[0.92fr_1.08fr]">
+            {renderPhaseLogPanel('notes_extract')}
+            {renderPhaseCheckpointPanel(
+              'notes_extract',
+              optimizedTranscriptStream,
+              t('runtime.stageD.waitingOptimizedTranscript', { defaultValue: '等待优化文本输出...' }),
+            )}
+          </div>
+          {renderDebugArtifactsPanel()}
+        </div>
+      )
+    }
+    if (selectedVmPhase === 'notes_outline') {
+      return (
+        <div className="grid gap-3">
+          {renderPhaseOverviewHero('notes_outline')}
+          <div className="grid gap-3 xl:grid-cols-[0.92fr_1.08fr]">
+            {renderPhaseLogPanel('notes_outline')}
+            {renderPhaseCheckpointPanel(
+              'notes_outline',
+              optimizedTranscriptStream,
+              t('runtime.phaseView.shared.emptyExcerpt'),
+            )}
+          </div>
+          {renderDebugArtifactsPanel()}
+        </div>
+      )
+    }
+    if (selectedVmPhase === 'notes_sections') {
+      return (
+        <div className="grid gap-3">
+          {renderPhaseOverviewHero('notes_sections')}
+          <div className="grid gap-3 xl:grid-cols-[0.92fr_1.08fr]">
+            {renderPhaseLogPanel('notes_sections')}
+            {renderTaskContextPanel(t('runtime.phaseView.shared.deliveryContext'))}
+          </div>
+          {renderDebugArtifactsPanel()}
+          {renderNotesEditorPanel()}
+        </div>
+      )
+    }
+    if (selectedVmPhase === 'notes_coverage') {
+      return (
+        <div className="grid gap-3">
+          {renderPhaseOverviewHero('notes_coverage')}
+          <div className="grid gap-3 xl:grid-cols-[0.92fr_1.08fr]">
+            {renderPhaseLogPanel('notes_coverage')}
+            {renderPhaseCheckpointPanel(
+              'notes_coverage',
+              notesStream,
+              t('runtime.stageD.waitingSummary'),
+            )}
+          </div>
+          {renderDebugArtifactsPanel()}
+          {renderNotesEditorPanel(t('runtime.phaseView.shared.coverageNotesPreview'))}
+        </div>
+      )
+    }
+    if (selectedVmPhase === 'summary_delivery') {
+      return (
+        <div className="grid gap-3">
+          {renderPhaseOverviewHero('summary_delivery')}
+          <div className="grid gap-3 xl:grid-cols-[0.92fr_1.08fr]">
+            {renderPhaseLogPanel('summary_delivery')}
+            {renderSummaryPreviewPanel('max-h-[360px]')}
+          </div>
+          {renderDebugArtifactsPanel()}
+          {renderFusionPromptPanel()}
+        </div>
+      )
+    }
+    if (selectedVmPhase === 'mindmap_delivery') {
+      return (
+        <div className="grid gap-3">
+          {renderPhaseOverviewHero('mindmap_delivery')}
+          <div className="grid gap-3 xl:grid-cols-[0.92fr_1.08fr]">
+            {renderPhaseLogPanel('mindmap_delivery')}
+            {renderPhaseCheckpointPanel(
+              'mindmap_delivery',
+              mindmapStream,
+              t('runtime.stageD.waitingMindmap'),
+            )}
+          </div>
+          {renderDebugArtifactsPanel()}
+          {renderMindmapWorkbench()}
         </div>
       )
     }
     return (
       <div className="grid gap-3">
-        {renderPhaseLogPanel(selectedVmPhase)}
-        {renderDebugArtifactsPanel()}
-        <div className="runtime-panel rounded-xl border p-3 text-sm">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <PreText variant="timestamp" className="runtime-panel-caption">
-              {t('runtime.stageH.fusionPromptTitle', { defaultValue: '最终输入给 LLM 的融合提示词（Markdown 预览）' })}
-            </PreText>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => setPromptPreviewFullscreen(true)}
-            >
-              <Maximize2 className="mr-2 h-3.5 w-3.5" />
-              {t('runtime.stageH.fullscreen', { defaultValue: '全屏查看' })}
-            </Button>
-          </div>
-          <div className="max-h-[320px] overflow-auto rounded-lg border border-border/70 bg-bg-base px-3 py-2">
-            {fusionPromptPreview ? (
-              <div className="prose prose-sm max-w-none dark:prose-invert">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{fusionPromptPreview}</ReactMarkdown>
-              </div>
-            ) : (
-              <div className="py-6 text-center text-sm text-text-subtle">
-                {t('runtime.stageH.waitingFusionPrompt', { defaultValue: '等待融合提示词...' })}
-              </div>
-            )}
-          </div>
+        {renderPhaseOverviewHero('D')}
+        {renderFinalDeliveryCards()}
+        <div className="grid gap-3 xl:grid-cols-[0.88fr_1.12fr]">
+          {renderStageLogPanel('D')}
+          {renderTaskContextPanel(t('runtime.phaseView.shared.deliveryContext'))}
         </div>
-        <div className="runtime-panel rounded-xl border p-3 text-sm">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <PreText variant="timestamp" className="runtime-panel-caption">
-              {t('runtime.stageD.summaryTitle')}
-            </PreText>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-text-subtle">
-                {canEditStageDMarkdown
-                  ? hasUnsavedArtifactEdits
-                    ? t('runtime.stageD.unsaved')
-                    : t('runtime.stageD.editable')
-                  : t('runtime.stageD.readonly')}
-              </span>
-              {canEditStageDMarkdown && (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  disabled={!hasUnsavedArtifactEdits || savingArtifacts}
-                  onClick={() => void onPersistEditedArtifacts()}
-                >
-                  {savingArtifacts ? (
-                    <LoaderCircle className="mr-2 h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Pencil className="mr-2 h-3.5 w-3.5" />
-                  )}
-                  {savingArtifacts ? t('runtime.stageD.saving') : t('runtime.stageD.saveAction')}
-                </Button>
-              )}
-            </div>
-          </div>
-          <div
-            ref={notesPanelRef}
-            className="prompt-markdown-editor mt-2"
-            data-color-mode={isDark ? 'dark' : 'light'}
-          >
-            <Suspense
-              fallback={(
-                <div className="flex h-[500px] items-center justify-center rounded-xl border border-border/70 bg-surface-muted/70 text-text-subtle">
-                  <LoaderCircle className="h-5 w-5 animate-spin" />
-                </div>
-              )}
-            >
-              <LazyPromptMarkdownEditor
-                value={notesStream}
-                onChange={(value) => {
-                  if (!canEditStageDMarkdown || savingArtifacts) return
-                  onNotesMarkdownChange(value ?? '')
-                }}
-                preview="edit"
-                height={500}
-                visibleDragbar={false}
-                textareaProps={{
-                  placeholder: t('runtime.stageD.waitingSummary'),
-                  readOnly: !canEditStageDMarkdown || savingArtifacts,
-                }}
-              />
-            </Suspense>
-          </div>
+        {renderFusionPromptPanel()}
+        <div className="grid gap-3 xl:grid-cols-[1.15fr_0.85fr]">
+          {renderNotesEditorPanel()}
+          {renderSummaryPreviewPanel('h-[500px]')}
         </div>
-        <div className="grid gap-3 xl:grid-cols-2">
-          <div className="runtime-panel h-[420px] rounded-xl border p-3 text-sm">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <PreText variant="timestamp" className="runtime-panel-caption">
-                {t('runtime.stageD.mindmapTitle')}
-              </PreText>
-              <span className="text-xs text-text-subtle">
-                {canEditStageDMarkdown
-                  ? hasUnsavedArtifactEdits
-                    ? t('runtime.stageD.unsaved')
-                    : t('runtime.stageD.editable')
-                  : t('runtime.stageD.readonly')}
-              </span>
-            </div>
-            <textarea
-              ref={mindmapMarkdownPanelRef}
-              className="h-[368px] w-full resize-none rounded-lg border border-border/80 bg-bg-base px-3 py-2 font-mono text-sm leading-6 text-text-main outline-none transition-colors focus:border-accent/70 disabled:cursor-not-allowed disabled:opacity-80"
-              value={mindmapStream}
-              readOnly={!canEditStageDMarkdown || savingArtifacts}
-              onChange={(event) => onMindmapMarkdownChange(event.target.value)}
-              placeholder={t('runtime.stageD.waitingMindmap')}
-            />
-          </div>
-          <Suspense
-            fallback={
-              <div className="flex h-[420px] items-center justify-center rounded-xl border border-border bg-surface-muted text-sm text-text-subtle">
-                {t('runtime.stageD.mindmapEmpty')}
-              </div>
-            }
-          >
-            <div>
-              <PreText variant="timestamp" className="runtime-panel-caption mb-2">
-                {t('runtime.stageD.mindmapPreviewTitle')}
-              </PreText>
-              <LazyMindmapViewer markdown={mindmapStream} emptyText={t('runtime.stageD.mindmapEmpty')} />
-            </div>
-          </Suspense>
-        </div>
+        {renderMindmapWorkbench()}
       </div>
     )
   }
@@ -819,19 +1203,32 @@ export function WorkbenchRuntimeMain({
             </span>
           )}
           <span className="workbench-metric-chip px-2 py-1">
+            {t('runtime.phaseView.shared.currentPhase')}: {t(`stages.${selectedVmPhase}.label`)}
+          </span>
+          <span className="workbench-metric-chip px-2 py-1">
+            {selectedPhaseStatusLabel}
+          </span>
+          <span className="workbench-metric-chip px-2 py-1">
+            {t('runtime.phaseView.shared.phaseOutput')}: {selectedPhaseOutput}
+          </span>
+          <span className="workbench-metric-chip px-2 py-1">
+            {t('runtime.phaseView.shared.nextHop')}: {selectedPhaseNextLabel}
+          </span>
+          <span className="workbench-metric-chip px-2 py-1">
             {t('runtime.metrics.logs', { count: selectedPhaseLogCount || activeStageLogCount })}
           </span>
+          <span className="workbench-metric-chip px-2 py-1 font-mono tabular-nums">
+            {selectedPhaseElapsed}s
+          </span>
         </div>
-        <div className="mb-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4 xl:grid-cols-8">
+        <div className="mb-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
           {VM_PHASES.map((phase) => {
             const metric = vmPhaseMetrics[phase]
             const status = metric?.status ?? 'pending'
-            const isRunning = status === 'running'
-            const isCompleted = status === 'completed'
-            const isSkipped = status === 'skipped'
-            const isFailed = status === 'failed'
             const isSelected = phase === selectedVmPhase
             const elapsedSeconds = phaseElapsedSeconds(metric, runtimeNowMs)
+            const phaseDescription = t(`stages.${phase}.description`)
+            const phaseStatusLabel = getPhaseStatusLabel(status)
             return (
               <button
                 key={phase}
@@ -841,22 +1238,26 @@ export function WorkbenchRuntimeMain({
                 data-status={status}
                 aria-pressed={isSelected}
                 aria-current={isSelected ? 'step' : undefined}
+                title={phaseDescription}
                 className={cn(
-                  'workbench-stage-pill px-2.5 py-2 text-left text-[0.73rem] transition-all duration-200 hover:-translate-y-[1px]',
+                  'workbench-stage-pill group relative px-3 py-3 pr-10 text-left text-[0.73rem] transition-all duration-200',
                   phase === activeVmPhase && !isSelected && 'ring-1 ring-accent/30',
                 )}
               >
+                <span className="pointer-events-none absolute right-2.5 top-2.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-border/70 bg-bg-base/88 px-1.5 text-[0.58rem] font-semibold tracking-[0.06em] text-text-subtle shadow-sm transition-colors group-hover:border-accent/50 group-hover:text-accent">
+                  i
+                </span>
+                <span className="pointer-events-none absolute right-2 top-10 z-10 w-52 rounded-2xl border border-border/75 bg-bg-base/95 px-3 py-2 text-[0.68rem] leading-5 text-text-main opacity-0 shadow-[0_16px_30px_-22px_rgba(15,30,49,0.45)] transition-all duration-200 group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:pointer-events-auto group-focus-visible:translate-y-0 group-focus-visible:opacity-100">
+                  <span className="font-medium text-accent">{t('runtime.phaseView.shared.phaseHint')}</span>
+                  <span className="mt-1 block">{phaseDescription}</span>
+                  <span className="absolute -top-1 right-4 h-2 w-2 rotate-45 border-l border-t border-border/75 bg-bg-base/95" />
+                </span>
                 <div className="font-semibold tracking-[0.006em]">{t(`stages.${phase}.label`)}</div>
                 <div className="mt-1 text-[0.68rem] leading-[1.35] opacity-90">
-                  {isRunning
-                    ? `${t('runtime.working.label')} · ${elapsedSeconds}s`
-                    : isSkipped
-                      ? `${t('runtime.phase.skipped', { defaultValue: '已跳过' })} · ${elapsedSeconds}s`
-                      : isCompleted
-                        ? `${t('runtime.phase.completed', { defaultValue: '已完成' })} · ${elapsedSeconds}s`
-                        : isFailed
-                          ? `${t('runtime.phase.failed', { defaultValue: '失败' })} · ${elapsedSeconds}s`
-                          : t('runtime.phase.pending')}
+                  {phaseStatusLabel}{elapsedSeconds > 0 ? ` · ${elapsedSeconds}s` : ''}
+                </div>
+                <div className="mt-2 line-clamp-2 text-[0.66rem] leading-[1.45] text-text-subtle">
+                  {phaseDescription}
                 </div>
               </button>
             )

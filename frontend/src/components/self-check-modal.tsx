@@ -60,23 +60,6 @@ export function SelfCheckModal({
           {selfFixBusy ? t('selfCheck.actions.fixing') : t('selfCheck.actions.autoFix')}
         </Button>
       </div>
-      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-border/70 bg-bg-base/70 px-3 py-2">
-        <PreText variant="timestamp" className="workbench-subtitle-pill inline-flex">
-          {t('selfCheck.summary.session', { id: selfCheckSessionId ? selfCheckSessionId.slice(0, 8) : '-' })}
-        </PreText>
-        <PreText
-          variant="timestamp"
-          className={cn(
-            'workbench-subtitle-pill inline-flex',
-            selfCheckReport.auto_fix_available
-              ? 'border-emerald-400/45 bg-emerald-500/10 text-emerald-600'
-              : 'border-amber-400/45 bg-amber-500/10 text-amber-600',
-          )}
-        >
-          {selfCheckReport.auto_fix_available ? t('selfCheck.summary.autoFixReady') : t('selfCheck.summary.autoFixUnavailable')}
-        </PreText>
-      </div>
-
       <div className="grid gap-[1.125rem] lg:grid-cols-[1.2fr_1fr]">
         <section className="rounded-xl border border-border bg-surface-muted p-3.5">
           <div className="mb-2 flex items-center justify-between">
