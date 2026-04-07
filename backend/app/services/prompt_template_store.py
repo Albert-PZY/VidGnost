@@ -10,9 +10,9 @@ import orjson
 from app.config import Settings
 from app.models import PromptTemplateRecord, PromptTemplateSelectionRecord
 from app.services.naming import generate_time_key
-from app.services.prompt_constants import MINDMAP_PROMPT, SUMMARY_PROMPT
+from app.services.prompt_constants import MINDMAP_PROMPT, NOTES_PROMPT, SUMMARY_PROMPT
 
-PromptTemplateChannel = Literal["summary", "mindmap"]
+PromptTemplateChannel = Literal["summary", "notes", "mindmap"]
 
 
 class PromptTemplatePayload(TypedDict):
@@ -27,8 +27,10 @@ class PromptTemplatePayload(TypedDict):
 
 class PromptTemplateBundle(TypedDict):
     summary_templates: list[PromptTemplatePayload]
+    notes_templates: list[PromptTemplatePayload]
     mindmap_templates: list[PromptTemplatePayload]
     selected_summary_template_id: str
+    selected_notes_template_id: str
     selected_mindmap_template_id: str
 
 
@@ -42,6 +44,11 @@ _DEFAULT_TEMPLATE_NAMES: dict[PromptTemplateChannel, dict[str, str]] = {
         "default": "Default Mindmap",
         "course": "Course Mindmap",
         "interview": "Interview Mindmap",
+    },
+    "notes": {
+        "default": "Detailed Notes",
+        "course": "Detailed Course Notes",
+        "interview": "Detailed Interview Notes",
     },
 }
 
@@ -79,13 +86,37 @@ MINDMAP_PROMPT_TEMPLATES: dict[str, str] = {
     ),
 }
 
+NOTES_PROMPT_TEMPLATES: dict[str, str] = {
+    "default": NOTES_PROMPT,
+    "course": (
+        f"{NOTES_PROMPT}\n\n"
+        "补充要求：\n"
+        "1) 按课程模块序列梳理知识线索。\n"
+        "2) 每节提供小结与复盘建议。"
+    ),
+    "interview": (
+        f"{NOTES_PROMPT}\n\n"
+        "补充要求：\n"
+        "1) 强调人物观点、争议与回应。\n"
+        "2) 输出复盘要点与可执行行动。"
+    ),
+}
+
+_CHANNEL_PROMPT_TEMPLATES: dict[PromptTemplateChannel, dict[str, str]] = {
+    "summary": SUMMARY_PROMPT_TEMPLATES,
+    "notes": NOTES_PROMPT_TEMPLATES,
+    "mindmap": MINDMAP_PROMPT_TEMPLATES,
+}
+
 _DEFAULT_TEMPLATE_IDS: dict[PromptTemplateChannel, str] = {
     "summary": "summary-default-main",
+    "notes": "notes-default-main",
     "mindmap": "mindmap-default-main",
 }
 
 _DEFAULT_TEMPLATE_ID_PREFIXES: dict[PromptTemplateChannel, tuple[str, ...]] = {
     "summary": ("summary-default-",),
+    "notes": ("notes-default-",),
     "mindmap": ("mindmap-default-",),
 }
 
@@ -202,6 +233,8 @@ class PromptTemplateStore:
             selection.summary_template_id = fallback.id
         if target.channel == "mindmap" and selection.mindmap_template_id == template_id:
             selection.mindmap_template_id = fallback.id
+        if target.channel == "notes" and selection.notes_template_id == template_id:
+            selection.notes_template_id = fallback.id
         selection.updated_at = datetime.now(timezone.utc)
         self._write_state(templates, selection)
         return self._build_bundle(templates, selection)
@@ -249,6 +282,10 @@ class PromptTemplateStore:
         if not mindmap_templates:
             templates.extend(self._build_default_templates("mindmap"))
             changed = True
+        notes_templates = [item for item in templates if item.channel == "notes"]
+        if not notes_templates:
+            templates.extend(self._build_default_templates("notes"))
+            changed = True
 
         if self._sync_default_templates(templates):
             changed = True
@@ -267,7 +304,7 @@ class PromptTemplateStore:
     def _sync_default_templates(self, templates: list[PromptTemplateRecord]) -> bool:
         changed = False
         now = datetime.now(timezone.utc)
-        for channel in ("summary", "mindmap"):
+        for channel in ("summary", "notes", "mindmap"):
             typed_channel = cast(PromptTemplateChannel, channel)
             expected_defaults = self._build_default_templates(typed_channel)
             for expected in expected_defaults:
@@ -305,10 +342,10 @@ class PromptTemplateStore:
                 if not isinstance(raw, dict):
                     continue
                 template = PromptTemplateRecord.from_dict(raw)
-                if not template.id or template.channel not in {"summary", "mindmap"}:
+        if not template.id or template.channel not in {"summary", "notes", "mindmap"}:
                     continue
                 templates.append(template)
-        selection = PromptTemplateSelectionRecord(summary_template_id="", mindmap_template_id="")
+        selection = PromptTemplateSelectionRecord(summary_template_id="", notes_template_id="", mindmap_template_id="")
         raw_selection = payload.get("selection")
         if isinstance(raw_selection, dict):
             selection = PromptTemplateSelectionRecord.from_dict(raw_selection)
@@ -323,7 +360,7 @@ class PromptTemplateStore:
             if not isinstance(raw, dict):
                 continue
             template = PromptTemplateRecord.from_dict(raw)
-            if not template.id or template.channel not in {"summary", "mindmap"}:
+            if not template.id or template.channel not in {"summary", "notes", "mindmap"}:
                 continue
             templates.append(template)
         return templates
@@ -332,10 +369,10 @@ class PromptTemplateStore:
         payload = self._read_json(self._selection_path, default=None)
         if isinstance(payload, dict):
             return PromptTemplateSelectionRecord.from_dict(payload)
-        return PromptTemplateSelectionRecord(summary_template_id="", mindmap_template_id="")
+        return PromptTemplateSelectionRecord(summary_template_id="", notes_template_id="", mindmap_template_id="")
 
     def _build_default_templates(self, channel: PromptTemplateChannel) -> list[PromptTemplateRecord]:
-        source = SUMMARY_PROMPT_TEMPLATES if channel == "summary" else MINDMAP_PROMPT_TEMPLATES
+        source = _CHANNEL_PROMPT_TEMPLATES[channel]
         result: list[PromptTemplateRecord] = []
         for key, content in source.items():
             template_id = _DEFAULT_TEMPLATE_IDS[channel]
@@ -358,15 +395,22 @@ class PromptTemplateStore:
     ) -> bool:
         changed = False
         summary_templates = [item for item in templates if item.channel == "summary"]
+        notes_templates = [item for item in templates if item.channel == "notes"]
         mindmap_templates = [item for item in templates if item.channel == "mindmap"]
         summary_ids = {item.id for item in summary_templates}
+        notes_ids = {item.id for item in notes_templates}
         mindmap_ids = {item.id for item in mindmap_templates}
-        if selection.summary_template_id not in summary_ids:
+        if summary_templates and selection.summary_template_id not in summary_ids:
             selection.summary_template_id = (
                 _DEFAULT_TEMPLATE_IDS["summary"] if _DEFAULT_TEMPLATE_IDS["summary"] in summary_ids else summary_templates[0].id
             )
             changed = True
-        if selection.mindmap_template_id not in mindmap_ids:
+        if notes_templates and selection.notes_template_id not in notes_ids:
+            selection.notes_template_id = (
+                _DEFAULT_TEMPLATE_IDS["notes"] if _DEFAULT_TEMPLATE_IDS["notes"] in notes_ids else notes_templates[0].id
+            )
+            changed = True
+        if mindmap_templates and selection.mindmap_template_id not in mindmap_ids:
             selection.mindmap_template_id = (
                 _DEFAULT_TEMPLATE_IDS["mindmap"] if _DEFAULT_TEMPLATE_IDS["mindmap"] in mindmap_ids else mindmap_templates[0].id
             )
@@ -382,11 +426,14 @@ class PromptTemplateStore:
     ) -> PromptTemplateBundle:
         templates.sort(key=lambda item: (item.created_at, item.id))
         summary_templates = [item for item in templates if item.channel == "summary"]
+        notes_templates = [item for item in templates if item.channel == "notes"]
         mindmap_templates = [item for item in templates if item.channel == "mindmap"]
         return {
             "summary_templates": [_serialize_template(item) for item in summary_templates],
+            "notes_templates": [_serialize_template(item) for item in notes_templates],
             "mindmap_templates": [_serialize_template(item) for item in mindmap_templates],
             "selected_summary_template_id": selection.summary_template_id,
+            "selected_notes_template_id": selection.notes_template_id,
             "selected_mindmap_template_id": selection.mindmap_template_id,
         }
 

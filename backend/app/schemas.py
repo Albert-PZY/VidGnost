@@ -116,7 +116,7 @@ class LLMConfigUpdateRequest(BaseModel):
     correction_overlap: int = Field(default=3, ge=0, le=20)
 
 
-PromptTemplateChannel = Literal["summary", "mindmap"]
+PromptTemplateChannel = Literal["summary", "notes", "mindmap"]
 
 
 class PromptTemplateItem(BaseModel):
@@ -131,8 +131,10 @@ class PromptTemplateItem(BaseModel):
 
 class PromptTemplateBundleResponse(BaseModel):
     summary_templates: list[PromptTemplateItem] = Field(default_factory=list)
+    notes_templates: list[PromptTemplateItem] = Field(default_factory=list)
     mindmap_templates: list[PromptTemplateItem] = Field(default_factory=list)
     selected_summary_template_id: str = ""
+    selected_notes_template_id: str = ""
     selected_mindmap_template_id: str = ""
 
 
@@ -149,6 +151,7 @@ class PromptTemplateUpdateRequest(BaseModel):
 
 class PromptTemplateSelectionUpdateRequest(BaseModel):
     selected_summary_template_id: str = Field(min_length=1)
+    selected_notes_template_id: str = Field(min_length=1)
     selected_mindmap_template_id: str = Field(min_length=1)
 
 

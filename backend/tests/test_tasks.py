@@ -6,6 +6,8 @@ import zipfile
 
 from app.main import app
 from app.models import TaskStatus
+from app.services.summarizer import SummaryBundle
+from app.services.task_runner import TaskRunner
 
 
 def test_create_url_task() -> None:
@@ -215,9 +217,32 @@ def test_task_detail_vm_phase_metrics_keep_h_pending_before_fusion_start() -> No
 
         detail_response = client.get(f"/api/tasks/{task_id}")
         assert detail_response.status_code == 200
-        detail = detail_response.json()
-        assert detail["vm_phase_metrics"]["transcript_optimize"]["status"] == "completed"
-        assert detail["vm_phase_metrics"]["D"]["status"] == "pending"
+    detail = detail_response.json()
+    assert detail["vm_phase_metrics"]["transcript_optimize"]["status"] == "completed"
+    assert detail["vm_phase_metrics"]["D"]["status"] == "pending"
+
+
+def test_fallback_notes_markdown_contains_sections() -> None:
+    notes = TaskRunner._build_fallback_notes_markdown(title="事件梳理", summary_markdown="")
+    assert notes.startswith("# 事件梳理")
+    assert "## 关键内容" in notes
+    assert "## 行动项" in notes
+
+
+def test_normalize_stage_d_bundle_preserves_custom_notes() -> None:
+    bundle = SummaryBundle(
+        summary_markdown="## 高亮",
+        mindmap_markdown="# map",
+        notes_markdown="## 章节\n- 自定义笔记条目",
+    )
+    normalized = TaskRunner._normalize_stage_d_bundle(
+        TaskRunner.__new__(TaskRunner),
+        title="任务",
+        transcript_text="文本",
+        bundle=bundle,
+    )
+    assert normalized.notes_markdown == bundle.notes_markdown
+    assert normalized.summary_markdown == bundle.summary_markdown
 
 
 def test_delete_task_requires_terminal_status() -> None:
