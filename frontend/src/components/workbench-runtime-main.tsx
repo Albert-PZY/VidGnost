@@ -1060,7 +1060,7 @@ export function WorkbenchRuntimeMain({
             </Button>
           )}
         </div>
-        <div className="mb-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
+        <div className="mb-4 grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
           {VM_PHASES.map((phase) => {
             const metric = vmPhaseMetrics[phase]
             const status = metric?.status ?? 'pending'
@@ -1077,30 +1077,30 @@ export function WorkbenchRuntimeMain({
                 aria-current={isSelected ? 'step' : undefined}
                 aria-label={`${t(`stages.${phase}.label`)}：${phaseDescription}`}
                 className={cn(
-                  'workbench-stage-pill group relative min-h-[4.75rem] px-3 py-3 pr-11 text-left text-[0.82rem] transition-all duration-200',
-                  phase === activeVmPhase && !isSelected && 'ring-1 ring-accent/30',
+                  'workbench-stage-pill group relative min-h-[3.6rem] px-[0.72rem] py-[0.7rem] pr-9 text-left text-[0.74rem] transition-all duration-200',
+                  phase === activeVmPhase && !isSelected && 'border-accent/35 bg-accent/[0.04]',
                 )}
               >
                 <span
-                  className="pointer-events-none absolute right-2.5 top-2.5 inline-flex h-7 w-7 items-center justify-center rounded-[0.9rem] border border-border/70 bg-bg-base/92 text-text-subtle shadow-[0_10px_18px_-16px_rgba(15,30,49,0.55)] transition-all duration-200 group-hover:border-accent/45 group-hover:bg-accent/10 group-hover:text-accent group-focus-visible:border-accent/45 group-focus-visible:bg-accent/10 group-focus-visible:text-accent"
+                  className="runtime-phase-bubble-trigger pointer-events-none absolute right-[0.42rem] top-[0.42rem] inline-flex h-5.5 w-5.5 items-center justify-center rounded-[0.72rem] transition-all duration-200 group-hover:border-accent/35 group-hover:bg-accent/8 group-hover:text-accent group-focus-visible:border-accent/35 group-focus-visible:bg-accent/8 group-focus-visible:text-accent"
                   aria-hidden="true"
                 >
-                  <MessageCircle className="h-3.5 w-3.5" />
+                  <MessageCircle className="h-3 w-3" />
                 </span>
-                <span className="runtime-phase-tooltip pointer-events-none absolute bottom-[calc(100%+0.75rem)] right-0 z-20 w-[17rem] max-w-[calc(100vw-4rem)] translate-y-1 opacity-0 transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100">
+                <span className="runtime-phase-tooltip pointer-events-none absolute bottom-[calc(100%+0.55rem)] right-0 z-20 w-[14.75rem] max-w-[calc(100vw-4rem)] translate-y-[4px] scale-[0.985] opacity-0 transition-all duration-200 group-hover:translate-y-0 group-hover:scale-100 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:scale-100 group-focus-visible:opacity-100">
                   <span className="runtime-phase-tooltip__tail" aria-hidden="true" />
                   <span className="runtime-phase-tooltip__body block">
-                    <span className="mb-1.5 flex items-center gap-2 text-[0.72rem] font-semibold text-accent">
-                      <MessageCircle className="h-3.5 w-3.5" />
+                    <span className="mb-1 flex items-center gap-1.5 text-[0.69rem] font-semibold text-accent">
+                      <MessageCircle className="h-3.25 w-3.25" />
                       {t(`stages.${phase}.label`)}
                     </span>
-                    <span className="block text-[0.74rem] leading-6 text-text-main">{phaseDescription}</span>
+                    <span className="block text-[0.72rem] leading-5 text-text-main">{phaseDescription}</span>
                   </span>
                 </span>
-                <div className="pr-1 font-semibold tracking-[0.006em] leading-6">{t(`stages.${phase}.label`)}</div>
+                <div className="max-w-[12.5ch] pr-1 font-semibold leading-[1.24] tracking-[0.002em]">{t(`stages.${phase}.label`)}</div>
                 <div
                   className={cn(
-                    'absolute inset-x-3 bottom-2 h-[3px] rounded-full opacity-0 transition-opacity duration-200',
+                    'absolute inset-x-[0.72rem] bottom-[0.42rem] h-[2px] rounded-full opacity-0 transition-opacity duration-200',
                     status === 'running' && 'bg-[var(--color-info)] opacity-100',
                     status === 'completed' && 'bg-[var(--color-success)] opacity-100',
                     status === 'failed' && 'bg-[var(--color-danger)] opacity-100',
