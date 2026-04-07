@@ -31,6 +31,7 @@ import {
   inferStageFromStatus,
   isTaskTerminalStatus,
   normalizeLocale,
+  normalizeFusionPromptPreview,
   normalizeWhisperConfigForCpu,
   parseInteger,
   parseNumeric,
@@ -399,7 +400,7 @@ function App() {
     setTranscriptSegments(detail.transcript_segments ?? [])
     setOptimizedTranscriptStream(detail.transcript_text ?? '')
     setOptimizedTranscriptSegments(detail.transcript_segments ?? [])
-    setFusionPromptPreview(detail.fusion_prompt_markdown ?? '')
+    setFusionPromptPreview(normalizeFusionPromptPreview(detail.fusion_prompt_markdown ?? ''))
     setSummaryStream(detail.notes_markdown ?? detail.summary_markdown ?? '')
     setMindmapStream(detail.mindmap_markdown ?? '')
     setNotesMarkdownDirty(false)
