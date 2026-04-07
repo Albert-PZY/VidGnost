@@ -31,7 +31,7 @@ import {
   inferStageFromStatus,
   isTaskTerminalStatus,
   normalizeLocale,
-  normalizeWhisperConfigForGpu,
+  normalizeWhisperConfigForCpu,
   parseInteger,
   parseNumeric,
   VM_PHASES,
@@ -43,6 +43,7 @@ import {
   WHISPER_PRESET_KEYS,
   createEmptyVmPhaseMetrics,
 } from './app/workbench-config'
+import { buildWorkbenchMainViewProps } from './app/workbench-main-view-props'
 import { useWorkbenchConfigManager } from './hooks/use-workbench-config-manager'
 import { usePromptTemplateManager } from './hooks/use-prompt-template-manager'
 import { useWorkbenchSelectOptions } from './hooks/use-workbench-select-options'
@@ -51,6 +52,7 @@ import { useWorkbenchTaskEventHandler } from './hooks/use-workbench-task-event-h
 import { useWorkbenchTaskManager } from './hooks/use-workbench-task-manager'
 import { useTaskEvents } from './hooks/use-task-events'
 import { useWorkbenchUiEffects } from './hooks/use-workbench-ui-effects'
+import { useQuickStartDoc } from './hooks/use-quick-start-doc'
 import {
   createEmptyStageLogs,
   createEmptyStageTimers,
@@ -67,15 +69,8 @@ import type {
   WhisperConfig,
 } from './types'
 
-type QuickStartDocModule = { default: string }
-
 const ACTIVE_TASK_STORAGE_KEY = 'vidgnost-active-task-id'
 const D_SUBPHASE_ORDER: VmPhaseKey[] = ['transcript_optimize']
-const quickStartDocLoaders: Record<UILocale, () => Promise<QuickStartDocModule>> = {
-  'zh-CN': () => import('./docs/quick-start.zh-CN.md?raw'),
-  en: () => import('./docs/quick-start.en.md?raw'),
-}
-const quickStartDocCache: Partial<Record<UILocale, string>> = {}
 
 function resolveRunningDSubphase(metrics: Record<VmPhaseKey, VmPhaseMetric>): VmPhaseKey {
   for (const phase of D_SUBPHASE_ORDER) {
@@ -150,7 +145,8 @@ function App() {
   const [fusionPromptPreview, setFusionPromptPreview] = useState('')
   const [configTab, setConfigTab] = useState<'localModels' | 'whisper' | 'prompts'>('localModels')
   const [showApiKey, setShowApiKey] = useState(true)
-  const [quickStartMarkdown, setQuickStartMarkdown] = useState('')
+  const currentLocale = normalizeLocale(i18n.resolvedLanguage ?? i18n.language ?? 'zh-CN')
+  const quickStartMarkdown = useQuickStartDoc({ mainView, locale: currentLocale })
   const {
     promptTemplateView,
     setPromptTemplateView,
@@ -189,7 +185,6 @@ function App() {
     onEvent: dispatchTaskEvent,
   })
 
-  const currentLocale = normalizeLocale(i18n.resolvedLanguage ?? i18n.language ?? 'zh-CN')
   const {
     selfCheckSessionId,
     selfCheckReport,
@@ -344,28 +339,6 @@ function App() {
       (activeTask.status === 'completed' || activeTask.status === 'failed' || activeTask.status === 'cancelled'),
   )
   const hasUnsavedArtifactEdits = notesMarkdownDirty || mindmapMarkdownDirty
-
-  useEffect(() => {
-    if (mainView !== 'quickstart') return
-    const locale = currentLocale
-    const cached = quickStartDocCache[locale]
-    if (cached) {
-      setQuickStartMarkdown(cached)
-      return
-    }
-
-    let cancelled = false
-    setQuickStartMarkdown('')
-    void quickStartDocLoaders[locale]().then((module) => {
-      if (cancelled) return
-      quickStartDocCache[locale] = module.default
-      setQuickStartMarkdown(module.default)
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [currentLocale, mainView])
 
   const {
     uiLocaleOptions,
@@ -586,7 +559,7 @@ function App() {
         const promptTemplates = await getPromptTemplates()
         applyPromptTemplateBundle(promptTemplates)
         const whisper = await getWhisperConfig()
-        const normalizedWhisper = normalizeWhisperConfigForGpu(whisper)
+        const normalizedWhisper = normalizeWhisperConfigForCpu(whisper)
         setWhisperConfig(normalizedWhisper)
         setWhisperDraft(normalizedWhisper)
       } catch {
@@ -641,7 +614,7 @@ function App() {
     setSavingWhisperConfig,
     setSavingLocalModelConfig,
     setError,
-    normalizeWhisperConfigForGpu,
+    normalizeWhisperConfigForCpu,
     appendLog,
   })
 
@@ -711,106 +684,6 @@ function App() {
     }
     return statusText(item.status)
   }, [activeTask, activeTaskId, activeTaskRuntimeStatusText, statusText])
-  const reloadHistoryPanel = async () => {
-    await loadHistory()
-  }
-  const runtimeMainProps = {
-    isDark,
-    activeTask,
-    overallProgress,
-    statusText,
-    isTaskCompleted: Boolean(isTaskCompleted),
-    error,
-    isTaskRunning,
-    runtimeNowMs,
-    canCancelTask: Boolean(activeTask && !isTaskTerminalStatus(activeTask.status)),
-    cancellingTask,
-    onCancelTask: cancelActiveTask,
-    canRerunStageD: Boolean(
-      activeTask
-      && !rerunningStageD
-      && (activeTask.status === 'failed' || activeTask.status === 'cancelled')
-      && Boolean((activeTask.transcript_text ?? '').trim() || activeTask.transcript_segments.length > 0),
-    ),
-    onRerunStageD: rerunActiveTaskStageD,
-    rerunningStageD,
-    vmPhaseMetrics,
-    activeVmPhase,
-    totalVmElapsedSeconds,
-    displayedStageElapsedSeconds,
-    activeStageLogCount,
-    activeStage,
-    setActiveStage,
-    stageLogs,
-    transcriptPanelRef,
-    transcriptStream,
-    transcriptSegments,
-    transcriptCorrectionMode: llmConfig.correction_mode,
-    optimizedTranscriptStream,
-    optimizedTranscriptSegments,
-    fusionPromptPreview,
-    canEditStageDMarkdown,
-    hasUnsavedArtifactEdits,
-    savingArtifacts,
-    onPersistEditedArtifacts: persistEditedArtifacts,
-    notesPanelRef,
-    summaryStream,
-    onNotesMarkdownChange: handleNotesMarkdownChange,
-    mindmapMarkdownPanelRef,
-    mindmapStream,
-    onMindmapMarkdownChange: handleMindmapMarkdownChange,
-  }
-  const sourceTaskModalProps = {
-    onClose: () => setActiveSidebarPanel(null),
-    sourceMode,
-    setSourceMode,
-    urlInput,
-    setUrlInput,
-    pathInput,
-    setPathInput,
-    uploadFile,
-    setUploadFile,
-    dragging,
-    setDragging,
-    fileInputRef,
-    runtimeModel,
-    runtimeLanguage,
-    submitting,
-    submitTask,
-    inputClassName: FIELD_INPUT_CLASS_NAME,
-  }
-  const historyModalProps = {
-    onClose: () => setActiveSidebarPanel(null),
-    searchText,
-    setSearchText,
-    loadHistory: reloadHistoryPanel,
-    history,
-    editingHistoryTaskId,
-    editingHistoryTitle,
-    setEditingHistoryTitle,
-    historyActionBusyTaskId,
-    activeTaskId,
-    onSelectTask: selectHistoryTask,
-    startEditHistoryTitle,
-    saveHistoryTitle,
-    cancelEditHistoryTitle,
-    openDeleteConfirm,
-    resolveTaskStatusText: resolveHistoryTaskStatusText,
-    isTaskTerminalStatus,
-    inputClassName: FIELD_INPUT_CLASS_NAME,
-  }
-  const deleteTaskConfirmModalProps = {
-    onClose: closeDeleteConfirm,
-    pendingDeleteTask,
-    historyActionBusyTaskId,
-    removeHistoryTask,
-  }
-  const promptTemplateDeleteModalProps = {
-    onClose: closePromptDeleteConfirm,
-    pendingPromptDelete,
-    promptActionChannel,
-    removePromptTemplate,
-  }
   const configModalProps = {
     onClose: closeConfigPanel,
     configTab,
@@ -873,8 +746,86 @@ function App() {
       saveLocalModelConfig,
     },
   }
-  const selfCheckModalProps = {
-    onClose: () => setActiveSidebarPanel(null),
+  const mainViewProps = buildWorkbenchMainViewProps({
+    t,
+    isDark,
+    activeTask,
+    activeTaskId,
+    activeTaskRuntimeStatusText,
+    overallProgress,
+    statusText,
+    isTaskCompleted: Boolean(isTaskCompleted),
+    error,
+    isTaskRunning,
+    runtimeNowMs,
+    isTaskTerminalStatus,
+    cancellingTask,
+    cancelActiveTask,
+    rerunningStageD,
+    rerunActiveTaskStageD,
+    vmPhaseMetrics,
+    activeVmPhase,
+    totalVmElapsedSeconds,
+    displayedStageElapsedSeconds,
+    activeStageLogCount,
+    activeStage,
+    setActiveStage,
+    stageLogs,
+    transcriptPanelRef,
+    transcriptStream,
+    transcriptSegments,
+    optimizedTranscriptStream,
+    optimizedTranscriptSegments,
+    fusionPromptPreview,
+    canEditStageDMarkdown,
+    hasUnsavedArtifactEdits,
+    savingArtifacts,
+    persistEditedArtifacts,
+    notesPanelRef,
+    summaryStream,
+    handleNotesMarkdownChange,
+    mindmapMarkdownPanelRef,
+    mindmapStream,
+    handleMindmapMarkdownChange,
+    llmConfig,
+    sourceMode,
+    setSourceMode,
+    urlInput,
+    setUrlInput,
+    pathInput,
+    setPathInput,
+    uploadFile,
+    setUploadFile,
+    dragging,
+    setDragging,
+    fileInputRef,
+    runtimeModel,
+    runtimeLanguage,
+    submitting,
+    submitTask,
+    fieldInputClassName: FIELD_INPUT_CLASS_NAME,
+    searchText,
+    setSearchText,
+    loadHistory,
+    history,
+    editingHistoryTaskId,
+    editingHistoryTitle,
+    setEditingHistoryTitle,
+    historyActionBusyTaskId,
+    selectHistoryTask,
+    startEditHistoryTitle,
+    saveHistoryTitle,
+    cancelEditHistoryTitle,
+    openDeleteConfirm,
+    resolveHistoryTaskStatusText,
+    closeDeleteConfirm,
+    pendingDeleteTask,
+    removeHistoryTask,
+    closePromptDeleteConfirm,
+    pendingPromptDelete,
+    promptActionChannel,
+    removePromptTemplate,
+    configModalProps,
     selfCheckBusy,
     selfFixBusy,
     selfCheckSessionId,
@@ -883,7 +834,16 @@ function App() {
     selfCheckLogs,
     runSelfCheck,
     runSelfCheckAutoFix,
-  }
+    activeSidebarPanel,
+    setActiveSidebarPanel,
+    sidebarCollapsed,
+    setSidebarCollapsed,
+    openConfigPanel,
+    openSelfCheckPanel,
+    whisperPreset,
+    bundleArchiveFormat,
+    downloadAllArtifacts,
+  })
 
   return (
     <div className="workbench-shell relative min-h-screen w-full min-w-[980px] bg-bg-base text-text-main">
@@ -933,34 +893,7 @@ function App() {
         />
 
         {mainView === 'workbench' ? (
-          <WorkbenchMainView
-            t={t}
-            sidebarCollapsed={sidebarCollapsed}
-            setSidebarCollapsed={setSidebarCollapsed}
-            activeSidebarPanel={activeSidebarPanel}
-            setActiveSidebarPanel={setActiveSidebarPanel}
-            loadHistory={reloadHistoryPanel}
-            openConfigPanel={openConfigPanel}
-            openSelfCheckPanel={openSelfCheckPanel}
-            runtimeModel={runtimeModel}
-            runtimeLanguage={runtimeLanguage}
-            whisperPreset={whisperPreset}
-            activeTask={activeTask}
-            activeTaskStatusText={activeTaskRuntimeStatusText}
-            runtimeMainProps={runtimeMainProps}
-            isTaskCompleted={Boolean(isTaskCompleted)}
-            savingArtifacts={savingArtifacts}
-            bundleArchiveFormat={bundleArchiveFormat}
-            onDownloadAllArtifacts={() => {
-              void downloadAllArtifacts()
-            }}
-            sourceTaskModalProps={sourceTaskModalProps}
-            historyModalProps={historyModalProps}
-            deleteTaskConfirmModalProps={deleteTaskConfirmModalProps}
-            promptTemplateDeleteModalProps={promptTemplateDeleteModalProps}
-            configModalProps={configModalProps}
-            selfCheckModalProps={selfCheckModalProps}
-          />
+          <WorkbenchMainView {...mainViewProps} />
         ) : quickStartMarkdown ? (
           <QuickStartPanel markdown={quickStartMarkdown} />
         ) : (

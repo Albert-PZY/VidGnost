@@ -20,7 +20,7 @@ interface UseWorkbenchConfigManagerOptions {
   setSavingWhisperConfig: Dispatch<SetStateAction<boolean>>
   setSavingLocalModelConfig: Dispatch<SetStateAction<boolean>>
   setError: Dispatch<SetStateAction<string | null>>
-  normalizeWhisperConfigForGpu: (config: WhisperConfig) => WhisperConfig
+  normalizeWhisperConfigForCpu: (config: WhisperConfig) => WhisperConfig
   appendLog: (stage: 'A' | 'B' | 'C' | 'D', message: string) => void
 }
 
@@ -34,15 +34,15 @@ export function useWorkbenchConfigManager({
   setSavingWhisperConfig,
   setSavingLocalModelConfig,
   setError,
-  normalizeWhisperConfigForGpu,
+  normalizeWhisperConfigForCpu,
   appendLog,
 }: UseWorkbenchConfigManagerOptions) {
   const saveWhisperRuntimeConfig = useCallback(async () => {
     setSavingWhisperConfig(true)
     setError(null)
     try {
-      const saved = await updateWhisperConfig(normalizeWhisperConfigForGpu(whisperDraft))
-      const normalizedSaved = normalizeWhisperConfigForGpu(saved)
+      const saved = await updateWhisperConfig(normalizeWhisperConfigForCpu(whisperDraft))
+      const normalizedSaved = normalizeWhisperConfigForCpu(saved)
       const persistedLLM = await getLLMConfig()
       const correctedLLM = await updateLLMConfig({
         ...persistedLLM,
@@ -73,7 +73,7 @@ export function useWorkbenchConfigManager({
   }, [
     appendLog,
     llmConfig.correction_mode,
-    normalizeWhisperConfigForGpu,
+    normalizeWhisperConfigForCpu,
     setError,
     setLLMConfig,
     setSavingWhisperConfig,
@@ -88,8 +88,8 @@ export function useWorkbenchConfigManager({
     setError(null)
     try {
       const savedLLM = await updateLLMConfig(llmConfig)
-      const savedWhisper = await updateWhisperConfig(normalizeWhisperConfigForGpu(whisperDraft))
-      const normalizedWhisper = normalizeWhisperConfigForGpu(savedWhisper)
+      const savedWhisper = await updateWhisperConfig(normalizeWhisperConfigForCpu(whisperDraft))
+      const normalizedWhisper = normalizeWhisperConfigForCpu(savedWhisper)
       setLLMConfig(savedLLM)
       setWhisperConfig(normalizedWhisper)
       setWhisperDraft(normalizedWhisper)
@@ -108,7 +108,7 @@ export function useWorkbenchConfigManager({
     }
   }, [
     llmConfig,
-    normalizeWhisperConfigForGpu,
+    normalizeWhisperConfigForCpu,
     setError,
     setLLMConfig,
     setSavingLocalModelConfig,
