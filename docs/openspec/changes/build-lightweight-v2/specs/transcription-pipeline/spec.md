@@ -5,65 +5,83 @@ The backend SHALL process each task asynchronously and transition status through
 
 #### Scenario: Successful asynchronous flow
 - **WHEN** a task is created
-- **THEN** worker executes stages in order and persists progress snapshots
+- **THEN** worker executes phases in order and persists progress snapshots
 
 #### Scenario: Pipeline failure
-- **WHEN** any unrecoverable exception occurs in ingestion/transcription/summarization
-- **THEN** task status changes to `failed` with actionable error message
+- **WHEN** unrecoverable exception occurs in ingestion/transcription/generation
+- **THEN** task status becomes `failed` with actionable error metadata
 
 #### Scenario: User cancellation
-- **WHEN** user cancels a running/waiting task
-- **THEN** task status changes to `cancelled`
-- **AND** temporary per-task workspace is cleaned while reusable Whisper cache is retained
+- **WHEN** user cancels a waiting or running task
+- **THEN** task status becomes `cancelled`
+- **AND** per-task temporary workspace is cleaned while reusable model cache is retained
 
-### Requirement: Pipeline SHALL keep balanced stage boundaries
-The pipeline SHALL keep these stage responsibilities:
+### Requirement: Pipeline SHALL keep explicit phase boundaries
+The pipeline SHALL keep these responsibilities:
 - `A`: source ingestion and normalization
-- `B`: audio preprocessing and chunking
+- `B`: audio preprocessing and chunk planning
 - `C`: Faster-Whisper transcription streaming
 - `D`: transcript optimization + notes/mindmap delivery
 
-#### Scenario: Stage boundary clarity
+#### Scenario: Phase ordering
 - **WHEN** task starts from any valid source
-- **THEN** stage `A` completes before `B`
-- **AND** stage `D` starts only after stage `C` output is available
+- **THEN** phase `A` completes before `B`
+- **AND** phase `D` starts only after phase `C` output is available
 
 ### Requirement: Stage D SHALL execute ordered substage chain
-Inside stage `D`, backend SHALL execute in-order:
+Inside phase `D`, backend SHALL execute in order:
 `transcript_optimize -> fusion_delivery`.
 
-#### Scenario: Ordered substage execution
-- **WHEN** stage `D` starts
+#### Scenario: Ordered stage-D execution
+- **WHEN** phase `D` starts
 - **THEN** `transcript_optimize` runs before `fusion_delivery`
 - **AND** `fusion_delivery` starts only after `transcript_optimize` completes or is skipped
 
-### Requirement: Stage D SHALL be transcript-only
-Stage `D` SHALL NOT execute video keyframe extraction, OCR, or VLM frame semantic pipelines.
+### Requirement: Stage D context SHALL be transcript-centric
+Stage `D` generation context SHALL be composed from transcript artifacts and transcript-optimization results.
 
-#### Scenario: Stage D starts in current profile
-- **WHEN** backend enters stage `D`
-- **THEN** backend only consumes transcript artifacts and LLM runtime config
-- **AND** no visual substage keys are produced
+#### Scenario: Compose stage-D prompt context
+- **WHEN** backend prepares prompt context for phase `D`
+- **THEN** backend uses transcript text and correction outputs as primary context
+- **AND** generated artifacts remain aligned with transcript timeline semantics
 
-### Requirement: Transcription runtime SHALL stay GPU-only
-Faster-Whisper runtime SHALL execute in GPU mode and SHALL NOT silently fall back to CPU when CUDA runtime is unavailable.
+### Requirement: Transcription runtime SHALL be CPU-only
+Faster-Whisper runtime SHALL execute with effective `device=cpu`.
 
-#### Scenario: CUDA runtime libraries missing
-- **WHEN** transcription initializes but CUDA runtime libraries are unavailable
-- **THEN** task fails with explicit GPU dependency error
+#### Scenario: Save whisper config with non-CPU device
+- **WHEN** client submits `device` value in whisper config update
+- **THEN** backend persists normalized effective `device=cpu`
 
-### Requirement: Runtime execution mode SHALL be API-only for summarization path
-Summarization runtime mode resolution SHALL normalize to API path in current profile.
+### Requirement: Transcription runtime SHALL constrain compute types
+Whisper runtime SHALL allow effective `compute_type` values: `int8` or `float32`.
 
-#### Scenario: Legacy local-mode payload arrives
-- **WHEN** request/config still carries legacy local-mode hints
-- **THEN** backend normalizes execution mode to `api`
-- **AND** pipeline behavior stays consistent with API-only design
+#### Scenario: Save unsupported compute type
+- **WHEN** client submits unsupported `compute_type`
+- **THEN** backend persists normalized default `compute_type=int8`
 
-### Requirement: Stage metrics SHALL expose substage observability for D
-Task detail response SHALL include `vm_phase_metrics` for `transcript_optimize` and `D`.
+### Requirement: Task start SHALL ensure Whisper small model readiness
+Before phase `C` transcription begins, backend SHALL ensure `small` model files are available locally.
 
-#### Scenario: Query task detail after stage D run
+#### Scenario: Model cache exists
+- **WHEN** task starts and local `small` model cache is complete
+- **THEN** backend enters transcription without additional download
+
+#### Scenario: Model cache missing
+- **WHEN** task starts and local `small` model cache is missing or incomplete
+- **THEN** backend downloads required model files and emits progress updates into runtime stream
+
+### Requirement: Stage D generation mode SHALL resolve to API path
+Stage `D` generation runtime SHALL use online API configuration as effective execution mode.
+
+#### Scenario: Run generation with saved runtime config
+- **WHEN** phase `D` starts
+- **THEN** backend uses effective online API fields from runtime config store
+- **AND** generation behavior remains deterministic across task restarts
+
+### Requirement: Stage metrics SHALL expose stage-D substage observability
+Task detail response SHALL include `vm_phase_metrics` entries for `transcript_optimize` and `D`.
+
+#### Scenario: Query task detail after phase D
 - **WHEN** client requests task detail
-- **THEN** response includes substage status/timing/reason fields for `transcript_optimize`
-- **AND** final `D` phase status reflects `fusion_delivery` completion state
+- **THEN** response includes status/timing/reason fields for `transcript_optimize`
+- **AND** final phase-`D` metric reflects `fusion_delivery` completion state

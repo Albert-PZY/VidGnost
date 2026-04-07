@@ -1,65 +1,94 @@
-# VidGnost Quick Start (Current Build)
+# VidGnost Quick Start
 
-## 1. Runtime Architecture
+## 1. Runtime Topology
 
-The current pipeline is simplified to:
+VidGnost executes each analysis task with the following pipeline:
 
-1. Local audio preprocessing and chunking
-2. Local `Systran/faster-whisper-small` transcription (CPU)
-3. Stage D subchain: `transcript_optimize -> fusion_delivery`
-4. Online LLM generation for detailed notes and mindmap
-
-Removed from this build:
-
-- Local video frame extraction stage
-- VLM frame semantic recognition stage
-- OCR-related pipeline
+1. Source ingestion and media preparation (`A`)
+2. Audio conversion and chunk planning (`B`)
+3. Local transcription with `Systran/faster-whisper-small` on CPU (`C`)
+4. Stage-D ordered subchain: `transcript_optimize -> fusion_delivery` (`D`)
+5. Online LLM generation of notes + markmap markdown
 
 ## 2. Prerequisites
 
 - Python 3.12
 - `uv`
-- Node.js + `pnpm`
-- `ffmpeg` (required)
-- CPU runtime (Faster-Whisper is fixed to CPU inference in current build)
+- Node.js 18+ with Corepack
+- `pnpm`
+- `ffmpeg` in system `PATH`
+- Valid online LLM API credentials (`base_url`, `model`, `api_key`)
 
-## 3. Startup
+## 3. Install Dependencies
 
-From project root:
+From repository root:
 
-- Backend deps: `uv sync --project backend`
-- Frontend deps: `pnpm --dir frontend install`
+```bash
+uv sync --project backend --python 3.12 --index-url https://pypi.tuna.tsinghua.edu.cn/simple/
+pnpm --dir frontend install
+```
 
-Then run backend and frontend dev servers as usual.
+## 4. Start Services
 
-## 4. Runtime Config
+Backend:
 
-In Runtime Config Center:
+```bash
+cd backend
+uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
 
-1. In `Online LLM` tab, fill:
+Frontend:
+
+```bash
+cd frontend
+pnpm dev --host 0.0.0.0 --port 5173
+```
+
+Open `http://localhost:5173`.
+
+## 5. Configure Runtime
+
+Open `Runtime Config` in the header and fill:
+
+1. `Online LLM`
    - `base_url`
    - `model`
    - `api_key`
-2. In `Faster-Whisper` tab, confirm:
-   - `model_default` (fixed to `small`)
-   - `language`
-   - `compute_type`
-   - `chunk_seconds`
+2. `Faster-Whisper`
+   - `model_default=small`
+   - `device=cpu`
+   - `compute_type` = `int8` or `float32`
+   - `language`, `chunk_seconds`, and other ASR controls
+3. `Prompt Templates`
+   - Select summary and mindmap templates for Stage-D generation
 
-## 5. FAQ
+## 6. Submit and Monitor a Task
 
-### 5.1 Stage-D API auth or timeout errors
+1. Open source modal and submit URL/path/upload source.
+2. Monitor realtime SSE events in runtime tabs (`A`, `B`, `C`, `transcript_optimize`, `D`).
+3. Review outputs after completion:
+   - transcript
+   - notes markdown
+   - mindmap markdown + visual render
+   - subtitle exports (`SRT`, `VTT`)
 
-Check:
+## 7. Export and History
 
-- `base_url` reachability
-- `model` correctness
-- `api_key` validity and quota
+- Download bundle (`zip` on Windows, `tar` on Linux/macOS)
+- Reopen historical tasks from history modal
+- Edit task title
+- Edit notes/mindmap markdown for terminal tasks and export latest content
 
-### 5.2 Transcription is slow (CPU mode)
+## 8. Quick Troubleshooting
 
-Check:
+### 8.1 LLM API error in Stage D
 
-- backend venv dependencies installed via `uv sync`
-- `compute_type` set to `int8` for lower CPU pressure
-- no other heavy CPU workloads are running
+Check endpoint reachability, model name, API key validity, and quota.
+
+### 8.2 Whisper runtime error with CUDA DLL messages
+
+Save runtime config with `device=cpu` and rerun.
+
+### 8.3 `uv` hardlink warning
+
+If cache and project are on different filesystems, set `UV_LINK_MODE=copy`.
