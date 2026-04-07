@@ -200,4 +200,5 @@ powershell -ExecutionPolicy Bypass -File scripts/check-openspec.ps1
 
 - [Quick Start (EN)](./frontend/src/docs/quick-start.en.md)
 - [Quick Start (ZH)](./frontend/src/docs/quick-start.zh-CN.md)
+- [Repository File Format Policy (ZH)](./docs/repository-file-format-policy.zh-CN.md)
 - [Error Code Dictionary (ZH)](./docs/error-codes.zh-CN.md)

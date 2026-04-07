@@ -1,2 +1,3 @@
 #!/usr/bin/env sh
-python scripts/git-hooks/protect_local_config_secrets.py --mode staged
+python scripts/git-hooks/protect_local_config_secrets.py --mode staged &&
+python scripts/git-hooks/check_text_file_policy.py --mode staged
