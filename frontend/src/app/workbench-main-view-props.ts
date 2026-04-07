@@ -37,6 +37,7 @@ interface BuildMainViewPropsOptions {
   activeStage: StageKey
   setActiveStage: (stage: StageKey) => void
   stageLogs: Record<StageKey, string[]>
+  vmPhaseLogs: Record<VmPhaseKey, string[]>
   transcriptPanelRef: RefObject<HTMLDivElement | null>
   transcriptStream: string
   transcriptSegments: TranscriptSegment[]
@@ -47,6 +48,7 @@ interface BuildMainViewPropsOptions {
   hasUnsavedArtifactEdits: boolean
   savingArtifacts: boolean
   persistEditedArtifacts: () => Promise<boolean>
+  loadArtifactContent: (path: string) => Promise<string>
   notesPanelRef: RefObject<HTMLDivElement | null>
   notesStream: string
   handleNotesMarkdownChange: (value: string) => void
@@ -140,6 +142,7 @@ export function buildWorkbenchMainViewProps(options: BuildMainViewPropsOptions) 
     activeStage: options.activeStage,
     setActiveStage: options.setActiveStage,
     stageLogs: options.stageLogs,
+    vmPhaseLogs: options.vmPhaseLogs,
     transcriptPanelRef: options.transcriptPanelRef,
     transcriptStream: options.transcriptStream,
     transcriptSegments: options.transcriptSegments,
@@ -151,6 +154,7 @@ export function buildWorkbenchMainViewProps(options: BuildMainViewPropsOptions) 
     hasUnsavedArtifactEdits: options.hasUnsavedArtifactEdits,
     savingArtifacts: options.savingArtifacts,
     onPersistEditedArtifacts: options.persistEditedArtifacts,
+    onLoadArtifactContent: options.loadArtifactContent,
     notesPanelRef: options.notesPanelRef,
     notesStream: options.notesStream,
     onNotesMarkdownChange: options.handleNotesMarkdownChange,

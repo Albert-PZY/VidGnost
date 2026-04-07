@@ -862,6 +862,7 @@ class TaskRunner:
                     summary_markdown=bundle.summary_markdown,
                     notes_markdown=bundle.notes_markdown,
                     mindmap_markdown=bundle.mindmap_markdown,
+                    storage_dir=self._settings.storage_dir,
                 )
                 await self._update_task(
                     task_id,
@@ -1192,6 +1193,7 @@ class TaskRunner:
                     summary_markdown=bundle.summary_markdown,
                     notes_markdown=bundle.notes_markdown,
                     mindmap_markdown=bundle.mindmap_markdown,
+                    storage_dir=self._settings.storage_dir,
                 )
                 await self._update_task(
                     task_id,

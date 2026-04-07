@@ -1,13 +1,51 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import type { StageKey } from '../types'
+import type { StageKey, VmPhaseKey } from '../types'
 
 const STAGES: StageKey[] = ['A', 'B', 'C', 'D']
+const VM_PHASES: VmPhaseKey[] = [
+  'A',
+  'B',
+  'C',
+  'transcript_optimize',
+  'notes_extract',
+  'notes_outline',
+  'notes_sections',
+  'notes_coverage',
+  'summary_delivery',
+  'mindmap_delivery',
+  'D',
+]
 const DEFAULT_STREAM_FLUSH_INTERVAL_MS = 120
 type StreamMode = 'realtime' | 'compat'
+const D_SUBPHASES = new Set<VmPhaseKey>([
+  'transcript_optimize',
+  'notes_extract',
+  'notes_outline',
+  'notes_sections',
+  'notes_coverage',
+  'summary_delivery',
+  'mindmap_delivery',
+])
 
 export function createEmptyStageLogs(): Record<StageKey, string[]> {
   return { A: [], B: [], C: [], D: [] }
+}
+
+export function createEmptyVmPhaseLogs(): Record<VmPhaseKey, string[]> {
+  return {
+    A: [],
+    B: [],
+    C: [],
+    transcript_optimize: [],
+    notes_extract: [],
+    notes_outline: [],
+    notes_sections: [],
+    notes_coverage: [],
+    summary_delivery: [],
+    mindmap_delivery: [],
+    D: [],
+  }
 }
 
 export function createEmptyStageTimers(): Record<StageKey, number | null> {
@@ -16,6 +54,32 @@ export function createEmptyStageTimers(): Record<StageKey, number | null> {
 
 function hasPendingStageLogs(logs: Record<StageKey, string[]>): boolean {
   return STAGES.some((stage) => logs[stage].length > 0)
+}
+
+function hasPendingVmPhaseLogs(logs: Record<VmPhaseKey, string[]>): boolean {
+  return VM_PHASES.some((phase) => logs[phase].length > 0)
+}
+
+function resolveVmPhaseFromLogLine(line: string): VmPhaseKey | null {
+  const match = line.match(/^\[([a-z_]+)\]/i)
+  if (!match) return null
+  const phase = match[1] as VmPhaseKey
+  return D_SUBPHASES.has(phase) ? phase : null
+}
+
+export function deriveVmPhaseLogsFromStageLogs(stageLogs: Record<StageKey, string[]>): Record<VmPhaseKey, string[]> {
+  const vmPhaseLogs = createEmptyVmPhaseLogs()
+  vmPhaseLogs.A = stageLogs.A.slice()
+  vmPhaseLogs.B = stageLogs.B.slice()
+  vmPhaseLogs.C = stageLogs.C.slice()
+  vmPhaseLogs.D = stageLogs.D.slice()
+
+  for (const line of stageLogs.D) {
+    const phase = resolveVmPhaseFromLogLine(line)
+    if (!phase) continue
+    vmPhaseLogs[phase].push(line)
+  }
+  return vmPhaseLogs
 }
 
 interface UseTaskStreamOptions {
@@ -32,6 +96,7 @@ export function useTaskStream({
   const [activeStage, setActiveStage] = useState<StageKey>('A')
   const [overallProgress, setOverallProgress] = useState(0)
   const [stageLogs, setStageLogs] = useState<Record<StageKey, string[]>>(createEmptyStageLogs)
+  const [vmPhaseLogs, setVmPhaseLogs] = useState<Record<VmPhaseKey, string[]>>(createEmptyVmPhaseLogs)
   const [stageTimers, setStageTimers] = useState<Record<StageKey, number | null>>(createEmptyStageTimers)
   const [runtimeNowMs, setRuntimeNowMs] = useState<number>(() => Date.now())
   const [transcriptStream, setTranscriptStream] = useState('')
@@ -41,6 +106,7 @@ export function useTaskStream({
 
   const flushTimerRef = useRef<number | null>(null)
   const pendingLogsRef = useRef<Record<StageKey, string[]>>(createEmptyStageLogs())
+  const pendingVmPhaseLogsRef = useRef<Record<VmPhaseKey, string[]>>(createEmptyVmPhaseLogs())
   const pendingTranscriptRef = useRef<string[]>([])
   const pendingSummaryRef = useRef<string[]>([])
   const pendingNotesRef = useRef<string[]>([])
@@ -62,6 +128,18 @@ export function useTaskStream({
         return next
       })
       pendingLogsRef.current = createEmptyStageLogs()
+    }
+
+    const pendingVmPhaseLogs = pendingVmPhaseLogsRef.current
+    if (hasPendingVmPhaseLogs(pendingVmPhaseLogs)) {
+      setVmPhaseLogs((prev) => {
+        const next = createEmptyVmPhaseLogs()
+        for (const phase of VM_PHASES) {
+          next[phase] = prev[phase].concat(pendingVmPhaseLogs[phase])
+        }
+        return next
+      })
+      pendingVmPhaseLogsRef.current = createEmptyVmPhaseLogs()
     }
 
     if (pendingTranscriptRef.current.length > 0) {
@@ -99,6 +177,14 @@ export function useTaskStream({
   const appendLog = useCallback(
     (stage: StageKey, message: string) => {
       pendingLogsRef.current[stage].push(message)
+      scheduleBufferedFlush()
+    },
+    [scheduleBufferedFlush],
+  )
+
+  const appendVmPhaseLog = useCallback(
+    (phase: VmPhaseKey, message: string) => {
+      pendingVmPhaseLogsRef.current[phase].push(message)
       scheduleBufferedFlush()
     },
     [scheduleBufferedFlush],
@@ -146,6 +232,7 @@ export function useTaskStream({
   const resetRuntimePanels = useCallback(() => {
     flushBufferedStream()
     pendingLogsRef.current = createEmptyStageLogs()
+    pendingVmPhaseLogsRef.current = createEmptyVmPhaseLogs()
     pendingTranscriptRef.current = []
     pendingSummaryRef.current = []
     pendingNotesRef.current = []
@@ -153,6 +240,7 @@ export function useTaskStream({
     setActiveStage('A')
     setOverallProgress(0)
     setStageLogs(createEmptyStageLogs())
+    setVmPhaseLogs(createEmptyVmPhaseLogs())
     setStageTimers(createEmptyStageTimers())
     setRuntimeNowMs(Date.now())
     setTranscriptStream('')
@@ -185,6 +273,8 @@ export function useTaskStream({
     setOverallProgress,
     stageLogs,
     setStageLogs,
+    vmPhaseLogs,
+    setVmPhaseLogs,
     stageTimers,
     setStageTimers,
     runtimeNowMs,
@@ -198,6 +288,7 @@ export function useTaskStream({
     mindmapStream,
     setMindmapStream,
     appendLog,
+    appendVmPhaseLog,
     appendTranscript,
     appendSummary,
     appendNotes,

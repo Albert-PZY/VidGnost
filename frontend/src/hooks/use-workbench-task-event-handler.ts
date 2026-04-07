@@ -33,6 +33,7 @@ interface UseWorkbenchTaskEventHandlerOptions {
   updateActiveTaskRealtime: (patch: Partial<Pick<TaskDetail, 'status' | 'progress' | 'error_message'>>) => void
   updateHistoryRealtime: (taskId: string, patch: Partial<Pick<TaskSummaryItem, 'status' | 'progress'>>) => void
   appendLog: (stage: StageKey, message: string) => void
+  appendVmPhaseLog: (phase: VmPhaseKey, message: string) => void
   appendTranscript: (text: string) => void
   appendTranscriptSegment: (segment: TranscriptSegment) => void
   appendTranscriptOptimized: (
@@ -69,6 +70,7 @@ export function useWorkbenchTaskEventHandler({
   updateActiveTaskRealtime,
   updateHistoryRealtime,
   appendLog,
+  appendVmPhaseLog,
   appendTranscript,
   appendTranscriptSegment,
   appendTranscriptOptimized,
@@ -95,6 +97,19 @@ export function useWorkbenchTaskEventHandler({
     }
     return null
   }, [])
+
+  const appendPhaseAwareLog = useCallback((stage: StageKey, substage: string | undefined, message: string) => {
+    appendLog(stage, message)
+    if (stage === 'D') {
+      const phase = resolveVmPhaseBySubstage(substage) ?? 'D'
+      appendVmPhaseLog('D', message)
+      if (phase !== 'D') {
+        appendVmPhaseLog(phase, message)
+      }
+      return
+    }
+    appendVmPhaseLog(stage, message)
+  }, [appendLog, appendVmPhaseLog, resolveVmPhaseBySubstage])
 
   return useCallback((event: TaskEvent) => {
     const markVmPhaseRunning = (phase: VmPhaseKey) => {
@@ -221,11 +236,11 @@ export function useWorkbenchTaskEventHandler({
       }
     }
     if (event.type === 'log' && event.stage && event.message) {
-      appendLog(event.stage, formatLogLine(event))
+      appendPhaseAwareLog(event.stage, event.substage, formatLogLine(event))
     }
     if (event.type === 'runtime_warning' && event.message) {
       const stage = event.stage ?? activeStage
-      appendLog(stage, formatRuntimeWarningLine(event))
+      appendPhaseAwareLog(stage, event.substage, formatRuntimeWarningLine(event))
       toast.error(event.code ? `${event.code}: ${event.message}` : event.message)
     }
     if (event.type === 'progress' && typeof event.overall_progress === 'number') {
@@ -342,7 +357,9 @@ export function useWorkbenchTaskEventHandler({
     activeStage,
     activeTaskId,
     appendLog,
+    appendPhaseAwareLog,
     appendMindmap,
+    appendVmPhaseLog,
     appendSummary,
     appendNotes,
     appendTranscript,

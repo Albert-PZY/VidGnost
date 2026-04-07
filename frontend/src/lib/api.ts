@@ -198,6 +198,10 @@ export async function updateTaskArtifacts(
   })
 }
 
+export async function getTaskArtifactContent(taskId: string, path: string): Promise<string> {
+  return request<string>(`/tasks/${taskId}/artifacts/content?path=${encodeURIComponent(path)}`)
+}
+
 export async function deleteTask(taskId: string): Promise<void> {
   await request<void>(`/tasks/${taskId}`, {
     method: 'DELETE',
