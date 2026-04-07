@@ -1,0 +1,39 @@
+# Used by npm/pnpm publish & pack.
+# Keep package payload minimal and exclude local development artifacts.
+
+# VCS / tooling
+.git/
+.github/
+.vscode/
+.idea/
+
+# Documentation not required for package publishing
+docs/
+AGENTS.md
+README.zh-CN.md
+
+# Backend runtime and caches
+backend/.venv/
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+backend/__pycache__/
+backend/storage/
+backend/htmlcov/
+
+# Frontend build and dependencies
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/.vite/
+frontend/.cache/
+
+# Generic caches and logs
+**/__pycache__/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Local env files
+.env
+.env.*

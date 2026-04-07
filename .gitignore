@@ -1,0 +1,59 @@
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*.tmp
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python backend
+backend/.venv/
+backend/__pycache__/
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+backend/.coverage
+backend/htmlcov/
+backend/storage/
+backend/*.sqlite3
+backend/.python-version
+backend/**/__pycache__/
+
+# Node frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+frontend/.cache/
+frontend/.eslintcache
+frontend/**/*.tsbuildinfo
+
+# Build / cache
+tmp/
+temp/
+.cache/
+
+# Local docs artifacts
+docs/.codex/
+docs/*.mp4
+
+# Ignore agent index from version control
+
+AGENTS.md

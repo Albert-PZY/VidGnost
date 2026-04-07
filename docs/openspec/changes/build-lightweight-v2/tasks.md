@@ -1,0 +1,156 @@
+## 1. Spec & Bootstrap
+
+- [x] 1.1 Initialize backend project skeleton (uv, FastAPI, config, routing)
+- [x] 1.2 Initialize frontend project skeleton (pnpm, React, TS, Tailwind, base UI)
+- [x] 1.3 Establish project layout and baseline run docs
+
+## 2. Backend Core Pipeline
+
+- [x] 2.1 Implement task model and local file persistence
+- [x] 2.2 Implement task creation APIs for URL / local path / upload
+- [x] 2.3 Implement async 4-stage pipeline executor (`A/B/C/D`)
+- [x] 2.4 Implement chunking + faster-whisper streaming transcription
+- [x] 2.5 Implement parallel OpenAI-compatible summary and mindmap generation
+- [x] 2.6 Upgrade summary prompt/fallback to generate detailed structured notes
+- [x] 2.7 Decouple summary/mindmap prompts into dedicated prompt module
+- [x] 2.8 Simplify stage-D chain to transcript-only subtages (`transcript_optimize -> fusion_delivery`)
+- [x] 2.9 Remove video keyframe/OCR/VLM runtime paths and clean related task metrics/events
+- [x] 2.10 Remove local visual model deployment workflow and keep runtime fully API-first for generation
+- [x] 2.11 Add runtime resource guard (startup disk check + config auto-rollback + runtime warning events)
+- [x] 2.12 Normalize generation runtime mode to API-only (remove local LLM mode)
+
+## 3. Backend History / Runtime / Export
+
+- [x] 3.1 Implement history list and task detail APIs
+- [x] 3.2 Implement export endpoints (`TXT / MD / HTML`)
+- [x] 3.3 Remove Redis dependency and use local files as unified retrieval source
+- [x] 3.4 Add task SSE stream endpoint (logs, progress, output deltas)
+- [x] 3.5 Add editable LLM runtime config API with `model_config.json` persistence
+- [x] 3.6 Add editable Faster-Whisper runtime config API with `config.toml` persistence
+- [x] 3.7 Persist stage logs for cross-restart history replay
+- [x] 3.8 Normalize runtime stage logs to English
+- [x] 3.9 Harden backend memory behavior (bounded segment queue, EventBus terminal cleanup, temp dir cleanup)
+- [x] 3.10 Ensure UTF-8 stdio on Windows backend startup to prevent Chinese garbled output
+- [x] 3.11 Add archive export endpoint to package all task artifacts into a single zip/tar file
+- [x] 3.12 Enforce Faster-Whisper GPU-only runtime (no CPU fallback) with explicit CUDA dependency errors
+- [x] 3.13 Add history management APIs (rename task title + delete terminal task)
+- [x] 3.14 Add one-time startup temp workspace cleanup for force-kill residue (no runtime periodic scan)
+- [x] 3.15 Add running-task cancellation API and terminal `cancelled` status/event with temp workspace cleanup
+- [x] 3.16 Remove Hugging Face endpoint/token fields from model runtime config and keep downloader endpoint fallback in backend
+- [x] 3.17 Add Whisper model preload API with per-model cache/download result reporting
+- [x] 3.18 Add file-backed prompt template persistence and selection for summary/mindmap generation
+- [x] 3.19 Add subtitle export endpoints (`srt` / `vtt`) and include subtitle artifacts in bundle export with timeline normalization
+- [x] 3.20 Bound self-check session cache and prune terminal sessions to avoid unbounded memory growth in long-lived backend processes
+- [x] 3.21 Unify backend API exception handling via structured error envelope (`code/message/detail`) and global handlers (`AppError` + validation + unexpected exceptions)
+
+## 4. Frontend Workbench
+
+- [x] 4.1 Implement responsive shell with theme switching
+- [x] 4.2 Implement URL/path/upload input modes
+- [x] 4.3 Replace polling with SSE runtime stream
+- [x] 4.4 Implement VNC-like stage tabs with auto-switch
+- [x] 4.5 Implement stage C transcript stream + stage D split stream (summary/mindmap)
+- [x] 4.6 Implement frontend LLM config panel and persistence flow
+- [x] 4.7 Integrate bilingual i18n (Chinese/English) with locale persistence
+- [x] 4.8 Add Faster-Whisper runtime config panel bound to backend `config.toml`
+- [x] 4.9 Restore persisted stage logs/outputs when reopening history tasks
+- [x] 4.10 Optimize runtime rendering and bundle splitting (batched stream flush + lazy mindmap chunks)
+- [x] 4.11 Refactor sidebar to action-first layout and move source/history/config operations into modal dialogs
+- [x] 4.12 Remove duplicate source-level Whisper model/language controls and reuse persisted Faster-Whisper defaults
+- [x] 4.13 Add header icon-based locale dropdown (hover/click expand + active locale highlight)
+- [x] 4.14 Add guided Whisper config UX (parameter descriptions + speed/balanced/quality presets + custom override)
+- [x] 4.15 Re-theme runtime text panels to light-toned surfaces for better readability in both themes
+- [x] 4.16 Render Whisper field guidance as two-line hints (`Input` + `Explanation`) with compact icons
+- [x] 4.17 Lock background document scroll when sidebar modal is open
+- [x] 4.18 Stabilize shell alignment for 50% browser zoom (no center drifting)
+- [x] 4.19 Update header subtitle copy to remove `SSE` prefix
+- [x] 4.20 Replace static downloads section with contextual post-completion one-click bundle button
+- [x] 4.21 Auto-detect client OS and select archive format (`zip` for Windows, `tar` for Linux)
+- [x] 4.22 Add self-check modal with ordered vertical progress timeline and SSE realtime feedback
+- [x] 4.23 Add one-click auto-fix action with issue list and manual intervention hints
+- [x] 4.24 Add top-level quick-start entry and markdown documentation page aligned with workbench theme
+- [x] 4.25 Flatten top navigation visual style and reduce header chrome density
+- [x] 4.26 Add collapsible/expandable sidebar and maximize runtime viewport in collapsed mode
+- [x] 4.27 Redesign quick-start into two-pane docs layout (left outline + right content) with active-anchor tracking
+- [x] 4.28 Add quick-start outline group collapse/expand interactions with smooth highlight transition
+- [x] 4.29 Add markdown/code copy actions and theme-aware syntax highlighting on quick-start page
+- [x] 4.30 Improve theme toggle with smooth global transition and reduced-motion fallback
+- [x] 4.31 Fix sticky behavior for header/quick-start TOC and extend docs-surface theme transition coverage
+- [x] 4.32 Polish docs shell details (dark header divider removal, compact TOC collapse icon, matched card surfaces, reading stats, code highlight fallback)
+- [x] 4.33 Add icon-based history row actions (edit title + delete task)
+- [x] 4.34 Add sliding active indicator for runtime stage tabs and header GitHub icon link
+- [x] 4.35 Replace browser-native delete confirm with themed modal and toast feedback
+- [x] 4.36 Auto-scroll transcript stream and rebalance stage-D panel layout with full-row mindmap
+- [x] 4.37 Improve dark-theme mindmap readability (text and connector contrast)
+- [x] 4.38 Pin global toast notifications to top-center viewport
+- [x] 4.39 Sync active task status/progress from SSE in realtime (sidebar/runtime fields)
+- [x] 4.40 Add runtime stop-task control and handle `task_cancelled` terminal flow
+- [x] 4.41 Remove LLM config Hugging Face endpoint/token inputs to keep online API config minimal
+- [x] 4.42 Add one-click Whisper model cache preload UI in runtime config center
+- [x] 4.43 Add LLM prompt template manager (create/edit/delete/switch) for notes and mindmap generation
+- [x] 4.44 Remove multimodal controls from Whisper modal and keep ASR-only runtime parameters
+- [x] 4.45 Replace local/API toggle with fixed API-mode LLM config in config modal
+- [x] 4.46 Handle backend `runtime_warning` SSE event with realtime log + toast feedback
+- [x] 4.47 Bound Mermaid SVG render cache with LRU eviction to prevent long-session frontend memory growth
+- [x] 4.48 Harden frontend effect cleanup for clipboard reset timers and quick-start scroll RAF scheduling
+- [x] 4.49 Fix locale switch transition visibility with explicit overlay layer and repeatable animation trigger
+- [x] 4.50 Auto-scroll quick-start outline pane with active heading and auto-expand collapsed parent group
+- [x] 4.51 Simplify runtime config center to `在线 LLM / Faster-Whisper / Prompt Templates` without local deployment sections
+- [x] 4.52 Normalize frontend API error parsing with typed `ApiError`, structured backend error extraction, and explicit `204 No Content` handling
+- [x] 4.53 Preserve full runtime/self-check logs in task lifecycle, and replace hard truncation with foldable log panel controls (`show all` / `show latest`)
+- [x] 4.54 Clarify modal/runtime copy with context-first guidance (source/history/self-check/status labels) in both zh-CN and en resources
+- [x] 4.55 Add low-distraction modal/phase transition motion with reduced-motion fallback and localized phase completion labels in runtime pills
+
+## 5. Docs / Ops
+
+- [x] 5.1 Remove `.env/.env.example` workflow from project docs
+- [x] 5.2 Rewrite root README as English-first with bilingual index and startup requirements
+- [x] 5.3 Add Chinese README (`README.zh-CN.md`)
+- [x] 5.4 Add one-click Linux/Windows bootstrap-and-run scripts
+- [x] 5.5 Add startup port preflight in one-click scripts (force-kill occupiers on 8000/5173 before boot)
+- [x] 5.6 Remove Hugging Face token input and keep Whisper downloader token-free by default
+- [x] 5.7 Document GPU runtime prerequisites and CUDA library path setup in startup flow
+- [x] 5.8 Add OS-specific self-check auto-fix scripts for Linux/WSL and Windows
+- [x] 5.9 Enrich English README with annotated project structure and complete stack breakdown
+- [x] 5.10 Synchronize Chinese README to match English structure and information density
+- [x] 5.11 Sync OpenSpec requirements/tasks with latest workbench and docs-page UX updates
+- [x] 5.12 Add cross-OS `.venv` compatibility preflight (auto-rebuild conflicted virtualenv in bootstrap + auto-fix scripts)
+- [x] 5.13 Update quick-start output file descriptions to align with detailed-notes behavior
+- [x] 5.14 Sync OpenSpec specs/tasks for ASR-only runtime config and API-only generation mode
+- [x] 5.15 Increase OpenSpec information density: runtime-prepare APIs, stage metrics/artifact index, runtime-warning semantics, and `LLM_ALL_UNAVAILABLE` failure policy
+- [x] 5.16 Sync web-workbench spec with current UI layout: dedicated `在线 LLM` tab and stage `Working + elapsed` status
+- [x] 5.17 Sync quick-start spec with Mermaid rendering behavior and source fallback path
+- [x] 5.18 Sync OpenSpec requirements/tasks for memory-governance improvements (backend self-check session lifecycle + frontend cache/timer cleanup)
+- [x] 5.19 Rewrite bilingual README with user-facing flow wording (no abstract stage-letter framing) and synchronized EN/ZH information density
+- [x] 5.20 Add encrypted local secret store for runtime key (`LLM API Key`) with masked config responses and optional reveal query
+- [x] 5.21 Add structured runtime persistence artifacts (`stage-metrics/*.json`, `runtime-warnings/*.jsonl`) for runtime diagnostics
+- [x] 5.22 Add SSE `trace_id` propagation and per-task JSONL event trace files for offline troubleshooting
+- [x] 5.23 Add frontend test baseline (`Vitest + RTL` + `Playwright smoke`) and split reusable workbench panel components out of `App.tsx`
+- [x] 5.24 Extract runtime-prepare polling/session logic from App.tsx into frontend/src/hooks/use-runtime-prepare.ts
+- [x] 5.25 Extract stream buffer/timer state from App.tsx into frontend/src/hooks/use-task-stream.ts to reduce high-frequency render coupling
+- [x] 5.26 Extract task SSE connection lifecycle from App.tsx into frontend/src/hooks/use-task-events.ts
+- [x] 5.27 Extract self-check state and SSE flow from App.tsx into frontend/src/hooks/use-self-check.ts and frontend/src/hooks/use-self-check-events.ts
+- [x] 5.28 Extract self-check modal UI from App.tsx into frontend/src/components/self-check-modal.tsx
+- [x] 5.29 Extract Source task modal and delete-confirm modals from App.tsx into frontend/src/components/workbench-modals.tsx
+- [x] 5.30 Replace runtime key masking/encryption flow with plaintext persistence + response fields (with legacy secret migration fallback)
+- [x] 5.30 Extract history modal from App.tsx into frontend/src/components/history-modal.tsx
+- [x] 5.31 Extract prompt templates config tab from App.tsx into frontend/src/components/prompt-templates-tab.tsx
+- [x] 5.32 Extract workbench header/sidebar from App.tsx into frontend/src/components/workbench-header.tsx and frontend/src/components/workbench-sidebar.tsx
+- [x] 5.33 Extract runtime main stage panel from App.tsx into frontend/src/components/workbench-runtime-main.tsx
+- [x] 5.34 Extract whisper config tab from App.tsx into frontend/src/components/whisper-config-tab.tsx
+- [x] 5.35 Extract local-models config tab from App.tsx into frontend/src/components/local-models-config-tab.tsx
+- [x] 5.36 Extract prompt-template state/actions from App.tsx into frontend/src/hooks/use-prompt-template-manager.ts
+- [x] 5.37 Extract config-center modal composition from App.tsx into frontend/src/components/workbench-config-modal.tsx
+- [x] 5.38 Extract workbench task/history operations (load/update/delete/submit/cancel/export) from App.tsx into frontend/src/hooks/use-workbench-task-manager.ts
+- [x] 5.39 Extract workbench config save/orchestration (whisper/local-model/runtime-prepare selection) from App.tsx into frontend/src/hooks/use-workbench-config-manager.ts
+- [x] 5.40 Extract App-level workbench constants/utils (runtime defaults, option sets, status/format helpers) into frontend/src/app/workbench-config.ts
+- [x] 5.41 Extract workbench main view composition (sidebar/runtime panel/modals/download card) from App.tsx into frontend/src/components/workbench-main-view.tsx
+- [x] 5.42 Extract select-option construction from App.tsx into frontend/src/hooks/use-workbench-select-options.ts
+- [x] 5.43 Extract UI shell side-effects (theme/scroll/panel-lock/autoscroll) from App.tsx into frontend/src/hooks/use-workbench-ui-effects.ts
+- [x] 5.44 Extract task SSE event-branch handling from App.tsx into frontend/src/hooks/use-workbench-task-event-handler.ts
+- [x] 5.45 Normalize runtime-generated IDs/workspace names to readable time keys (`prefix-YYYYMMDD-HHMMSS[-NN]`)
+- [x] 5.46 Split stage-analysis persistence into per-stage files and add stage-artifact subtree cleanup on task delete
+- [x] 5.47 Persist stage-C/stage-D transcript outputs as chunk files and maintain per-stage artifact indexes
+- [x] 5.48 Refactor prompt-template persistence to one-template-per-file + standalone selection file
+- [x] 5.49 Sync README/OpenSpec storage documentation with stage-artifact and prompt-template file layout
+- [x] 5.50 Sync OpenSpec web-workbench spec density for modal-copy guidance and accessible motion requirements
