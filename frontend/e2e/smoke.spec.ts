@@ -60,7 +60,6 @@ test('运行配置中心 notes 模板可新建并激活且不影响 summary/mind
       body: JSON.stringify({
         mode: 'api',
         load_profile: 'balanced',
-        local_model_id: '',
         api_key: 'test-key',
         base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
         model: 'qwen3.5-omni-flash',

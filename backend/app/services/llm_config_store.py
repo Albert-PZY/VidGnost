@@ -10,14 +10,12 @@ from app.config import Settings
 
 SUPPORTED_LLM_MODES = {"api"}
 SUPPORTED_LOAD_PROFILES = {"balanced", "memory_first"}
-DEFAULT_LOCAL_LLM_MODEL_ID = "Qwen/Qwen2.5-7B-Instruct"
 _LEGACY_MASK_PLACEHOLDERS = {"__SECRET_MASKED__", "********"}
 
 
 class LLMConfig(TypedDict):
     mode: str
     load_profile: str
-    local_model_id: str
     api_key: str
     api_key_configured: bool
     base_url: str
@@ -47,7 +45,6 @@ class LLMConfigStore:
             sanitized_file_payload: dict[str, object] = {
                 "mode": _normalize_llm_mode(payload.get("mode")),
                 "load_profile": _normalize_load_profile(payload.get("load_profile")),
-                "local_model_id": _normalize_local_model_id(payload.get("local_model_id")),
                 "api_key": resolved_api_key,
                 "base_url": str(payload.get("base_url", "")).strip() or self._settings.llm_base_url,
                 "model": str(payload.get("model", "")).strip() or self._settings.llm_model,
@@ -69,10 +66,16 @@ class LLMConfigStore:
         else:
             file_payload = {}
 
+        stale_local_model_id_found = "local_model_id" in file_payload
+        if stale_local_model_id_found:
+            file_payload.pop("local_model_id", None)
+
         api_key = str(file_payload.get("api_key", "")).strip()
         legacy_api_key = self._read_legacy_secret("llm.api_key")
         if not api_key and legacy_api_key:
             file_payload["api_key"] = legacy_api_key
+            self._path.write_bytes(orjson.dumps(file_payload, option=orjson.OPT_INDENT_2))
+        elif stale_local_model_id_found:
             self._path.write_bytes(orjson.dumps(file_payload, option=orjson.OPT_INDENT_2))
 
         return self._build_config(data=file_payload)
@@ -82,7 +85,6 @@ class LLMConfigStore:
         return {
             "mode": _normalize_llm_mode(data.get("mode", "api")),
             "load_profile": _normalize_load_profile(data.get("load_profile", "balanced")),
-            "local_model_id": _normalize_local_model_id(data.get("local_model_id", self._settings.llm_local_model_id)),
             "api_key": safe_api_key,
             "api_key_configured": bool(safe_api_key),
             "base_url": str(data.get("base_url", "")).strip() or self._settings.llm_base_url,
@@ -150,13 +152,6 @@ def _normalize_correction_overlap(raw: object) -> int:
 def _normalize_llm_mode(raw: object) -> str:
     _ = raw
     return "api"
-
-
-def _normalize_local_model_id(raw: object) -> str:
-    candidate = str(raw).strip()
-    if candidate:
-        return candidate
-    return DEFAULT_LOCAL_LLM_MODEL_ID
 
 
 def _normalize_load_profile(raw: object) -> str:

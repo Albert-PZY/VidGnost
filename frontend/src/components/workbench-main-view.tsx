@@ -33,7 +33,7 @@ interface WorkbenchMainViewProps {
   activeSidebarPanel: SidebarPanelKey
   setActiveSidebarPanel: Dispatch<SetStateAction<SidebarPanelKey>>
   loadHistory: (query?: string) => Promise<void>
-  openConfigPanel: (tab?: 'localModels' | 'whisper' | 'prompts') => void
+  openConfigPanel: (tab?: 'llm' | 'whisper' | 'prompts') => void
   openSelfCheckPanel: () => void
   runtimeModel: string
   runtimeLanguage: string

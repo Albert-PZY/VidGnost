@@ -106,7 +106,7 @@ interface BuildMainViewPropsOptions {
   setActiveSidebarPanel: (panel: SidebarPanelKey) => void
   sidebarCollapsed: boolean
   setSidebarCollapsed: (value: boolean | ((prev: boolean) => boolean)) => void
-  openConfigPanel: (tab?: 'localModels' | 'whisper' | 'prompts') => void
+  openConfigPanel: (tab?: 'llm' | 'whisper' | 'prompts') => void
   openSelfCheckPanel: () => void
   whisperPreset: WhisperPresetKey
   bundleArchiveFormat: string

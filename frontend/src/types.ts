@@ -137,7 +137,6 @@ export interface TaskEvent {
 export interface LLMConfig {
   mode: 'api'
   load_profile: 'balanced' | 'memory_first'
-  local_model_id: string
   api_key: string
   base_url: string
   model: string

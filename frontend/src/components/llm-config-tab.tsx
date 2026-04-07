@@ -9,7 +9,7 @@ import { ConfigField, SelectField, type SelectFieldOption } from './workbench-pa
 import { cn } from '../lib/utils'
 import type { LLMConfig } from '../types'
 
-interface LocalModelsConfigTabProps {
+interface LLMConfigTabProps {
   t: TFunction
   fieldInputClassName: string
   menuPortalTarget: HTMLElement | null
@@ -19,11 +19,11 @@ interface LocalModelsConfigTabProps {
   loadProfileOptions: SelectFieldOption[]
   showApiKey: boolean
   setShowApiKey: Dispatch<SetStateAction<boolean>>
-  savingLocalModelConfig: boolean
-  saveLocalModelConfig: () => Promise<void>
+  savingLlmConfig: boolean
+  saveLlmConfig: () => Promise<void>
 }
 
-export function LocalModelsConfigTab({
+export function LLMConfigTab({
   t,
   fieldInputClassName,
   menuPortalTarget,
@@ -33,11 +33,11 @@ export function LocalModelsConfigTab({
   loadProfileOptions,
   showApiKey,
   setShowApiKey,
-  savingLocalModelConfig,
-  saveLocalModelConfig,
-}: LocalModelsConfigTabProps) {
+  savingLlmConfig,
+  saveLlmConfig,
+}: LLMConfigTabProps) {
   return (
-    <TabsContent value="localModels" className="mx-auto w-full max-w-[1240px] space-y-5 px-1.5 md:px-5 lg:px-9">
+    <TabsContent value="llm" className="mx-auto w-full max-w-[1240px] space-y-5 px-1.5 md:px-5 lg:px-9">
       <section className="rounded-xl border border-border bg-surface-muted p-4">
         <div className="mb-2.5">
           <PreText as="h3" variant="h3">
@@ -49,7 +49,7 @@ export function LocalModelsConfigTab({
         <section className="rounded-lg border border-border/70 bg-bg-base px-3.5 py-3.5">
           <div className="mb-3.5">
             <PreText variant="h3">LLM API 配置</PreText>
-            <PreText variant="timestamp">本地 LLM 部署链路已移除。</PreText>
+            <PreText variant="timestamp">分析阶段固定通过在线 API 调用模型。</PreText>
           </div>
           <div className="grid gap-3.5 md:grid-cols-2">
             <ConfigField label="LLM 模式" inputHint="api" explanation="固定为在线模式。">
@@ -113,8 +113,8 @@ export function LocalModelsConfigTab({
           </div>
         </section>
 
-        <Button className="mt-4 w-full" variant="secondary" onClick={() => void saveLocalModelConfig()} disabled={savingLocalModelConfig}>
-          {savingLocalModelConfig ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Settings className="mr-2 h-4 w-4" />}
+        <Button className="mt-4 w-full" variant="secondary" onClick={() => void saveLlmConfig()} disabled={savingLlmConfig}>
+          {savingLlmConfig ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Settings className="mr-2 h-4 w-4" />}
           保存运行配置
         </Button>
       </section>

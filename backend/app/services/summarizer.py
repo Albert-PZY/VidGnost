@@ -116,11 +116,11 @@ class LLMService:
         self._settings = settings
         self._config_store = llm_config_store
         self._prompt_template_store = prompt_template_store
-        self._local_model_cache_root = Path(settings.storage_dir) / "model-hub"
-        self._local_model_cache_root.mkdir(parents=True, exist_ok=True)
+        self._model_cache_root = Path(settings.storage_dir) / "model-hub"
+        self._model_cache_root.mkdir(parents=True, exist_ok=True)
         self._project_root = Path(__file__).resolve().parents[3]
         self._frontend_dir = self._project_root / "frontend"
-        self._local_llm_runtime: dict[str, tuple[Any, Any]] = {}
+        self._llm_runtime_cache: dict[str, tuple[Any, Any]] = {}
         self._api_runtime = OpenAICompatRuntime(component="llm")
         self._api_disable_thinking_support: dict[str, bool] = {}
         self._mermaid_renderer_command: list[str] | None = None
@@ -238,11 +238,7 @@ class LLMService:
                 message="LLM API client unavailable, fallback to original transcript.",
             )
 
-        model_name = (
-            str(llm_config.get("local_model_id", self._settings.llm_local_model_id)).strip()
-            if llm_mode == "local"
-            else str(llm_config.get("model", self._settings.llm_model)).strip()
-        ) or self._settings.llm_model
+        model_name = str(llm_config.get("model", self._settings.llm_model)).strip() or self._settings.llm_model
         try:
             if mode == "rewrite":
                 try:
@@ -747,11 +743,7 @@ class LLMService:
     ) -> tuple[Literal["api", "local"], AsyncOpenAI | None, str]:
         llm_mode = _normalize_llm_mode(llm_config.get("mode"))
         client = self._build_client(llm_config)
-        model_name = (
-            str(llm_config.get("local_model_id", self._settings.llm_local_model_id)).strip()
-            if llm_mode == "local"
-            else str(llm_config.get("model", self._settings.llm_model)).strip()
-        ) or self._settings.llm_model
+        model_name = str(llm_config.get("model", self._settings.llm_model)).strip() or self._settings.llm_model
         if llm_mode == "api" and client is None:
             raise RuntimeError("LLM API client unavailable in api mode")
         return llm_mode, client, model_name
@@ -1525,33 +1517,33 @@ class LLMService:
         return tokenizer.decode(output_tokens, skip_special_tokens=True).strip()
 
     def _get_or_create_local_llm_runtime(self, model_id: str) -> tuple[Any, Any]:
-        if model_id in self._local_llm_runtime:
-            return self._local_llm_runtime[model_id]
+        if model_id in self._llm_runtime_cache:
+            return self._llm_runtime_cache[model_id]
 
         _ensure_torch_cuda_ready(component="LLM")
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
         tokenizer = AutoTokenizer.from_pretrained(
             model_id,
-            cache_dir=str(self._local_model_cache_root),
+            cache_dir=str(self._model_cache_root),
             trust_remote_code=True,
             local_files_only=True,
         )
         model = AutoModelForCausalLM.from_pretrained(
             model_id,
-            cache_dir=str(self._local_model_cache_root),
+            cache_dir=str(self._model_cache_root),
             trust_remote_code=True,
             device_map="auto",
             torch_dtype="auto",
             local_files_only=True,
         )
-        self._local_llm_runtime[model_id] = (tokenizer, model)
+        self._llm_runtime_cache[model_id] = (tokenizer, model)
         return tokenizer, model
 
     def release_runtime_models(self) -> None:
-        if not self._local_llm_runtime:
+        if not self._llm_runtime_cache:
             return
-        self._local_llm_runtime.clear()
+        self._llm_runtime_cache.clear()
         gc.collect()
         _clear_torch_cuda_cache()
 
@@ -1578,491 +1570,6 @@ class LLMService:
             f"{normalized_user_content}\n"
             "~~~"
         )
-
-
-def _segmentize_plain_text(text: str) -> list[dict[str, float | str]]:
-    cleaned = text.replace("\r\n", "\n").replace("\r", "\n").strip()
-    if not cleaned:
-        return []
-
-    chunks: list[str] = []
-    for block in re.split(r"\n\s*\n+", cleaned):
-        paragraph = block.strip()
-        if not paragraph:
-            continue
-        if len(paragraph) <= 320:
-            chunks.append(paragraph)
-            continue
-        parts = re.split(r"(?<=[。！？.!?；;])\s+", paragraph)
-        current: list[str] = []
-        current_len = 0
-        for part in parts:
-            candidate = part.strip()
-            if not candidate:
-                continue
-            if current and current_len + len(candidate) > 320:
-                chunks.append(" ".join(current).strip())
-                current = [candidate]
-                current_len = len(candidate)
-            else:
-                current.append(candidate)
-                current_len += len(candidate)
-        if current:
-            chunks.append(" ".join(current).strip())
-
-    segments: list[dict[str, float | str]] = []
-    cursor = 0.0
-    for chunk in chunks:
-        if not chunk:
-            continue
-        duration = max(1.0, min(8.0, round(len(chunk) / 60.0, 2)))
-        segments.append(
-            {
-                "start": round(cursor, 2),
-                "end": round(cursor + duration, 2),
-                "text": chunk,
-            }
-        )
-        cursor += duration
-    return segments
-
-
-def _build_notes_segment_batches(
-    segments: list[dict[str, float | str]],
-    *,
-    max_chars: int,
-    overlap_segments: int,
-) -> list[dict[str, object]]:
-    normalized = _normalize_segments(segments)
-    if not normalized:
-        return []
-
-    safe_max_chars = max(1000, max_chars)
-    safe_overlap = max(0, overlap_segments)
-    batches: list[dict[str, object]] = []
-    start_index = 0
-    total_segments = len(normalized)
-
-    while start_index < total_segments:
-        end_index = start_index
-        current_segments: list[dict[str, float | str]] = []
-        current_chars = 0
-        while end_index < total_segments:
-            segment = normalized[end_index]
-            text = str(segment.get("text", "")).strip()
-            projected = current_chars + len(text) + (1 if current_segments else 0)
-            if current_segments and projected > safe_max_chars:
-                break
-            current_segments.append(segment)
-            current_chars = projected
-            end_index += 1
-            if len(text) >= safe_max_chars:
-                break
-
-        if not current_segments:
-            current_segments.append(normalized[start_index])
-            end_index = start_index + 1
-
-        batch_id = len(batches) + 1
-        batches.append(
-            {
-                "batch_id": batch_id,
-                "batch_index": batch_id,
-                "batch_total": 0,
-                "start_seconds": _to_float(current_segments[0].get("start")),
-                "end_seconds": _to_float(current_segments[-1].get("end")),
-                "segments": current_segments,
-                "text": _join_segment_texts(current_segments),
-            }
-        )
-        if end_index >= total_segments:
-            break
-        start_index = max(start_index + 1, end_index - safe_overlap)
-
-    batch_total = len(batches)
-    for batch in batches:
-        batch["batch_total"] = batch_total
-    return batches
-
-
-def _normalize_notes_evidence_card(payload: object | None, batch: dict[str, object]) -> dict[str, object]:
-    source = payload if isinstance(payload, dict) else {}
-    card = {
-        "batch_id": int(batch.get("batch_id", 0) or 0),
-        "batch_index": int(batch.get("batch_index", 0) or 0),
-        "start_seconds": round(_to_float(batch.get("start_seconds")), 2),
-        "end_seconds": round(_to_float(batch.get("end_seconds")), 2),
-        "core_points": _normalize_string_list(source.get("core_points") if isinstance(source, dict) else None),
-        "definitions": _normalize_string_list(source.get("definitions") if isinstance(source, dict) else None),
-        "steps": _normalize_string_list(source.get("steps") if isinstance(source, dict) else None),
-        "examples": _normalize_string_list(source.get("examples") if isinstance(source, dict) else None),
-        "comparisons": _normalize_string_list(source.get("comparisons") if isinstance(source, dict) else None),
-        "constraints": _normalize_string_list(source.get("constraints") if isinstance(source, dict) else None),
-        "caveats": _normalize_string_list(source.get("caveats") if isinstance(source, dict) else None),
-        "terms": _normalize_string_list(source.get("terms") if isinstance(source, dict) else None),
-        "open_loops": _normalize_string_list(source.get("open_loops") if isinstance(source, dict) else None),
-    }
-    if not card["core_points"]:
-        preview = str(batch.get("text", "")).strip()
-        if preview:
-            card["core_points"] = [preview[:160]]
-    return card
-
-
-def _render_notes_cards_payload(evidence_cards: list[dict[str, object]], *, mode: str) -> str:
-    rendered: list[dict[str, object]] = []
-    for card in evidence_cards:
-        item = {
-            "batch_id": int(card.get("batch_id", 0) or 0),
-            "time_range": {
-                "start_seconds": round(_to_float(card.get("start_seconds")), 2),
-                "end_seconds": round(_to_float(card.get("end_seconds")), 2),
-            },
-            "core_points": _normalize_string_list(card.get("core_points")),
-            "definitions": _normalize_string_list(card.get("definitions")),
-            "steps": _normalize_string_list(card.get("steps")),
-            "examples": _normalize_string_list(card.get("examples")),
-            "comparisons": _normalize_string_list(card.get("comparisons")),
-            "constraints": _normalize_string_list(card.get("constraints")),
-            "caveats": _normalize_string_list(card.get("caveats")),
-            "terms": _normalize_string_list(card.get("terms")),
-            "open_loops": _normalize_string_list(card.get("open_loops")),
-        }
-        if mode == "section":
-            item["core_points"] = item["core_points"][:6]
-            item["definitions"] = item["definitions"][:4]
-            item["steps"] = item["steps"][:6]
-            item["examples"] = item["examples"][:4]
-        rendered.append(item)
-    return orjson.dumps(rendered, option=orjson.OPT_INDENT_2).decode("utf-8")
-
-
-def _normalize_notes_outline(
-    payload: object | None,
-    *,
-    title: str,
-    evidence_cards: list[dict[str, object]],
-) -> dict[str, object]:
-    raw = payload if isinstance(payload, dict) else {}
-    raw_sections = raw.get("sections") if isinstance(raw, dict) else None
-    sections: list[dict[str, object]] = []
-    if isinstance(raw_sections, list):
-        for index, item in enumerate(raw_sections, start=1):
-            if not isinstance(item, dict):
-                continue
-            section_title = str(item.get("title", "")).strip() or f"章节 {index}"
-            sections.append(
-                {
-                    "id": str(item.get("id", f"section_{index}")).strip() or f"section_{index}",
-                    "title": section_title,
-                    "summary": str(item.get("summary", "")).strip(),
-                    "key_points": _normalize_string_list(item.get("key_points")),
-                    "source_batch_ids": _normalize_int_list(item.get("source_batch_ids")),
-                }
-            )
-
-    if not sections:
-        sections = _build_fallback_outline_sections(evidence_cards)
-
-    covered_batch_ids = {
-        batch_id
-        for section in sections
-        for batch_id in _normalize_int_list(section.get("source_batch_ids"))
-    }
-    uncovered_cards = [
-        card for card in evidence_cards if int(card.get("batch_id", 0) or 0) not in covered_batch_ids
-    ]
-    if uncovered_cards:
-        fallback_sections = _build_fallback_outline_sections(uncovered_cards)
-        start_index = len(sections)
-        for offset, section in enumerate(fallback_sections, start=1):
-            sections.append(
-                {
-                    "id": str(section.get("id", f"section_{start_index + offset}")).strip()
-                    or f"section_{start_index + offset}",
-                    "title": str(section.get("title", f"补充章节 {start_index + offset}")).strip()
-                    or f"补充章节 {start_index + offset}",
-                    "summary": str(section.get("summary", "")).strip(),
-                    "key_points": _normalize_string_list(section.get("key_points")),
-                    "source_batch_ids": _normalize_int_list(section.get("source_batch_ids")),
-                }
-            )
-
-    resolved_title = str(raw.get("title", "") if isinstance(raw, dict) else "").strip() or str(title).strip() or "详细笔记"
-    return {"title": resolved_title, "sections": sections}
-
-
-def _render_notes_outline_markdown(outline: dict[str, object], *, title: str) -> str:
-    resolved_title = str(outline.get("title", "")).strip() or str(title).strip() or "详细笔记"
-    lines = [f"# {resolved_title}", "", "## 提纲概览", ""]
-    sections = outline.get("sections")
-    if isinstance(sections, list):
-        for index, item in enumerate(sections, start=1):
-            section = item if isinstance(item, dict) else {}
-            section_title = str(section.get("title", f"章节 {index}")).strip() or f"章节 {index}"
-            lines.append(f"## {section_title}")
-            summary = str(section.get("summary", "")).strip()
-            if summary:
-                lines.append(summary)
-                lines.append("")
-            key_points = _normalize_string_list(section.get("key_points"))
-            for point in key_points:
-                lines.append(f"- {point}")
-            batch_ids = _normalize_int_list(section.get("source_batch_ids"))
-            if batch_ids:
-                lines.append(f"- 来源批次: {', '.join(str(item) for item in batch_ids)}")
-            lines.append("")
-    return "\n".join(lines).strip()
-
-
-def _build_fallback_outline_sections(evidence_cards: list[dict[str, object]]) -> list[dict[str, object]]:
-    if not evidence_cards:
-        return [
-            {
-                "id": "section_1",
-                "title": "核心内容",
-                "summary": "",
-                "key_points": [],
-                "source_batch_ids": [],
-            }
-        ]
-
-    sections: list[dict[str, object]] = []
-    group_size = max(1, min(3, len(evidence_cards)))
-    for start in range(0, len(evidence_cards), group_size):
-        group = evidence_cards[start : start + group_size]
-        index = len(sections) + 1
-        first_card = group[0]
-        title_candidates = (
-            _normalize_string_list(first_card.get("core_points"))
-            or _normalize_string_list(first_card.get("definitions"))
-            or _normalize_string_list(first_card.get("terms"))
-        )
-        section_title = title_candidates[0][:40] if title_candidates else f"章节 {index}"
-        key_points: list[str] = []
-        batch_ids: list[int] = []
-        for card in group:
-            batch_ids.extend(_normalize_int_list([card.get("batch_id")]))
-            for bucket in ("core_points", "definitions", "steps", "examples", "constraints", "caveats"):
-                for item in _normalize_string_list(card.get(bucket)):
-                    if item not in key_points:
-                        key_points.append(item)
-                    if len(key_points) >= 6:
-                        break
-                if len(key_points) >= 6:
-                    break
-        sections.append(
-            {
-                "id": f"section_{index}",
-                "title": section_title,
-                "summary": key_points[0] if key_points else "",
-                "key_points": key_points[:6],
-                "source_batch_ids": batch_ids,
-            }
-        )
-    return sections
-
-
-def _select_notes_section_cards(
-    evidence_cards: list[dict[str, object]],
-    section: dict[str, object],
-    *,
-    limit: int,
-) -> list[dict[str, object]]:
-    target_batch_ids = set(_normalize_int_list(section.get("source_batch_ids")))
-    selected = [
-        card
-        for card in evidence_cards
-        if int(card.get("batch_id", 0) or 0) in target_batch_ids
-    ]
-    if not selected:
-        selected = evidence_cards[:]
-    return selected[: max(1, limit)]
-
-
-def _normalize_notes_section_markdown(
-    raw_section_markdown: str,
-    *,
-    fallback_title: str,
-    fallback_cards: list[dict[str, object]],
-) -> str:
-    normalized = raw_section_markdown.strip()
-    if not normalized:
-        lines = [f"## {fallback_title}", "", "### 关键要点"]
-        points: list[str] = []
-        examples: list[str] = []
-        caveats: list[str] = []
-        for card in fallback_cards:
-            points.extend(_normalize_string_list(card.get("core_points")))
-            points.extend(_normalize_string_list(card.get("definitions")))
-            examples.extend(_normalize_string_list(card.get("examples")))
-            caveats.extend(_normalize_string_list(card.get("constraints")))
-            caveats.extend(_normalize_string_list(card.get("caveats")))
-        for point in points[:8]:
-            lines.append(f"- {point}")
-        if examples:
-            lines.extend(["", "### 案例 / 示例"])
-            for item in examples[:5]:
-                lines.append(f"- {item}")
-        if caveats:
-            lines.extend(["", "### 注意事项"])
-            for item in caveats[:5]:
-                lines.append(f"- {item}")
-        return "\n".join(lines).strip()
-
-    lines = normalized.splitlines()
-    sanitized_lines: list[str] = []
-    heading_inserted = False
-    for line in lines:
-        stripped = line.strip()
-        if re.match(r"^#\s+", stripped):
-            sanitized_lines.append(f"## {stripped.lstrip('#').strip() or fallback_title}")
-            heading_inserted = True
-            continue
-        if re.match(r"^##\s+", stripped):
-            sanitized_lines.append(line)
-            heading_inserted = True
-            continue
-        sanitized_lines.append(line)
-    if not heading_inserted:
-        sanitized_lines = [f"## {fallback_title}", ""] + sanitized_lines
-    return "\n".join(sanitized_lines).strip()
-
-
-def _normalize_notes_coverage_report(
-    payload: object | None,
-    *,
-    outline: dict[str, object],
-) -> dict[str, object]:
-    source = payload if isinstance(payload, dict) else {}
-    normalized_missing: list[dict[str, object]] = []
-    raw_missing = source.get("missing_items") if isinstance(source, dict) else None
-    if isinstance(raw_missing, list):
-        for item in raw_missing:
-            if not isinstance(item, dict):
-                continue
-            description = str(item.get("description", "")).strip()
-            if not description:
-                continue
-            normalized_missing.append(
-                {
-                    "section_id": str(item.get("section_id", "")).strip(),
-                    "section_title": str(item.get("section_title", "")).strip(),
-                    "item_type": str(item.get("item_type", "")).strip() or "unspecified",
-                    "description": description,
-                    "source_batch_ids": _normalize_int_list(item.get("source_batch_ids")),
-                }
-            )
-            if len(normalized_missing) >= _NOTES_COVERAGE_MAX_MISSING:
-                break
-    return {
-        "outline_title": str(outline.get("title", "")).strip(),
-        "covered_items": _normalize_string_list(source.get("covered_items") if isinstance(source, dict) else None),
-        "missing_items": normalized_missing,
-    }
-
-
-def _ensure_single_markdown_title(markdown: str, title: str) -> str:
-    normalized = (markdown or "").strip()
-    fallback_title = (title or "").strip() or "详细笔记"
-    if not normalized:
-        return f"# {fallback_title}\n\n## 关键内容\n\n暂无可用内容。"
-
-    lines = normalized.splitlines()
-    output: list[str] = []
-    has_h1 = False
-    for line in lines:
-        stripped = line.strip()
-        if re.match(r"^#\s+", stripped):
-            heading_text = stripped[2:].strip() or fallback_title
-            if not has_h1:
-                output.append(f"# {heading_text}")
-                has_h1 = True
-            else:
-                output.append(f"## {heading_text}")
-            continue
-        output.append(line)
-
-    body = "\n".join(output).strip()
-    if not has_h1:
-        body = f"# {fallback_title}\n\n{body}"
-    body = re.sub(r"\n{3,}", "\n\n", body).strip()
-    return body
-
-
-def _build_summary_from_notes_fallback(notes_markdown: str, outline_markdown: str) -> str:
-    headings = [
-        line.lstrip("#").strip()
-        for line in outline_markdown.splitlines()
-        if line.strip().startswith("## ")
-    ]
-    bullets = []
-    for line in notes_markdown.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("- "):
-            bullets.append(stripped[2:].strip())
-        if len(bullets) >= 6:
-            break
-    if not bullets:
-        bullets = headings[:6]
-    core = bullets[:4] or ["暂无可用摘要。"]
-    follow_up = headings[:3] or ["复核详细笔记结构", "补充关键术语", "确认后续动作"]
-    lines = ["## 核心结论", ""]
-    lines.extend(f"- {item}" for item in core)
-    lines.extend(["", "## 后续动作", ""])
-    lines.extend(f"- {item}" for item in follow_up[:3])
-    return "\n".join(lines).strip()
-
-
-def _build_fallback_mindmap_from_outline(title: str, outline_markdown: str) -> str:
-    resolved_title = (title or "").strip() or "详细笔记"
-    branches = [
-        re.sub(r"[`*_#\[\]\(\)]", "", line.lstrip("#").strip())
-        for line in outline_markdown.splitlines()
-        if line.strip().startswith("## ")
-    ]
-    branches = [branch for branch in branches if branch][:6]
-    if not branches:
-        branches = ["核心内容", "关键步骤", "后续动作"]
-    lines = ["```mindmap", "mindmap", f"  root(({resolved_title}))"]
-    for branch in branches:
-        lines.append(f"    {branch}")
-    lines.append("```")
-    return "\n".join(lines)
-
-
-def _normalize_string_list(value: object) -> list[str]:
-    if value is None:
-        return []
-    raw_items: list[str] = []
-    if isinstance(value, str):
-        raw_items = [value]
-    elif isinstance(value, list):
-        raw_items = [str(item) for item in value if str(item).strip()]
-    else:
-        raw_items = [str(value)]
-    normalized: list[str] = []
-    for item in raw_items:
-        text = item.strip()
-        if not text or text in normalized:
-            continue
-        normalized.append(text)
-    return normalized
-
-
-def _normalize_int_list(value: object) -> list[int]:
-    if value is None:
-        return []
-    items = value if isinstance(value, list) else [value]
-    normalized: list[int] = []
-    for item in items:
-        try:
-            numeric = int(item)
-        except (TypeError, ValueError):
-            continue
-        if numeric not in normalized:
-            normalized.append(numeric)
-    return normalized
 
 
 def _build_text_windows(
@@ -2146,7 +1653,7 @@ def _normalize_llm_mode(raw: object) -> Literal["api", "local"]:
     candidate = str(raw).strip().lower()
     if candidate in _LOCAL_LLM_MODES:
         return candidate  # type: ignore[return-value]
-    return "local"
+    return "api"
 
 
 def _normalize_load_profile(raw: object) -> Literal["balanced", "memory_first"]:
@@ -2198,539 +1705,6 @@ def _join_segment_texts(segments: list[dict[str, float | str]]) -> str:
         text = str(segment.get("text", "")).strip()
         if text:
             lines.append(text)
-    return "\n".join(lines).strip()
-
-
-def _segmentize_plain_text(text: str) -> list[dict[str, float | str]]:
-    normalized = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
-    if not normalized:
-        return []
-    segments: list[dict[str, float | str]] = []
-    cursor = 0
-    raw_blocks = [block.strip() for block in re.split(r"\n\s*\n+", normalized) if block.strip()]
-    if not raw_blocks:
-        raw_blocks = [normalized]
-    for block in raw_blocks:
-        if len(block) <= 320:
-            segments.append({"start": float(cursor), "end": float(cursor), "text": block})
-            cursor += 1
-            continue
-        for chunk in re.split(r"(?<=[。！？!?；;])\s+", block):
-            stripped = chunk.strip()
-            if not stripped:
-                continue
-            if len(stripped) <= 320:
-                segments.append({"start": float(cursor), "end": float(cursor), "text": stripped})
-                cursor += 1
-                continue
-            for offset in range(0, len(stripped), 320):
-                piece = stripped[offset : offset + 320].strip()
-                if piece:
-                    segments.append({"start": float(cursor), "end": float(cursor), "text": piece})
-                    cursor += 1
-    return segments
-
-
-def _build_notes_segment_batches(
-    segments: list[dict[str, float | str]],
-    *,
-    max_chars: int,
-    overlap_segments: int,
-) -> list[dict[str, object]]:
-    normalized_segments = _normalize_segments(segments)
-    if not normalized_segments:
-        return []
-    safe_max_chars = max(1000, max_chars)
-    safe_overlap = max(0, overlap_segments)
-    batches: list[dict[str, object]] = []
-    start_index = 0
-    while start_index < len(normalized_segments):
-        current_segments: list[dict[str, float | str]] = []
-        current_chars = 0
-        end_index = start_index
-        while end_index < len(normalized_segments):
-            segment = normalized_segments[end_index]
-            segment_text = str(segment.get("text", "")).strip()
-            next_chars = current_chars + len(segment_text) + 1
-            if current_segments and next_chars > safe_max_chars:
-                break
-            current_segments.append(segment)
-            current_chars = next_chars
-            end_index += 1
-        if not current_segments:
-            current_segments.append(normalized_segments[start_index])
-            end_index = start_index + 1
-        batches.append(
-            {
-                "batch_id": len(batches) + 1,
-                "batch_index": len(batches) + 1,
-                "batch_total": 0,
-                "start_seconds": _to_float(current_segments[0].get("start")),
-                "end_seconds": _to_float(current_segments[-1].get("end")),
-                "segments": current_segments,
-                "text": _join_segment_texts(current_segments),
-            }
-        )
-        if end_index >= len(normalized_segments):
-            break
-        start_index = max(start_index + 1, end_index - safe_overlap)
-    batch_total = len(batches)
-    for index, batch in enumerate(batches, start=1):
-        batch["batch_index"] = index
-        batch["batch_total"] = batch_total
-    return batches
-
-
-def _normalize_string_list(raw: object) -> list[str]:
-    if not isinstance(raw, list):
-        return []
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for item in raw:
-        text = str(item or "").strip()
-        if not text or text in seen:
-            continue
-        seen.add(text)
-        normalized.append(text)
-    return normalized
-
-
-def _normalize_int_list(raw: object) -> list[int]:
-    if not isinstance(raw, list):
-        return []
-    normalized: list[int] = []
-    seen: set[int] = set()
-    for item in raw:
-        try:
-            value = int(item)
-        except (TypeError, ValueError):
-            continue
-        if value in seen:
-            continue
-        seen.add(value)
-        normalized.append(value)
-    return normalized
-
-
-def _normalize_notes_evidence_card(payload: object, batch: dict[str, object]) -> dict[str, object]:
-    raw = payload if isinstance(payload, dict) else {}
-    time_range = raw.get("time_range") if isinstance(raw, dict) else {}
-    range_dict = time_range if isinstance(time_range, dict) else {}
-    return {
-        "batch_id": int(batch.get("batch_id", 1) or 1),
-        "batch_index": int(batch.get("batch_index", 1) or 1),
-        "batch_total": int(batch.get("batch_total", 1) or 1),
-        "start_seconds": round(
-            _to_float(range_dict.get("start_seconds", batch.get("start_seconds"))),
-            2,
-        ),
-        "end_seconds": round(
-            _to_float(range_dict.get("end_seconds", batch.get("end_seconds"))),
-            2,
-        ),
-        "core_points": _normalize_string_list(raw.get("core_points")),
-        "definitions": _normalize_string_list(raw.get("definitions")),
-        "steps": _normalize_string_list(raw.get("steps")),
-        "examples": _normalize_string_list(raw.get("examples")),
-        "comparisons": _normalize_string_list(raw.get("comparisons")),
-        "constraints": _normalize_string_list(raw.get("constraints")),
-        "caveats": _normalize_string_list(raw.get("caveats")),
-        "terms": _normalize_string_list(raw.get("terms")),
-        "open_loops": _normalize_string_list(raw.get("open_loops")),
-        "text_preview": str(batch.get("text", "")).strip()[:800],
-    }
-
-
-def _render_notes_cards_payload(cards: list[dict[str, object]], *, mode: str) -> str:
-    reduced_payload = []
-    for card in cards:
-        if not isinstance(card, dict):
-            continue
-        reduced_payload.append(
-            {
-                "batch_id": int(card.get("batch_id", 0) or 0),
-                "time_range": {
-                    "start_seconds": round(_to_float(card.get("start_seconds")), 2),
-                    "end_seconds": round(_to_float(card.get("end_seconds")), 2),
-                },
-                "core_points": _normalize_string_list(card.get("core_points")),
-                "definitions": _normalize_string_list(card.get("definitions")),
-                "steps": _normalize_string_list(card.get("steps")),
-                "examples": _normalize_string_list(card.get("examples")),
-                "comparisons": _normalize_string_list(card.get("comparisons")),
-                "constraints": _normalize_string_list(card.get("constraints")),
-                "caveats": _normalize_string_list(card.get("caveats")),
-                "terms": _normalize_string_list(card.get("terms")),
-                "open_loops": _normalize_string_list(card.get("open_loops")),
-                "text_preview": str(card.get("text_preview", "")).strip() if mode != "coverage" else "",
-            }
-        )
-    return orjson.dumps(reduced_payload, option=orjson.OPT_INDENT_2).decode("utf-8")
-
-
-def _build_fallback_outline_sections(evidence_cards: list[dict[str, object]]) -> list[dict[str, object]]:
-    if not evidence_cards:
-        return [
-            {
-                "id": "section_1",
-                "title": "核心内容",
-                "summary": "暂无可用信息卡片，保留一个兜底章节。",
-                "key_points": [],
-                "source_batch_ids": [1],
-            }
-        ]
-    target_sections = min(6, max(2, len(evidence_cards)))
-    group_size = max(1, (len(evidence_cards) + target_sections - 1) // target_sections)
-    sections: list[dict[str, object]] = []
-    for index, start in enumerate(range(0, len(evidence_cards), group_size), start=1):
-        group = evidence_cards[start : start + group_size]
-        key_points: list[str] = []
-        source_batch_ids: list[int] = []
-        for card in group:
-            key_points.extend(_normalize_string_list(card.get("core_points"))[:3])
-            source_batch_ids.extend(_normalize_int_list([card.get("batch_id")]))
-        title = key_points[0] if key_points else f"主题 {index}"
-        sections.append(
-            {
-                "id": f"section_{index}",
-                "title": title[:40],
-                "summary": "；".join(key_points[:3]) if key_points else "根据对应信息卡片整理本节内容。",
-                "key_points": key_points[:6],
-                "source_batch_ids": source_batch_ids,
-            }
-        )
-    return sections
-
-
-def _normalize_notes_outline(
-    payload: object,
-    *,
-    title: str,
-    evidence_cards: list[dict[str, object]],
-) -> dict[str, object]:
-    raw = payload if isinstance(payload, dict) else {}
-    raw_sections = raw.get("sections")
-    sections = raw_sections if isinstance(raw_sections, list) else []
-    normalized_sections: list[dict[str, object]] = []
-    for index, item in enumerate(sections, start=1):
-        if not isinstance(item, dict):
-            continue
-        section_title = str(item.get("title", "")).strip() or f"章节 {index}"
-        normalized_sections.append(
-            {
-                "id": str(item.get("id", f"section_{index}")).strip() or f"section_{index}",
-                "title": section_title,
-                "summary": str(item.get("summary", "")).strip(),
-                "key_points": _normalize_string_list(item.get("key_points")),
-                "source_batch_ids": _normalize_int_list(item.get("source_batch_ids")),
-            }
-        )
-    if not normalized_sections:
-        normalized_sections = _build_fallback_outline_sections(evidence_cards)
-    return {
-        "title": str(raw.get("title", "")).strip() or str(title).strip() or "详细笔记",
-        "sections": normalized_sections,
-    }
-
-
-def _render_notes_outline_markdown(outline: dict[str, object], *, title: str) -> str:
-    outline_title = str(outline.get("title", "")).strip() or str(title).strip() or "详细笔记"
-    lines = [f"# {outline_title}", ""]
-    sections = outline.get("sections")
-    if not isinstance(sections, list):
-        sections = []
-    for section in sections:
-        if not isinstance(section, dict):
-            continue
-        section_title = str(section.get("title", "")).strip() or "未命名章节"
-        lines.append(f"## {section_title}")
-        summary = str(section.get("summary", "")).strip()
-        if summary:
-            lines.append(summary)
-        for point in _normalize_string_list(section.get("key_points")):
-            lines.append(f"- {point}")
-        lines.append("")
-    return "\n".join(lines).strip()
-
-
-def _select_notes_section_cards(
-    evidence_cards: list[dict[str, object]],
-    section: dict[str, object],
-    *,
-    limit: int,
-) -> list[dict[str, object]]:
-    source_batch_ids = set(_normalize_int_list(section.get("source_batch_ids")))
-    matched = [
-        card
-        for card in evidence_cards
-        if int(card.get("batch_id", 0) or 0) in source_batch_ids
-    ]
-    if not matched:
-        matched = evidence_cards[:]
-    return matched[: max(1, limit)]
-
-
-def _build_fallback_section_markdown(fallback_title: str, fallback_cards: list[dict[str, object]]) -> str:
-    lines = [f"## {fallback_title}", ""]
-    core_points: list[str] = []
-    examples: list[str] = []
-    caveats: list[str] = []
-    for card in fallback_cards:
-        core_points.extend(_normalize_string_list(card.get("core_points")))
-        examples.extend(_normalize_string_list(card.get("examples")))
-        caveats.extend(_normalize_string_list(card.get("caveats")))
-    if core_points:
-        lines.append("### 本节要点")
-        lines.extend([f"- {item}" for item in core_points[:8]])
-        lines.append("")
-    lines.append("### 关键案例")
-    if examples:
-        lines.extend([f"- {item}" for item in examples[:6]])
-    else:
-        lines.append("- 本节未明确给出独立案例。")
-    lines.append("")
-    lines.append("### 注意事项")
-    if caveats:
-        lines.extend([f"- {item}" for item in caveats[:6]])
-    else:
-        lines.append("- 本节未明确给出额外注意事项。")
-    return "\n".join(lines).strip()
-
-
-def _normalize_notes_section_markdown(
-    raw: str,
-    *,
-    fallback_title: str,
-    fallback_cards: list[dict[str, object]],
-) -> str:
-    normalized = (raw or "").strip()
-    if not normalized:
-        return _build_fallback_section_markdown(fallback_title, fallback_cards)
-    normalized = re.sub(r"(?m)^#\s+", "## ", normalized)
-    first_non_empty = next((line.strip() for line in normalized.splitlines() if line.strip()), "")
-    if not first_non_empty.startswith("#"):
-        normalized = f"## {fallback_title}\n\n{normalized}"
-    if "关键案例" not in normalized:
-        normalized = f"{normalized}\n\n### 关键案例\n- 本节未明确给出独立案例。"
-    if "注意事项" not in normalized:
-        normalized = f"{normalized}\n\n### 注意事项\n- 本节未明确给出额外注意事项。"
-    return normalized.strip()
-
-
-def _normalize_notes_coverage_report(payload: object, *, outline: dict[str, object]) -> dict[str, object]:
-    raw = payload if isinstance(payload, dict) else {}
-    covered = _normalize_string_list(raw.get("covered"))
-    coverage_score_raw = raw.get("coverage_score", 0.0)
-    try:
-        coverage_score = max(0.0, min(1.0, float(coverage_score_raw)))
-    except (TypeError, ValueError):
-        coverage_score = 0.0
-    missing_items: list[dict[str, str]] = []
-    raw_missing_items = raw.get("missing_items")
-    if isinstance(raw_missing_items, list):
-        for item in raw_missing_items[:_NOTES_COVERAGE_MAX_MISSING]:
-            if not isinstance(item, dict):
-                continue
-            detail = str(item.get("detail", "")).strip()
-            if not detail:
-                continue
-            missing_items.append(
-                {
-                    "section_title": str(item.get("section_title", "")).strip() or "未指定章节",
-                    "item_type": str(item.get("item_type", "")).strip() or "detail",
-                    "detail": detail,
-                }
-            )
-    if not missing_items:
-        notes_outline_sections = outline.get("sections")
-        if isinstance(notes_outline_sections, list):
-            for section in notes_outline_sections[:_NOTES_COVERAGE_MAX_MISSING]:
-                if not isinstance(section, dict):
-                    continue
-                title = str(section.get("title", "")).strip()
-                if not title:
-                    continue
-                if title not in covered:
-                    missing_items.append(
-                        {
-                            "section_title": title,
-                            "item_type": "section",
-                            "detail": f"章节 {title} 可能仍需补充 key points 或例子。",
-                        }
-                    )
-    return {
-        "covered": covered,
-        "missing_items": missing_items[:_NOTES_COVERAGE_MAX_MISSING],
-        "coverage_score": round(coverage_score, 3),
-    }
-
-
-def _ensure_single_markdown_title(markdown: str, title: str) -> str:
-    normalized = (markdown or "").strip()
-    normalized_title = (title or "").strip() or "详细笔记"
-    if not normalized:
-        return f"# {normalized_title}"
-    lines = normalized.splitlines()
-    first_index = next((index for index, line in enumerate(lines) if line.strip()), -1)
-    if first_index < 0:
-        return f"# {normalized_title}"
-    first_line = lines[first_index].strip()
-    if first_line.startswith("# "):
-        seen_primary_title = True
-    else:
-        seen_primary_title = False
-        lines.insert(first_index, f"# {normalized_title}")
-    result_lines: list[str] = []
-    primary_seen_in_result = False
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("# "):
-            if not primary_seen_in_result:
-                primary_seen_in_result = True
-                result_lines.append(line if seen_primary_title else f"# {normalized_title}")
-                continue
-            result_lines.append(re.sub(r"^#\s+", "## ", line, count=1))
-            continue
-        result_lines.append(line)
-    return "\n".join(result_lines).strip()
-
-
-def _build_summary_from_notes_fallback(notes_markdown: str, outline_markdown: str) -> str:
-    source = (outline_markdown or notes_markdown or "").strip()
-    sections = _summary_markdown_to_structure(source)
-    if not sections:
-        preview = (notes_markdown or "").strip()[:400] or "暂无可用内容。"
-        return f"## 核心摘要\n\n{preview}"
-    lines = ["## 核心摘要", ""]
-    for section in sections[:4]:
-        title = str(section.get("title", "")).strip()
-        items = section.get("items", [])
-        if title:
-            lines.append(f"### {title}")
-        if isinstance(items, list):
-            for item in items[:3]:
-                text = str(item).strip()
-                if text:
-                    lines.append(f"- {text}")
-        lines.append("")
-    return "\n".join(lines).strip()
-
-
-def _build_fallback_mindmap_from_outline(title: str, outline_markdown: str) -> str:
-    normalized_title = (title or "").strip() or "详细笔记"
-    section_titles: list[str] = []
-    for line in (outline_markdown or "").splitlines():
-        stripped = line.strip()
-        if stripped.startswith("## "):
-            section_titles.append(stripped[3:].strip())
-    if not section_titles:
-        section_titles = ["核心主题", "关键步骤", "注意事项"]
-    branches = "\n".join(f"    {branch}" for branch in section_titles[:8] if branch)
-    return f"```mindmap\nmindmap\n  root(({normalized_title}))\n{branches}\n```"
-
-
-def _normalize_summary_markdown_structure(raw: str) -> str:
-    normalized = raw.strip()
-    if not normalized:
-        return ""
-    if "```" in normalized:
-        # Keep fenced code blocks (especially Mermaid) untouched.
-        return normalized
-    structured = _summary_markdown_to_structure(raw)
-    if not structured:
-        return normalized
-    rendered = _render_summary_structure(structured)
-    return rendered.strip() or normalized
-
-
-def _extract_mermaid_code(raw: str) -> str | None:
-    match = _MERMAID_CODE_FENCE_PATTERN.search(raw)
-    if match:
-        return _normalize_mermaid_code(match.group(1))
-    cleaned = _normalize_mermaid_code(raw)
-    if not cleaned:
-        return None
-    if cleaned.startswith(("flowchart", "mindmap")):
-        return cleaned
-    return None
-
-
-def _normalize_mermaid_code(raw: str) -> str:
-    lines = [line.rstrip() for line in raw.replace("\r\n", "\n").replace("\r", "\n").split("\n")]
-    cleaned = "\n".join(lines).strip()
-    if not cleaned:
-        return ""
-    if cleaned.startswith("```"):
-        cleaned = re.sub(r"^```(?:mermaid)?\s*", "", cleaned, count=1, flags=re.IGNORECASE)
-        cleaned = re.sub(r"\s*```$", "", cleaned, count=1)
-        cleaned = cleaned.strip()
-    return cleaned
-
-
-def _is_mermaid_renderer_unavailable(reason: str) -> bool:
-    lowered = reason.lower()
-    return "renderer_unavailable" in lowered
-
-
-def _summary_markdown_to_structure(raw: str) -> list[dict[str, object]]:
-    lines = [line.rstrip() for line in raw.splitlines()]
-    sections: list[dict[str, object]] = []
-    current_title: str | None = None
-    current_items: list[str] = []
-    free_lines: list[str] = []
-
-    def flush_current() -> None:
-        nonlocal current_title, current_items
-        if current_title is None:
-            return
-        sections.append(
-            {
-                "title": current_title.strip() or "摘要",
-                "items": [item for item in current_items if item.strip()],
-            }
-        )
-        current_title = None
-        current_items = []
-
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if stripped.startswith("#"):
-            flush_current()
-            heading = stripped.lstrip("#").strip()
-            current_title = heading or "摘要"
-            continue
-        item = stripped
-        if item[:2] in {"- ", "* "}:
-            item = item[2:].strip()
-        elif "." in item:
-            prefix, rest = item.split(".", 1)
-            if prefix.isdigit():
-                item = rest.strip()
-        if current_title is None:
-            free_lines.append(item)
-        else:
-            current_items.append(item)
-
-    flush_current()
-    if not sections and free_lines:
-        sections.append({"title": "摘要", "items": [line for line in free_lines if line.strip()]})
-    return sections
-
-
-def _render_summary_structure(sections: list[dict[str, object]]) -> str:
-    lines: list[str] = []
-    for section in sections:
-        title = str(section.get("title", "")).strip() or "摘要"
-        lines.append(f"## {title}")
-        items = section.get("items", [])
-        if isinstance(items, list) and items:
-            for item in items:
-                text = str(item).strip()
-                if text:
-                    lines.append(f"- {text}")
-        lines.append("")
     return "\n".join(lines).strip()
 
 
@@ -3240,6 +2214,95 @@ def _build_fallback_mindmap_from_outline(title: str, outline_markdown: str) -> s
             lines.append(f"      {child}")
     lines.append("```")
     return "\n".join(lines).strip()
+
+
+def _summary_markdown_to_structure(markdown: str) -> list[dict[str, object]]:
+    normalized = (markdown or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not normalized:
+        return []
+
+    sections: list[dict[str, object]] = []
+    current_title = "核心内容"
+    current_items: list[str] = []
+
+    def flush_section() -> None:
+        nonlocal current_items, current_title
+        cleaned_items = [item.strip() for item in current_items if item.strip()]
+        if not current_title.strip() and not cleaned_items:
+            return
+        sections.append(
+            {
+                "title": current_title.strip() or "核心内容",
+                "items": cleaned_items,
+            }
+        )
+        current_items = []
+
+    for raw_line in normalized.splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("# "):
+            continue
+        if stripped.startswith("## "):
+            if current_items or sections:
+                flush_section()
+            current_title = stripped[3:].strip() or "核心内容"
+            continue
+        if stripped.startswith("- "):
+            current_items.append(stripped[2:].strip())
+            continue
+        if not current_items:
+            current_items.append(stripped)
+        else:
+            current_items[-1] = f"{current_items[-1]} {stripped}".strip()
+
+    flush_section()
+    return sections
+
+
+def _extract_mermaid_code(raw: str) -> str:
+    normalized = (raw or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not normalized:
+        return ""
+    match = _MERMAID_CODE_FENCE_PATTERN.search(normalized)
+    if match:
+        return match.group(1).strip()
+    return normalized
+
+
+def _normalize_mermaid_code(raw: str) -> str:
+    extracted = _extract_mermaid_code(raw)
+    if not extracted:
+        return ""
+    return extracted.strip()
+
+
+def _normalize_summary_markdown_structure(raw: str) -> str:
+    normalized = (raw or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not normalized:
+        return ""
+    fence_match = re.fullmatch(r"```(?:markdown|md)?\s*([\s\S]*?)\s*```", normalized, flags=re.IGNORECASE)
+    if fence_match:
+        normalized = fence_match.group(1).strip()
+    normalized = re.sub(r"\n{3,}", "\n\n", normalized).strip()
+    return normalized
+
+
+def _is_mermaid_renderer_unavailable(reason: str) -> bool:
+    message = str(reason or "").strip().lower()
+    return any(
+        token in message
+        for token in (
+            "renderer unavailable",
+            "mmdc not found",
+            "pnpm not found",
+            "executable file not found",
+            "is not recognized",
+            "command not found",
+            "module not found",
+        )
+    )
 
 
 def _parse_strict_correction_response(raw: str, expected_indices: list[int]) -> list[str] | None:

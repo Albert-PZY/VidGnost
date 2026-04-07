@@ -94,7 +94,6 @@ class HealthResponse(BaseModel):
 class LLMConfigResponse(BaseModel):
     mode: Literal["api"] = "api"
     load_profile: Literal["balanced", "memory_first"] = "balanced"
-    local_model_id: str
     api_key: str
     api_key_configured: bool = False
     base_url: str
@@ -107,7 +106,6 @@ class LLMConfigResponse(BaseModel):
 class LLMConfigUpdateRequest(BaseModel):
     mode: Literal["api"] = "api"
     load_profile: Literal["balanced", "memory_first"] = "balanced"
-    local_model_id: str = "Qwen/Qwen2.5-7B-Instruct"
     api_key: str = ""
     base_url: str = ""
     model: str = ""

@@ -129,7 +129,6 @@ export const resources = {
         hideSecret: '隐藏原始内容',
         promptTemplates: {
           title: '提示词模板管理',
-          navDescription: '提示词模板已从 LLM 参数区独立出来，便于单独维护。',
           defaultHint: '模板数据持久化到本地文件，可新增和切换模板；默认模板为内置只读。',
           selectedBadge: '当前生效',
           defaultBadge: '默认只读',
@@ -172,7 +171,6 @@ export const resources = {
       },
       whisper: {
         title: 'Faster-Whisper 运行配置',
-        navDescription: '管理预下载、模板以及转写运行参数',
         meta: {
           inputLabel: '可选',
           explanationLabel: '说明',
@@ -262,24 +260,6 @@ export const resources = {
           customHint: '修改任意参数后会自动视为“自定义参数”。',
           applyHint: '点击模板仅填充当前草稿，需点击“保存当前配置”后才会生效。',
         },
-        preload: {
-          title: '模型预热下载',
-          description: '预下载 Whisper small 模型缓存，后续首次转写无需长时间等待。',
-          action: '预下载模型缓存',
-          running: '下载中...',
-          progressLabel: '下载进度',
-          session: '任务 ID：{{id}}',
-          success: '模型缓存预下载完成',
-          partialFailed: '部分模型下载失败（{{failed}}）',
-          endpoint: '下载端点：{{endpoint}}',
-          status: {
-            pending: '等待中',
-            running: '下载中',
-            cached: '已缓存',
-            downloaded: '已下载',
-            failed: '失败',
-          },
-        },
         vadFilter: '启用 VAD 过滤',
         correctionMode: {
           off: 'off（关闭）',
@@ -299,10 +279,9 @@ export const resources = {
           description: '侧边栏保持简洁，所有配置在弹窗内集中管理',
         },
         tabs: {
-          llm: 'LLM 配置',
           prompts: '提示词模板',
           whisper: 'Faster-Whisper',
-          localModels: '在线 LLM',
+          llm: '在线 LLM',
         },
       },
       history: {
@@ -518,7 +497,6 @@ export const resources = {
         taskFailed: '任务失败',
         submitFailed: '提交任务失败',
         cancelTaskFailed: '终止任务失败',
-        preloadWhisperModelsFailed: '预下载模型缓存失败',
         saveConfigFailed: '保存配置失败',
         savePromptTemplateFailed: '保存提示词模板失败',
         deletePromptTemplateFailed: '删除提示词模板失败',
@@ -667,7 +645,6 @@ export const resources = {
         hideSecret: 'Hide raw value',
         promptTemplates: {
           title: 'Prompt Template Manager',
-          navDescription: 'Prompt templates are separated from LLM runtime fields for focused editing.',
           defaultHint: 'Templates are persisted to local files. You can create and switch templates, while default templates are read-only.',
           selectedBadge: 'Active',
           defaultBadge: 'Default (Read-only)',
@@ -710,7 +687,6 @@ export const resources = {
       },
       whisper: {
         title: 'Faster-Whisper Runtime Config',
-        navDescription: 'Manage preload workflow, presets, and runtime transcription parameters',
         meta: {
           inputLabel: 'Options',
           explanationLabel: 'Explanation',
@@ -800,24 +776,6 @@ export const resources = {
           customHint: 'Any manual parameter change turns the mode into custom.',
           applyHint: 'Selecting a preset only fills the draft. Click "Save Current Config" to apply.',
         },
-        preload: {
-          title: 'Model Preload',
-          description: 'Pre-download Whisper small cache to avoid long wait on first transcription.',
-          action: 'Preload Model Cache',
-          running: 'Downloading...',
-          progressLabel: 'Download Progress',
-          session: 'Session: {{id}}',
-          success: 'Model cache preload completed',
-          partialFailed: 'Some model downloads failed ({{failed}})',
-          endpoint: 'Endpoint: {{endpoint}}',
-          status: {
-            pending: 'Pending',
-            running: 'Downloading',
-            cached: 'Cached',
-            downloaded: 'Downloaded',
-            failed: 'Failed',
-          },
-        },
         vadFilter: 'Enable VAD filter',
         correctionMode: {
           off: 'off',
@@ -837,10 +795,9 @@ export const resources = {
           description: 'Keep sidebar clean and manage all configs in modal',
         },
         tabs: {
-          llm: 'LLM Config',
           prompts: 'Prompt Templates',
           whisper: 'Faster-Whisper',
-          localModels: 'Online LLM',
+          llm: 'Online LLM',
         },
       },
       history: {
@@ -1057,7 +1014,6 @@ export const resources = {
         taskFailed: 'Task failed',
         submitFailed: 'Failed to submit task',
         cancelTaskFailed: 'Failed to stop task',
-        preloadWhisperModelsFailed: 'Failed to preload Whisper model cache',
         saveConfigFailed: 'Failed to save config',
         savePromptTemplateFailed: 'Failed to save prompt template',
         deletePromptTemplateFailed: 'Failed to delete prompt template',
@@ -1079,5 +1035,3 @@ export const resources = {
 } as const
 
 export type AppLocale = keyof typeof resources
-
-

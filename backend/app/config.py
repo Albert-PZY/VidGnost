@@ -27,7 +27,6 @@ class Settings:
 
     max_upload_mb: int = 1024
     max_concurrent_jobs: int = 2
-    max_local_mode_jobs: int = 1
     max_api_mode_jobs: int = 2
     max_cached_whisper_models: int = 2
     max_cached_llm_models: int = 1
@@ -37,8 +36,6 @@ class Settings:
     llm_api_key: str = ""
     llm_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     llm_model: str = "qwen3.5-flash"
-    llm_mode: str = "local"
-    llm_local_model_id: str = "Qwen/Qwen2.5-7B-Instruct"
     llm_timeout_seconds: int = 120
     llm_correction_mode: str = "strict"
     llm_correction_batch_size: int = 24
@@ -51,7 +48,6 @@ class Settings:
 
     def __post_init__(self) -> None:
         self.max_concurrent_jobs = max(1, int(self.max_concurrent_jobs))
-        self.max_local_mode_jobs = max(1, int(self.max_local_mode_jobs))
         self.max_api_mode_jobs = max(1, int(self.max_api_mode_jobs))
         self.max_cached_whisper_models = max(1, int(self.max_cached_whisper_models))
         self.max_cached_llm_models = max(1, int(self.max_cached_llm_models))

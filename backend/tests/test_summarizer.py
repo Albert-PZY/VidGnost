@@ -119,7 +119,6 @@ class _DummyLLMConfigStore:
     async def get(self) -> dict[str, object]:
         return {
             "mode": "api",
-            "local_model_id": "Qwen/Qwen2.5-7B-Instruct",
             "api_key": "",
             "base_url": "https://example.invalid/v1",
             "model": "qwen3.5-flash",
@@ -209,7 +208,7 @@ async def test_generate_summary_from_notes_replaces_mermaid_block_with_image_mar
         prompt_template_store=_DummyPromptTemplateStore(),
     )
 
-    async def _local_response(*args, **kwargs) -> str:  # type: ignore[no-untyped-def]
+    async def _api_response(*args, **kwargs) -> str:  # type: ignore[no-untyped-def]
         _ = args
         _ = kwargs
         return "## 笔记\n\n```mermaid\nflowchart TD\nA-->B\n```"
@@ -217,7 +216,7 @@ async def test_generate_summary_from_notes_replaces_mermaid_block_with_image_mar
     async def _render_ok(_code: str) -> tuple[str | None, str]:
         return ("data:image/png;base64,ZmFrZQ==", "")
 
-    service._chat_markdown_once_local = _local_response  # type: ignore[method-assign]
+    service._chat_markdown_once = _api_response  # type: ignore[method-assign]
     service._render_mermaid_png_data_url = _render_ok  # type: ignore[method-assign]
 
     summary = await service.generate_summary_from_notes(
@@ -225,7 +224,7 @@ async def test_generate_summary_from_notes_replaces_mermaid_block_with_image_mar
         notes_markdown="# demo\n\n## 章节\n- 细节",
         outline_markdown="# demo",
         summary_prompt="summary prompt",
-        llm_config_override={"mode": "local", "local_model_id": "demo-local"},
+        llm_config_override={"mode": "api", "api_key": "test-key", "model": "qwen3.5-flash"},
     )
     assert "```mermaid" not in summary
     assert "data:image/png;base64,ZmFrZQ==" in summary
