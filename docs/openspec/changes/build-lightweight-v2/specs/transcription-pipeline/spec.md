@@ -70,6 +70,11 @@ Before phase `C` transcription begins, backend SHALL ensure `small` model files 
 - **WHEN** task starts and local `small` model cache is missing or incomplete
 - **THEN** backend downloads required model files and emits progress updates into runtime stream
 
+#### Scenario: Model download fails
+- **WHEN** model download fails due to network/disk/checksum issues
+- **THEN** backend returns actionable failure text that includes remediation hint
+- **AND** task failure flow keeps stage logs and metrics available for diagnostics
+
 ### Requirement: Stage D generation mode SHALL resolve to API path
 Stage `D` generation runtime SHALL use online API configuration as effective execution mode.
 
@@ -85,3 +90,7 @@ Task detail response SHALL include `vm_phase_metrics` entries for `transcript_op
 - **WHEN** client requests task detail
 - **THEN** response includes status/timing/reason fields for `transcript_optimize`
 - **AND** final phase-`D` metric reflects `fusion_delivery` completion state
+
+#### Scenario: Query task detail after long runtime
+- **WHEN** client requests task detail for long-running or completed task
+- **THEN** stage metrics include runtime wait/lock and chunk-related counters for troubleshooting

@@ -126,6 +126,8 @@ Frontend:
 ```bash
 cd frontend
 pnpm install
+# Optional: override backend API base URL for local multi-env setup.
+# Example: VITE_API_BASE_URL=http://127.0.0.1:18000/api
 pnpm dev --host 0.0.0.0 --port 5173
 ```
 
