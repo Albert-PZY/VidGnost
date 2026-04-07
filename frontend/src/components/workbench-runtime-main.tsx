@@ -1,6 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
 import type { TFunction } from 'i18next'
-import { CheckCircle2, Expand, LoaderCircle, Maximize2, Pencil, X } from 'lucide-react'
+import { CheckCircle2, Expand, LoaderCircle, Maximize2, MessageCircle, Pencil, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -95,19 +95,6 @@ const LazyPromptMarkdownEditor = lazy(async () => {
   return { default: module.default }
 })
 
-function parseNumeric(value: unknown, fallback = 0): number {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value
-  }
-  if (typeof value === 'string') {
-    const parsed = Number(value)
-    if (Number.isFinite(parsed)) {
-      return parsed
-    }
-  }
-  return fallback
-}
-
 function formatClock(seconds: number): string {
   const safeSeconds = Number.isFinite(seconds) ? Math.max(0, seconds) : 0
   const totalMilliseconds = Math.round(safeSeconds * 1000)
@@ -122,17 +109,6 @@ function formatClock(seconds: number): string {
 
 function formatSegmentRange(start: number, end: number): string {
   return `${formatClock(start)} - ${formatClock(Math.max(start, end))}`
-}
-
-function phaseElapsedSeconds(metric: VmPhaseMetric | undefined, runtimeNowMs: number): number {
-  if (!metric) return 0
-  if (metric.status === 'running' && metric.started_at) {
-    const startedMs = Date.parse(metric.started_at)
-    if (!Number.isNaN(startedMs)) {
-      return Math.max(0, Math.floor((runtimeNowMs - startedMs) / 1000))
-    }
-  }
-  return Math.max(0, Math.floor(parseNumeric(metric.elapsed_seconds, 0)))
 }
 
 function normalizeArtifactPath(value: string): string {
@@ -210,7 +186,6 @@ interface WorkbenchRuntimeMainProps {
   isTaskCompleted: boolean
   error: string | null
   isTaskRunning: boolean
-  runtimeNowMs: number
   canCancelTask: boolean
   cancellingTask: boolean
   onCancelTask: () => Promise<void>
@@ -219,9 +194,6 @@ interface WorkbenchRuntimeMainProps {
   onRerunStageD: () => Promise<void>
   vmPhaseMetrics: Record<VmPhaseKey, VmPhaseMetric>
   activeVmPhase: VmPhaseKey
-  totalVmElapsedSeconds: number
-  displayedStageElapsedSeconds: number
-  activeStageLogCount: number
   activeStage: StageKey
   setActiveStage: (stage: StageKey) => void
   stageLogs: Record<StageKey, string[]>
@@ -255,7 +227,6 @@ export function WorkbenchRuntimeMain({
   isTaskCompleted,
   error,
   isTaskRunning,
-  runtimeNowMs,
   canCancelTask,
   cancellingTask,
   onCancelTask,
@@ -264,9 +235,6 @@ export function WorkbenchRuntimeMain({
   onRerunStageD,
   vmPhaseMetrics,
   activeVmPhase,
-  totalVmElapsedSeconds,
-  displayedStageElapsedSeconds,
-  activeStageLogCount,
   activeStage,
   setActiveStage,
   stageLogs,
@@ -341,15 +309,6 @@ export function WorkbenchRuntimeMain({
     }
     return autoVmPhase
   }, [activeTask, autoVmPhase, isTaskRunning, manualVmPhaseSelection])
-
-  const selectedPhaseLogs = useMemo(() => {
-    if (selectedVmPhase === 'A' || selectedVmPhase === 'B' || selectedVmPhase === 'C' || selectedVmPhase === 'D') {
-      return vmPhaseLogs[selectedVmPhase] ?? stageLogs[PHASE_STAGE_MAP[selectedVmPhase]]
-    }
-    return vmPhaseLogs[selectedVmPhase] ?? []
-  }, [selectedVmPhase, stageLogs, vmPhaseLogs])
-
-  const selectedPhaseLogCount = selectedPhaseLogs.length
 
   const debugArtifacts = useMemo(
     () => filterArtifactsForPhase(activeTask?.artifact_index ?? [], selectedVmPhase),
@@ -465,28 +424,11 @@ export function WorkbenchRuntimeMain({
     setActiveStage(PHASE_STAGE_MAP[phase])
   }
 
-  const getPhaseStatusLabel = useCallback((status: string) => {
-    if (status === 'running') return t('runtime.working.label')
-    if (status === 'skipped') return t('runtime.phase.skipped', { defaultValue: '已跳过' })
-    if (status === 'completed') return t('runtime.phase.completed', { defaultValue: '已完成' })
-    if (status === 'failed') return t('runtime.phase.failed', { defaultValue: '失败' })
-    if (status === 'pending') return t('runtime.phase.pending')
-    return status
-  }, [t])
-
   const sourceTypeLabel = activeTask
     ? activeTask.source_type === 'local_file'
       ? t('source.mode.path')
       : t('source.mode.url')
     : '—'
-  const selectedPhaseMetric = vmPhaseMetrics[selectedVmPhase]
-  const selectedPhaseStatusLabel = getPhaseStatusLabel(selectedPhaseMetric?.status ?? 'pending')
-  const selectedPhaseElapsed = phaseElapsedSeconds(selectedPhaseMetric, runtimeNowMs)
-  const selectedPhaseOutput = t(`runtime.phaseView.outputs.${selectedVmPhase}`)
-  const selectedPhaseNext = PHASE_NEXT_MAP[selectedVmPhase]
-  const selectedPhaseNextLabel = selectedPhaseNext
-    ? t(`stages.${selectedPhaseNext}.label`)
-    : t('runtime.phaseView.shared.finalOutput')
   const notesCharacters = countNonWhitespaceCharacters(notesStream)
   const summaryCharacters = countNonWhitespaceCharacters(activeTask?.summary_markdown ?? '')
   const mindmapBlocks = countMarkdownBlocks(mindmapStream)
@@ -644,70 +586,6 @@ export function WorkbenchRuntimeMain({
             </pre>
           </div>
         </div>
-      </div>
-    )
-  }
-
-  const renderPhaseOverviewHero = (phase: VmPhaseKey) => {
-    const metric = vmPhaseMetrics[phase]
-    const status = metric?.status ?? 'pending'
-    const reason = typeof metric?.reason === 'string' ? metric.reason.trim() : ''
-    const elapsed = phaseElapsedSeconds(metric, runtimeNowMs)
-    const nextPhase = PHASE_NEXT_MAP[phase]
-    return (
-      <div className="runtime-panel relative overflow-hidden rounded-2xl border p-4 text-sm">
-        <div className="absolute inset-x-4 top-0 h-px bg-[linear-gradient(90deg,transparent,var(--color-accent),transparent)] opacity-70" />
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0 space-y-1.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <PreText as="h3" variant="h3" className="tracking-[0.01em]">
-                {t(`stages.${phase}.label`)}
-              </PreText>
-              <span className="workbench-subtitle-pill inline-flex text-[0.7rem]">
-                {getPhaseStatusLabel(status)}
-              </span>
-              <span className="workbench-metric-chip inline-flex px-2 py-1 font-mono text-[0.7rem] tabular-nums">
-                {elapsed}s
-              </span>
-            </div>
-            <p className="max-w-3xl text-sm leading-6 text-text-subtle">
-              {t(`stages.${phase}.description`)}
-            </p>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[24rem] lg:max-w-[30rem]">
-            <div className="rounded-xl border border-border/65 bg-bg-base/75 px-3 py-2">
-              <div className="text-[11px] uppercase tracking-[0.12em] text-text-subtle">
-                {t('runtime.phaseView.shared.phaseOutput')}
-              </div>
-              <div className="mt-1 text-sm leading-6 text-text-main">{t(`runtime.phaseView.outputs.${phase}`)}</div>
-            </div>
-            <div className="rounded-xl border border-border/65 bg-bg-base/75 px-3 py-2">
-              <div className="text-[11px] uppercase tracking-[0.12em] text-text-subtle">
-                {t('runtime.phaseView.shared.nextHop')}
-              </div>
-              <div className="mt-1 text-sm leading-6 text-text-main">
-                {nextPhase ? t(`stages.${nextPhase}.label`) : t('runtime.phaseView.shared.finalOutput')}
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-[0.75rem] text-text-subtle">
-          <span className="workbench-metric-chip px-2 py-1">
-            {t('runtime.phaseView.shared.sourceType')}: {sourceTypeLabel}
-          </span>
-          <span className="workbench-metric-chip px-2 py-1">
-            {t('runtime.phaseView.shared.segmentCount')}: {transcriptSegmentCount}
-          </span>
-          <span className="workbench-metric-chip px-2 py-1">
-            {t('runtime.phaseView.shared.clickHint')}
-          </span>
-        </div>
-        {reason && (
-          <div className="mt-3 rounded-xl border border-amber-400/45 bg-amber-500/10 px-3 py-2 text-sm text-amber-700">
-            <span className="font-medium">{t('runtime.phaseView.shared.reason')}：</span>
-            {reason}
-          </div>
-        )}
       </div>
     )
   }
@@ -949,7 +827,6 @@ export function WorkbenchRuntimeMain({
     if (selectedVmPhase === 'A') {
       return (
         <div className="grid gap-3">
-          {renderPhaseOverviewHero('A')}
           <div className="grid gap-3 xl:grid-cols-[0.92fr_1.08fr]">
             {renderTaskContextPanel()}
             {renderStageLogPanel('A')}
@@ -960,7 +837,6 @@ export function WorkbenchRuntimeMain({
     if (selectedVmPhase === 'B') {
       return (
         <div className="grid gap-3">
-          {renderPhaseOverviewHero('B')}
           <div className="grid gap-3 xl:grid-cols-[0.96fr_1.04fr]">
             {renderPhaseCheckpointPanel(
               'B',
@@ -975,7 +851,6 @@ export function WorkbenchRuntimeMain({
     if (selectedVmPhase === 'C') {
       return (
         <div className="grid gap-3">
-          {renderPhaseOverviewHero('C')}
           <div className="grid gap-3 lg:grid-cols-[0.95fr_1.05fr]">
             {renderStageLogPanel('C')}
             <div ref={transcriptPanelRef} className="runtime-panel h-[420px] overflow-auto rounded-xl border p-3 text-[0.9rem]">
@@ -991,7 +866,6 @@ export function WorkbenchRuntimeMain({
     if (selectedVmPhase === 'transcript_optimize') {
       return (
         <div className="grid gap-3">
-          {renderPhaseOverviewHero('transcript_optimize')}
           {renderPhaseLogPanel('transcript_optimize')}
           <div className="grid gap-3 lg:grid-cols-2">
             <div
@@ -1031,7 +905,6 @@ export function WorkbenchRuntimeMain({
     if (selectedVmPhase === 'notes_extract') {
       return (
         <div className="grid gap-3">
-          {renderPhaseOverviewHero('notes_extract')}
           <div className="grid gap-3 xl:grid-cols-[0.92fr_1.08fr]">
             {renderPhaseLogPanel('notes_extract')}
             {renderPhaseCheckpointPanel(
@@ -1047,7 +920,6 @@ export function WorkbenchRuntimeMain({
     if (selectedVmPhase === 'notes_outline') {
       return (
         <div className="grid gap-3">
-          {renderPhaseOverviewHero('notes_outline')}
           <div className="grid gap-3 xl:grid-cols-[0.92fr_1.08fr]">
             {renderPhaseLogPanel('notes_outline')}
             {renderPhaseCheckpointPanel(
@@ -1063,7 +935,6 @@ export function WorkbenchRuntimeMain({
     if (selectedVmPhase === 'notes_sections') {
       return (
         <div className="grid gap-3">
-          {renderPhaseOverviewHero('notes_sections')}
           <div className="grid gap-3 xl:grid-cols-[0.92fr_1.08fr]">
             {renderPhaseLogPanel('notes_sections')}
             {renderTaskContextPanel(t('runtime.phaseView.shared.deliveryContext'))}
@@ -1076,7 +947,6 @@ export function WorkbenchRuntimeMain({
     if (selectedVmPhase === 'notes_coverage') {
       return (
         <div className="grid gap-3">
-          {renderPhaseOverviewHero('notes_coverage')}
           <div className="grid gap-3 xl:grid-cols-[0.92fr_1.08fr]">
             {renderPhaseLogPanel('notes_coverage')}
             {renderPhaseCheckpointPanel(
@@ -1093,7 +963,6 @@ export function WorkbenchRuntimeMain({
     if (selectedVmPhase === 'summary_delivery') {
       return (
         <div className="grid gap-3">
-          {renderPhaseOverviewHero('summary_delivery')}
           <div className="grid gap-3 xl:grid-cols-[0.92fr_1.08fr]">
             {renderPhaseLogPanel('summary_delivery')}
             {renderSummaryPreviewPanel('max-h-[360px]')}
@@ -1106,7 +975,6 @@ export function WorkbenchRuntimeMain({
     if (selectedVmPhase === 'mindmap_delivery') {
       return (
         <div className="grid gap-3">
-          {renderPhaseOverviewHero('mindmap_delivery')}
           <div className="grid gap-3 xl:grid-cols-[0.92fr_1.08fr]">
             {renderPhaseLogPanel('mindmap_delivery')}
             {renderPhaseCheckpointPanel(
@@ -1122,7 +990,6 @@ export function WorkbenchRuntimeMain({
     }
     return (
       <div className="grid gap-3">
-        {renderPhaseOverviewHero('D')}
         {renderFinalDeliveryCards()}
         <div className="grid gap-3 xl:grid-cols-[0.88fr_1.12fr]">
           {renderStageLogPanel('D')}
@@ -1193,42 +1060,12 @@ export function WorkbenchRuntimeMain({
             </Button>
           )}
         </div>
-        <div className="mb-3.5 flex flex-wrap items-center gap-2 text-[0.76rem] text-text-subtle">
-          <span className="workbench-metric-chip px-2 py-1 font-mono tabular-nums">
-            {t('runtime.metrics.elapsed', { seconds: displayedStageElapsedSeconds })}
-          </span>
-          {!isTaskRunning && totalVmElapsedSeconds > 0 && (
-            <span className="workbench-metric-chip px-2 py-1 font-mono tabular-nums">
-              {t('runtime.metrics.totalElapsed', { seconds: totalVmElapsedSeconds })}
-            </span>
-          )}
-          <span className="workbench-metric-chip px-2 py-1">
-            {t('runtime.phaseView.shared.currentPhase')}: {t(`stages.${selectedVmPhase}.label`)}
-          </span>
-          <span className="workbench-metric-chip px-2 py-1">
-            {selectedPhaseStatusLabel}
-          </span>
-          <span className="workbench-metric-chip px-2 py-1">
-            {t('runtime.phaseView.shared.phaseOutput')}: {selectedPhaseOutput}
-          </span>
-          <span className="workbench-metric-chip px-2 py-1">
-            {t('runtime.phaseView.shared.nextHop')}: {selectedPhaseNextLabel}
-          </span>
-          <span className="workbench-metric-chip px-2 py-1">
-            {t('runtime.metrics.logs', { count: selectedPhaseLogCount || activeStageLogCount })}
-          </span>
-          <span className="workbench-metric-chip px-2 py-1 font-mono tabular-nums">
-            {selectedPhaseElapsed}s
-          </span>
-        </div>
         <div className="mb-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
           {VM_PHASES.map((phase) => {
             const metric = vmPhaseMetrics[phase]
             const status = metric?.status ?? 'pending'
             const isSelected = phase === selectedVmPhase
-            const elapsedSeconds = phaseElapsedSeconds(metric, runtimeNowMs)
             const phaseDescription = t(`stages.${phase}.description`)
-            const phaseStatusLabel = getPhaseStatusLabel(status)
             return (
               <button
                 key={phase}
@@ -1238,25 +1075,40 @@ export function WorkbenchRuntimeMain({
                 data-status={status}
                 aria-pressed={isSelected}
                 aria-current={isSelected ? 'step' : undefined}
-                title={phaseDescription}
+                aria-label={`${t(`stages.${phase}.label`)}：${phaseDescription}`}
                 className={cn(
-                  'workbench-stage-pill group relative px-3 py-3 pr-10 text-left text-[0.73rem] transition-all duration-200',
+                  'workbench-stage-pill group relative min-h-[4.75rem] px-3 py-3 pr-11 text-left text-[0.82rem] transition-all duration-200',
                   phase === activeVmPhase && !isSelected && 'ring-1 ring-accent/30',
                 )}
               >
-                <span className="pointer-events-none absolute right-2.5 top-2.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-border/70 bg-bg-base/88 px-1.5 text-[0.58rem] font-semibold tracking-[0.06em] text-text-subtle shadow-sm transition-colors group-hover:border-accent/50 group-hover:text-accent">
-                  i
+                <span
+                  className="pointer-events-none absolute right-2.5 top-2.5 inline-flex h-7 w-7 items-center justify-center rounded-[0.9rem] border border-border/70 bg-bg-base/92 text-text-subtle shadow-[0_10px_18px_-16px_rgba(15,30,49,0.55)] transition-all duration-200 group-hover:border-accent/45 group-hover:bg-accent/10 group-hover:text-accent group-focus-visible:border-accent/45 group-focus-visible:bg-accent/10 group-focus-visible:text-accent"
+                  aria-hidden="true"
+                >
+                  <MessageCircle className="h-3.5 w-3.5" />
                 </span>
-                <span className="pointer-events-none absolute right-2 top-10 z-10 w-52 rounded-2xl border border-border/75 bg-bg-base/95 px-3 py-2 text-[0.68rem] leading-5 text-text-main opacity-0 shadow-[0_16px_30px_-22px_rgba(15,30,49,0.45)] transition-all duration-200 group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:pointer-events-auto group-focus-visible:translate-y-0 group-focus-visible:opacity-100">
-                  <span className="font-medium text-accent">{t('runtime.phaseView.shared.phaseHint')}</span>
-                  <span className="mt-1 block">{phaseDescription}</span>
-                  <span className="absolute -top-1 right-4 h-2 w-2 rotate-45 border-l border-t border-border/75 bg-bg-base/95" />
+                <span className="runtime-phase-tooltip pointer-events-none absolute bottom-[calc(100%+0.75rem)] right-0 z-20 w-[17rem] max-w-[calc(100vw-4rem)] translate-y-1 opacity-0 transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100">
+                  <span className="runtime-phase-tooltip__tail" aria-hidden="true" />
+                  <span className="runtime-phase-tooltip__body block">
+                    <span className="mb-1.5 flex items-center gap-2 text-[0.72rem] font-semibold text-accent">
+                      <MessageCircle className="h-3.5 w-3.5" />
+                      {t(`stages.${phase}.label`)}
+                    </span>
+                    <span className="block text-[0.74rem] leading-6 text-text-main">{phaseDescription}</span>
+                  </span>
                 </span>
-                <div className="font-semibold tracking-[0.006em]">{t(`stages.${phase}.label`)}</div>
-                <div className="mt-1 text-[0.68rem] leading-[1.35] opacity-90">
-                  {phaseStatusLabel}{elapsedSeconds > 0 ? ` · ${elapsedSeconds}s` : ''}
-                </div>
-                <div className="mt-2 line-clamp-2 text-[0.66rem] leading-[1.45] text-text-subtle">
+                <div className="pr-1 font-semibold tracking-[0.006em] leading-6">{t(`stages.${phase}.label`)}</div>
+                <div
+                  className={cn(
+                    'absolute inset-x-3 bottom-2 h-[3px] rounded-full opacity-0 transition-opacity duration-200',
+                    status === 'running' && 'bg-[var(--color-info)] opacity-100',
+                    status === 'completed' && 'bg-[var(--color-success)] opacity-100',
+                    status === 'failed' && 'bg-[var(--color-danger)] opacity-100',
+                    isSelected && status !== 'running' && status !== 'completed' && status !== 'failed' && 'bg-[var(--color-accent)] opacity-100',
+                  )}
+                  aria-hidden="true"
+                />
+                <div className="sr-only">
                   {phaseDescription}
                 </div>
               </button>

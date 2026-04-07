@@ -35,7 +35,6 @@ import {
   normalizeFusionPromptPreview,
   normalizeWhisperConfigForCpu,
   parseInteger,
-  parseNumeric,
   VM_PHASES,
   type MainViewMode,
   type SidebarPanelKey,
@@ -220,9 +219,7 @@ function App() {
     setStageLogs,
     vmPhaseLogs,
     setVmPhaseLogs,
-    stageTimers,
     setStageTimers,
-    runtimeNowMs,
     setRuntimeNowMs,
     transcriptStream,
     setTranscriptStream,
@@ -313,43 +310,6 @@ function App() {
   const runtimeModel = whisperConfig.model_default
   const runtimeLanguage = whisperConfig.language.trim() || DEFAULT_WHISPER_CONFIG.language
   const isTaskCompleted = activeTask?.status === 'completed'
-  const activeStageMetric = activeTask?.stage_metrics?.[activeStage]
-  const activeStageElapsedSeconds = useMemo(() => {
-    const startedAt = stageTimers[activeStage]
-    if (!startedAt || !isTaskRunning) {
-      return 0
-    }
-    return Math.max(0, Math.floor((runtimeNowMs - startedAt) / 1000))
-  }, [activeStage, isTaskRunning, runtimeNowMs, stageTimers])
-  const completedStageElapsedSeconds = useMemo(() => {
-    const metricElapsed = parseNumeric(activeStageMetric?.elapsed_seconds, 0)
-    return Math.max(0, Math.floor(metricElapsed))
-  }, [activeStageMetric?.elapsed_seconds])
-  const displayedStageElapsedSeconds = isTaskRunning ? activeStageElapsedSeconds : completedStageElapsedSeconds
-  const totalVmElapsedSeconds = useMemo(() => {
-    let totalSeconds = 0
-    for (const phase of VM_PHASES) {
-      const metric = vmPhaseMetrics[phase]
-      if (!metric) continue
-      if (metric.status === 'running' && metric.started_at) {
-        const startedMs = Date.parse(metric.started_at)
-        if (!Number.isNaN(startedMs)) {
-          totalSeconds += Math.max(0, (runtimeNowMs - startedMs) / 1000)
-          continue
-        }
-      }
-      totalSeconds += Math.max(0, parseNumeric(metric.elapsed_seconds, 0))
-    }
-    return Math.max(0, Math.floor(totalSeconds))
-  }, [runtimeNowMs, vmPhaseMetrics])
-  const activeStageLogCount = useMemo(() => {
-    const logsInPanel = stageLogs[activeStage].length
-    if (isTaskRunning) {
-      return logsInPanel
-    }
-    const metricCount = Math.floor(parseNumeric(activeStageMetric?.log_count, logsInPanel))
-    return Math.max(logsInPanel, metricCount)
-  }, [activeStage, activeStageMetric?.log_count, isTaskRunning, stageLogs])
   const canEditStageDMarkdown = Boolean(
     activeTask &&
       (activeTask.status === 'completed' || activeTask.status === 'failed' || activeTask.status === 'cancelled'),
@@ -798,7 +758,6 @@ function App() {
     isTaskCompleted: Boolean(isTaskCompleted),
     error,
     isTaskRunning,
-    runtimeNowMs,
     isTaskTerminalStatus,
     cancellingTask,
     cancelActiveTask,
@@ -806,9 +765,6 @@ function App() {
     rerunActiveTaskStageD,
     vmPhaseMetrics,
     activeVmPhase,
-    totalVmElapsedSeconds,
-    displayedStageElapsedSeconds,
-    activeStageLogCount,
     activeStage,
     setActiveStage,
     stageLogs,
