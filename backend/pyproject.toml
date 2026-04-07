@@ -10,6 +10,7 @@ dependencies = [
     "fastapi>=0.135.2",
     "faster-whisper>=1.2.1",
     "ffmpeg-python>=0.2.0",
+    "httpx[http2]>=0.28.1",
     "openai>=2.30.0",
     "orjson>=3.11.7",
     "python-multipart>=0.0.22",
