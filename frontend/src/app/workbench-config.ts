@@ -205,6 +205,17 @@ export function normalizeWhisperConfigForCpu(config: WhisperConfig): WhisperConf
   }
 }
 
+export function normalizeFusionPromptPreview(markdown: string): string {
+  const raw = markdown ?? ''
+  if (!raw.trim()) return ''
+  if (!raw.includes('# 最终输入给 LLM 的提示词')) {
+    return raw
+  }
+  return raw
+    .replace(/~~~text\s*([\s\S]*?)\s*~~~/gi, '$1')
+    .replace(/```text\s*([\s\S]*?)\s*```/gi, '$1')
+}
+
 function isSameWhisperConfig(left: WhisperConfig, right: WhisperConfig): boolean {
   return (
     left.model_default === right.model_default

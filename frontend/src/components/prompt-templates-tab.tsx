@@ -118,8 +118,8 @@ export function PromptTemplatesTab({
                   'group relative block w-full cursor-pointer rounded-xl border p-3.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/55',
                   promptActionChannel === promptTemplateView && 'cursor-not-allowed opacity-70',
                   template.id === activePromptDraft.templateId
-                    ? 'border-accent/60 bg-accent/10'
-                    : 'border-border bg-bg-base hover:border-accent/40',
+                    ? 'border-border bg-bg-base'
+                    : 'border-accent/60 bg-accent/10 hover:border-accent/40',
                 )}
               >
                 <div className="mb-2 flex items-center justify-between gap-2">

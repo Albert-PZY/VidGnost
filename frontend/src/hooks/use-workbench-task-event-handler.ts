@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import type { TFunction } from 'i18next'
 import toast from 'react-hot-toast'
 
-import { formatLogLine, formatRuntimeWarningLine, parseTaskStatus } from '../app/workbench-config'
+import { formatLogLine, formatRuntimeWarningLine, normalizeFusionPromptPreview, parseTaskStatus } from '../app/workbench-config'
 import type {
   StageKey,
   TaskDetail,
@@ -250,7 +250,7 @@ export function useWorkbenchTaskEventHandler({
       }
     }
     if (event.type === 'fusion_prompt_preview') {
-      setFusionPromptPreview((event.text ?? event.markdown ?? '').trim())
+      setFusionPromptPreview(normalizeFusionPromptPreview((event.text ?? event.markdown ?? '').trim()))
     }
     if (event.type === 'summary_delta') {
       appendSummary(event.text ?? '', event.stream_mode ?? 'realtime')
