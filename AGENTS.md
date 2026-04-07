@@ -7,6 +7,7 @@ Scope: this file is an internal navigation index for coding agents and maintaine
 - Frontend package manager: use `pnpm` (do not use `npm`)
 - Generated file encoding: UTF-8 without BOM
 - Python dependency management: use `uv` with project-level venv; add/remove deps via `uv add` / `uv remove`
+- Do not modify configuration values in `backend/storage/config.toml` or `backend/storage/model_config.json` unless the task explicitly requires renaming fields or directly removing properties.
 - After completing a requirement change, automatically determine whether a commit is needed; if needed, commit and push following `docs/git-commit-convention.md` without additional confirmation.
 
 ## 2) Core Product Docs
