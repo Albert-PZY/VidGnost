@@ -1,0 +1,14 @@
+# VidGnost runtime config
+# This file is updated by the frontend config panel.
+
+[whisper]
+model_default = "small"
+language = "zh"
+device = "cpu"
+compute_type = "int8"
+model_load_profile = "balanced"
+beam_size = 4
+vad_filter = true
+chunk_seconds = 300
+target_sample_rate = 16000
+target_channels = 1
