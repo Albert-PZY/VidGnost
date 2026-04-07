@@ -31,8 +31,10 @@ interface UsePromptTemplateManagerOptions {
 function createEmptyPromptTemplateBundle(): PromptTemplateBundle {
   return {
     summary_templates: [],
+    notes_templates: [],
     mindmap_templates: [],
     selected_summary_template_id: '',
+    selected_notes_template_id: '',
     selected_mindmap_template_id: '',
   }
 }
@@ -114,6 +116,7 @@ export function usePromptTemplateManager({ t, setError }: UsePromptTemplateManag
   const [promptTemplateBundle, setPromptTemplateBundle] = useState<PromptTemplateBundle>(createEmptyPromptTemplateBundle)
   const [promptDrafts, setPromptDrafts] = useState<Record<PromptTemplateChannel, PromptTemplateDraft>>({
     summary: createEmptyPromptTemplateDraft(),
+    notes: createEmptyPromptTemplateDraft(),
     mindmap: createEmptyPromptTemplateDraft(),
   })
   const [promptActionChannel, setPromptActionChannel] = useState<PromptTemplateChannel | null>(null)
@@ -152,6 +155,9 @@ export function usePromptTemplateManager({ t, setError }: UsePromptTemplateManag
     setPromptDrafts({
       summary: buildDraftFromTemplate(
         findTemplateById(bundle, 'summary', bundle.selected_summary_template_id),
+      ),
+      notes: buildDraftFromTemplate(
+        findTemplateById(bundle, 'notes', bundle.selected_notes_template_id),
       ),
       mindmap: buildDraftFromTemplate(
         findTemplateById(bundle, 'mindmap', bundle.selected_mindmap_template_id),
@@ -207,6 +213,8 @@ export function usePromptTemplateManager({ t, setError }: UsePromptTemplateManag
     const nextSelection = {
       selected_summary_template_id:
         channel === 'summary' ? templateId : promptTemplateBundle.selected_summary_template_id,
+      selected_notes_template_id:
+        channel === 'notes' ? templateId : promptTemplateBundle.selected_notes_template_id,
       selected_mindmap_template_id:
         channel === 'mindmap' ? templateId : promptTemplateBundle.selected_mindmap_template_id,
     }
@@ -223,7 +231,14 @@ export function usePromptTemplateManager({ t, setError }: UsePromptTemplateManag
     } finally {
       setPromptActionChannel(null)
     }
-  }, [applyPromptTemplateBundle, promptTemplateBundle.selected_mindmap_template_id, promptTemplateBundle.selected_summary_template_id, setError, t])
+  }, [
+    applyPromptTemplateBundle,
+    promptTemplateBundle.selected_mindmap_template_id,
+    promptTemplateBundle.selected_notes_template_id,
+    promptTemplateBundle.selected_summary_template_id,
+    setError,
+    t,
+  ])
 
   const copyPromptTemplateContent = useCallback(async (templateId: string, content: string) => {
     try {
@@ -289,6 +304,10 @@ export function usePromptTemplateManager({ t, setError }: UsePromptTemplateManag
               channel === 'summary'
                 ? latest.id
                 : bundle.selected_summary_template_id,
+            selected_notes_template_id:
+              channel === 'notes'
+                ? latest.id
+                : bundle.selected_notes_template_id,
             selected_mindmap_template_id:
               channel === 'mindmap'
                 ? latest.id

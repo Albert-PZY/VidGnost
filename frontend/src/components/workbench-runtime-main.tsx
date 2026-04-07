@@ -16,13 +16,39 @@ import type {
   VmPhaseMetric,
 } from '../types'
 
-const VM_PHASES: VmPhaseKey[] = ['A', 'B', 'C', 'transcript_optimize', 'D']
-const D_SUBPHASE_ORDER: VmPhaseKey[] = ['transcript_optimize']
+const VM_PHASES: VmPhaseKey[] = [
+  'A',
+  'B',
+  'C',
+  'transcript_optimize',
+  'notes_extract',
+  'notes_outline',
+  'notes_sections',
+  'notes_coverage',
+  'summary_delivery',
+  'mindmap_delivery',
+  'D',
+]
+const D_SUBPHASE_ORDER: VmPhaseKey[] = [
+  'transcript_optimize',
+  'notes_extract',
+  'notes_outline',
+  'notes_sections',
+  'notes_coverage',
+  'summary_delivery',
+  'mindmap_delivery',
+]
 const PHASE_STAGE_MAP: Record<VmPhaseKey, StageKey> = {
   A: 'A',
   B: 'B',
   C: 'C',
   transcript_optimize: 'D',
+  notes_extract: 'D',
+  notes_outline: 'D',
+  notes_sections: 'D',
+  notes_coverage: 'D',
+  summary_delivery: 'D',
+  mindmap_delivery: 'D',
   D: 'D',
 }
 

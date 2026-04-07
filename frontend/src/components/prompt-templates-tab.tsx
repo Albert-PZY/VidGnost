@@ -76,6 +76,10 @@ export function PromptTemplatesTab({
               <FileText className="h-3.5 w-3.5" />
               {t('llm.promptTemplates.summary.title')}
             </TabsTrigger>
+            <TabsTrigger value="notes" className="flex-1 gap-1.5">
+              <FileText className="h-3.5 w-3.5" />
+              {t('llm.promptTemplates.notes.title')}
+            </TabsTrigger>
             <TabsTrigger value="mindmap" className="flex-1 gap-1.5">
               <GitBranch className="h-3.5 w-3.5" />
               {t('llm.promptTemplates.mindmap.title')}

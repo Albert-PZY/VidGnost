@@ -118,8 +118,10 @@ export const resources = {
           apiKey: 'API Key',
           baseUrl: 'Base URL',
           model: 'Model Name',
-          summaryPromptName: '笔记模板名称',
-          summaryPromptCustom: '输入自定义笔记提示词（Markdown/自然语言均可）',
+          summaryPromptName: '摘要模板名称',
+          summaryPromptCustom: '输入自定义摘要提示词',
+          notesPromptName: '详细笔记模板名称',
+          notesPromptCustom: '输入自定义详细笔记提示词（Markdown/自然语言均可）',
           mindmapPromptName: '导图模板名称',
           mindmapPromptCustom: '输入自定义思维导图提示词',
         },
@@ -153,8 +155,12 @@ export const resources = {
           deleteConfirm: '确认删除模板“{{name}}”吗？删除后不可恢复。',
           readonlyHint: '默认模板为内置模板，不可修改或删除。可先复制内容后新建模板进行编辑。',
           summary: {
+            title: '摘要模板管理',
+            description: '可切换、编辑、删除和新增多份摘要提示词模板。',
+          },
+          notes: {
             title: '详细笔记模板管理',
-            description: '可切换、编辑、删除和新增多份笔记提示词模板。',
+            description: '可切换、编辑、删除和新增多份详细笔记提示词模板。',
           },
           mindmap: {
             title: '思维导图模板管理',
@@ -470,12 +476,36 @@ export const resources = {
           description: '输出带时间锚点的文本转写结果',
         },
         D: {
-          label: 'H. 融合生成与交付',
-          description: '融合证据生成笔记、导图与导出产物',
+          label: 'D. 最终产物归档',
+          description: '汇总 Stage D 产物状态与最终交付结果',
         },
         transcript_optimize: {
-          label: 'D. 转录文本优化',
+          label: 'D1. 转录文本优化',
           description: '按策略纠错或改写转录文本',
+        },
+        notes_extract: {
+          label: 'D2. 信息卡片提取',
+          description: '从完整转录中提取高保真信息卡片',
+        },
+        notes_outline: {
+          label: 'D3. 提纲生成',
+          description: '基于信息卡片规划全局详细笔记提纲',
+        },
+        notes_sections: {
+          label: 'D4. 章节写作',
+          description: '按章节生成详细笔记正文并流式展示',
+        },
+        notes_coverage: {
+          label: 'D5. 覆盖率补全',
+          description: '检查遗漏并对详细笔记做增量补写',
+        },
+        summary_delivery: {
+          label: 'D6. 摘要生成',
+          description: '基于详细笔记生成简版摘要',
+        },
+        mindmap_delivery: {
+          label: 'D7. 思维导图生成',
+          description: '基于提纲与详细笔记生成思维导图',
         },
       },
       errors: {
@@ -621,8 +651,10 @@ export const resources = {
           apiKey: 'API Key',
           baseUrl: 'Base URL',
           model: 'Model Name',
-          summaryPromptName: 'Notes template name',
-          summaryPromptCustom: 'Input custom notes prompt',
+          summaryPromptName: 'Summary template name',
+          summaryPromptCustom: 'Input custom summary prompt',
+          notesPromptName: 'Detailed notes template name',
+          notesPromptCustom: 'Input custom detailed notes prompt',
           mindmapPromptName: 'Mindmap template name',
           mindmapPromptCustom: 'Input custom mindmap prompt',
         },
@@ -656,8 +688,12 @@ export const resources = {
           deleteConfirm: 'Delete template "{{name}}"? This action cannot be undone.',
           readonlyHint: 'Default templates are built-in and cannot be edited or deleted. Copy content and create a new template for custom changes.',
           summary: {
+            title: 'Summary Template Manager',
+            description: 'Switch, edit, delete, and create multiple summary prompt templates.',
+          },
+          notes: {
             title: 'Detailed Notes Template Manager',
-            description: 'Switch, edit, delete, and create multiple notes prompt templates.',
+            description: 'Switch, edit, delete, and create multiple detailed notes prompt templates.',
           },
           mindmap: {
             title: 'Mindmap Template Manager',
@@ -974,12 +1010,36 @@ export const resources = {
           description: 'Generate timestamped transcript segments',
         },
         D: {
-          label: 'H. Fusion & Delivery',
-          description: 'Fuse evidence into notes, mindmap, and exports',
+          label: 'D. Final Delivery',
+          description: 'Aggregate Stage D artifacts and final output state',
         },
         transcript_optimize: {
-          label: 'D. Transcript Optimization',
+          label: 'D1. Transcript Optimization',
           description: 'Run correction or rewrite strategy on transcript',
+        },
+        notes_extract: {
+          label: 'D2. Evidence Extraction',
+          description: 'Extract high-recall evidence cards from the full transcript',
+        },
+        notes_outline: {
+          label: 'D3. Outline Planning',
+          description: 'Build a global detailed-notes outline from evidence cards',
+        },
+        notes_sections: {
+          label: 'D4. Section Writing',
+          description: 'Generate detailed notes section by section with live output',
+        },
+        notes_coverage: {
+          label: 'D5. Coverage Patch',
+          description: 'Inspect omissions and patch missing details into notes',
+        },
+        summary_delivery: {
+          label: 'D6. Summary Delivery',
+          description: 'Generate a concise summary from the detailed notes',
+        },
+        mindmap_delivery: {
+          label: 'D7. Mindmap Delivery',
+          description: 'Generate the mindmap from outline and detailed notes',
         },
       },
       errors: {

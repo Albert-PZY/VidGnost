@@ -7,8 +7,8 @@ VidGnost 的单任务分析链路如下：
 1. 来源接入与媒体准备（`A`）
 2. 音频转换与分块规划（`B`）
 3. 本地 `Systran/faster-whisper-small` CPU 转写（`C`）
-4. 阶段 D 有序子链：`transcript_optimize -> fusion_delivery`（`D`）
-5. 在线 LLM 生成结构化笔记与导图 Markdown
+4. 阶段 D 有序子链：`transcript_optimize -> notes_extract -> notes_outline -> notes_sections -> notes_coverage -> summary_delivery -> mindmap_delivery`（`D`）
+5. 在线 LLM 依次生成详细笔记、简版总结与导图 Markdown
 
 ## 2. 环境准备
 

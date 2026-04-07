@@ -8,7 +8,18 @@ export type TaskStatus =
   | 'failed'
 
 export type StageKey = 'A' | 'B' | 'C' | 'D'
-export type VmPhaseKey = 'A' | 'B' | 'C' | 'transcript_optimize' | 'D'
+export type VmPhaseKey =
+  | 'A'
+  | 'B'
+  | 'C'
+  | 'transcript_optimize'
+  | 'notes_extract'
+  | 'notes_outline'
+  | 'notes_sections'
+  | 'notes_coverage'
+  | 'summary_delivery'
+  | 'mindmap_delivery'
+  | 'D'
 export type VmPhaseStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
 
 export interface TranscriptSegment {
@@ -124,7 +135,7 @@ export interface LLMConfig {
   correction_overlap: number
 }
 
-export type PromptTemplateChannel = 'summary' | 'mindmap'
+export type PromptTemplateChannel = 'summary' | 'notes' | 'mindmap'
 
 export interface PromptTemplateItem {
   id: string
@@ -138,8 +149,10 @@ export interface PromptTemplateItem {
 
 export interface PromptTemplateBundle {
   summary_templates: PromptTemplateItem[]
+  notes_templates: PromptTemplateItem[]
   mindmap_templates: PromptTemplateItem[]
   selected_summary_template_id: string
+  selected_notes_template_id: string
   selected_mindmap_template_id: string
 }
 
