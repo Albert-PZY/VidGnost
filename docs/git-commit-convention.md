@@ -53,12 +53,14 @@ Notes:
 - Never run concurrent git commands in the same repository.
 - Enforce a single-operation-at-a-time policy for the repository.
 - On any lock conflict (for example `index.lock`), stop and retry instead of proceeding.
+- Repository text files should use `UTF-8` without BOM, `LF` line endings, and a trailing newline at EOF.
 - Never commit or push sensitive values from `backend/storage/config.toml` or `backend/storage/model_config.json`.
 - If those two files require redaction for commit/push validation, only inspect or sanitize staged/transport content; never rewrite the local working-copy values.
 
 ### 2.1.1 Local Config Secret Guard
 
 - Repository-local hooks under `.githooks/` enforce secret checks for `backend/storage/config.toml` and `backend/storage/model_config.json`.
+- The same hook chain also enforces the repository text-file policy on staged files: `UTF-8` without BOM, `LF`, and trailing newline at EOF.
 - Enable the hooks locally with:
 
 ```bash
@@ -66,6 +68,7 @@ git config core.hooksPath .githooks
 ```
 
 - The hooks block commit/push when staged or outgoing revisions contain non-placeholder secret values in protected config files.
+- The pre-commit hook also blocks staged text files that violate the repository file-format policy.
 
 ### 2.2 GitHub Operation Rules (`gh` CLI by default)
 
