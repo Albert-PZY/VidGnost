@@ -24,6 +24,7 @@ class TaskStore:
         root = Path(storage_dir)
         self._tasks_root = root / "tasks"
         self._records_dir = self._tasks_root / "records"
+        self._index_path = self._tasks_root / "index.json"
         self._stage_metrics_dir = self._tasks_root / "stage-metrics"
         self._runtime_warnings_dir = self._tasks_root / "runtime-warnings"
         self._analysis_results_dir = self._tasks_root / "analysis-results"
@@ -31,6 +32,7 @@ class TaskStore:
         self._event_logs_dir = root / "event-logs"
         self._lock = RLock()
         self._ensure_layout()
+        self._ensure_index()
 
     def create(self, record: TaskRecord) -> TaskRecord:
         with self._lock:
@@ -38,6 +40,7 @@ class TaskStore:
             if path.exists():
                 raise ValueError(f"Task already exists: {record.id}")
             self._write_record(record)
+            self._upsert_index_record(record)
             return record
 
     def get(self, task_id: str) -> TaskRecord | None:
@@ -56,12 +59,14 @@ class TaskStore:
                 setattr(record, key, value)
             record.updated_at = datetime.now(timezone.utc)
             self._write_record(record)
+            self._upsert_index_record(record)
             return record
 
     def replace(self, record: TaskRecord) -> TaskRecord:
         with self._lock:
             record.updated_at = datetime.now(timezone.utc)
             self._write_record(record)
+            self._upsert_index_record(record)
             return record
 
     def delete(self, task_id: str) -> bool:
@@ -83,21 +88,40 @@ class TaskStore:
                 if directory.exists():
                     shutil.rmtree(directory, ignore_errors=True)
                     removed = True
+            self._remove_index_record(task_id)
             return removed
 
     def list(self, *, q: str | None = None, limit: int = 50, offset: int = 0) -> TaskListResult:
-        records = self.list_all()
-        if q:
-            keyword = q.casefold()
-            records = [
-                item
-                for item in records
-                if keyword in (item.title or "").casefold() or keyword in (item.source_input or "").casefold()
-            ]
-        records.sort(key=lambda item: item.updated_at, reverse=True)
-        total = len(records)
-        paged = records[offset : offset + limit]
-        return TaskListResult(items=paged, total=total)
+        with self._lock:
+            entries = self._read_index_items()
+            if q:
+                keyword = q.casefold()
+                entries = [
+                    item
+                    for item in entries
+                    if keyword in str(item.get("title", "")).casefold()
+                    or keyword in str(item.get("source_input", "")).casefold()
+                ]
+            entries.sort(key=lambda item: str(item.get("updated_at", "")), reverse=True)
+            total = len(entries)
+            paged_entries = entries[offset : offset + limit]
+            records: list[TaskRecord] = []
+            stale_task_ids: list[str] = []
+            for item in paged_entries:
+                task_id = str(item.get("id", "")).strip()
+                if not task_id:
+                    continue
+                path = self._record_path(task_id)
+                if not path.exists():
+                    stale_task_ids.append(task_id)
+                    continue
+                try:
+                    records.append(self._read_record(path))
+                except ValueError:
+                    stale_task_ids.append(task_id)
+            if stale_task_ids:
+                self._remove_index_records(stale_task_ids)
+            return TaskListResult(items=records, total=total - len(stale_task_ids))
 
     def list_all(self) -> list[TaskRecord]:
         with self._lock:
@@ -184,6 +208,82 @@ class TaskStore:
             self._event_logs_dir,
         ):
             path.mkdir(parents=True, exist_ok=True)
+
+    def _ensure_index(self) -> None:
+        if self._index_path.exists():
+            payload = self._read_json(self._index_path, default={})
+            if isinstance(payload, dict) and isinstance(payload.get("items"), list):
+                return
+        self._rebuild_index()
+
+    def _rebuild_index(self) -> None:
+        items: list[dict[str, object]] = []
+        for record in self._iter_records():
+            items.append(self._record_to_index_item(record))
+        self._write_index_items(items)
+
+    def _read_index_items(self) -> list[dict[str, object]]:
+        payload = self._read_json(self._index_path, default={})
+        if not isinstance(payload, dict):
+            self._rebuild_index()
+            payload = self._read_json(self._index_path, default={})
+        items = payload.get("items") if isinstance(payload, dict) else None
+        if not isinstance(items, list):
+            self._rebuild_index()
+            payload = self._read_json(self._index_path, default={})
+            items = payload.get("items") if isinstance(payload, dict) else []
+        normalized: list[dict[str, object]] = []
+        if isinstance(items, list):
+            for item in items:
+                if isinstance(item, dict):
+                    normalized.append(item)
+        return normalized
+
+    def _write_index_items(self, items: list[dict[str, object]]) -> None:
+        payload = {
+            "version": 1,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "items": items,
+        }
+        self._write_json(self._index_path, payload)
+
+    def _record_to_index_item(self, record: TaskRecord) -> dict[str, object]:
+        return {
+            "id": record.id,
+            "title": record.title or "",
+            "source_type": record.source_type,
+            "source_input": record.source_input,
+            "status": record.status,
+            "progress": int(record.progress),
+            "created_at": record.created_at.isoformat(),
+            "updated_at": record.updated_at.isoformat(),
+        }
+
+    def _upsert_index_record(self, record: TaskRecord) -> None:
+        items = self._read_index_items()
+        updated = False
+        next_item = self._record_to_index_item(record)
+        for index, item in enumerate(items):
+            if str(item.get("id", "")).strip() == record.id:
+                items[index] = next_item
+                updated = True
+                break
+        if not updated:
+            items.append(next_item)
+        self._write_index_items(items)
+
+    def _remove_index_record(self, task_id: str) -> None:
+        self._remove_index_records([task_id])
+
+    def _remove_index_records(self, task_ids: Iterable[str]) -> None:
+        removed_keys = {str(task_id).strip() for task_id in task_ids if str(task_id).strip()}
+        if not removed_keys:
+            return
+        items = self._read_index_items()
+        filtered = [item for item in items if str(item.get("id", "")).strip() not in removed_keys]
+        if len(filtered) == len(items):
+            return
+        self._write_index_items(filtered)
 
     def _record_path(self, task_id: str) -> Path:
         return self._records_dir / f"{task_id}.json"

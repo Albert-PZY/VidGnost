@@ -386,18 +386,21 @@ def export_task(
 
     title = sanitize_filename(record.title or task_id)
     if kind == "transcript":
+        _require_export_text(record.transcript_text, label="transcript", code="EXPORT_TRANSCRIPT_EMPTY")
         return PlainTextResponse(
             record.transcript_text or "",
             media_type="text/plain; charset=utf-8",
             headers={"Content-Disposition": _build_content_disposition(f"{title}-transcript.txt")},
         )
     if kind == "notes":
+        _require_export_text(record.notes_markdown, label="notes", code="EXPORT_NOTES_EMPTY")
         return PlainTextResponse(
             record.notes_markdown or "",
             media_type="text/markdown; charset=utf-8",
             headers={"Content-Disposition": _build_content_disposition(f"{title}-notes.md")},
         )
     if kind == "mindmap":
+        _require_export_text(record.mindmap_markdown, label="mindmap", code="EXPORT_MINDMAP_EMPTY")
         html = render_markmap_html(record.mindmap_markdown or "# Empty", title=record.title or task_id)
         return HTMLResponse(
             html,
@@ -406,6 +409,7 @@ def export_task(
         )
     if kind == "srt":
         segments = _parse_transcript_segments(record.transcript_segments_json)
+        _require_export_segments(segments, code="EXPORT_SUBTITLE_EMPTY")
         srt_text = _build_srt(segments)
         return PlainTextResponse(
             srt_text,
@@ -414,6 +418,7 @@ def export_task(
         )
     if kind == "vtt":
         segments = _parse_transcript_segments(record.transcript_segments_json)
+        _require_export_segments(segments, code="EXPORT_SUBTITLE_EMPTY")
         vtt_text = _build_vtt(segments)
         return PlainTextResponse(
             vtt_text,
@@ -421,6 +426,7 @@ def export_task(
             headers={"Content-Disposition": _build_content_disposition(f"{title}-subtitles.vtt")},
         )
     if kind == "bundle":
+        _validate_bundle_export_ready(record)
         payload = _build_artifact_bundle(record=record, title=title, archive=archive)
         ext = "zip" if archive == "zip" else "tar"
         media_type = "application/zip" if archive == "zip" else "application/x-tar"
@@ -433,6 +439,32 @@ def export_task(
         "kind must be one of: transcript|notes|mindmap|srt|vtt|bundle",
         code="INVALID_EXPORT_KIND",
     )
+
+
+def _require_export_text(value: str | None, *, label: str, code: str) -> None:
+    if str(value or "").strip():
+        return
+    raise AppError.conflict(
+        f"Cannot export {label}: artifact is empty",
+        code=code,
+    )
+
+
+def _require_export_segments(segments: list[TranscriptSegment], *, code: str) -> None:
+    normalized = _normalize_subtitle_segments(segments)
+    if normalized:
+        return
+    raise AppError.conflict(
+        "Cannot export subtitles: transcript segments are empty",
+        code=code,
+    )
+
+
+def _validate_bundle_export_ready(record: TaskRecord) -> None:
+    _require_export_text(record.transcript_text, label="transcript", code="EXPORT_TRANSCRIPT_EMPTY")
+    _require_export_text(record.notes_markdown, label="notes", code="EXPORT_NOTES_EMPTY")
+    _require_export_text(record.mindmap_markdown, label="mindmap", code="EXPORT_MINDMAP_EMPTY")
+    _require_export_segments(_parse_transcript_segments(record.transcript_segments_json), code="EXPORT_SUBTITLE_EMPTY")
 
 
 def _build_artifact_bundle(record: TaskRecord, title: str, archive: Literal["zip", "tar"]) -> bytes:
