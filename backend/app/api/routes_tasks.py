@@ -34,7 +34,7 @@ from app.services.ingestion import ALLOWED_VIDEO_EXTENSIONS, sanitize_filename
 from app.services.naming import generate_time_key
 from app.services.stage_artifact_store import StageArtifactStore
 from app.services.task_artifact_index import build_task_artifact_index, parse_task_artifact_index
-from app.services.task_runner import TaskSubmission, TaskRunner
+from app.services.task_runner import TaskRunner, TaskSubmission
 from app.services.task_store import TaskStore
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -140,7 +140,9 @@ async def create_task_from_path(
 ) -> TaskCreateResponse:
     local_path = Path(payload.local_path).expanduser()
     if not local_path.exists() or not local_path.is_file():
-        raise AppError.bad_request(f"Local path not found: {local_path}", code="LOCAL_PATH_NOT_FOUND")
+        raise AppError.bad_request(
+            f"Local path not found: {local_path}", code="LOCAL_PATH_NOT_FOUND"
+        )
     _validate_video_extension(local_path.suffix.lower())
 
     task_id = _next_task_id(task_store)
@@ -190,7 +192,9 @@ async def create_task_from_file(
     _validate_video_extension(suffix)
 
     task_id = _next_task_id(task_store)
-    target_path = Path(settings.upload_dir) / f"{task_id}_{sanitize_filename(file.filename or 'upload')}"
+    target_path = (
+        Path(settings.upload_dir) / f"{task_id}_{sanitize_filename(file.filename or 'upload')}"
+    )
 
     max_bytes = settings.max_upload_mb * 1024 * 1024
     size = 0
@@ -282,13 +286,21 @@ def update_task_artifacts(
     task_store: TaskStore = Depends(get_task_store),
 ) -> TaskDetailResponse:
     record = _require_task(task_store, task_id)
-    if record.status not in {TaskStatus.COMPLETED.value, TaskStatus.FAILED.value, TaskStatus.CANCELLED.value}:
+    if record.status not in {
+        TaskStatus.COMPLETED.value,
+        TaskStatus.FAILED.value,
+        TaskStatus.CANCELLED.value,
+    }:
         raise AppError.conflict(
             "Task artifacts can only be edited after task finished",
             code="TASK_ARTIFACT_EDIT_FORBIDDEN",
         )
 
-    if payload.summary_markdown is None and payload.notes_markdown is None and payload.mindmap_markdown is None:
+    if (
+        payload.summary_markdown is None
+        and payload.notes_markdown is None
+        and payload.mindmap_markdown is None
+    ):
         return _to_detail(record)
 
     if payload.summary_markdown is not None:
@@ -365,20 +377,30 @@ def delete_task(
     task_store: TaskStore = Depends(get_task_store),
 ) -> Response:
     record = _require_task(task_store, task_id)
-    if record.status not in {TaskStatus.COMPLETED.value, TaskStatus.FAILED.value, TaskStatus.CANCELLED.value}:
+    if record.status not in {
+        TaskStatus.COMPLETED.value,
+        TaskStatus.FAILED.value,
+        TaskStatus.CANCELLED.value,
+    }:
         raise AppError.conflict("Running task cannot be deleted", code="TASK_DELETE_FORBIDDEN")
     task_store.delete(task_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{task_id}/cancel", response_model=TaskCreateResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/{task_id}/cancel", response_model=TaskCreateResponse, status_code=status.HTTP_202_ACCEPTED
+)
 async def cancel_task(
     task_id: str,
     task_store: TaskStore = Depends(get_task_store),
     runner: TaskRunner = Depends(get_runner),
 ) -> TaskCreateResponse:
     record = _require_task(task_store, task_id)
-    if record.status in {TaskStatus.COMPLETED.value, TaskStatus.FAILED.value, TaskStatus.CANCELLED.value}:
+    if record.status in {
+        TaskStatus.COMPLETED.value,
+        TaskStatus.FAILED.value,
+        TaskStatus.CANCELLED.value,
+    }:
         raise AppError.conflict("Task is already finished", code="TASK_ALREADY_FINISHED")
 
     cancelled = await runner.cancel(task_id)
@@ -387,17 +409,30 @@ async def cancel_task(
     return TaskCreateResponse(task_id=task_id, status=TaskStatus.CANCELLED.value)
 
 
-@router.post("/{task_id}/rerun-stage-d", response_model=TaskCreateResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/{task_id}/rerun-stage-d",
+    response_model=TaskCreateResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def rerun_task_stage_d(
     task_id: str,
     task_store: TaskStore = Depends(get_task_store),
     runner: TaskRunner = Depends(get_runner),
 ) -> TaskCreateResponse:
     record = _require_task(task_store, task_id)
-    if record.status not in {TaskStatus.COMPLETED.value, TaskStatus.FAILED.value, TaskStatus.CANCELLED.value}:
+    if record.status not in {
+        TaskStatus.COMPLETED.value,
+        TaskStatus.FAILED.value,
+        TaskStatus.CANCELLED.value,
+    }:
         raise AppError.conflict("Only terminal tasks can rerun stage D", code="TASK_NOT_TERMINAL")
-    if not (record.transcript_text or "").strip() and not (record.transcript_segments_json or "").strip():
-        raise AppError.bad_request("Task has no persisted transcript artifacts", code="TASK_TRANSCRIPT_MISSING")
+    if (
+        not (record.transcript_text or "").strip()
+        and not (record.transcript_segments_json or "").strip()
+    ):
+        raise AppError.bad_request(
+            "Task has no persisted transcript artifacts", code="TASK_TRANSCRIPT_MISSING"
+        )
     try:
         started = await runner.rerun_stage_d(task_id)
     except ValueError as exc:
@@ -455,7 +490,9 @@ def export_task(
 
     title = sanitize_filename(record.title or task_id)
     if kind == "transcript":
-        _require_export_text(record.transcript_text, label="transcript", code="EXPORT_TRANSCRIPT_EMPTY")
+        _require_export_text(
+            record.transcript_text, label="transcript", code="EXPORT_TRANSCRIPT_EMPTY"
+        )
         return PlainTextResponse(
             record.transcript_text or "",
             media_type="text/plain; charset=utf-8",
@@ -470,7 +507,9 @@ def export_task(
         )
     if kind == "mindmap":
         _require_export_text(record.mindmap_markdown, label="mindmap", code="EXPORT_MINDMAP_EMPTY")
-        html = render_markmap_html(record.mindmap_markdown or "# Empty", title=record.title or task_id)
+        html = render_markmap_html(
+            record.mindmap_markdown or "# Empty", title=record.title or task_id
+        )
         return HTMLResponse(
             html,
             media_type="text/html; charset=utf-8",
@@ -533,7 +572,9 @@ def _validate_bundle_export_ready(record: TaskRecord) -> None:
     _require_export_text(record.transcript_text, label="transcript", code="EXPORT_TRANSCRIPT_EMPTY")
     _require_export_text(record.notes_markdown, label="notes", code="EXPORT_NOTES_EMPTY")
     _require_export_text(record.mindmap_markdown, label="mindmap", code="EXPORT_MINDMAP_EMPTY")
-    _require_export_segments(_parse_transcript_segments(record.transcript_segments_json), code="EXPORT_SUBTITLE_EMPTY")
+    _require_export_segments(
+        _parse_transcript_segments(record.transcript_segments_json), code="EXPORT_SUBTITLE_EMPTY"
+    )
 
 
 def _build_artifact_bundle(record: TaskRecord, title: str, archive: Literal["zip", "tar"]) -> bytes:
@@ -544,7 +585,9 @@ def _build_artifact_bundle(record: TaskRecord, title: str, archive: Literal["zip
 
 
 def _build_artifact_files(record: TaskRecord, title: str) -> dict[str, bytes]:
-    mindmap_html = render_markmap_html(record.mindmap_markdown or "# Empty", title=record.title or record.id)
+    mindmap_html = render_markmap_html(
+        record.mindmap_markdown or "# Empty", title=record.title or record.id
+    )
     segments = _parse_transcript_segments(record.transcript_segments_json)
     srt_text = _build_srt(segments)
     vtt_text = _build_vtt(segments)
@@ -559,7 +602,9 @@ def _build_artifact_files(record: TaskRecord, title: str) -> dict[str, bytes]:
 
 
 def _build_content_disposition(filename: str) -> str:
-    ascii_fallback = "".join(ch if 32 <= ord(ch) <= 126 and ch not in {'"', "\\", ";"} else "_" for ch in filename)
+    ascii_fallback = "".join(
+        ch if 32 <= ord(ch) <= 126 and ch not in {'"', "\\", ";"} else "_" for ch in filename
+    )
     ascii_fallback = ascii_fallback or "download.bin"
     encoded_filename = quote(filename, safe="")
     return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded_filename}"
@@ -788,7 +833,9 @@ def _parse_stage_metrics(raw: str | None) -> dict[str, dict[str, object]]:
         return _empty_stage_metrics()
 
 
-def _build_vm_phase_metrics(stage_metrics: dict[str, dict[str, object]]) -> dict[str, dict[str, object]]:
+def _build_vm_phase_metrics(
+    stage_metrics: dict[str, dict[str, object]],
+) -> dict[str, dict[str, object]]:
     def to_status(metric: dict[str, object]) -> str:
         explicit_status = str(metric.get("status", "") or "").strip().lower()
         if explicit_status == "cancelled":

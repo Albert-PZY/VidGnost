@@ -63,13 +63,25 @@ export function SourceTaskModal({
       onClose={onClose}
     >
       <div className="mb-3.5 grid grid-cols-3 gap-2.5">
-        <Button size="sm" variant={sourceMode === 'url' ? 'default' : 'secondary'} onClick={() => setSourceMode('url')}>
+        <Button
+          size="sm"
+          variant={sourceMode === 'url' ? 'default' : 'secondary'}
+          onClick={() => setSourceMode('url')}
+        >
           {t('source.mode.url')}
         </Button>
-        <Button size="sm" variant={sourceMode === 'path' ? 'default' : 'secondary'} onClick={() => setSourceMode('path')}>
+        <Button
+          size="sm"
+          variant={sourceMode === 'path' ? 'default' : 'secondary'}
+          onClick={() => setSourceMode('path')}
+        >
           {t('source.mode.path')}
         </Button>
-        <Button size="sm" variant={sourceMode === 'upload' ? 'default' : 'secondary'} onClick={() => setSourceMode('upload')}>
+        <Button
+          size="sm"
+          variant={sourceMode === 'upload' ? 'default' : 'secondary'}
+          onClick={() => setSourceMode('upload')}
+        >
           {t('source.mode.upload')}
         </Button>
       </div>
@@ -122,7 +134,12 @@ export function SourceTaskModal({
           <PreText variant="timestamp" className="text-text-main">
             {t('source.upload.drop')}
           </PreText>
-          <Button size="sm" variant="outline" className="mt-2" onClick={() => fileInputRef.current?.click()}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="mt-2"
+            onClick={() => fileInputRef.current?.click()}
+          >
             {t('source.upload.chooseFile')}
           </Button>
           {uploadFile && (
@@ -147,11 +164,17 @@ export function SourceTaskModal({
         <PreText variant="h3" className="mb-1">
           {t('source.runtimeDefaultsTitle')}
         </PreText>
-        <PreText variant="timestamp">{t('source.runtimeDefaults', { model: runtimeModel, language: runtimeLanguage })}</PreText>
+        <PreText variant="timestamp">
+          {t('source.runtimeDefaults', { model: runtimeModel, language: runtimeLanguage })}
+        </PreText>
       </div>
 
       <Button className="w-full" onClick={() => void submitTask()} disabled={submitting}>
-        {submitting ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <CloudUpload className="mr-2 h-4 w-4" />}
+        {submitting ? (
+          <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+        ) : (
+          <CloudUpload className="mr-2 h-4 w-4" />
+        )}
         {t('source.start')}
       </Button>
     </ModalPanel>
@@ -263,7 +286,9 @@ export function PromptTemplateDeleteModal({
             type="button"
             variant="secondary"
             onClick={onClose}
-            disabled={Boolean(pendingPromptDelete && promptActionChannel === pendingPromptDelete.channel)}
+            disabled={Boolean(
+              pendingPromptDelete && promptActionChannel === pendingPromptDelete.channel,
+            )}
           >
             {t('history.actions.cancel')}
           </Button>
@@ -272,7 +297,9 @@ export function PromptTemplateDeleteModal({
             variant="default"
             className="bg-red-500 text-white hover:brightness-95"
             onClick={() => void removePromptTemplate()}
-            disabled={Boolean(pendingPromptDelete && promptActionChannel === pendingPromptDelete.channel)}
+            disabled={Boolean(
+              pendingPromptDelete && promptActionChannel === pendingPromptDelete.channel,
+            )}
           >
             {pendingPromptDelete && promptActionChannel === pendingPromptDelete.channel ? (
               <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />

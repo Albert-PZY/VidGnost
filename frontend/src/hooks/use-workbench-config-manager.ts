@@ -3,11 +3,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import type { TFunction } from 'i18next'
 import toast from 'react-hot-toast'
 
-import {
-  getLLMConfig,
-  updateLLMConfig,
-  updateWhisperConfig,
-} from '../lib/api'
+import { getLLMConfig, updateLLMConfig, updateWhisperConfig } from '../lib/api'
 import type { LLMConfig, WhisperConfig } from '../types'
 
 interface UseWorkbenchConfigManagerOptions {

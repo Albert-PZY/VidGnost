@@ -56,6 +56,11 @@ SKIP_PREFIXES = (
     "frontend/node_modules/",
 )
 
+SKIP_PATHS = {
+    "backend/storage/config.toml",
+    "backend/storage/model_config.json",
+}
+
 
 def _run_git(*args: str) -> subprocess.CompletedProcess[bytes]:
     return subprocess.run(
@@ -77,6 +82,8 @@ def _normalize_repo_path(path: str | Path) -> str:
 def _is_target_text_file(path: str) -> bool:
     normalized = _normalize_repo_path(path)
     if any(normalized.startswith(prefix) for prefix in SKIP_PREFIXES):
+        return False
+    if normalized in SKIP_PATHS:
         return False
 
     if normalized.startswith(".githooks/"):
@@ -104,6 +111,18 @@ def _read_index_blob(path: str) -> bytes:
 
 def _read_worktree_file(path: str) -> bytes:
     return (REPO_ROOT / path).read_bytes()
+
+
+def _normalize_payload(payload: bytes) -> bytes:
+    text = payload.decode("utf-8-sig")
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    if normalized and not normalized.endswith("\n"):
+        normalized += "\n"
+    return normalized.encode("utf-8")
+
+
+def _write_worktree_file(path: str, payload: bytes) -> None:
+    (REPO_ROOT / path).write_bytes(payload)
 
 
 def _validate_bytes(path: str, payload: bytes) -> list[str]:
@@ -148,11 +167,18 @@ def main() -> int:
         required=True,
         help="Validation source: staged index, full tracked index, or explicit working-tree files.",
     )
+    parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="Normalize working-tree files in-place. Supported only for tracked/files modes.",
+    )
     parser.add_argument("files", nargs="*", help="Explicit file paths when --mode=files.")
     args = parser.parse_args()
 
     if args.mode == "files" and not args.files:
         parser.error("--mode=files requires at least one file path")
+    if args.fix and args.mode == "staged":
+        parser.error("--fix is not supported with --mode=staged")
 
     targets = _collect_targets(args.mode, args.files)
     if not targets:
@@ -160,23 +186,41 @@ def main() -> int:
         return 0
 
     violations: list[tuple[str, list[str]]] = []
+    fixed_count = 0
     for path in targets:
         try:
-            payload = _read_worktree_file(path) if args.mode == "files" else _read_index_blob(path)
+            use_worktree = args.mode in {"files", "tracked"}
+            payload = _read_worktree_file(path) if use_worktree else _read_index_blob(path)
         except FileNotFoundError:
             violations.append((path, ["file does not exist in working tree"]))
             continue
         except subprocess.CalledProcessError as exc:
-            details = exc.stderr.decode("utf-8", errors="replace").strip() or "unable to read git blob"
+            details = (
+                exc.stderr.decode("utf-8", errors="replace").strip() or "unable to read git blob"
+            )
             violations.append((path, [details]))
             continue
 
         errors = _validate_bytes(path, payload)
         if errors:
+            if args.fix:
+                try:
+                    normalized_payload = _normalize_payload(payload)
+                except UnicodeDecodeError as exc:
+                    violations.append((path, [f"is not valid UTF-8 ({exc})"]))
+                    continue
+                _write_worktree_file(path, normalized_payload)
+                fixed_count += 1
+                payload = normalized_payload
+                errors = _validate_bytes(path, payload)
             violations.append((path, errors))
 
+    if args.fix:
+        violations = [(path, errors) for path, errors in violations if errors]
+
     if not violations:
-        print(f"[format-guard] OK ({len(targets)} files)")
+        suffix = f", fixed {fixed_count}" if args.fix else ""
+        print(f"[format-guard] OK ({len(targets)} files{suffix})")
         return 0
 
     print("[format-guard] FAILED")

@@ -51,7 +51,9 @@ class StageArtifactStore:
         except OSError:
             return default
 
-    def read_bytes(self, task_id: str, stage: str, relative_path: str, *, default: bytes = b"") -> bytes:
+    def read_bytes(
+        self, task_id: str, stage: str, relative_path: str, *, default: bytes = b""
+    ) -> bytes:
         path = self._safe_stage_relative_path(task_id, stage, relative_path)
         if not path.exists() or not path.is_file():
             return default

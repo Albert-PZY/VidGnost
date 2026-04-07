@@ -39,10 +39,16 @@ export function WorkbenchConfigModal({
       panelClassName="max-w-[min(1520px,96vw)]"
       bodyClassName="!overflow-hidden !px-0 !py-0 md:!px-0 md:!py-0"
     >
-      <Tabs value={configTab} onValueChange={(value) => setConfigTab(value as ConfigTabKey)} className="flex h-[80vh] min-h-0 flex-col">
+      <Tabs
+        value={configTab}
+        onValueChange={(value) => setConfigTab(value as ConfigTabKey)}
+        className="flex h-[80vh] min-h-0 flex-col"
+      >
         <div className="shrink-0 border-b border-border/60 bg-surface-elevated/92 px-5 py-3 md:px-7">
           <TabsList className="grid h-auto w-full grid-cols-3 rounded-xl border border-border/70 bg-surface-muted/88 p-1">
-            <TabsTrigger value="llm">{t('config.tabs.llm', { defaultValue: '在线 LLM' })}</TabsTrigger>
+            <TabsTrigger value="llm">
+              {t('config.tabs.llm', { defaultValue: '在线 LLM' })}
+            </TabsTrigger>
             <TabsTrigger value="whisper">{t('config.tabs.whisper')}</TabsTrigger>
             <TabsTrigger value="prompts">{t('config.tabs.prompts')}</TabsTrigger>
           </TabsList>

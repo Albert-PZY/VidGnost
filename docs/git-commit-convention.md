@@ -3,6 +3,7 @@
 Scope: this convention applies to all commits in this repository, including code, scripts, docs, and spec updates.
 
 References:
+
 - https://www.conventionalcommits.org/en/v1.0.0/
 - https://www.conventionalcommits.org/zh-hans/v1.0.0/
 
@@ -25,6 +26,7 @@ Optional body and footer format:
 ```
 
 Notes:
+
 - `type`: required.
 - `scope`: optional, recommended for module ownership.
 - `!`: optional, indicates a breaking change.
@@ -54,6 +56,7 @@ Notes:
 - Enforce a single-operation-at-a-time policy for the repository.
 - On any lock conflict (for example `index.lock`), stop and retry instead of proceeding.
 - Repository text files should use `UTF-8` without BOM, `LF` line endings, and a trailing newline at EOF.
+- Before committing formatting-heavy changes, prefer running `python scripts/repository_style.py check` (or `format` when normalization/rewrite is intended).
 - Never commit or push sensitive values from `backend/storage/config.toml` or `backend/storage/model_config.json`.
 - If those two files require redaction for commit/push validation, only inspect or sanitize staged/transport content; never rewrite the local working-copy values.
 
@@ -162,6 +165,7 @@ docs: update
 ```
 
 Why these are bad:
+
 - invalid or incomplete Conventional Commit structure.
 - vague description with poor traceability.
 

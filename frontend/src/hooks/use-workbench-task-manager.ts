@@ -113,66 +113,82 @@ export function useWorkbenchTaskManager({
   setNotesStream,
   setMindmapStream,
 }: UseWorkbenchTaskManagerOptions) {
-  const loadHistory = useCallback(async (query = searchText): Promise<TaskSummaryItem[] | null> => {
-    try {
-      const rows = await listTasks(query)
-      setHistory(rows)
-      return rows
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('errors.loadHistoryFailed'))
-      return null
-    }
-  }, [searchText, setError, setHistory, t])
+  const loadHistory = useCallback(
+    async (query = searchText): Promise<TaskSummaryItem[] | null> => {
+      try {
+        const rows = await listTasks(query)
+        setHistory(rows)
+        return rows
+      } catch (err) {
+        setError(err instanceof Error ? err.message : t('errors.loadHistoryFailed'))
+        return null
+      }
+    },
+    [searchText, setError, setHistory, t],
+  )
 
-  const startEditHistoryTitle = useCallback((item: TaskSummaryItem) => {
-    setEditingHistoryTaskId(item.id)
-    setEditingHistoryTitle((item.title ?? item.source_input).trim())
-  }, [setEditingHistoryTaskId, setEditingHistoryTitle])
+  const startEditHistoryTitle = useCallback(
+    (item: TaskSummaryItem) => {
+      setEditingHistoryTaskId(item.id)
+      setEditingHistoryTitle((item.title ?? item.source_input).trim())
+    },
+    [setEditingHistoryTaskId, setEditingHistoryTitle],
+  )
 
   const cancelEditHistoryTitle = useCallback(() => {
     setEditingHistoryTaskId(null)
     setEditingHistoryTitle('')
   }, [setEditingHistoryTaskId, setEditingHistoryTitle])
 
-  const saveHistoryTitle = useCallback(async (taskId: string) => {
-    const nextTitle = editingHistoryTitle.trim()
-    if (!nextTitle) {
-      const message = t('errors.historyTitleRequired')
-      setError(message)
-      toast.error(message)
-      return
-    }
-    setHistoryActionBusyTaskId(taskId)
-    try {
-      const updated = await updateTaskTitle(taskId, nextTitle)
-      setHistory((prev) => prev.map((item) => (item.id === taskId ? { ...item, ...updated } : item)))
-      if (activeTask?.id === taskId) {
-        setActiveTask((prev) => (prev ? { ...prev, title: updated.title, updated_at: updated.updated_at } : prev))
+  const saveHistoryTitle = useCallback(
+    async (taskId: string) => {
+      const nextTitle = editingHistoryTitle.trim()
+      if (!nextTitle) {
+        const message = t('errors.historyTitleRequired')
+        setError(message)
+        toast.error(message)
+        return
       }
-      cancelEditHistoryTitle()
-      toast.success(t('history.actions.updateSuccess'))
-    } catch (err) {
-      const message = err instanceof Error ? err.message : t('errors.updateHistoryTitleFailed')
-      setError(message)
-      toast.error(message)
-    } finally {
-      setHistoryActionBusyTaskId(null)
-    }
-  }, [
-    activeTask?.id,
-    cancelEditHistoryTitle,
-    editingHistoryTitle,
-    setActiveTask,
-    setError,
-    setHistory,
-    setHistoryActionBusyTaskId,
-    t,
-  ])
+      setHistoryActionBusyTaskId(taskId)
+      try {
+        const updated = await updateTaskTitle(taskId, nextTitle)
+        setHistory((prev) =>
+          prev.map((item) => (item.id === taskId ? { ...item, ...updated } : item)),
+        )
+        if (activeTask?.id === taskId) {
+          setActiveTask((prev) =>
+            prev ? { ...prev, title: updated.title, updated_at: updated.updated_at } : prev,
+          )
+        }
+        cancelEditHistoryTitle()
+        toast.success(t('history.actions.updateSuccess'))
+      } catch (err) {
+        const message = err instanceof Error ? err.message : t('errors.updateHistoryTitleFailed')
+        setError(message)
+        toast.error(message)
+      } finally {
+        setHistoryActionBusyTaskId(null)
+      }
+    },
+    [
+      activeTask?.id,
+      cancelEditHistoryTitle,
+      editingHistoryTitle,
+      setActiveTask,
+      setError,
+      setHistory,
+      setHistoryActionBusyTaskId,
+      t,
+    ],
+  )
 
-  const openDeleteConfirm = useCallback((item: TaskSummaryItem) => {
-    if (!isTaskTerminalStatus(item.status)) return
-    setPendingDeleteTask(item)
-  }, [isTaskTerminalStatus, setPendingDeleteTask])
+  const openDeleteConfirm = useCallback(
+    (item: TaskSummaryItem) => {
+      if (!isTaskTerminalStatus(item.status)) return
+      setPendingDeleteTask(item)
+    },
+    [isTaskTerminalStatus, setPendingDeleteTask],
+  )
 
   const closeDeleteConfirm = useCallback(() => {
     if (pendingDeleteTask && historyActionBusyTaskId === pendingDeleteTask.id) return
@@ -237,7 +253,16 @@ export function useWorkbenchTaskManager({
       toast.error(message)
       setCancellingTask(false)
     }
-  }, [activeStage, activeTask, appendLog, cancellingTask, isTaskTerminalStatus, setCancellingTask, setError, t])
+  }, [
+    activeStage,
+    activeTask,
+    appendLog,
+    cancellingTask,
+    isTaskTerminalStatus,
+    setCancellingTask,
+    setError,
+    t,
+  ])
 
   const rerunActiveTaskStageD = useCallback(async () => {
     if (!activeTask) return
@@ -349,35 +374,39 @@ export function useWorkbenchTaskManager({
       setSummaryStream(detail.summary_markdown ?? '')
       setNotesStream(detail.notes_markdown ?? '')
       setMindmapStream(detail.mindmap_markdown ?? '')
-    setNotesMarkdownDirty(false)
-    setMindmapMarkdownDirty(false)
-    setHistory((prev) => prev.map((item) => (item.id === detail.id ? { ...item, updated_at: detail.updated_at } : item)))
-    return true
-  } catch (err) {
-    const message = err instanceof Error ? err.message : t('errors.saveArtifactsFailed')
-    setError(message)
-    toast.error(message)
-    return false
-  } finally {
-    setSavingArtifacts(false)
-  }
-}, [
-  activeTask,
-  hasUnsavedArtifactEdits,
-  mindmapStream,
-  setActiveTask,
-  setError,
-  setHistory,
-  setMindmapMarkdownDirty,
-  setMindmapStream,
-  setNotesMarkdownDirty,
-  setSavingArtifacts,
-  setSummaryStream,
-  setNotesStream,
-  summaryStream,
-  notesStream,
-  t,
-])
+      setNotesMarkdownDirty(false)
+      setMindmapMarkdownDirty(false)
+      setHistory((prev) =>
+        prev.map((item) =>
+          item.id === detail.id ? { ...item, updated_at: detail.updated_at } : item,
+        ),
+      )
+      return true
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t('errors.saveArtifactsFailed')
+      setError(message)
+      toast.error(message)
+      return false
+    } finally {
+      setSavingArtifacts(false)
+    }
+  }, [
+    activeTask,
+    hasUnsavedArtifactEdits,
+    mindmapStream,
+    setActiveTask,
+    setError,
+    setHistory,
+    setMindmapMarkdownDirty,
+    setMindmapStream,
+    setNotesMarkdownDirty,
+    setSavingArtifacts,
+    setSummaryStream,
+    setNotesStream,
+    summaryStream,
+    notesStream,
+    t,
+  ])
 
   const downloadAllArtifacts = useCallback(async () => {
     if (!activeTask) return

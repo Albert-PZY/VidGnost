@@ -14,7 +14,9 @@ def restore_runtime_config_files() -> None:
     llm_config_path = Path(settings.llm_config_path)
     runtime_config_path = Path(settings.runtime_config_path)
     llm_config_backup = llm_config_path.read_bytes() if llm_config_path.exists() else None
-    runtime_config_backup = runtime_config_path.read_bytes() if runtime_config_path.exists() else None
+    runtime_config_backup = (
+        runtime_config_path.read_bytes() if runtime_config_path.exists() else None
+    )
 
     yield
 

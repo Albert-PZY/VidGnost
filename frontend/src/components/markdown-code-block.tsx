@@ -16,11 +16,7 @@ import { cn } from '../lib/utils'
 
 type MarkdownCodeBlockProps = ComponentProps<'pre'>
 
-function MarkdownCodeBlockImpl({
-  children,
-  className,
-  ...preProps
-}: MarkdownCodeBlockProps) {
+function MarkdownCodeBlockImpl({ children, className, ...preProps }: MarkdownCodeBlockProps) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const copyTimerRef = useRef<number | null>(null)

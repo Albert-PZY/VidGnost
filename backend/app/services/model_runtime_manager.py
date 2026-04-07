@@ -105,12 +105,17 @@ class ModelRuntimeManager:
             component_limit = 1
         while len(bucket) > component_limit:
             candidate_model_id, _ = bucket.popitem(last=False)
-            if (component, candidate_model_id) in self._active_models or candidate_model_id == model_id:
+            if (
+                component,
+                candidate_model_id,
+            ) in self._active_models or candidate_model_id == model_id:
                 bucket[candidate_model_id] = None
                 bucket.move_to_end(candidate_model_id)
                 continue
             evictions.append(
-                RuntimeEviction(component=component, model_id=candidate_model_id, reason="component_lru")
+                RuntimeEviction(
+                    component=component, model_id=candidate_model_id, reason="component_lru"
+                )
             )
 
         other_components = [item for item in self._model_usage.keys() if item != component]

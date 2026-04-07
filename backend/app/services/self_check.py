@@ -61,11 +61,15 @@ class SelfCheckService:
         self._project_root = Path(__file__).resolve().parents[3]
 
     async def start_check(self) -> str:
-        session_id = generate_time_key("self-check", exists=lambda candidate: candidate in self._sessions)
+        session_id = generate_time_key(
+            "self-check", exists=lambda candidate: candidate in self._sessions
+        )
         session = SelfCheckSession(id=session_id, status="running")
         async with self._lock:
             self._sessions[session_id] = session
-            _prune_terminal_self_check_sessions(self._sessions, max_sessions=self._max_session_cache)
+            _prune_terminal_self_check_sessions(
+                self._sessions, max_sessions=self._max_session_cache
+            )
         asyncio.create_task(self._run_check(session_id))
         return session_id
 
@@ -82,7 +86,9 @@ class SelfCheckService:
 
     async def get_report(self, session_id: str) -> dict[str, object] | None:
         async with self._lock:
-            _prune_terminal_self_check_sessions(self._sessions, max_sessions=self._max_session_cache)
+            _prune_terminal_self_check_sessions(
+                self._sessions, max_sessions=self._max_session_cache
+            )
             session = self._sessions.get(session_id)
             if session is None:
                 return None
@@ -107,7 +113,12 @@ class SelfCheckService:
 
             await self._event_bus.publish(
                 topic,
-                {"type": "self_check_started", "session_id": session_id, "total_steps": total_steps, "progress": 0},
+                {
+                    "type": "self_check_started",
+                    "session_id": session_id,
+                    "total_steps": total_steps,
+                    "progress": 0,
+                },
             )
 
             for index, check in enumerate(steps, start=1):
@@ -144,9 +155,13 @@ class SelfCheckService:
                     return
                 session.status = "completed"
                 session.progress = 100
-                session.auto_fix_available = any(bool(issue.get("auto_fixable")) for issue in session.issues)
+                session.auto_fix_available = any(
+                    bool(issue.get("auto_fixable")) for issue in session.issues
+                )
                 session.updated_at = datetime.now(timezone.utc).isoformat()
-                _prune_terminal_self_check_sessions(self._sessions, max_sessions=self._max_session_cache)
+                _prune_terminal_self_check_sessions(
+                    self._sessions, max_sessions=self._max_session_cache
+                )
                 report = self._serialize_session(session)
 
             await self._event_bus.publish(
@@ -167,7 +182,9 @@ class SelfCheckService:
                     session.status = "failed"
                     session.last_error = str(exc)
                     session.updated_at = datetime.now(timezone.utc).isoformat()
-                    _prune_terminal_self_check_sessions(self._sessions, max_sessions=self._max_session_cache)
+                    _prune_terminal_self_check_sessions(
+                        self._sessions, max_sessions=self._max_session_cache
+                    )
             await self._event_bus.publish(
                 topic,
                 {
@@ -219,7 +236,9 @@ class SelfCheckService:
         if code != 0:
             error_text = f"Auto-fix script exited with code {code}."
             await self._mark_fix_failed(session_id, error_text)
-            await self._event_bus.publish(topic, {"type": "self_fix_failed", "session_id": session_id, "error": error_text})
+            await self._event_bus.publish(
+                topic, {"type": "self_fix_failed", "session_id": session_id, "error": error_text}
+            )
             return
 
         await self._event_bus.publish(
@@ -264,7 +283,9 @@ class SelfCheckService:
                     break
             session.updated_at = datetime.now(timezone.utc).isoformat()
 
-    async def _mark_step_result(self, session_id: str, step_id: str, outcome: SelfCheckOutcome) -> None:
+    async def _mark_step_result(
+        self, session_id: str, step_id: str, outcome: SelfCheckOutcome
+    ) -> None:
         async with self._lock:
             session = self._sessions.get(session_id)
             if session is None:
@@ -282,7 +303,9 @@ class SelfCheckService:
             target.auto_fixable = outcome.auto_fixable
             target.manual_action = outcome.manual_action
 
-            session.issues = [issue for issue in session.issues if str(issue.get("id", "")) != step_id]
+            session.issues = [
+                issue for issue in session.issues if str(issue.get("id", "")) != step_id
+            ]
             if outcome.status in {"warning", "failed"}:
                 session.issues.append(
                     {
@@ -294,7 +317,9 @@ class SelfCheckService:
                         "manual_action": target.manual_action,
                     }
                 )
-            session.auto_fix_available = any(bool(issue.get("auto_fixable")) for issue in session.issues)
+            session.auto_fix_available = any(
+                bool(issue.get("auto_fixable")) for issue in session.issues
+            )
             session.progress = self._count_progress(session.steps)
             session.updated_at = datetime.now(timezone.utc).isoformat()
 
@@ -352,7 +377,11 @@ class SelfCheckService:
             _SelfCheckItem("pnpm", "Frontend Package Manager (pnpm)", self._check_pnpm),
             _SelfCheckItem("ffmpeg", "FFmpeg", self._check_ffmpeg),
             _SelfCheckItem("config-files", "Runtime Config Files", self._check_config_files),
-            _SelfCheckItem("whisper-config", "Faster-Whisper Runtime Config", self._check_whisper_runtime_config),
+            _SelfCheckItem(
+                "whisper-config",
+                "Faster-Whisper Runtime Config",
+                self._check_whisper_runtime_config,
+            ),
             _SelfCheckItem("model-cache", "Whisper Model Cache", self._check_model_cache),
         ]
 
@@ -383,7 +412,9 @@ class SelfCheckService:
         pnpm_path = shutil.which("pnpm")
         if pnpm_path:
             version = await self._try_read_version(["pnpm", "--version"])
-            return SelfCheckOutcome(status="passed", message=f"Detected at {pnpm_path} (v{version})")
+            return SelfCheckOutcome(
+                status="passed", message=f"Detected at {pnpm_path} (v{version})"
+            )
         return SelfCheckOutcome(
             status="failed",
             message="pnpm is not available in PATH.",
@@ -395,11 +426,15 @@ class SelfCheckService:
         ffmpeg_path = shutil.which("ffmpeg")
         if ffmpeg_path:
             version = await self._try_read_version(["ffmpeg", "-version"])
-            return SelfCheckOutcome(status="passed", message=f"Detected at {ffmpeg_path} ({version})")
+            return SelfCheckOutcome(
+                status="passed", message=f"Detected at {ffmpeg_path} ({version})"
+            )
         return SelfCheckOutcome(
             status="failed",
             message="ffmpeg command is missing.",
-            auto_fixable=bool(shutil.which("winget") if sys.platform == "win32" else shutil.which("apt-get")),
+            auto_fixable=bool(
+                shutil.which("winget") if sys.platform == "win32" else shutil.which("apt-get")
+            ),
             manual_action="安装 ffmpeg 并确保 PATH 可访问。",
         )
 
@@ -418,7 +453,9 @@ class SelfCheckService:
                 auto_fixable=True,
                 manual_action="执行自动修复或在前端保存一次配置。",
             )
-        return SelfCheckOutcome(status="passed", message="model_config.json and config.toml are present.")
+        return SelfCheckOutcome(
+            status="passed", message="model_config.json and config.toml are present."
+        )
 
     async def _check_whisper_runtime_config(self) -> SelfCheckOutcome:
         runtime_path = Path(self._settings.runtime_config_path)
@@ -494,7 +531,9 @@ class SelfCheckService:
             if target.exists() and target.is_file():
                 total_bytes += target.stat().st_size
         size_mb = total_bytes / (1024 * 1024)
-        return SelfCheckOutcome(status="passed", message=f"Whisper small cache ready ({size_mb:.1f} MiB)")
+        return SelfCheckOutcome(
+            status="passed", message=f"Whisper small cache ready ({size_mb:.1f} MiB)"
+        )
 
     @staticmethod
     async def _try_read_version(command: list[str]) -> str:

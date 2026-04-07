@@ -5,7 +5,6 @@ import json
 import subprocess
 import sys
 import tomllib
-from pathlib import Path
 from typing import Iterable
 
 PROTECTED_PATHS = (
@@ -44,7 +43,9 @@ SAFE_PLACEHOLDER_VALUES = {
 ZERO_SHA = "0" * 40
 
 
-def _run_git(*args: str, check: bool = True, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+def _run_git(
+    *args: str, check: bool = True, input_text: str | None = None
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["git", *args],
         check=check,
@@ -77,7 +78,9 @@ def _is_safe_placeholder(value: str) -> bool:
     return False
 
 
-def _walk_sensitive_values(value: object, key_path: tuple[str, ...] = ()) -> Iterable[tuple[str, str]]:
+def _walk_sensitive_values(
+    value: object, key_path: tuple[str, ...] = ()
+) -> Iterable[tuple[str, str]]:
     if isinstance(value, dict):
         for key, nested in value.items():
             next_path = (*key_path, str(key))
@@ -126,8 +129,14 @@ def _read_staged_blob(path: str) -> str | None:
 
 
 def _iter_staged_protected_paths() -> list[str]:
-    result = _run_git("diff", "--cached", "--name-only", "--diff-filter=ACMR", "--", *PROTECTED_PATHS)
-    return [_normalize_path(line) for line in result.stdout.splitlines() if _normalize_path(line) in PROTECTED_PATHS]
+    result = _run_git(
+        "diff", "--cached", "--name-only", "--diff-filter=ACMR", "--", *PROTECTED_PATHS
+    )
+    return [
+        _normalize_path(line)
+        for line in result.stdout.splitlines()
+        if _normalize_path(line) in PROTECTED_PATHS
+    ]
 
 
 def _iter_push_commits(stdin_payload: str) -> list[tuple[str, list[str]]]:
@@ -145,8 +154,14 @@ def _iter_push_commits(stdin_payload: str) -> list[tuple[str, list[str]]]:
         else:
             rev_list = _run_git("rev-list", f"{remote_sha}..{local_sha}").stdout.splitlines()
         for commit in rev_list:
-            diff_paths = _run_git("diff-tree", "--no-commit-id", "--name-only", "-r", commit, "--", *PROTECTED_PATHS).stdout
-            touched = [_normalize_path(item) for item in diff_paths.splitlines() if _normalize_path(item) in PROTECTED_PATHS]
+            diff_paths = _run_git(
+                "diff-tree", "--no-commit-id", "--name-only", "-r", commit, "--", *PROTECTED_PATHS
+            ).stdout
+            touched = [
+                _normalize_path(item)
+                for item in diff_paths.splitlines()
+                if _normalize_path(item) in PROTECTED_PATHS
+            ]
             if touched:
                 commits_to_check.append((commit, touched))
     return commits_to_check
@@ -161,7 +176,9 @@ def _check_staged() -> int:
         try:
             hits = _validate_blob(path, raw_text)
         except Exception as exc:  # noqa: BLE001
-            violations.append(f"{path}: invalid staged config payload ({type(exc).__name__}: {exc})")
+            violations.append(
+                f"{path}: invalid staged config payload ({type(exc).__name__}: {exc})"
+            )
             continue
         for key_path, reason in hits:
             violations.append(f"{path} -> {key_path}: {reason}")
@@ -178,7 +195,9 @@ def _check_pre_push(stdin_payload: str) -> int:
             try:
                 hits = _validate_blob(path, result.stdout)
             except Exception as exc:  # noqa: BLE001
-                violations.append(f"{commit[:12]} {path}: invalid committed config payload ({type(exc).__name__}: {exc})")
+                violations.append(
+                    f"{commit[:12]} {path}: invalid committed config payload ({type(exc).__name__}: {exc})"
+                )
                 continue
             for key_path, reason in hits:
                 violations.append(f"{commit[:12]} {path} -> {key_path}: {reason}")

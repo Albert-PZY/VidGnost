@@ -1,5 +1,5 @@
-from app.services.prompt_template_store import MINDMAP_PROMPT_TEMPLATES, SUMMARY_PROMPT_TEMPLATES
 from app.services.prompt_constants import MINDMAP_PROMPT, SUMMARY_PROMPT
+from app.services.prompt_template_store import MINDMAP_PROMPT_TEMPLATES, SUMMARY_PROMPT_TEMPLATES
 
 
 def test_summary_prompt_templates_include_default_and_presets() -> None:

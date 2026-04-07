@@ -8,7 +8,10 @@ import type {
   WhisperConfig,
 } from '../types'
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL?.trim() || 'http://localhost:8000/api').replace(/\/+$/, '')
+const API_BASE = (import.meta.env.VITE_API_BASE_URL?.trim() || 'http://localhost:8000/api').replace(
+  /\/+$/,
+  '',
+)
 export type BundleArchiveFormat = 'zip' | 'tar'
 
 interface TaskCreateResponse {
@@ -105,7 +108,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     const payload = toApiErrorPayload(parsedBody)
     const message =
-      payload?.message || (typeof parsedBody === 'string' ? parsedBody : null) || `Request failed: ${response.status}`
+      payload?.message ||
+      (typeof parsedBody === 'string' ? parsedBody : null) ||
+      `Request failed: ${response.status}`
     throw new ApiError({
       status: response.status,
       code: payload?.code || `HTTP_${response.status}`,
@@ -273,20 +278,26 @@ export async function updatePromptTemplate(input: {
   name: string
   content: string
 }): Promise<PromptTemplateBundle> {
-  return request<PromptTemplateBundle>(`/config/prompts/templates/${encodeURIComponent(input.template_id)}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      name: input.name,
-      content: input.content,
-    }),
-  })
+  return request<PromptTemplateBundle>(
+    `/config/prompts/templates/${encodeURIComponent(input.template_id)}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: input.name,
+        content: input.content,
+      }),
+    },
+  )
 }
 
 export async function deletePromptTemplate(templateId: string): Promise<PromptTemplateBundle> {
-  return request<PromptTemplateBundle>(`/config/prompts/templates/${encodeURIComponent(templateId)}`, {
-    method: 'DELETE',
-  })
+  return request<PromptTemplateBundle>(
+    `/config/prompts/templates/${encodeURIComponent(templateId)}`,
+    {
+      method: 'DELETE',
+    },
+  )
 }
 
 export async function getWhisperConfig(): Promise<WhisperConfig> {

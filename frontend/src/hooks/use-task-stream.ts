@@ -67,7 +67,9 @@ function resolveVmPhaseFromLogLine(line: string): VmPhaseKey | null {
   return D_SUBPHASES.has(phase) ? phase : null
 }
 
-export function deriveVmPhaseLogsFromStageLogs(stageLogs: Record<StageKey, string[]>): Record<VmPhaseKey, string[]> {
+export function deriveVmPhaseLogsFromStageLogs(
+  stageLogs: Record<StageKey, string[]>,
+): Record<VmPhaseKey, string[]> {
   const vmPhaseLogs = createEmptyVmPhaseLogs()
   vmPhaseLogs.A = stageLogs.A.slice()
   vmPhaseLogs.B = stageLogs.B.slice()
@@ -96,8 +98,10 @@ export function useTaskStream({
   const [activeStage, setActiveStage] = useState<StageKey>('A')
   const [overallProgress, setOverallProgress] = useState(0)
   const [stageLogs, setStageLogs] = useState<Record<StageKey, string[]>>(createEmptyStageLogs)
-  const [vmPhaseLogs, setVmPhaseLogs] = useState<Record<VmPhaseKey, string[]>>(createEmptyVmPhaseLogs)
-  const [stageTimers, setStageTimers] = useState<Record<StageKey, number | null>>(createEmptyStageTimers)
+  const [vmPhaseLogs, setVmPhaseLogs] =
+    useState<Record<VmPhaseKey, string[]>>(createEmptyVmPhaseLogs)
+  const [stageTimers, setStageTimers] =
+    useState<Record<StageKey, number | null>>(createEmptyStageTimers)
   const [runtimeNowMs, setRuntimeNowMs] = useState<number>(() => Date.now())
   const [transcriptStream, setTranscriptStream] = useState('')
   const [summaryStream, setSummaryStream] = useState('')
@@ -145,7 +149,9 @@ export function useTaskStream({
     if (pendingTranscriptRef.current.length > 0) {
       const chunk = pendingTranscriptRef.current.join('\n')
       pendingTranscriptRef.current = []
-      setTranscriptStream((prev) => `${prev}${prev.endsWith('\n') || prev.length === 0 ? '' : '\n'}${chunk}`)
+      setTranscriptStream(
+        (prev) => `${prev}${prev.endsWith('\n') || prev.length === 0 ? '' : '\n'}${chunk}`,
+      )
     }
 
     if (pendingSummaryRef.current.length > 0) {

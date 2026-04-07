@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+import urllib.error
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
-import urllib.error
-import urllib.parse
-import urllib.request
 
 import orjson
 
@@ -28,12 +28,17 @@ from app.services.model_runtime_manager import ModelRuntimeManager, RuntimeEvict
 from app.services.prompt_template_store import PromptTemplateStore
 from app.services.resource_guard import ResourceGuard
 from app.services.runtime_config_store import RuntimeConfigStore
-from app.services.task_error_classifier import classify_task_failure
 from app.services.runtime_event_service import RuntimeEventService
 from app.services.stage_artifact_store import StageArtifactStore
-from app.services.summarizer import LLMService, NotesPipelineArtifacts, SummaryBundle, _ensure_single_markdown_title
-from app.services.task_artifact_persistence_service import TaskArtifactPersistenceService
+from app.services.summarizer import (
+    LLMService,
+    NotesPipelineArtifacts,
+    SummaryBundle,
+    _ensure_single_markdown_title,
+)
 from app.services.task_artifact_index import build_task_artifact_index
+from app.services.task_artifact_persistence_service import TaskArtifactPersistenceService
+from app.services.task_error_classifier import classify_task_failure
 from app.services.task_store import TaskStore
 from app.services.transcription import WhisperService
 
@@ -249,7 +254,11 @@ class TaskRunner:
             if llm_guard["rollback_applied"]:
                 llm_runtime_config = llm_guard["config"]  # type: ignore[assignment]
             runtime_warnings.extend(llm_guard["warnings"])
-            runtime_warnings.extend(self._resource_guard.ensure_runtime_capacity(whisper=whisper_config, llm=llm_runtime_config))
+            runtime_warnings.extend(
+                self._resource_guard.ensure_runtime_capacity(
+                    whisper=whisper_config, llm=llm_runtime_config
+                )
+            )
 
             selected_model = "small"
             selected_language = submission.language.strip() or whisper_config["language"]
@@ -333,7 +342,9 @@ class TaskRunner:
 
                     if status in {"checking", "cached", "completed"}:
                         if message:
-                            await self._emit_log(task_id, "A", message, stage_logs, substage="asr_model")
+                            await self._emit_log(
+                                task_id, "A", message, stage_logs, substage="asr_model"
+                            )
                         return
 
                     if status != "downloading":
@@ -391,10 +402,18 @@ class TaskRunner:
                             stage_logs_json=_encode_stage_logs(stage_logs),
                         )
 
-                await self._transcriber.ensure_small_model_ready(on_progress=on_model_prepare_progress)
-                await self._emit_log(task_id, "A", f"Source type: {submission.source_type}", stage_logs)
-                ingestion_result = await asyncio.to_thread(self._ingest_source, submission, media_dir)
-                await self._emit_log(task_id, "A", f"Video ready: {ingestion_result.media_path.name}", stage_logs)
+                await self._transcriber.ensure_small_model_ready(
+                    on_progress=on_model_prepare_progress
+                )
+                await self._emit_log(
+                    task_id, "A", f"Source type: {submission.source_type}", stage_logs
+                )
+                ingestion_result = await asyncio.to_thread(
+                    self._ingest_source, submission, media_dir
+                )
+                await self._emit_log(
+                    task_id, "A", f"Video ready: {ingestion_result.media_path.name}", stage_logs
+                )
                 await self._persist_stage_artifact_json(
                     task_id,
                     "A",
@@ -419,7 +438,9 @@ class TaskRunner:
                     model_size=selected_model,
                     stage_logs_json=_encode_stage_logs(stage_logs),
                 )
-                await self._stage_complete(task_id, "A", progress=_PROGRESS_STAGE_A_DONE, stage_logs=stage_logs)
+                await self._stage_complete(
+                    task_id, "A", progress=_PROGRESS_STAGE_A_DONE, stage_logs=stage_logs
+                )
                 active_stage = "B"
 
                 await self._stage_start(
@@ -445,16 +466,22 @@ class TaskRunner:
                     whisper_config["target_channels"],
                     whisper_config["target_sample_rate"],
                 )
-                await self._emit_log(task_id, "B", f"Audio conversion completed: {audio_path.name}", stage_logs)
+                await self._emit_log(
+                    task_id, "B", f"Audio conversion completed: {audio_path.name}", stage_logs
+                )
                 await self._emit_log(
                     task_id,
                     "B",
                     f"Splitting audio into chunks ({whisper_config['chunk_seconds']}s each)...",
                     stage_logs,
                 )
-                audio_chunks = await asyncio.to_thread(split_audio_wav, audio_path, chunks_dir, whisper_config["chunk_seconds"])
+                audio_chunks = await asyncio.to_thread(
+                    split_audio_wav, audio_path, chunks_dir, whisper_config["chunk_seconds"]
+                )
                 if not audio_chunks:
-                    audio_chunks = [AudioChunk(path=audio_path, start_seconds=0.0, duration_seconds=0.0)]
+                    audio_chunks = [
+                        AudioChunk(path=audio_path, start_seconds=0.0, duration_seconds=0.0)
+                    ]
                 self._set_stage_metric_values(
                     task_id,
                     "B",
@@ -487,15 +514,23 @@ class TaskRunner:
                                 "file_name": chunk.path.name,
                                 "start_seconds": round(chunk.start_seconds, 2),
                                 "duration_seconds": round(chunk.duration_seconds, 2),
-                                "end_seconds": round(chunk.start_seconds + max(0.0, chunk.duration_seconds), 2),
+                                "end_seconds": round(
+                                    chunk.start_seconds + max(0.0, chunk.duration_seconds), 2
+                                ),
                             }
                             for index, chunk in enumerate(audio_chunks, start=1)
                         ],
                         "updated_at": datetime.now(timezone.utc).isoformat(),
                     },
                 )
-                await self._update_task(task_id, progress=_PROGRESS_STAGE_B_DONE, stage_logs_json=_encode_stage_logs(stage_logs))
-                await self._stage_complete(task_id, "B", progress=_PROGRESS_STAGE_B_DONE, stage_logs=stage_logs)
+                await self._update_task(
+                    task_id,
+                    progress=_PROGRESS_STAGE_B_DONE,
+                    stage_logs_json=_encode_stage_logs(stage_logs),
+                )
+                await self._stage_complete(
+                    task_id, "B", progress=_PROGRESS_STAGE_B_DONE, stage_logs=stage_logs
+                )
                 active_stage = "C"
 
                 await self._stage_start(
@@ -518,7 +553,9 @@ class TaskRunner:
                     ),
                 ) as asr_lease:
                     self._record_runtime_lease(task_id, "C", asr_lease.wait_seconds)
-                    await self._handle_runtime_evictions(task_id, "C", asr_lease.evictions, stage_logs)
+                    await self._handle_runtime_evictions(
+                        task_id, "C", asr_lease.evictions, stage_logs
+                    )
                     if asr_lease.wait_seconds > 0:
                         await self._emit_log(
                             task_id,
@@ -547,7 +584,9 @@ class TaskRunner:
                                 segment = item["segment"]
                                 overall_progress = int(item["overall_progress"])
                                 stage_progress = int(item["stage_progress"])
-                                await self._event_bus.publish(task_id, {"type": "transcript_delta", "stage": "C", **segment})
+                                await self._event_bus.publish(
+                                    task_id, {"type": "transcript_delta", "stage": "C", **segment}
+                                )
                                 if overall_progress != last_overall_progress:
                                     last_overall_progress = overall_progress
                                     await self._event_bus.publish(
@@ -565,9 +604,9 @@ class TaskRunner:
                         def on_segment(raw_segment: dict[str, float | str]) -> None:
                             relative_end = max(0.0, float(raw_segment["end"]) - chunk.start_seconds)
                             progress_ratio = (
-                                (chunk_index + min(relative_end / max(chunk.duration_seconds, 1.0), 1.0))
-                                / total_chunks
-                            )
+                                chunk_index
+                                + min(relative_end / max(chunk.duration_seconds, 1.0), 1.0)
+                            ) / total_chunks
                             overall_progress = _interpolate_progress(
                                 _PROGRESS_STAGE_C_START,
                                 _PROGRESS_STAGE_C_DONE,
@@ -575,7 +614,10 @@ class TaskRunner:
                             )
                             payload = {
                                 "segment": raw_segment,
-                                "overall_progress": max(_PROGRESS_STAGE_C_START, min(_PROGRESS_STAGE_C_DONE, overall_progress)),
+                                "overall_progress": max(
+                                    _PROGRESS_STAGE_C_START,
+                                    min(_PROGRESS_STAGE_C_DONE, overall_progress),
+                                ),
                                 "stage_progress": max(0, min(100, int(progress_ratio * 100))),
                             }
 
@@ -602,7 +644,9 @@ class TaskRunner:
                                 compute_type=whisper_config["compute_type"],
                                 beam_size=whisper_config["beam_size"],
                                 vad_filter=whisper_config["vad_filter"],
-                                model_load_profile=whisper_config.get("model_load_profile", "balanced"),
+                                model_load_profile=whisper_config.get(
+                                    "model_load_profile", "balanced"
+                                ),
                                 timestamp_offset_seconds=chunk.start_seconds,
                                 on_segment=on_segment,
                             )
@@ -622,7 +666,9 @@ class TaskRunner:
                                 "file_name": chunk.path.name,
                                 "start_seconds": round(chunk.start_seconds, 2),
                                 "duration_seconds": round(chunk.duration_seconds, 2),
-                                "end_seconds": round(chunk.start_seconds + max(0.0, chunk.duration_seconds), 2),
+                                "end_seconds": round(
+                                    chunk.start_seconds + max(0.0, chunk.duration_seconds), 2
+                                ),
                                 "segment_count": len(result.segments),
                                 "segments": result.segments,
                                 "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -639,7 +685,11 @@ class TaskRunner:
                             f"Chunk {chunk_index + 1}/{total_chunks} transcription completed",
                             stage_logs,
                         )
-                        await self._update_task(task_id, progress=chunk_progress, stage_logs_json=_encode_stage_logs(stage_logs))
+                        await self._update_task(
+                            task_id,
+                            progress=chunk_progress,
+                            stage_logs_json=_encode_stage_logs(stage_logs),
+                        )
 
                 transcript_text = _join_transcript_segment_texts(all_segments)
                 self._set_stage_metric_values(
@@ -665,14 +715,18 @@ class TaskRunner:
                                 "file_name": chunk.path.name,
                                 "start_seconds": round(chunk.start_seconds, 2),
                                 "duration_seconds": round(chunk.duration_seconds, 2),
-                                "end_seconds": round(chunk.start_seconds + max(0.0, chunk.duration_seconds), 2),
+                                "end_seconds": round(
+                                    chunk.start_seconds + max(0.0, chunk.duration_seconds), 2
+                                ),
                             }
                             for index, chunk in enumerate(audio_chunks, start=1)
                         ],
                         "updated_at": datetime.now(timezone.utc).isoformat(),
                     },
                 )
-                await self._persist_stage_artifact_text(task_id, "C", "transcript/full.txt", transcript_text)
+                await self._persist_stage_artifact_text(
+                    task_id, "C", "transcript/full.txt", transcript_text
+                )
                 await self._update_task(
                     task_id,
                     progress=_PROGRESS_STAGE_C_DONE,
@@ -680,7 +734,9 @@ class TaskRunner:
                     transcript_segments_json=orjson.dumps(all_segments).decode("utf-8"),
                     stage_logs_json=_encode_stage_logs(stage_logs),
                 )
-                await self._stage_complete(task_id, "C", progress=_PROGRESS_STAGE_C_DONE, stage_logs=stage_logs)
+                await self._stage_complete(
+                    task_id, "C", progress=_PROGRESS_STAGE_C_DONE, stage_logs=stage_logs
+                )
                 active_stage = "D"
 
                 await self._stage_start(
@@ -691,8 +747,13 @@ class TaskRunner:
                     status=TaskStatus.SUMMARIZING.value,
                     progress=_PROGRESS_STAGE_D_START,
                 )
-                llm_model_id = str(llm_runtime_config.get("model", self._settings.llm_model)).strip() or self._settings.llm_model
-                correction_mode = str(llm_runtime_config.get("correction_mode", "strict")).strip().lower()
+                llm_model_id = (
+                    str(llm_runtime_config.get("model", self._settings.llm_model)).strip()
+                    or self._settings.llm_model
+                )
+                correction_mode = (
+                    str(llm_runtime_config.get("correction_mode", "strict")).strip().lower()
+                )
                 correction = None
                 preview_streamed = False
                 await self._reset_transcript_optimized_preview(task_id)
@@ -702,9 +763,13 @@ class TaskRunner:
                     if not delta:
                         return
                     preview_streamed = True
-                    await self._append_transcript_optimized_preview(task_id, delta, stream_mode=stream_mode)
+                    await self._append_transcript_optimized_preview(
+                        task_id, delta, stream_mode=stream_mode
+                    )
 
-                async def emit_correction_preview_segment(segment: dict[str, float | str], stream_mode: str) -> None:
+                async def emit_correction_preview_segment(
+                    segment: dict[str, float | str], stream_mode: str
+                ) -> None:
                     nonlocal preview_streamed
                     text = str(segment.get("text", "")).strip()
                     if not text:
@@ -742,7 +807,9 @@ class TaskRunner:
                         on_preview_segment=emit_correction_preview_segment,
                     )
                 else:
-                    await self._d_substage_start(task_id, "transcript_optimize", progress=_PROGRESS_STAGE_D_START)
+                    await self._d_substage_start(
+                        task_id, "transcript_optimize", progress=_PROGRESS_STAGE_D_START
+                    )
                     await self._emit_log(
                         task_id,
                         "D",
@@ -757,8 +824,12 @@ class TaskRunner:
                             component="llm",
                             model_id=f"llm:{llm_model_id}",
                         ) as llm_correction_lease:
-                            self._record_runtime_lease(task_id, "D", llm_correction_lease.wait_seconds)
-                            await self._handle_runtime_evictions(task_id, "D", llm_correction_lease.evictions, stage_logs)
+                            self._record_runtime_lease(
+                                task_id, "D", llm_correction_lease.wait_seconds
+                            )
+                            await self._handle_runtime_evictions(
+                                task_id, "D", llm_correction_lease.evictions, stage_logs
+                            )
                             if llm_correction_lease.wait_seconds > 0:
                                 await self._emit_log(
                                     task_id,
@@ -817,7 +888,9 @@ class TaskRunner:
                                 end=_to_float(segment.get("end")),
                             )
                     else:
-                        await self._append_transcript_optimized_preview(task_id, summary_source_text, stream_mode="compat")
+                        await self._append_transcript_optimized_preview(
+                            task_id, summary_source_text, stream_mode="compat"
+                        )
                 await self._complete_transcript_optimized_preview(task_id)
                 await self._persist_transcript_optimization_artifacts(
                     task_id=task_id,
@@ -854,7 +927,12 @@ class TaskRunner:
                     stage_logs=stage_logs,
                 )
 
-                await self._emit_log(task_id, "D", "Detailed notes and mindmap persisted to local storage", stage_logs)
+                await self._emit_log(
+                    task_id,
+                    "D",
+                    "Detailed notes and mindmap persisted to local storage",
+                    stage_logs,
+                )
                 artifact_index_json, artifact_total_bytes = build_task_artifact_index(
                     task_id=task_id,
                     transcript_text=transcript_text,
@@ -877,8 +955,12 @@ class TaskRunner:
                     model_size=selected_model,
                     stage_logs_json=_encode_stage_logs(stage_logs),
                 )
-                await self._stage_complete(task_id, "D", progress=_PROGRESS_TASK_DONE, stage_logs=stage_logs)
-                await self._event_bus.publish(task_id, {"type": "task_complete", "overall_progress": _PROGRESS_TASK_DONE})
+                await self._stage_complete(
+                    task_id, "D", progress=_PROGRESS_TASK_DONE, stage_logs=stage_logs
+                )
+                await self._event_bus.publish(
+                    task_id, {"type": "task_complete", "overall_progress": _PROGRESS_TASK_DONE}
+                )
             except asyncio.CancelledError:
                 await self._emit_log(task_id, active_stage, "Task cancelled", stage_logs)
                 self._mark_stage_failed(task_id, active_stage, "Task cancelled by user.")
@@ -896,7 +978,9 @@ class TaskRunner:
                     error_message="Task cancelled by user.",
                     stage_logs_json=_encode_stage_logs(stage_logs),
                 )
-                await self._event_bus.publish(task_id, {"type": "task_cancelled", "error": "Task cancelled by user."})
+                await self._event_bus.publish(
+                    task_id, {"type": "task_cancelled", "error": "Task cancelled by user."}
+                )
                 raise
             except Exception as exc:  # noqa: BLE001
                 failure = classify_task_failure(stage=active_stage, exc=exc)
@@ -925,7 +1009,12 @@ class TaskRunner:
                 )
                 await self._event_bus.publish(
                     task_id,
-                    {"type": "task_failed", "error": classified_reason, "category": failure.category, "hint": failure.hint},
+                    {
+                        "type": "task_failed",
+                        "error": classified_reason,
+                        "category": failure.category,
+                        "hint": failure.hint,
+                    },
                 )
             finally:
                 mode_semaphore.release()
@@ -960,11 +1049,19 @@ class TaskRunner:
                 stage_metrics["D"] = _empty_stage_metrics()["D"]
                 self._runtime_events.initialize_task(task_id, stage_metrics)
                 transcript_segments = _decode_transcript_segments(record.transcript_segments_json)
-                transcript_text = (record.transcript_text or "").strip() or _join_transcript_segment_texts(transcript_segments)
+                transcript_text = (
+                    record.transcript_text or ""
+                ).strip() or _join_transcript_segment_texts(transcript_segments)
                 if not transcript_text:
-                    raise ValueError("Task has no persisted transcript artifacts for stage-D rerun.")
+                    raise ValueError(
+                        "Task has no persisted transcript artifacts for stage-D rerun."
+                    )
 
-                task_title = str(record.title or "").strip() or str(record.source_input or "").strip() or f"Task-{task_id}"
+                task_title = (
+                    str(record.title or "").strip()
+                    or str(record.source_input or "").strip()
+                    or f"Task-{task_id}"
+                )
 
                 runtime_warnings: list[str] = []
                 whisper_guard = self._resource_guard.guard_whisper_config(whisper_config)
@@ -975,7 +1072,11 @@ class TaskRunner:
                 if llm_guard["rollback_applied"]:
                     llm_runtime_config = llm_guard["config"]  # type: ignore[assignment]
                 runtime_warnings.extend(llm_guard["warnings"])
-                runtime_warnings.extend(self._resource_guard.ensure_runtime_capacity(whisper=whisper_config, llm=llm_runtime_config))
+                runtime_warnings.extend(
+                    self._resource_guard.ensure_runtime_capacity(
+                        whisper=whisper_config, llm=llm_runtime_config
+                    )
+                )
 
                 await self._stage_start(
                     task_id,
@@ -1019,8 +1120,13 @@ class TaskRunner:
                         substage="precheck",
                     )
 
-                llm_model_id = str(llm_runtime_config.get("model", self._settings.llm_model)).strip() or self._settings.llm_model
-                correction_mode = str(llm_runtime_config.get("correction_mode", "strict")).strip().lower()
+                llm_model_id = (
+                    str(llm_runtime_config.get("model", self._settings.llm_model)).strip()
+                    or self._settings.llm_model
+                )
+                correction_mode = (
+                    str(llm_runtime_config.get("correction_mode", "strict")).strip().lower()
+                )
                 correction = None
                 preview_streamed = False
                 await self._reset_transcript_optimized_preview(task_id)
@@ -1030,9 +1136,13 @@ class TaskRunner:
                     if not delta:
                         return
                     preview_streamed = True
-                    await self._append_transcript_optimized_preview(task_id, delta, stream_mode=stream_mode)
+                    await self._append_transcript_optimized_preview(
+                        task_id, delta, stream_mode=stream_mode
+                    )
 
-                async def emit_correction_preview_segment(segment: dict[str, float | str], stream_mode: str) -> None:
+                async def emit_correction_preview_segment(
+                    segment: dict[str, float | str], stream_mode: str
+                ) -> None:
                     nonlocal preview_streamed
                     text = str(segment.get("text", "")).strip()
                     if not text:
@@ -1070,7 +1180,9 @@ class TaskRunner:
                         on_preview_segment=emit_correction_preview_segment,
                     )
                 else:
-                    await self._d_substage_start(task_id, "transcript_optimize", progress=_PROGRESS_STAGE_D_START)
+                    await self._d_substage_start(
+                        task_id, "transcript_optimize", progress=_PROGRESS_STAGE_D_START
+                    )
                     await self._emit_log(
                         task_id,
                         "D",
@@ -1085,8 +1197,12 @@ class TaskRunner:
                             component="llm",
                             model_id=f"llm:{llm_model_id}",
                         ) as llm_correction_lease:
-                            self._record_runtime_lease(task_id, "D", llm_correction_lease.wait_seconds)
-                            await self._handle_runtime_evictions(task_id, "D", llm_correction_lease.evictions, stage_logs)
+                            self._record_runtime_lease(
+                                task_id, "D", llm_correction_lease.wait_seconds
+                            )
+                            await self._handle_runtime_evictions(
+                                task_id, "D", llm_correction_lease.evictions, stage_logs
+                            )
                             if llm_correction_lease.wait_seconds > 0:
                                 await self._emit_log(
                                     task_id,
@@ -1130,7 +1246,9 @@ class TaskRunner:
                     transcript_segments_json=orjson.dumps(transcript_segments).decode("utf-8"),
                     stage_logs_json=_encode_stage_logs(stage_logs),
                 )
-                await self._emit_log(task_id, "D", correction.message, stage_logs, substage="transcript_optimize")
+                await self._emit_log(
+                    task_id, "D", correction.message, stage_logs, substage="transcript_optimize"
+                )
                 if not preview_streamed:
                     if correction.mode == "strict" and correction.segments:
                         for segment in correction.segments:
@@ -1145,7 +1263,9 @@ class TaskRunner:
                                 end=_to_float(segment.get("end")),
                             )
                     else:
-                        await self._append_transcript_optimized_preview(task_id, summary_source_text, stream_mode="compat")
+                        await self._append_transcript_optimized_preview(
+                            task_id, summary_source_text, stream_mode="compat"
+                        )
                 await self._complete_transcript_optimized_preview(task_id)
                 await self._persist_transcript_optimization_artifacts(
                     task_id=task_id,
@@ -1207,8 +1327,12 @@ class TaskRunner:
                     artifact_total_bytes=artifact_total_bytes,
                     stage_logs_json=_encode_stage_logs(stage_logs),
                 )
-                await self._stage_complete(task_id, "D", progress=_PROGRESS_TASK_DONE, stage_logs=stage_logs)
-                await self._event_bus.publish(task_id, {"type": "task_complete", "overall_progress": _PROGRESS_TASK_DONE})
+                await self._stage_complete(
+                    task_id, "D", progress=_PROGRESS_TASK_DONE, stage_logs=stage_logs
+                )
+                await self._event_bus.publish(
+                    task_id, {"type": "task_complete", "overall_progress": _PROGRESS_TASK_DONE}
+                )
             except asyncio.CancelledError:
                 await self._emit_log(task_id, active_stage, "Task cancelled", stage_logs)
                 self._mark_stage_failed(task_id, active_stage, "Task cancelled by user.")
@@ -1226,7 +1350,9 @@ class TaskRunner:
                     error_message="Task cancelled by user.",
                     stage_logs_json=_encode_stage_logs(stage_logs),
                 )
-                await self._event_bus.publish(task_id, {"type": "task_cancelled", "error": "Task cancelled by user."})
+                await self._event_bus.publish(
+                    task_id, {"type": "task_cancelled", "error": "Task cancelled by user."}
+                )
                 raise
             except Exception as exc:  # noqa: BLE001
                 failure = classify_task_failure(stage=active_stage, exc=exc)
@@ -1255,7 +1381,12 @@ class TaskRunner:
                 )
                 await self._event_bus.publish(
                     task_id,
-                    {"type": "task_failed", "error": classified_reason, "category": failure.category, "hint": failure.hint},
+                    {
+                        "type": "task_failed",
+                        "error": classified_reason,
+                        "category": failure.category,
+                        "hint": failure.hint,
+                    },
                 )
             finally:
                 mode_semaphore.release()
@@ -1284,7 +1415,10 @@ class TaskRunner:
         llm_api_key = str(llm_runtime_config.get("api_key", "")).strip()
         if not llm_api_key:
             raise ValueError("运行前检查失败：LLM API 缺少 api_key。")
-        llm_base_url = str(llm_runtime_config.get("base_url", self._settings.llm_base_url)).strip() or self._settings.llm_base_url
+        llm_base_url = (
+            str(llm_runtime_config.get("base_url", self._settings.llm_base_url)).strip()
+            or self._settings.llm_base_url
+        )
         llm_ok, llm_reason = _probe_openai_compat_models_endpoint(
             base_url=llm_base_url,
             api_key=llm_api_key,
@@ -1409,7 +1543,9 @@ class TaskRunner:
     def _mark_stage_failed(self, task_id: str, stage: StageType, reason: str) -> None:
         self._runtime_events.mark_stage_failed(task_id, stage, reason)
 
-    def _ensure_d_substage_metric_entry(self, task_id: str, substage: DSubstageType) -> dict[str, object]:
+    def _ensure_d_substage_metric_entry(
+        self, task_id: str, substage: DSubstageType
+    ) -> dict[str, object]:
         return self._runtime_events.ensure_d_substage_metric_entry(task_id, substage)
 
     def _mark_d_substage_started(self, task_id: str, substage: DSubstageType) -> None:
@@ -1418,7 +1554,9 @@ class TaskRunner:
     def _mark_d_substage_completed(self, task_id: str, substage: DSubstageType) -> None:
         self._runtime_events.mark_d_substage_completed(task_id, substage)
 
-    def _mark_d_substage_skipped(self, task_id: str, substage: DSubstageType, reason: str = "") -> None:
+    def _mark_d_substage_skipped(
+        self, task_id: str, substage: DSubstageType, reason: str = ""
+    ) -> None:
         self._runtime_events.mark_d_substage_skipped(task_id, substage, reason)
 
     def _mark_d_substage_failed(self, task_id: str, substage: DSubstageType, reason: str) -> None:
@@ -1427,7 +1565,9 @@ class TaskRunner:
     def _increment_stage_log_count(self, task_id: str, stage: StageType) -> None:
         self._runtime_events.increment_stage_log_count(task_id, stage)
 
-    def _set_stage_metric_values(self, task_id: str, stage: StageType, values: dict[str, object]) -> None:
+    def _set_stage_metric_values(
+        self, task_id: str, stage: StageType, values: dict[str, object]
+    ) -> None:
         self._runtime_events.set_stage_metric_values(task_id, stage, values)
 
     def _record_runtime_lease(self, task_id: str, stage: StageType, wait_seconds: float) -> None:
@@ -1635,7 +1775,9 @@ class TaskRunner:
             model_id=f"llm:{llm_model_id}",
         ) as llm_generate_lease:
             self._record_runtime_lease(task_id, "D", llm_generate_lease.wait_seconds)
-            await self._handle_runtime_evictions(task_id, "D", llm_generate_lease.evictions, stage_logs)
+            await self._handle_runtime_evictions(
+                task_id, "D", llm_generate_lease.evictions, stage_logs
+            )
             if llm_generate_lease.wait_seconds > 0:
                 await self._emit_log(
                     task_id,
@@ -1648,22 +1790,44 @@ class TaskRunner:
             async def notes_delta(delta: str, stream_mode: str) -> None:
                 await self._event_bus.publish(
                     task_id,
-                    {"type": "notes_delta", "stage": "D", "text": delta, "stream_mode": stream_mode},
+                    {
+                        "type": "notes_delta",
+                        "stage": "D",
+                        "text": delta,
+                        "stream_mode": stream_mode,
+                    },
                 )
 
             async def mindmap_delta(delta: str, stream_mode: str) -> None:
                 await self._event_bus.publish(
                     task_id,
-                    {"type": "mindmap_delta", "stage": "D", "text": delta, "stream_mode": stream_mode},
+                    {
+                        "type": "mindmap_delta",
+                        "stage": "D",
+                        "text": delta,
+                        "stream_mode": stream_mode,
+                    },
                 )
 
             async def publish_fusion_prompt_preview(markdown: str) -> None:
                 await self._publish_fusion_prompt_preview(task_id, markdown)
 
-            summary_prompt, notes_prompt, mindmap_prompt = await self._summarizer._prompt_template_store.resolve_selected_prompts()
+            (
+                summary_prompt,
+                notes_prompt,
+                mindmap_prompt,
+            ) = await self._summarizer._prompt_template_store.resolve_selected_prompts()
 
-            await self._d_substage_start(task_id, "notes_extract", progress=_PROGRESS_TRANSCRIPT_DONE)
-            await self._emit_log(task_id, "D", "Extracting detailed note evidence cards...", stage_logs, substage="notes_extract")
+            await self._d_substage_start(
+                task_id, "notes_extract", progress=_PROGRESS_TRANSCRIPT_DONE
+            )
+            await self._emit_log(
+                task_id,
+                "D",
+                "Extracting detailed note evidence cards...",
+                stage_logs,
+                substage="notes_extract",
+            )
             cards_bundle = await self._summarizer.build_notes_evidence_cards(
                 title=task_title,
                 transcript_text=notes_source_text,
@@ -1691,8 +1855,16 @@ class TaskRunner:
                 stage_logs_json=_encode_stage_logs(stage_logs),
             )
 
-            await self._d_substage_start(task_id, "notes_outline", progress=_PROGRESS_NOTES_EXTRACT_DONE)
-            await self._emit_log(task_id, "D", "Building global outline for detailed notes...", stage_logs, substage="notes_outline")
+            await self._d_substage_start(
+                task_id, "notes_outline", progress=_PROGRESS_NOTES_EXTRACT_DONE
+            )
+            await self._emit_log(
+                task_id,
+                "D",
+                "Building global outline for detailed notes...",
+                stage_logs,
+                substage="notes_outline",
+            )
             outline, outline_markdown = await self._summarizer.build_notes_outline(
                 title=task_title,
                 evidence_cards=cards_bundle["evidence_cards"],
@@ -1709,7 +1881,9 @@ class TaskRunner:
                 task_id,
                 "D",
                 {
-                    "notes_outline_section_count": len(outline.get("sections", [])) if isinstance(outline.get("sections"), list) else 0,
+                    "notes_outline_section_count": len(outline.get("sections", []))
+                    if isinstance(outline.get("sections"), list)
+                    else 0,
                 },
             )
             await self._update_task(
@@ -1718,8 +1892,16 @@ class TaskRunner:
                 stage_logs_json=_encode_stage_logs(stage_logs),
             )
 
-            await self._d_substage_start(task_id, "notes_sections", progress=_PROGRESS_NOTES_OUTLINE_DONE)
-            await self._emit_log(task_id, "D", "Generating detailed notes by outline sections...", stage_logs, substage="notes_sections")
+            await self._d_substage_start(
+                task_id, "notes_sections", progress=_PROGRESS_NOTES_OUTLINE_DONE
+            )
+            await self._emit_log(
+                task_id,
+                "D",
+                "Generating detailed notes by outline sections...",
+                stage_logs,
+                substage="notes_sections",
+            )
             notes_before_patch, section_markdowns = await self._summarizer.generate_notes_sections(
                 title=task_title,
                 notes_prompt=notes_prompt,
@@ -1751,8 +1933,16 @@ class TaskRunner:
                 stage_logs_json=_encode_stage_logs(stage_logs),
             )
 
-            await self._d_substage_start(task_id, "notes_coverage", progress=_PROGRESS_NOTES_SECTIONS_DONE)
-            await self._emit_log(task_id, "D", "Inspecting detailed notes coverage and patching gaps...", stage_logs, substage="notes_coverage")
+            await self._d_substage_start(
+                task_id, "notes_coverage", progress=_PROGRESS_NOTES_SECTIONS_DONE
+            )
+            await self._emit_log(
+                task_id,
+                "D",
+                "Inspecting detailed notes coverage and patching gaps...",
+                stage_logs,
+                substage="notes_coverage",
+            )
             coverage_report = await self._summarizer.inspect_notes_coverage(
                 title=task_title,
                 evidence_cards=cards_bundle["evidence_cards"],
@@ -1793,7 +1983,9 @@ class TaskRunner:
                 task_id,
                 "D",
                 {
-                    "notes_coverage_missing_count": int(coverage_report.get("missing_count", 0) or 0),
+                    "notes_coverage_missing_count": int(
+                        coverage_report.get("missing_count", 0) or 0
+                    ),
                     "notes_chars": len(notes_artifacts.notes_markdown),
                 },
             )
@@ -1803,8 +1995,16 @@ class TaskRunner:
                 stage_logs_json=_encode_stage_logs(stage_logs),
             )
 
-            await self._d_substage_start(task_id, "summary_delivery", progress=_PROGRESS_NOTES_COVERAGE_DONE)
-            await self._emit_log(task_id, "D", "Generating concise summary from detailed notes...", stage_logs, substage="summary_delivery")
+            await self._d_substage_start(
+                task_id, "summary_delivery", progress=_PROGRESS_NOTES_COVERAGE_DONE
+            )
+            await self._emit_log(
+                task_id,
+                "D",
+                "Generating concise summary from detailed notes...",
+                stage_logs,
+                substage="summary_delivery",
+            )
             summary_markdown = await self._summarizer.generate_summary_from_notes(
                 title=task_title,
                 notes_markdown=notes_artifacts.notes_markdown,
@@ -1813,7 +2013,12 @@ class TaskRunner:
                 llm_config_override=llm_runtime_config,
                 on_summary_delta=lambda delta, stream_mode: self._event_bus.publish(
                     task_id,
-                    {"type": "summary_delta", "stage": "D", "text": delta, "stream_mode": stream_mode},
+                    {
+                        "type": "summary_delta",
+                        "stage": "D",
+                        "text": delta,
+                        "stream_mode": stream_mode,
+                    },
                 ),
             )
             await self._d_substage_complete(
@@ -1836,8 +2041,16 @@ class TaskRunner:
                 stage_logs_json=_encode_stage_logs(stage_logs),
             )
 
-            await self._d_substage_start(task_id, "mindmap_delivery", progress=_PROGRESS_SUMMARY_DONE)
-            await self._emit_log(task_id, "D", "Generating mindmap from outline and notes...", stage_logs, substage="mindmap_delivery")
+            await self._d_substage_start(
+                task_id, "mindmap_delivery", progress=_PROGRESS_SUMMARY_DONE
+            )
+            await self._emit_log(
+                task_id,
+                "D",
+                "Generating mindmap from outline and notes...",
+                stage_logs,
+                substage="mindmap_delivery",
+            )
             mindmap_markdown = await self._summarizer.generate_mindmap_from_notes(
                 title=task_title,
                 outline_markdown=notes_artifacts.outline_markdown,
@@ -1961,7 +2174,9 @@ class TaskRunner:
     async def _publish_fusion_prompt_preview(self, task_id: str, prompt_text: str) -> None:
         normalized_text = (prompt_text or "").strip()
         await self._update_task(task_id, fusion_prompt_markdown=normalized_text)
-        await self._persist_stage_artifact_text(task_id, "D", "fusion/fusion-prompt.md", normalized_text)
+        await self._persist_stage_artifact_text(
+            task_id, "D", "fusion/fusion-prompt.md", normalized_text
+        )
         await self._event_bus.publish(
             task_id,
             {
@@ -1983,12 +2198,18 @@ class TaskRunner:
         mindmap_markdown = (bundle.mindmap_markdown or "").strip()
 
         if not summary_markdown:
-            summary_markdown = self._build_fallback_summary_markdown(transcript_text=transcript_text)
+            summary_markdown = self._build_fallback_summary_markdown(
+                transcript_text=transcript_text
+            )
         if not self._is_notes_markdown_structured(notes_markdown):
-            notes_markdown = self._build_fallback_notes_markdown(title=title, summary_markdown=summary_markdown)
+            notes_markdown = self._build_fallback_notes_markdown(
+                title=title, summary_markdown=summary_markdown
+            )
         notes_markdown = _ensure_single_markdown_title(notes_markdown, title)
         if not self._is_mindmap_markdown_valid(mindmap_markdown):
-            mindmap_markdown = self._build_fallback_mindmap_markdown(title=title, summary_markdown=summary_markdown)
+            mindmap_markdown = self._build_fallback_mindmap_markdown(
+                title=title, summary_markdown=summary_markdown
+            )
 
         return SummaryBundle(
             summary_markdown=summary_markdown,
@@ -2032,7 +2253,9 @@ class TaskRunner:
     @staticmethod
     def _build_fallback_notes_markdown(*, title: str, summary_markdown: str) -> str:
         normalized_title = (title or "").strip() or "任务笔记"
-        normalized_summary = _normalize_single_markdown_title(summary_markdown or "", normalized_title, demote_extra_h1=True)
+        normalized_summary = _normalize_single_markdown_title(
+            summary_markdown or "", normalized_title, demote_extra_h1=True
+        )
         if normalized_summary.startswith("# "):
             normalized_summary = "\n".join(normalized_summary.splitlines()[1:]).strip()
         return (
@@ -2047,7 +2270,11 @@ class TaskRunner:
     @staticmethod
     def _build_fallback_mindmap_markdown(*, title: str, summary_markdown: str) -> str:
         normalized_title = (title or "").strip() or "任务分析"
-        lines = [line.strip("- ").strip() for line in (summary_markdown or "").splitlines() if line.strip()]
+        lines = [
+            line.strip("- ").strip()
+            for line in (summary_markdown or "").splitlines()
+            if line.strip()
+        ]
         branch_1 = lines[0] if lines else "核心观点"
         branch_2 = lines[1] if len(lines) > 1 else "关键事实"
         branch_3 = lines[2] if len(lines) > 2 else "行动建议"
@@ -2072,7 +2299,9 @@ class TaskRunner:
 
         await asyncio.to_thread(_write)
 
-    async def _mark_cancelled(self, task_id: str, *, emit_event: bool, cleanup_media_dir: bool) -> bool:
+    async def _mark_cancelled(
+        self, task_id: str, *, emit_event: bool, cleanup_media_dir: bool
+    ) -> bool:
         def _write_cancelled() -> bool:
             task = self._task_store.get(task_id)
             if task is None:
@@ -2092,7 +2321,9 @@ class TaskRunner:
 
         changed = await asyncio.to_thread(_write_cancelled)
         if changed and emit_event:
-            await self._event_bus.publish(task_id, {"type": "task_cancelled", "error": "Task cancelled by user."})
+            await self._event_bus.publish(
+                task_id, {"type": "task_cancelled", "error": "Task cancelled by user."}
+            )
         if cleanup_media_dir:
             media_dir = Path(self._settings.temp_dir) / task_id
             await asyncio.to_thread(shutil.rmtree, media_dir, True)
@@ -2201,7 +2432,9 @@ def _encode_stage_metrics(stage_metrics: dict[StageType, dict[str, object]]) -> 
     return orjson.dumps(stage_metrics).decode("utf-8")
 
 
-def _format_stage_log_line(message: str, *, substage: str | None, elapsed_seconds: float | None) -> str:
+def _format_stage_log_line(
+    message: str, *, substage: str | None, elapsed_seconds: float | None
+) -> str:
     prefixes: list[str] = []
     if substage:
         prefixes.append(f"[{substage}]")
@@ -2277,7 +2510,9 @@ def _format_size_mb(size_bytes: int) -> str:
     return f"{safe_size / (1024 * 1024):.1f} MiB"
 
 
-def _probe_openai_compat_models_endpoint(*, base_url: str, api_key: str, timeout_seconds: float) -> tuple[bool, str]:
+def _probe_openai_compat_models_endpoint(
+    *, base_url: str, api_key: str, timeout_seconds: float
+) -> tuple[bool, str]:
     normalized_base_url = str(base_url).strip().rstrip("/")
     if not normalized_base_url:
         return (False, "missing base_url")
@@ -2302,7 +2537,10 @@ def _probe_openai_compat_models_endpoint(*, base_url: str, api_key: str, timeout
             return (False, f"HTTP {exc.code} (authentication rejected)")
         return (False, f"HTTP {exc.code}")
     except urllib.error.URLError as exc:
-        return (False, f"{type(exc.reason).__name__ if getattr(exc, 'reason', None) is not None else type(exc).__name__}: {exc.reason if getattr(exc, 'reason', None) is not None else exc}")
+        return (
+            False,
+            f"{type(exc.reason).__name__ if getattr(exc, 'reason', None) is not None else type(exc).__name__}: {exc.reason if getattr(exc, 'reason', None) is not None else exc}",
+        )
     except Exception as exc:  # noqa: BLE001
         return (False, f"{type(exc).__name__}: {exc}")
 

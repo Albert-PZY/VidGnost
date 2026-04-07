@@ -23,6 +23,7 @@ VidGnost defines a practical video-analysis workbench for local execution plus o
 ## Capabilities
 
 ### Core Capabilities
+
 - `video-ingestion`: create tasks from URL/path/upload sources.
 - `transcription-pipeline`: async phase pipeline with CPU Whisper transcription.
 - `llm-summary-mindmap`: online generation for notes and markmap markdown.
@@ -32,6 +33,7 @@ VidGnost defines a practical video-analysis workbench for local execution plus o
 - `web-workbench-ui`: bilingual workbench with phase tabs and config center.
 
 ### Engineering Capabilities
+
 - Stream/memory governance for long-running sessions.
 - Stage-level metrics and artifact indexing for observability.
 - Structured runtime-warning semantics for degraded-but-continuable conditions.

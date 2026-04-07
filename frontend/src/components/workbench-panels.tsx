@@ -35,7 +35,10 @@ import { cn } from '../lib/utils'
 import type { SelfCheckStep } from '../types'
 
 const QUICKSTART_REMARK_PLUGINS = [remarkGfm]
-const QUICKSTART_REHYPE_PLUGINS = [rehypeSlug, [rehypeHighlight, { detect: true, ignoreMissing: true }] as never]
+const QUICKSTART_REHYPE_PLUGINS = [
+  rehypeSlug,
+  [rehypeHighlight, { detect: true, ignoreMissing: true }] as never,
+]
 const MARKDOWN_HEADING_PATTERN = /^(#{1,3})\s+(.+)$/
 
 type UILocale = 'zh-CN' | 'en'
@@ -89,9 +92,17 @@ export function SidebarMenuButton({
     >
       <div className={cn('flex items-center', collapsed ? 'justify-center' : 'mb-1.5 gap-2')}>
         <Icon className={cn('h-4 w-4 shrink-0', active ? 'text-text-main' : 'text-accent')} />
-        {!collapsed && <PreText variant="h3" className="min-w-0 truncate">{title}</PreText>}
+        {!collapsed && (
+          <PreText variant="h3" className="min-w-0 truncate">
+            {title}
+          </PreText>
+        )}
       </div>
-      {!collapsed && <PreText variant="timestamp" className="line-clamp-2 break-words">{description}</PreText>}
+      {!collapsed && (
+        <PreText variant="timestamp" className="line-clamp-2 break-words">
+          {description}
+        </PreText>
+      )}
     </button>
   )
 }
@@ -170,7 +181,12 @@ export function ModalPanel({
             <X className="h-4 w-4" />
           </Button>
         </div>
-        <div className={cn('modal-panel-body max-h-[80vh] overflow-auto bg-surface-elevated/70 px-5 py-[1.125rem] md:px-7 md:py-[1.375rem]', bodyClassName)}>
+        <div
+          className={cn(
+            'modal-panel-body max-h-[80vh] overflow-auto bg-surface-elevated/70 px-5 py-[1.125rem] md:px-7 md:py-[1.375rem]',
+            bodyClassName,
+          )}
+        >
           {children}
         </div>
       </div>
@@ -261,12 +277,14 @@ export function SelectField({
                 ? 'border-accent bg-bg-base shadow-[0_0_0_2px_rgba(31,142,241,0.24),0_12px_22px_-15px_rgba(15,23,42,0.72)]'
                 : 'hover:-translate-y-[1px] hover:border-accent/50 hover:bg-bg-base hover:shadow-[0_14px_24px_-16px_rgba(15,23,42,0.62)]',
             ),
-          valueContainer: () => cn('gap-1', compact ? 'px-2.5 py-1.5' : 'px-3 py-2.5', leadingIcon && 'pl-8'),
+          valueContainer: () =>
+            cn('gap-1', compact ? 'px-2.5 py-1.5' : 'px-3 py-2.5', leadingIcon && 'pl-8'),
           input: () => 'm-0 p-0 text-[0.84rem] text-text-main',
           singleValue: () => 'text-[0.84rem] font-medium tracking-[0.01em] text-text-main',
           placeholder: () => 'text-[0.84rem] text-text-subtle',
           indicatorsContainer: () => 'pr-2 text-text-subtle',
-          dropdownIndicator: ({ isFocused }) => cn('transition-colors', isFocused ? 'text-accent' : 'text-text-subtle'),
+          dropdownIndicator: ({ isFocused }) =>
+            cn('transition-colors', isFocused ? 'text-accent' : 'text-text-subtle'),
           menu: () =>
             'mt-2 overflow-hidden rounded-xl border border-border/80 bg-surface-elevated shadow-[0_20px_38px_-20px_rgba(15,23,42,0.75)]',
           menuList: () => 'max-h-72 overflow-auto p-1.5',
@@ -310,8 +328,14 @@ export function ConfigField({ label, inputHint, explanation, children }: ConfigF
           <CircleHelp className="h-3 w-3" />
         </span>
       </div>
-      <PreText as="div" variant="timestamp" className="rounded-lg border border-border/65 bg-surface-muted/55 px-2.5 py-2 leading-relaxed">
-        <span className="font-semibold text-text-main/80">{t('whisper.meta.explanationLabel')}: </span>
+      <PreText
+        as="div"
+        variant="timestamp"
+        className="rounded-lg border border-border/65 bg-surface-muted/55 px-2.5 py-2 leading-relaxed"
+      >
+        <span className="font-semibold text-text-main/80">
+          {t('whisper.meta.explanationLabel')}:{' '}
+        </span>
         {explanation}
       </PreText>
       {children}
@@ -341,10 +365,18 @@ export function TerminalPanel({
     if (!hiddenLineCount || expanded) return lines
     return lines.slice(-safeVisibleLines)
   }, [expanded, hiddenLineCount, lines, safeVisibleLines])
-  const displayText = useMemo(() => (displayLines.length ? displayLines.join('\n') : emptyText), [displayLines, emptyText])
+  const displayText = useMemo(
+    () => (displayLines.length ? displayLines.join('\n') : emptyText),
+    [displayLines, emptyText],
+  )
 
   return (
-    <div className={cn('runtime-panel h-[420px] overflow-auto rounded-xl border p-3 text-[0.9rem] shadow-[inset_0_1px_0_var(--ui-inset-subtle)]', className)}>
+    <div
+      className={cn(
+        'runtime-panel h-[420px] overflow-auto rounded-xl border p-3 text-[0.9rem] shadow-[inset_0_1px_0_var(--ui-inset-subtle)]',
+        className,
+      )}
+    >
       {hiddenLineCount > 0 && (
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/70 bg-surface-muted/55 px-2.5 py-1.5 text-xs text-text-subtle">
           <span>
@@ -365,7 +397,9 @@ export function TerminalPanel({
           </Button>
         </div>
       )}
-      <pre className="whitespace-pre-wrap font-mono text-[0.81rem] leading-[1.65]">{displayText}</pre>
+      <pre className="whitespace-pre-wrap font-mono text-[0.81rem] leading-[1.65]">
+        {displayText}
+      </pre>
     </div>
   )
 }
@@ -420,13 +454,19 @@ export function SelfCheckTimeline({ steps }: { steps: SelfCheckStep[] }) {
   )
 }
 
-const QuickStartMarkdownContent = memo(function QuickStartMarkdownContent({ markdown }: { markdown: string }) {
+const QuickStartMarkdownContent = memo(function QuickStartMarkdownContent({
+  markdown,
+}: {
+  markdown: string
+}) {
   return (
     <ReactMarkdown
       remarkPlugins={QUICKSTART_REMARK_PLUGINS}
       rehypePlugins={QUICKSTART_REHYPE_PLUGINS}
       components={{
-        pre: ({ children, ...preProps }) => <MarkdownCodeBlock {...preProps}>{children}</MarkdownCodeBlock>,
+        pre: ({ children, ...preProps }) => (
+          <MarkdownCodeBlock {...preProps}>{children}</MarkdownCodeBlock>
+        ),
       }}
     >
       {markdown}
@@ -527,7 +567,9 @@ export function QuickStartPanel({ markdown }: { markdown: string }) {
 
   useEffect(() => {
     if (!activeHeadingId) return
-    const parentGroupId = outline.find((group) => group.children.some((child) => child.id === activeHeadingId))?.id
+    const parentGroupId = outline.find((group) =>
+      group.children.some((child) => child.id === activeHeadingId),
+    )?.id
     if (!parentGroupId) return
     const rafId = window.requestAnimationFrame(() => {
       setCollapsedGroups((prev) => {
@@ -546,7 +588,9 @@ export function QuickStartPanel({ markdown }: { markdown: string }) {
     if (!container) return
 
     const rafId = window.requestAnimationFrame(() => {
-      const activeButton = container.querySelector<HTMLElement>(`[data-toc-id="${activeHeadingId}"]`)
+      const activeButton = container.querySelector<HTMLElement>(
+        `[data-toc-id="${activeHeadingId}"]`,
+      )
       if (!activeButton) return
       const containerRect = container.getBoundingClientRect()
       const targetRect = activeButton.getBoundingClientRect()
@@ -575,7 +619,9 @@ export function QuickStartPanel({ markdown }: { markdown: string }) {
       <div
         className={cn(
           'grid gap-5',
-          tocCollapsed ? 'grid-cols-[minmax(0,1fr)]' : 'md:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]',
+          tocCollapsed
+            ? 'grid-cols-[minmax(0,1fr)]'
+            : 'md:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]',
         )}
       >
         {!tocCollapsed && (
@@ -595,7 +641,10 @@ export function QuickStartPanel({ markdown }: { markdown: string }) {
                 <PanelLeftClose className="h-4 w-4" />
               </Button>
             </div>
-            <div ref={tocScrollAreaRef} className="quickstart-scroll-area min-h-0 flex-1 space-y-1 overflow-auto pr-1">
+            <div
+              ref={tocScrollAreaRef}
+              className="quickstart-scroll-area min-h-0 flex-1 space-y-1 overflow-auto pr-1"
+            >
               {outline.map((item) => (
                 <QuickStartTocItem
                   key={item.id}
@@ -633,7 +682,9 @@ export function QuickStartPanel({ markdown }: { markdown: string }) {
                   {currentLocale === 'zh-CN'
                     ? t('quickStart.stats.characters', { count: readingStats.characterCount })
                     : t('quickStart.stats.words', {
-                        count: readingStats.latinWordCount || Math.max(1, Math.ceil(readingStats.characterCount / 5)),
+                        count:
+                          readingStats.latinWordCount ||
+                          Math.max(1, Math.ceil(readingStats.characterCount / 5)),
                       })}
                 </span>
                 <span className="docs-reading-meta-item">
@@ -642,7 +693,11 @@ export function QuickStartPanel({ markdown }: { markdown: string }) {
                 </span>
               </div>
               <Button type="button" size="sm" variant="outline" onClick={() => void copyMarkdown()}>
-                {copiedMarkdown ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
+                {copiedMarkdown ? (
+                  <Check className="mr-2 h-4 w-4" />
+                ) : (
+                  <Copy className="mr-2 h-4 w-4" />
+                )}
                 {copiedMarkdown ? t('quickStart.copy.copied') : t('quickStart.copy.action')}
               </Button>
             </div>
@@ -664,7 +719,13 @@ interface QuickStartTocItemProps {
   onJump: (id: string) => void
 }
 
-function QuickStartTocItem({ item, activeHeadingId, collapsedGroups, onToggleGroup, onJump }: QuickStartTocItemProps) {
+function QuickStartTocItem({
+  item,
+  activeHeadingId,
+  collapsedGroups,
+  onToggleGroup,
+  onJump,
+}: QuickStartTocItemProps) {
   const { t } = useTranslation()
   const hasChildren = item.children.length > 0
   const groupCollapsed = collapsedGroups[item.id] ?? false
@@ -681,7 +742,12 @@ function QuickStartTocItem({ item, activeHeadingId, collapsedGroups, onToggleGro
             className="inline-flex h-6 w-6 items-center justify-center rounded-lg text-text-subtle transition-colors hover:bg-surface-muted hover:text-text-main"
             aria-label={groupCollapsed ? t('quickStart.toc.expand') : t('quickStart.toc.collapse')}
           >
-            <ChevronRight className={cn('h-3.5 w-3.5 transition-transform duration-300', !groupCollapsed && 'rotate-90')} />
+            <ChevronRight
+              className={cn(
+                'h-3.5 w-3.5 transition-transform duration-300',
+                !groupCollapsed && 'rotate-90',
+              )}
+            />
           </button>
         ) : (
           <span className="inline-block h-6 w-6" />

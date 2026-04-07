@@ -22,7 +22,10 @@ type RuntimeMainProps = Omit<ComponentProps<typeof WorkbenchRuntimeMain>, 't'>
 type SourceTaskModalProps = Omit<ComponentProps<typeof SourceTaskModal>, 'open' | 't'>
 type HistoryModalProps = Omit<ComponentProps<typeof HistoryModal>, 'open' | 't'>
 type DeleteTaskConfirmModalProps = Omit<ComponentProps<typeof DeleteTaskConfirmModal>, 'open' | 't'>
-type PromptTemplateDeleteModalProps = Omit<ComponentProps<typeof PromptTemplateDeleteModal>, 'open' | 't'>
+type PromptTemplateDeleteModalProps = Omit<
+  ComponentProps<typeof PromptTemplateDeleteModal>,
+  'open' | 't'
+>
 type ConfigModalProps = Omit<ComponentProps<typeof WorkbenchConfigModal>, 'open' | 't'>
 type SelfCheckModalProps = Omit<ComponentProps<typeof SelfCheckModal>, 'open' | 't'>
 
@@ -84,7 +87,9 @@ export function WorkbenchMainView({
       <div
         className={cn(
           'grid w-full gap-4 px-3 py-3.5 md:gap-4 md:px-4 md:py-[1.125rem] xl:gap-5',
-          sidebarCollapsed ? 'lg:grid-cols-[78px_minmax(0,1fr)]' : 'lg:grid-cols-[264px_minmax(0,1fr)]',
+          sidebarCollapsed
+            ? 'lg:grid-cols-[78px_minmax(0,1fr)]'
+            : 'lg:grid-cols-[264px_minmax(0,1fr)]',
         )}
       >
         <WorkbenchSidebar
@@ -113,7 +118,11 @@ export function WorkbenchMainView({
               {t('bundleDownload.ready')}
             </PreText>
             <Button className="w-full" onClick={onDownloadAllArtifacts} disabled={savingArtifacts}>
-              {savingArtifacts ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+              {savingArtifacts ? (
+                <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="mr-2 h-4 w-4" />
+              )}
               {savingArtifacts
                 ? t('runtime.stageD.saving')
                 : t('bundleDownload.action', { format: bundleArchiveFormat.toUpperCase() })}
@@ -122,17 +131,9 @@ export function WorkbenchMainView({
         </div>
       )}
 
-      <SourceTaskModal
-        open={activeSidebarPanel === 'source'}
-        t={t}
-        {...sourceTaskModalProps}
-      />
+      <SourceTaskModal open={activeSidebarPanel === 'source'} t={t} {...sourceTaskModalProps} />
 
-      <HistoryModal
-        open={activeSidebarPanel === 'history'}
-        t={t}
-        {...historyModalProps}
-      />
+      <HistoryModal open={activeSidebarPanel === 'history'} t={t} {...historyModalProps} />
 
       <DeleteTaskConfirmModal
         open={Boolean(deleteTaskConfirmModalProps.pendingDeleteTask)}
@@ -146,17 +147,9 @@ export function WorkbenchMainView({
         {...promptTemplateDeleteModalProps}
       />
 
-      <WorkbenchConfigModal
-        open={activeSidebarPanel === 'config'}
-        t={t}
-        {...configModalProps}
-      />
+      <WorkbenchConfigModal open={activeSidebarPanel === 'config'} t={t} {...configModalProps} />
 
-      <SelfCheckModal
-        open={activeSidebarPanel === 'selfCheck'}
-        t={t}
-        {...selfCheckModalProps}
-      />
+      <SelfCheckModal open={activeSidebarPanel === 'selfCheck'} t={t} {...selfCheckModalProps} />
     </>
   )
 }

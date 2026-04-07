@@ -121,14 +121,19 @@ export function buildWorkbenchMainViewProps(options: BuildMainViewPropsOptions) 
     isTaskCompleted: Boolean(options.isTaskCompleted),
     error: options.error,
     isTaskRunning: options.isTaskRunning,
-    canCancelTask: Boolean(options.activeTask && !options.isTaskTerminalStatus(options.activeTask.status)),
+    canCancelTask: Boolean(
+      options.activeTask && !options.isTaskTerminalStatus(options.activeTask.status),
+    ),
     cancellingTask: options.cancellingTask,
     onCancelTask: options.cancelActiveTask,
     canRerunStageD: Boolean(
-      options.activeTask
-      && !options.rerunningStageD
-      && (options.activeTask.status === 'failed' || options.activeTask.status === 'cancelled')
-      && Boolean((options.activeTask.transcript_text ?? '').trim() || options.activeTask.transcript_segments.length > 0),
+      options.activeTask &&
+      !options.rerunningStageD &&
+      (options.activeTask.status === 'failed' || options.activeTask.status === 'cancelled') &&
+      Boolean(
+        (options.activeTask.transcript_text ?? '').trim() ||
+        options.activeTask.transcript_segments.length > 0,
+      ),
     ),
     onRerunStageD: options.rerunActiveTaskStageD,
     rerunningStageD: options.rerunningStageD,

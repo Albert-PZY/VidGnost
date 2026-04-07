@@ -163,11 +163,11 @@ Primary files and directories:
 
 ## 7. Troubleshooting
 
-| Symptom | Meaning | Action |
-| --- | --- | --- |
-| `Task failed: RuntimeError: Library cublas64_12.dll is not found` | Whisper runtime was configured as CUDA in this environment | Save runtime config with `device=cpu` and rerun task |
-| `warning: Failed to hardlink files; falling back to full copy.` | `uv` cache and target directories are on different filesystems | Set `UV_LINK_MODE=copy` to suppress warning |
-| Stage D fails with auth/connectivity errors | Online LLM endpoint or credentials are invalid | Verify `base_url`, `model`, `api_key`, and quota |
+| Symptom                                                           | Meaning                                                        | Action                                               |
+| ----------------------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------- |
+| `Task failed: RuntimeError: Library cublas64_12.dll is not found` | Whisper runtime was configured as CUDA in this environment     | Save runtime config with `device=cpu` and rerun task |
+| `warning: Failed to hardlink files; falling back to full copy.`   | `uv` cache and target directories are on different filesystems | Set `UV_LINK_MODE=copy` to suppress warning          |
+| Stage D fails with auth/connectivity errors                       | Online LLM endpoint or credentials are invalid                 | Verify `base_url`, `model`, `api_key`, and quota     |
 
 ## 8. Development Commands
 
@@ -175,6 +175,8 @@ Backend checks:
 
 ```bash
 cd backend
+uv run ruff check .
+uv run ruff format --check .
 uv run pytest
 uv run python -m compileall app
 ```
@@ -184,8 +186,16 @@ Frontend checks:
 ```bash
 cd frontend
 pnpm test
+pnpm format:check
 pnpm exec tsc --noEmit
 pnpm build
+```
+
+Repository style:
+
+```bash
+python scripts/repository_style.py check
+python scripts/repository_style.py format
 ```
 
 OpenSpec checks:

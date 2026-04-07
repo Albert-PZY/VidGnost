@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-import shutil
 from threading import RLock
 from typing import Iterable
 from urllib.parse import quote, unquote

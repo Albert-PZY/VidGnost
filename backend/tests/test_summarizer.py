@@ -201,7 +201,9 @@ async def test_generate_orchestrates_notes_summary_and_mindmap(tmp_path: Path) -
 
 
 @pytest.mark.asyncio
-async def test_generate_summary_from_notes_replaces_mermaid_block_with_image_markdown(tmp_path: Path) -> None:
+async def test_generate_summary_from_notes_replaces_mermaid_block_with_image_markdown(
+    tmp_path: Path,
+) -> None:
     service = LLMService(
         settings=_build_settings(tmp_path),
         llm_config_store=_DummyLLMConfigStore(),

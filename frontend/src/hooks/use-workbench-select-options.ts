@@ -70,18 +70,20 @@ export function useWorkbenchSelectOptions({ t }: UseWorkbenchSelectOptionsOption
   )
   const llmModeOptions = useMemo<SelectFieldOption[]>(
     () =>
-      LLM_MODE_OPTIONS
-        .map((option) => ({
-          value: option,
-          label: 'api（在线）',
-        })),
+      LLM_MODE_OPTIONS.map((option) => ({
+        value: option,
+        label: 'api（在线）',
+      })),
     [],
   )
   const loadProfileOptions = useMemo<SelectFieldOption[]>(
     () =>
       MODEL_LOAD_PROFILE_OPTIONS.map((option) => ({
         value: option,
-        label: option === 'memory_first' ? t('runtime.loadProfile.memoryFirst') : t('runtime.loadProfile.balanced'),
+        label:
+          option === 'memory_first'
+            ? t('runtime.loadProfile.memoryFirst')
+            : t('runtime.loadProfile.balanced'),
       })),
     [t],
   )

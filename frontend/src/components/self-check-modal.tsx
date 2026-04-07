@@ -48,15 +48,28 @@ export function SelfCheckModal({
           onClick={() => void runSelfCheck()}
           disabled={selfCheckBusy || selfFixBusy}
         >
-          {selfCheckBusy ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
+          {selfCheckBusy ? (
+            <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCcw className="mr-2 h-4 w-4" />
+          )}
           {selfCheckBusy ? t('selfCheck.actions.running') : t('selfCheck.actions.run')}
         </Button>
         <Button
           type="button"
           onClick={() => void runSelfCheckAutoFix()}
-          disabled={!selfCheckSessionId || !selfCheckReport.auto_fix_available || selfCheckBusy || selfFixBusy}
+          disabled={
+            !selfCheckSessionId ||
+            !selfCheckReport.auto_fix_available ||
+            selfCheckBusy ||
+            selfFixBusy
+          }
         >
-          {selfFixBusy ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Wrench className="mr-2 h-4 w-4" />}
+          {selfFixBusy ? (
+            <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+          ) : (
+            <Wrench className="mr-2 h-4 w-4" />
+          )}
           {selfFixBusy ? t('selfCheck.actions.fixing') : t('selfCheck.actions.autoFix')}
         </Button>
       </div>
@@ -88,7 +101,10 @@ export function SelfCheckModal({
             ) : (
               <div className="max-h-[240px] space-y-2 overflow-auto pr-1">
                 {selfCheckReport.issues.map((issue) => (
-                  <div key={issue.id} className="rounded-lg border border-border bg-bg-base px-3 py-2">
+                  <div
+                    key={issue.id}
+                    className="rounded-lg border border-border bg-bg-base px-3 py-2"
+                  >
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <PreText variant="h3">{issue.title}</PreText>
                       <span

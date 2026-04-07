@@ -38,7 +38,9 @@ class EventBus:
         event_log_batch_size: int = 24,
     ) -> None:
         self._history_size = history_size
-        self._history: dict[str, deque[dict]] = defaultdict(lambda: deque(maxlen=self._history_size))
+        self._history: dict[str, deque[dict]] = defaultdict(
+            lambda: deque(maxlen=self._history_size)
+        )
         self._subscribers: dict[str, list[asyncio.Queue[dict]]] = defaultdict(list)
         self._terminal_tasks: set[str] = set()
         self._trace_sequence: dict[str, int] = defaultdict(int)
@@ -102,7 +104,9 @@ class EventBus:
             subscribers = self._subscribers.get(task_id)
             if not subscribers:
                 return
-            self._subscribers[task_id] = [subscriber for subscriber in subscribers if subscriber is not queue]
+            self._subscribers[task_id] = [
+                subscriber for subscriber in subscribers if subscriber is not queue
+            ]
             if not self._subscribers[task_id]:
                 self._subscribers.pop(task_id, None)
                 if task_id in self._terminal_tasks:
@@ -167,7 +171,9 @@ class EventBus:
             await self._append_event_logs(payloads)
 
     def _drain_event_log_buffers_locked(self, now_monotonic: float) -> dict[str, bytes]:
-        payloads = {task_id: b"".join(lines) for task_id, lines in self._event_log_buffers.items() if lines}
+        payloads = {
+            task_id: b"".join(lines) for task_id, lines in self._event_log_buffers.items() if lines
+        }
         self._event_log_buffers.clear()
         self._event_log_buffer_count = 0
         self._event_log_last_flush_at = now_monotonic

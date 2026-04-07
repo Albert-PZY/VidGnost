@@ -28,4 +28,3 @@ export function prettyStatus(status: string): string {
   }
   return map[status] ?? status
 }
-

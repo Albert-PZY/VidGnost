@@ -1,0 +1,13 @@
+backend/.venv/
+backend/storage/**
+!backend/storage/config.toml
+!backend/storage/model_config.json
+backend/uv.lock
+frontend/node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/coverage/
+frontend/pnpm-lock.yaml
+frontend/public/dark.svg
+frontend/public/light.svg
+docs/.codex/

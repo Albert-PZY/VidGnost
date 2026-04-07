@@ -20,7 +20,11 @@ interface LoadedMarkmapModules {
       svg: SVGSVGElement,
       options: MarkmapRenderOptions,
       root: unknown,
-    ) => { setData?: (root: unknown, options?: MarkmapRenderOptions) => void; fit?: () => void; destroy: () => void }
+    ) => {
+      setData?: (root: unknown, options?: MarkmapRenderOptions) => void
+      fit?: () => void
+      destroy: () => void
+    }
   }
 }
 
@@ -37,7 +41,10 @@ let mermaidModulePromise: Promise<LoadedMermaidModule> | null = null
 
 async function loadMarkmapModules(): Promise<LoadedMarkmapModules> {
   if (!markmapModulesPromise) {
-    markmapModulesPromise = Promise.all([import('markmap-lib/no-plugins'), import('markmap-view')]).then(([lib, view]) => ({
+    markmapModulesPromise = Promise.all([
+      import('markmap-lib/no-plugins'),
+      import('markmap-view'),
+    ]).then(([lib, view]) => ({
       Transformer: lib.Transformer as LoadedMarkmapModules['Transformer'],
       Markmap: view.Markmap as LoadedMarkmapModules['Markmap'],
     }))
@@ -47,7 +54,9 @@ async function loadMarkmapModules(): Promise<LoadedMarkmapModules> {
 
 async function loadMermaidModule(): Promise<LoadedMermaidModule> {
   if (!mermaidModulePromise) {
-    mermaidModulePromise = import('mermaid').then((mod) => mod.default as unknown as LoadedMermaidModule)
+    mermaidModulePromise = import('mermaid').then(
+      (mod) => mod.default as unknown as LoadedMermaidModule,
+    )
   }
   return mermaidModulePromise
 }
@@ -68,11 +77,18 @@ export function MindmapViewer({ markdown, emptyText }: MindmapViewerProps) {
   const mermaidRef = useRef<HTMLDivElement | null>(null)
   const mermaidRenderCountRef = useRef(0)
   const transformerRef = useRef<null | { transform: (content: string) => { root: unknown } }>(null)
-  const markmapRef = useRef<null | { setData?: (root: unknown, options?: MarkmapRenderOptions) => void; fit?: () => void; destroy: () => void }>(null)
+  const markmapRef = useRef<null | {
+    setData?: (root: unknown, options?: MarkmapRenderOptions) => void
+    fit?: () => void
+    destroy: () => void
+  }>(null)
   const renderMarkdown = useDebouncedValue(markdown, 180)
   const [mermaidError, setMermaidError] = useState<string | null>(null)
   const [theme, setTheme] = useState<ViewerTheme>(() =>
-    typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light',
+    typeof document !== 'undefined' &&
+    document.documentElement.getAttribute('data-theme') === 'dark'
+      ? 'dark'
+      : 'light',
   )
   const mermaidCode = useMemo(() => extractMermaidCode(renderMarkdown), [renderMarkdown])
 
@@ -228,7 +244,9 @@ export function MindmapViewer({ markdown, emptyText }: MindmapViewerProps) {
     if (mermaidError) {
       return (
         <div className="runtime-mindmap-panel h-[420px] overflow-auto rounded-xl border border-border bg-surface-muted p-3">
-          <div className="mb-2 text-xs text-red-500">Mermaid 渲染失败，已降级显示原始内容：{mermaidError}</div>
+          <div className="mb-2 text-xs text-red-500">
+            Mermaid 渲染失败，已降级显示原始内容：{mermaidError}
+          </div>
           <pre className="whitespace-pre-wrap text-xs leading-6 text-text-main">{markdown}</pre>
         </div>
       )

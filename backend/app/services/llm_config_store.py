@@ -49,8 +49,12 @@ class LLMConfigStore:
                 "base_url": str(payload.get("base_url", "")).strip() or self._settings.llm_base_url,
                 "model": str(payload.get("model", "")).strip() or self._settings.llm_model,
                 "correction_mode": _normalize_correction_mode(payload.get("correction_mode")),
-                "correction_batch_size": _normalize_correction_batch_size(payload.get("correction_batch_size")),
-                "correction_overlap": _normalize_correction_overlap(payload.get("correction_overlap")),
+                "correction_batch_size": _normalize_correction_batch_size(
+                    payload.get("correction_batch_size")
+                ),
+                "correction_overlap": _normalize_correction_overlap(
+                    payload.get("correction_overlap")
+                ),
             }
             self._path.write_bytes(orjson.dumps(sanitized_file_payload, option=orjson.OPT_INDENT_2))
             return self._build_config(data=sanitized_file_payload)
@@ -89,7 +93,9 @@ class LLMConfigStore:
             "api_key_configured": bool(safe_api_key),
             "base_url": str(data.get("base_url", "")).strip() or self._settings.llm_base_url,
             "model": str(data.get("model", "")).strip() or self._settings.llm_model,
-            "correction_mode": _normalize_correction_mode(data.get("correction_mode", self._settings.llm_correction_mode)),
+            "correction_mode": _normalize_correction_mode(
+                data.get("correction_mode", self._settings.llm_correction_mode)
+            ),
             "correction_batch_size": _normalize_correction_batch_size(
                 data.get("correction_batch_size", self._settings.llm_correction_batch_size)
             ),

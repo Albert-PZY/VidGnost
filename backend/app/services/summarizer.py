@@ -58,9 +58,7 @@ _NOTES_BATCH_OVERLAP_SEGMENTS = 3
 _NOTES_SECTION_CARD_LIMIT = 8
 _NOTES_COVERAGE_MAX_MISSING = 10
 _MERMAID_REPAIR_RETRIES = 3
-_MERMAID_PLACEHOLDER_TEMPLATE = (
-    "> [Mermaid 图示已省略：自动渲染失败（已重试 {retries} 次）。]"
-)
+_MERMAID_PLACEHOLDER_TEMPLATE = "> [Mermaid 图示已省略：自动渲染失败（已重试 {retries} 次）。]"
 _MERMAID_REPAIR_PROMPT = """你是一名 Mermaid 语法修复助手。
 
 任务：
@@ -77,6 +75,7 @@ _MERMAID_REPAIR_PROMPT = """你是一名 Mermaid 语法修复助手。
 """
 StreamMode = Literal["realtime", "compat"]
 PreviewSegment = dict[str, float | str]
+
 
 @dataclass(slots=True)
 class SummaryBundle:
@@ -140,16 +139,26 @@ class LLMService:
         if not transcript_text:
             raise ValueError("Empty transcript text")
 
-        llm_config = dict(llm_config_override) if llm_config_override is not None else await self._config_store.get()
+        llm_config = (
+            dict(llm_config_override)
+            if llm_config_override is not None
+            else await self._config_store.get()
+        )
         mode = _normalize_llm_mode(llm_config.get("mode"))
         load_profile = _normalize_load_profile(llm_config.get("load_profile"))
-        summary_prompt, notes_prompt, mindmap_prompt = await self._prompt_template_store.resolve_selected_prompts()
+        (
+            summary_prompt,
+            notes_prompt,
+            mindmap_prompt,
+        ) = await self._prompt_template_store.resolve_selected_prompts()
         if self._settings.enable_mock_llm:
             raise RuntimeError("LLM_ALL_UNAVAILABLE: Mock summary generation is disabled.")
 
         try:
             normalized_segments = _normalize_segments(
-                transcript_segments if transcript_segments else _segmentize_plain_text(transcript_text)
+                transcript_segments
+                if transcript_segments
+                else _segmentize_plain_text(transcript_text)
             )
             notes_artifacts = await self.generate_notes_pipeline(
                 title=title,
@@ -205,7 +214,11 @@ class LLMService:
                 message="Transcript is empty, skip correction.",
             )
 
-        llm_config = dict(llm_config_override) if llm_config_override is not None else await self._config_store.get()
+        llm_config = (
+            dict(llm_config_override)
+            if llm_config_override is not None
+            else await self._config_store.get()
+        )
         mode = _normalize_correction_mode(llm_config.get("correction_mode"))
         load_profile = _normalize_load_profile(llm_config.get("load_profile"))
         if mode == "off":
@@ -238,7 +251,10 @@ class LLMService:
                 message="LLM API client unavailable, fallback to original transcript.",
             )
 
-        model_name = str(llm_config.get("model", self._settings.llm_model)).strip() or self._settings.llm_model
+        model_name = (
+            str(llm_config.get("model", self._settings.llm_model)).strip()
+            or self._settings.llm_model
+        )
         try:
             if mode == "rewrite":
                 try:
@@ -410,9 +426,15 @@ class LLMService:
         transcript_segments: list[dict[str, float | str]],
         llm_config_override: dict[str, object] | None = None,
     ) -> dict[str, list[dict[str, object]]]:
-        llm_config = dict(llm_config_override) if llm_config_override is not None else await self._config_store.get()
+        llm_config = (
+            dict(llm_config_override)
+            if llm_config_override is not None
+            else await self._config_store.get()
+        )
         llm_mode, client, model_name = self._resolve_generation_runtime(llm_config)
-        normalized_segments = _normalize_segments(transcript_segments or _segmentize_plain_text(transcript_text))
+        normalized_segments = _normalize_segments(
+            transcript_segments or _segmentize_plain_text(transcript_text)
+        )
         batches = _build_notes_segment_batches(
             normalized_segments,
             max_chars=_NOTES_BATCH_MAX_CHARS,
@@ -461,7 +483,11 @@ class LLMService:
         evidence_cards: list[dict[str, object]],
         llm_config_override: dict[str, object] | None = None,
     ) -> tuple[dict[str, object], str]:
-        llm_config = dict(llm_config_override) if llm_config_override is not None else await self._config_store.get()
+        llm_config = (
+            dict(llm_config_override)
+            if llm_config_override is not None
+            else await self._config_store.get()
+        )
         llm_mode, client, model_name = self._resolve_generation_runtime(llm_config)
         cards_payload = _render_notes_cards_payload(evidence_cards, mode="outline")
         raw = await self._chat_markdown_once_by_mode(
@@ -493,7 +519,11 @@ class LLMService:
         on_notes_delta: Callable[[str, StreamMode], Awaitable[None]] | None = None,
         on_fusion_prompt_preview: Callable[[str], Awaitable[None]] | None = None,
     ) -> tuple[str, list[dict[str, object]]]:
-        llm_config = dict(llm_config_override) if llm_config_override is not None else await self._config_store.get()
+        llm_config = (
+            dict(llm_config_override)
+            if llm_config_override is not None
+            else await self._config_store.get()
+        )
         llm_mode, client, model_name = self._resolve_generation_runtime(llm_config)
         sections = outline.get("sections")
         if not isinstance(sections, list) or not sections:
@@ -504,7 +534,9 @@ class LLMService:
         prompt_preview_sent = False
         for index, raw_section in enumerate(sections, start=1):
             section = raw_section if isinstance(raw_section, dict) else {}
-            target_cards = _select_notes_section_cards(evidence_cards, section, limit=_NOTES_SECTION_CARD_LIMIT)
+            target_cards = _select_notes_section_cards(
+                evidence_cards, section, limit=_NOTES_SECTION_CARD_LIMIT
+            )
             section_instruction = f"{NOTES_SECTION_PROMPT}\n\n{notes_prompt}".strip()
             section_payload = orjson.dumps(
                 {
@@ -555,19 +587,24 @@ class LLMService:
                     temperature=0.15,
                     max_tokens=2200,
                     on_delta=(
-                        (lambda delta: on_notes_delta(delta, "realtime")) if on_notes_delta is not None else None
+                        (lambda delta: on_notes_delta(delta, "realtime"))
+                        if on_notes_delta is not None
+                        else None
                     ),
                 )
             normalized_section = _normalize_notes_section_markdown(
                 raw_section_markdown,
-                fallback_title=str(section.get("title", f"章节 {index}")).strip() or f"章节 {index}",
+                fallback_title=str(section.get("title", f"章节 {index}")).strip()
+                or f"章节 {index}",
                 fallback_cards=target_cards,
             )
             rendered_sections.append(normalized_section)
             section_artifacts.append(
                 {
-                    "section_id": str(section.get("id", f"section_{index}")).strip() or f"section_{index}",
-                    "section_title": str(section.get("title", f"章节 {index}")).strip() or f"章节 {index}",
+                    "section_id": str(section.get("id", f"section_{index}")).strip()
+                    or f"section_{index}",
+                    "section_title": str(section.get("title", f"章节 {index}")).strip()
+                    or f"章节 {index}",
                     "source_batch_ids": _normalize_int_list(section.get("source_batch_ids")),
                     "markdown": normalized_section,
                 }
@@ -575,7 +612,10 @@ class LLMService:
 
         notes_title = str(outline.get("title", "")).strip() or str(title).strip() or "详细笔记"
         notes_markdown = _ensure_single_markdown_title(
-            "# " + notes_title + "\n\n" + "\n\n".join(section for section in rendered_sections if section.strip()),
+            "# "
+            + notes_title
+            + "\n\n"
+            + "\n\n".join(section for section in rendered_sections if section.strip()),
             notes_title,
         )
         return notes_markdown, section_artifacts
@@ -590,7 +630,11 @@ class LLMService:
         notes_markdown: str,
         llm_config_override: dict[str, object] | None = None,
     ) -> dict[str, object]:
-        llm_config = dict(llm_config_override) if llm_config_override is not None else await self._config_store.get()
+        llm_config = (
+            dict(llm_config_override)
+            if llm_config_override is not None
+            else await self._config_store.get()
+        )
         llm_mode, client, model_name = self._resolve_generation_runtime(llm_config)
         raw = await self._chat_markdown_once_by_mode(
             llm_mode=llm_mode,
@@ -600,7 +644,9 @@ class LLMService:
             user_content=NOTES_COVERAGE_USER_CONTENT_TEMPLATE.format(
                 title=title,
                 outline_markdown=outline_markdown[:_MAX_DIRECT_TRANSCRIPT_CHARS],
-                cards_payload=_render_notes_cards_payload(evidence_cards, mode="coverage")[:_MAX_DIRECT_TRANSCRIPT_CHARS],
+                cards_payload=_render_notes_cards_payload(evidence_cards, mode="coverage")[
+                    :_MAX_DIRECT_TRANSCRIPT_CHARS
+                ],
                 notes_markdown=notes_markdown[:_MAX_DIRECT_TRANSCRIPT_CHARS],
             ),
             temperature=0.0,
@@ -622,7 +668,11 @@ class LLMService:
         if not isinstance(missing_items, list) or not missing_items:
             return _ensure_single_markdown_title(notes_markdown, title)
 
-        llm_config = dict(llm_config_override) if llm_config_override is not None else await self._config_store.get()
+        llm_config = (
+            dict(llm_config_override)
+            if llm_config_override is not None
+            else await self._config_store.get()
+        )
         llm_mode, client, model_name = self._resolve_generation_runtime(llm_config)
         raw = await self._chat_markdown_once_by_mode(
             llm_mode=llm_mode,
@@ -633,7 +683,9 @@ class LLMService:
                 title=title,
                 outline_markdown=outline_markdown[:_MAX_DIRECT_TRANSCRIPT_CHARS],
                 notes_markdown=notes_markdown[: (_MAX_DIRECT_TRANSCRIPT_CHARS * 2)],
-                coverage_payload=orjson.dumps(coverage_report, option=orjson.OPT_INDENT_2).decode("utf-8"),
+                coverage_payload=orjson.dumps(coverage_report, option=orjson.OPT_INDENT_2).decode(
+                    "utf-8"
+                ),
             ),
             temperature=0.1,
             max_tokens=2600,
@@ -651,7 +703,11 @@ class LLMService:
         llm_config_override: dict[str, object] | None = None,
         on_summary_delta: Callable[[str, StreamMode], Awaitable[None]] | None = None,
     ) -> str:
-        llm_config = dict(llm_config_override) if llm_config_override is not None else await self._config_store.get()
+        llm_config = (
+            dict(llm_config_override)
+            if llm_config_override is not None
+            else await self._config_store.get()
+        )
         llm_mode, client, model_name = self._resolve_generation_runtime(llm_config)
         user_content = (
             f"视频标题：{title}\n\n"
@@ -708,7 +764,11 @@ class LLMService:
         llm_config_override: dict[str, object] | None = None,
         on_mindmap_delta: Callable[[str, StreamMode], Awaitable[None]] | None = None,
     ) -> str:
-        llm_config = dict(llm_config_override) if llm_config_override is not None else await self._config_store.get()
+        llm_config = (
+            dict(llm_config_override)
+            if llm_config_override is not None
+            else await self._config_store.get()
+        )
         llm_mode, client, model_name = self._resolve_generation_runtime(llm_config)
         user_content = (
             f"视频标题：{title}\n\n"
@@ -733,7 +793,11 @@ class LLMService:
                 user_content=user_content,
                 temperature=0.1,
                 max_tokens=1400,
-                on_delta=((lambda delta: on_mindmap_delta(delta, "realtime")) if on_mindmap_delta else None),
+                on_delta=(
+                    (lambda delta: on_mindmap_delta(delta, "realtime"))
+                    if on_mindmap_delta
+                    else None
+                ),
             )
         return raw.strip() or _build_fallback_mindmap_from_outline(title, outline_markdown)
 
@@ -743,7 +807,10 @@ class LLMService:
     ) -> tuple[Literal["api", "local"], AsyncOpenAI | None, str]:
         llm_mode = _normalize_llm_mode(llm_config.get("mode"))
         client = self._build_client(llm_config)
-        model_name = str(llm_config.get("model", self._settings.llm_model)).strip() or self._settings.llm_model
+        model_name = (
+            str(llm_config.get("model", self._settings.llm_model)).strip()
+            or self._settings.llm_model
+        )
         if llm_mode == "api" and client is None:
             raise RuntimeError("LLM API client unavailable in api mode")
         return llm_mode, client, model_name
@@ -1160,7 +1227,9 @@ class LLMService:
                         "compat",
                     )
             elif on_preview_delta is not None:
-                preview_delta = "\n".join(text.strip() for text in appended_texts if text.strip()).strip()
+                preview_delta = "\n".join(
+                    text.strip() for text in appended_texts if text.strip()
+                ).strip()
                 if preview_delta:
                     await self._emit_compat_deltas(f"{preview_delta}\n", on_preview_delta)
 
@@ -1210,6 +1279,7 @@ class LLMService:
         else:
             if client is None:
                 return ""
+
             async def realtime_delta(delta: str) -> None:
                 if on_preview_delta is None:
                     return
@@ -1253,7 +1323,7 @@ class LLMService:
         parts: list[str] = []
         cursor = 0
         for index, match in enumerate(matches, start=1):
-            parts.append(normalized[cursor:match.start()])
+            parts.append(normalized[cursor : match.start()])
             original_code = _normalize_mermaid_code(match.group(1))
             replacement = await self._render_mermaid_block_with_retry(
                 block_index=index,
@@ -1680,9 +1750,9 @@ def _to_float(raw: object) -> float:
 
 def _is_unsupported_thinking_param_error(exc: Exception) -> bool:
     message = str(exc).lower()
-    return (
-        "enable_thinking" in message
-        and any(token in message for token in ("unknown", "unexpected", "unsupported", "invalid", "extra_forbidden"))
+    return "enable_thinking" in message and any(
+        token in message
+        for token in ("unknown", "unexpected", "unsupported", "invalid", "extra_forbidden")
     )
 
 
@@ -1713,7 +1783,9 @@ def _segmentize_plain_text(text: str, *, target_chars: int = 320) -> list[dict[s
     if not normalized:
         return []
 
-    raw_units = [item.strip() for item in re.split(r"\n{2,}|(?<=[。！？!?])\s+", normalized) if item.strip()]
+    raw_units = [
+        item.strip() for item in re.split(r"\n{2,}|(?<=[。！？!?])\s+", normalized) if item.strip()
+    ]
     if not raw_units:
         raw_units = [line.strip() for line in normalized.splitlines() if line.strip()]
     if not raw_units:
@@ -1886,16 +1958,61 @@ def _normalize_notes_evidence_card(payload: object, batch: dict[str, object]) ->
         "open_loops": _normalize_string_list(payload_dict.get("open_loops")),
         "raw_excerpt": batch_text[:400],
     }
-    if not any(normalized[key] for key in ("definitions", "steps", "examples", "comparisons", "constraints", "caveats", "terms")):
+    if not any(
+        normalized[key]
+        for key in (
+            "definitions",
+            "steps",
+            "examples",
+            "comparisons",
+            "constraints",
+            "caveats",
+            "terms",
+        )
+    ):
         normalized["caveats"] = normalized["caveats"] or []
     return normalized
 
 
 def _render_notes_cards_payload(evidence_cards: list[dict[str, object]], *, mode: str) -> str:
     field_map = {
-        "outline": ("batch_id", "time_range", "core_points", "definitions", "steps", "examples", "comparisons", "constraints", "caveats", "terms"),
-        "section": ("batch_id", "time_range", "core_points", "definitions", "steps", "examples", "comparisons", "constraints", "caveats", "terms"),
-        "coverage": ("batch_id", "time_range", "core_points", "definitions", "steps", "examples", "comparisons", "constraints", "caveats", "terms", "open_loops"),
+        "outline": (
+            "batch_id",
+            "time_range",
+            "core_points",
+            "definitions",
+            "steps",
+            "examples",
+            "comparisons",
+            "constraints",
+            "caveats",
+            "terms",
+        ),
+        "section": (
+            "batch_id",
+            "time_range",
+            "core_points",
+            "definitions",
+            "steps",
+            "examples",
+            "comparisons",
+            "constraints",
+            "caveats",
+            "terms",
+        ),
+        "coverage": (
+            "batch_id",
+            "time_range",
+            "core_points",
+            "definitions",
+            "steps",
+            "examples",
+            "comparisons",
+            "constraints",
+            "caveats",
+            "terms",
+            "open_loops",
+        ),
     }
     selected_fields = field_map.get(mode, field_map["outline"])
     payload: list[dict[str, object]] = []
@@ -1904,7 +2021,9 @@ def _render_notes_cards_payload(evidence_cards: list[dict[str, object]], *, mode
     return orjson.dumps(payload, option=orjson.OPT_INDENT_2).decode("utf-8")
 
 
-def _build_fallback_outline_sections(evidence_cards: list[dict[str, object]]) -> list[dict[str, object]]:
+def _build_fallback_outline_sections(
+    evidence_cards: list[dict[str, object]],
+) -> list[dict[str, object]]:
     if not evidence_cards:
         return [
             {
@@ -1941,9 +2060,13 @@ def _build_fallback_outline_sections(evidence_cards: list[dict[str, object]]) ->
     return sections
 
 
-def _normalize_notes_outline(payload: object, *, title: str, evidence_cards: list[dict[str, object]]) -> dict[str, object]:
+def _normalize_notes_outline(
+    payload: object, *, title: str, evidence_cards: list[dict[str, object]]
+) -> dict[str, object]:
     payload_dict = payload if isinstance(payload, dict) else {}
-    raw_sections = payload_dict.get("sections") if isinstance(payload_dict.get("sections"), list) else payload
+    raw_sections = (
+        payload_dict.get("sections") if isinstance(payload_dict.get("sections"), list) else payload
+    )
     sections: list[dict[str, object]] = []
     if isinstance(raw_sections, list):
         for index, item in enumerate(raw_sections, start=1):
@@ -1958,11 +2081,14 @@ def _normalize_notes_outline(payload: object, *, title: str, evidence_cards: lis
                 or str(item_dict.get("description", "")).strip()
             )
             source_batch_ids = _normalize_int_list(
-                item_dict.get("source_batch_ids") or item_dict.get("batch_ids") or item_dict.get("source_batches")
+                item_dict.get("source_batch_ids")
+                or item_dict.get("batch_ids")
+                or item_dict.get("source_batches")
             )
             sections.append(
                 {
-                    "id": str(item_dict.get("id", f"section_{index}")).strip() or f"section_{index}",
+                    "id": str(item_dict.get("id", f"section_{index}")).strip()
+                    or f"section_{index}",
                     "title": section_title,
                     "summary": section_summary,
                     "key_points": _normalize_string_list(item_dict.get("key_points"))[:6],
@@ -1973,7 +2099,9 @@ def _normalize_notes_outline(payload: object, *, title: str, evidence_cards: lis
     if not sections:
         sections = _build_fallback_outline_sections(evidence_cards)
 
-    normalized_title = str(payload_dict.get("title", "")).strip() or str(title).strip() or "详细笔记"
+    normalized_title = (
+        str(payload_dict.get("title", "")).strip() or str(title).strip() or "详细笔记"
+    )
     return {
         "title": normalized_title,
         "sections": sections,
@@ -2011,7 +2139,9 @@ def _select_notes_section_cards(
     safe_limit = max(1, int(limit))
     source_batch_ids = set(_normalize_int_list(section.get("source_batch_ids")))
     if source_batch_ids:
-        selected = [card for card in evidence_cards if int(card.get("batch_id", 0) or 0) in source_batch_ids]
+        selected = [
+            card for card in evidence_cards if int(card.get("batch_id", 0) or 0) in source_batch_ids
+        ]
         if selected:
             return selected[:safe_limit]
 
@@ -2034,7 +2164,9 @@ def _select_notes_section_cards(
     return evidence_cards[:safe_limit]
 
 
-def _build_notes_section_fallback_markdown(fallback_title: str, fallback_cards: list[dict[str, object]]) -> str:
+def _build_notes_section_fallback_markdown(
+    fallback_title: str, fallback_cards: list[dict[str, object]]
+) -> str:
     core_points: list[str] = []
     definitions: list[str] = []
     steps: list[str] = []
@@ -2045,7 +2177,12 @@ def _build_notes_section_fallback_markdown(fallback_title: str, fallback_cards: 
         definitions.extend(_normalize_string_list(card.get("definitions"))[:2])
         steps.extend(_normalize_string_list(card.get("steps"))[:3])
         examples.extend(_normalize_string_list(card.get("examples"))[:2])
-        caveats.extend((_normalize_string_list(card.get("caveats")) + _normalize_string_list(card.get("constraints")))[:2])
+        caveats.extend(
+            (
+                _normalize_string_list(card.get("caveats"))
+                + _normalize_string_list(card.get("constraints"))
+            )[:2]
+        )
 
     lines = [f"## {fallback_title}", "", "### 本节要点"]
     for item in core_points[:5] or ["补充该章节的关键内容。"]:
@@ -2075,7 +2212,9 @@ def _normalize_notes_section_markdown(
 ) -> str:
     normalized = (raw or "").replace("\r\n", "\n").replace("\r", "\n").strip()
     if normalized.startswith("```"):
-        match = re.search(r"```(?:markdown|md)?\s*([\s\S]*?)\s*```", normalized, flags=re.IGNORECASE)
+        match = re.search(
+            r"```(?:markdown|md)?\s*([\s\S]*?)\s*```", normalized, flags=re.IGNORECASE
+        )
         if match:
             normalized = match.group(1).strip()
     if not normalized:
@@ -2097,7 +2236,9 @@ def _normalize_notes_section_markdown(
     return normalized
 
 
-def _normalize_notes_coverage_report(payload: object, *, outline: dict[str, object]) -> dict[str, object]:
+def _normalize_notes_coverage_report(
+    payload: object, *, outline: dict[str, object]
+) -> dict[str, object]:
     payload_dict = payload if isinstance(payload, dict) else {}
     covered_items = _normalize_string_list(payload_dict.get("covered_items"))
     raw_missing_items = payload_dict.get("missing_items")
@@ -2179,7 +2320,9 @@ def _build_summary_from_notes_fallback(notes_markdown: str, outline_markdown: st
         if len(highlights) >= 6:
             break
 
-    bullet_lines = "\n".join(f"- {item}" for item in highlights[:6]) or "- 建议基于详细笔记重新生成简版总结"
+    bullet_lines = (
+        "\n".join(f"- {item}" for item in highlights[:6]) or "- 建议基于详细笔记重新生成简版总结"
+    )
     return (
         "## 核心摘要\n\n"
         f"{bullet_lines}\n\n"
@@ -2282,7 +2425,9 @@ def _normalize_summary_markdown_structure(raw: str) -> str:
     normalized = (raw or "").replace("\r\n", "\n").replace("\r", "\n").strip()
     if not normalized:
         return ""
-    fence_match = re.fullmatch(r"```(?:markdown|md)?\s*([\s\S]*?)\s*```", normalized, flags=re.IGNORECASE)
+    fence_match = re.fullmatch(
+        r"```(?:markdown|md)?\s*([\s\S]*?)\s*```", normalized, flags=re.IGNORECASE
+    )
     if fence_match:
         normalized = fence_match.group(1).strip()
     normalized = re.sub(r"\n{3,}", "\n\n", normalized).strip()
@@ -2322,7 +2467,9 @@ def _parse_strict_correction_response(raw: str, expected_indices: list[int]) -> 
             return None
         return [str(item).strip() for item in segments_payload]
 
-    if segments_payload and all(isinstance(item, dict) and "index" not in item for item in segments_payload):
+    if segments_payload and all(
+        isinstance(item, dict) and "index" not in item for item in segments_payload
+    ):
         if len(segments_payload) != len(expected_indices):
             return None
         return [str(item.get("text", "")).strip() for item in segments_payload]

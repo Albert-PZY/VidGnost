@@ -22,4 +22,3 @@ export function PreText({ as = 'p', variant = 'body', className, children }: Pre
   const Comp = as
   return <Comp className={cn(classByVariant[variant], className)}>{children}</Comp>
 }
-

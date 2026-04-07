@@ -29,7 +29,9 @@ export function useSelfCheck({
   autoFixCompletedText,
 }: UseSelfCheckOptions) {
   const [selfCheckSessionId, setSelfCheckSessionId] = useState<string | null>(null)
-  const [selfCheckReport, setSelfCheckReport] = useState<SelfCheckReport>(createEmptySelfCheckReport())
+  const [selfCheckReport, setSelfCheckReport] = useState<SelfCheckReport>(
+    createEmptySelfCheckReport(),
+  )
   const [selfCheckLogs, setSelfCheckLogs] = useState<string[]>([])
   const [selfCheckBusy, setSelfCheckBusy] = useState(false)
   const [selfFixBusy, setSelfFixBusy] = useState(false)
@@ -180,7 +182,9 @@ export function useSelfCheck({
     ],
   )
 
-  const { connectSelfCheckEvents, closeSelfCheckEvents } = useSelfCheckEvents({ onEvent: handleSelfCheckEvent })
+  const { connectSelfCheckEvents, closeSelfCheckEvents } = useSelfCheckEvents({
+    onEvent: handleSelfCheckEvent,
+  })
 
   useEffect(() => {
     if (panelOpen) return
