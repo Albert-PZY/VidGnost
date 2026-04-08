@@ -1,50 +1,64 @@
-flowchart LR
-  %% =========================
-  %% VidGnost 系统架构图
-  %% =========================
+flowchart TB
+  %% ==========================================
+  %% VidGnost 系统架构图（优化版）
+  %% 分层目标：前端 -> API -> 编排 -> 核心服务 -> 存储 -> 持久化
+  %% ==========================================
 
-  subgraph FE["Frontend（Vite + React + TypeScript）"]
+  subgraph GUIDE["阅读指引"]
+    direction TB
+    G1["① 自上而下看主层级：请求如何落到后端执行"]
+    G2["② 再看左右两侧：SSE 实时回流、外部依赖调用"]
+    G3["③ 最后看底层：哪些目录持久化了任务与配置"]
+  end
+
+  subgraph L1["L1 前端层（React + Vite）"]
+    direction LR
     FE1["App.tsx（状态中枢）"]
-    FE2["Task Hooks：task-manager / task-stream / event-handler"]
-    FE3["Runtime 组件：WorkbenchRuntimeMain / Panels / Modals"]
-    FE4["API Client：frontend/src/lib/api.ts"]
-    FE5["SSE Client：EventSource(useTaskEvents)"]
-    FE6["Self-Check Hooks：useSelfCheck / useSelfCheckEvents"]
+    FE2["Task Hooks（manager/stream/event-handler）"]
+    FE3["Runtime 组件（WorkbenchRuntimeMain 等）"]
+    FE4["API Client（frontend/src/lib/api.ts）"]
+    FE5["SSE Client（useTaskEvents/EventSource）"]
+    FE6["Self-Check Hooks（useSelfCheck）"]
   end
 
-  subgraph GW["Backend Gateway（FastAPI）"]
-    GW1["main.py：lifespan 装配依赖"]
-    GW2["routes_tasks：任务、SSE、导出、重跑D"]
-    GW3["routes_config：LLM/Whisper/Prompt 配置"]
-    GW4["routes_self_check：自检与自动修复"]
-    GW5["routes_health：健康检查"]
+  subgraph L2["L2 API 网关层（FastAPI Routers）"]
+    direction LR
+    GW0["main.py（lifespan 注入依赖）"]
+    GW1["routes_tasks（任务/SSE/导出/重跑D）"]
+    GW2["routes_config（LLM/Whisper/Prompt 配置）"]
+    GW3["routes_self_check（自检/自动修复）"]
+    GW4["routes_health（健康检查）"]
   end
 
-  subgraph ORCH["Orchestration（应用编排层）"]
-    O1["TaskRunner：A/B/C/D 主流水线"]
-    O2["ModelRuntimeManager：GPU 运行时租约与驱逐"]
-    O3["ResourceGuard：容量校验与配置守卫"]
-    O4["SelfCheckService：环境自检与脚本修复"]
+  subgraph L3["L3 编排与协调层"]
+    direction LR
+    O1["TaskRunner（A/B/C/D 主流水线）"]
+    O2["ModelRuntimeManager（运行时租约与驱逐）"]
+    O3["ResourceGuard（资源与配置守卫）"]
+    O4["SelfCheckService（环境诊断与修复编排）"]
   end
 
-  subgraph CORE["Domain Services（核心能力层）"]
-    C1["Ingestion：yt-dlp 下载 + 本地文件准备"]
-    C2["Audio Pipeline：ffmpeg 提取 + WAV 切块"]
-    C3["WhisperService：faster-whisper 转写与模型缓存"]
-    C4["LLMService：转写优化、摘要、导图、Mermaid 修复"]
-    C5["Exporters：Markmap HTML 与归档导出"]
+  subgraph L4["L4 核心服务层"]
+    direction LR
+    C1["Ingestion（yt-dlp/本地文件准备）"]
+    C2["Audio Pipeline（ffmpeg 提取 + WAV 切块）"]
+    C3["WhisperService（转写 + 模型缓存）"]
+    C4["LLMService（转录优化/摘要/导图）"]
+    C5["Exporters（Markmap HTML/归档导出）"]
   end
 
-  subgraph STORE["State & Config Stores（状态与配置）"]
-    S1["TaskStore：任务记录/阶段指标/告警/分析结果"]
-    S2["StageArtifactStore：阶段产物文件"]
-    S3["EventBus：内存历史 + 订阅队列 + trace_id"]
-    S4["RuntimeConfigStore：Whisper config.toml"]
-    S5["LLMConfigStore：model_config.json"]
-    S6["PromptTemplateStore：prompts/templates + selection"]
+  subgraph L5["L5 状态与配置存储层"]
+    direction LR
+    S1["TaskStore（records/stage_metrics/runtime_warnings）"]
+    S2["StageArtifactStore（阶段产物文件）"]
+    S3["EventBus（history + queue + trace_id）"]
+    S4["RuntimeConfigStore（config.toml）"]
+    S5["LLMConfigStore（model_config.json）"]
+    S6["PromptTemplateStore（templates + selection）"]
   end
 
-  subgraph FS["Persistence Layout（文件系统持久化）"]
+  subgraph L6["L6 文件持久化层"]
+    direction LR
     F1["storage/tasks/records/*.json"]
     F2["storage/tasks/stage-artifacts/{task_id}/..."]
     F3["storage/tasks/stage-metrics + runtime-warnings + analysis-results"]
@@ -55,13 +69,14 @@ flowchart LR
     F8["storage/model-hub/faster-whisper-small/*"]
   end
 
-  subgraph EXT["External Systems（外部系统）"]
+  subgraph EXT["外部系统与运行时依赖"]
+    direction LR
     X1["Bilibili 视频源"]
-    X2["本地视频文件/上传文件"]
-    X3["ffmpeg 二进制"]
-    X4["hf-mirror.com / huggingface.co"]
+    X2["本地文件/上传文件"]
+    X3["ffmpeg 程序"]
+    X4["hf-mirror / huggingface"]
     X5["OpenAI 兼容 LLM API"]
-    X6["浏览器端 SSE 连接"]
+    X6["浏览器 SSE 长连接"]
     X7["PowerShell/Bash 自检修复脚本"]
   end
 
@@ -70,31 +85,22 @@ flowchart LR
   FE1 --> FE5
   FE1 --> FE6
 
+  FE4 --> GW1
   FE4 --> GW2
   FE4 --> GW3
   FE4 --> GW4
-  FE4 --> GW5
-  FE5 --> GW2
-  FE6 --> GW4
+  FE5 --> GW1
+  FE6 --> GW3
   X6 --> FE5
 
-  GW1 --> GW2
-  GW1 --> GW3
-  GW1 --> GW4
-  GW1 --> GW5
+  GW0 --> GW1
+  GW0 --> GW2
+  GW0 --> GW3
+  GW0 --> GW4
 
-  GW2 --> O1
-  GW2 --> S1
-  GW2 --> S3
-  GW2 --> C5
-
-  GW3 --> S4
-  GW3 --> S5
-  GW3 --> S6
-  GW3 --> O3
-
-  GW4 --> O4
-  GW4 --> S3
+  GW1 --> O1
+  GW2 --> O3
+  GW3 --> O4
 
   O1 --> O2
   O1 --> O3
@@ -102,12 +108,18 @@ flowchart LR
   O1 --> C2
   O1 --> C3
   O1 --> C4
+  GW1 --> C5
+
   O1 --> S1
   O1 --> S2
   O1 --> S3
   O1 --> S4
   O1 --> S5
   O1 --> S6
+  GW2 --> S4
+  GW2 --> S5
+  GW2 --> S6
+  GW3 --> S3
 
   C1 --> X1
   C1 --> X2
@@ -125,6 +137,7 @@ flowchart LR
   S6 --> F7
   C3 --> F8
 
+  classDef guide fill:#F3F4F6,stroke:#4B5563,color:#111827,stroke-width:1.2px;
   classDef frontend fill:#E6F7FF,stroke:#0B74A5,color:#063247,stroke-width:1.4px;
   classDef gateway fill:#FFF4E5,stroke:#C77700,color:#4A2D00,stroke-width:1.4px;
   classDef orchestrator fill:#F0E9FF,stroke:#6D28D9,color:#2F145C,stroke-width:1.4px;
@@ -133,8 +146,9 @@ flowchart LR
   classDef filesystem fill:#EEF2FF,stroke:#4F46E5,color:#1E1B4B,stroke-width:1.2px;
   classDef external fill:#FFFDE7,stroke:#B28C00,color:#4B3A00,stroke-width:1.2px;
 
+  class G1,G2,G3 guide;
   class FE1,FE2,FE3,FE4,FE5,FE6 frontend;
-  class GW1,GW2,GW3,GW4,GW5 gateway;
+  class GW0,GW1,GW2,GW3,GW4 gateway;
   class O1,O2,O3,O4 orchestrator;
   class C1,C2,C3,C4,C5 service;
   class S1,S2,S3,S4,S5,S6 store;
