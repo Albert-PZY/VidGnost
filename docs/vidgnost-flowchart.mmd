@@ -1,0 +1,169 @@
+flowchart TD
+  %% =========================
+  %% VidGnost 端到端任务流程图
+  %% =========================
+
+  subgraph FE["前端（React Workbench）"]
+    FE1["App.tsx：全局状态与视图编排"]
+    FE2["useWorkbenchTaskManager：提交/取消/重跑D"]
+    FE3["useTaskEvents：EventSource 订阅 SSE"]
+    FE4["useWorkbenchTaskEventHandler：事件解析与状态更新"]
+    FE5["useTaskStream：日志/文本缓冲刷新（120ms）"]
+    FE6["WorkbenchRuntimeMain：日志/转写/摘要/导图渲染"]
+  end
+
+  subgraph API["后端 API（FastAPI routes_tasks）"]
+    API1["POST /api/tasks/url|path|upload"]
+    API2["POST /api/tasks/{id}/cancel"]
+    API3["POST /api/tasks/{id}/rerun-stage-d"]
+    API4["GET /api/tasks/{id}/events（SSE）"]
+    API5["PATCH /api/tasks/{id}/artifacts"]
+    API6["GET /api/tasks/{id}/export/{kind}"]
+    API7["GET /api/tasks / GET /api/tasks/{id}"]
+  end
+
+  subgraph ORCH["编排层（TaskRunner）"]
+    OR1["创建 TaskRecord（queued）"]
+    OR2["submit() -> _run_pipeline()"]
+    A0["阶段 A：source ingestion"]
+    B0["阶段 B：音频提取与切块"]
+    C0["阶段 C：Whisper 转写"]
+    D0["阶段 D：LLM 优化与融合交付"]
+    D0R["_run_stage_d_retry()（仅重跑 D）"]
+  end
+
+  subgraph A["A 阶段细节"]
+    A1["下载/准备视频源"]
+    A2["Bilibili：yt-dlp 下载"]
+    A3["Local Path/Upload：prepare_local_video"]
+  end
+
+  subgraph B["B 阶段细节"]
+    B1["extract_audio_wav（ffmpeg）"]
+    B2["split_audio_wav（chunk_XXXX.wav）"]
+  end
+
+  subgraph C["C 阶段细节"]
+    C1["读取 Whisper 运行配置（RuntimeConfigStore）"]
+    C2["ensure_small_model_ready（自动下载缓存）"]
+    C3["按 chunk 转写（WhisperService.transcribe）"]
+    C4["发布 transcript_delta（含时间戳）"]
+    C5["聚合 transcript_text + transcript_segments"]
+  end
+
+  subgraph D["D 阶段细节（子阶段）"]
+    D1["读取 LLM 配置与提示词模板"]
+    D2["substage：transcript_optimize"]
+    D3["correct_transcript（off/strict/rewrite）"]
+    D4["发布 transcript_optimized_preview（SSE）"]
+    D5["substage：fusion_delivery"]
+    D6["generate：summary + mindmap + notes"]
+    D7["发布 fusion_prompt_preview / summary_delta / mindmap_delta"]
+  end
+
+  subgraph STORE["存储与索引"]
+    S1["TaskStore：records/stage-metrics/runtime-warnings"]
+    S2["StageArtifactStore：tasks/stage-artifacts/{task_id}/{stage}/..."]
+    S3["Task Artifact Index：artifact_index_json + artifact_total_bytes"]
+  end
+
+  subgraph EVT["事件总线与事件日志"]
+    E1["EventBus.publish()"]
+    E2["内存 history + subscriber queue"]
+    E3["event-logs/{task_id}.jsonl"]
+    E4["task_complete / task_failed / task_cancelled"]
+  end
+
+  subgraph EXT["外部依赖"]
+    X1["Bilibili 视频源"]
+    X2["ffmpeg 可执行文件"]
+    X3["hf-mirror / huggingface（Whisper 模型）"]
+    X4["OpenAI 兼容 LLM API"]
+  end
+
+  subgraph AFTER["终态后续操作"]
+    T1["编辑产物：PATCH /artifacts"]
+    T2["导出产物：transcript / notes / mindmap / srt / vtt / bundle(zip|tar)"]
+    T3["失败/取消后重跑 D：POST /rerun-stage-d"]
+  end
+
+  FE1 --> FE2
+  FE2 --> API1
+  FE2 --> API2
+  FE2 --> API3
+  FE1 --> API7
+
+  API1 --> OR1 --> S1
+  OR1 --> OR2
+  API2 --> OR2
+  API3 --> D0R
+
+  OR2 --> A0 --> A1
+  A1 --> A2 --> X1
+  A1 --> A3
+  A0 --> S1
+  A0 --> S2
+
+  A0 --> B0 --> B1 --> X2
+  B1 --> B2
+  B0 --> S1
+  B0 --> S2
+
+  B0 --> C0 --> C1
+  C1 --> C2 --> X3
+  C2 --> C3
+  C3 --> C4
+  C3 --> C5
+  C0 --> S1
+  C0 --> S2
+
+  C0 --> D0 --> D1
+  D1 --> D2 --> D3 --> D4
+  D1 --> D5 --> D6 --> X4
+  D6 --> D7
+  D0 --> S1
+  D0 --> S2
+  D6 --> S3
+  S3 --> S1
+
+  D0R --> D1
+  D0R --> S1
+  D0R --> S2
+
+  OR2 --> E1
+  D0R --> E1
+  C4 --> E1
+  D4 --> E1
+  D7 --> E1
+  E1 --> E2
+  E1 --> E3
+  E1 --> E4
+
+  E2 --> API4
+  API4 --> FE3 --> FE4 --> FE5 --> FE6
+
+  E4 --> API7
+  E4 --> T1
+  E4 --> T2
+  E4 --> T3
+  T1 --> API5 --> S1
+  T2 --> API6
+  T3 --> API3
+
+  classDef frontend fill:#E6F7FF,stroke:#0C7FB0,color:#073042,stroke-width:1.4px;
+  classDef api fill:#FFF4E5,stroke:#C56A00,color:#4A2A00,stroke-width:1.4px;
+  classDef orchestrator fill:#EDE9FE,stroke:#6D28D9,color:#311B92,stroke-width:1.4px;
+  classDef stage fill:#EAFBE7,stroke:#2E7D32,color:#123B17,stroke-width:1.2px;
+  classDef store fill:#F5F7FA,stroke:#546E7A,color:#1F2D3D,stroke-width:1.2px;
+  classDef event fill:#FFE7F1,stroke:#C2185B,color:#5B1030,stroke-width:1.2px;
+  classDef external fill:#FFFDE7,stroke:#AF8F00,color:#4B3B00,stroke-width:1.2px;
+  classDef terminal fill:#FFEDEA,stroke:#D84315,color:#5B1E0E,stroke-width:1.2px;
+
+  class FE1,FE2,FE3,FE4,FE5,FE6 frontend;
+  class API1,API2,API3,API4,API5,API6,API7 api;
+  class OR1,OR2,D0R orchestrator;
+  class A0,B0,C0,D0,A1,A2,A3,B1,B2,C1,C2,C3,C4,C5,D1,D2,D3,D4,D5,D6,D7 stage;
+  class S1,S2,S3 store;
+  class E1,E2,E3,E4 event;
+  class X1,X2,X3,X4 external;
+  class T1,T2,T3 terminal;

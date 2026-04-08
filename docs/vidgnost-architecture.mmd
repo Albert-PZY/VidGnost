@@ -1,0 +1,142 @@
+flowchart LR
+  %% =========================
+  %% VidGnost 系统架构图
+  %% =========================
+
+  subgraph FE["Frontend（Vite + React + TypeScript）"]
+    FE1["App.tsx（状态中枢）"]
+    FE2["Task Hooks：task-manager / task-stream / event-handler"]
+    FE3["Runtime 组件：WorkbenchRuntimeMain / Panels / Modals"]
+    FE4["API Client：frontend/src/lib/api.ts"]
+    FE5["SSE Client：EventSource(useTaskEvents)"]
+    FE6["Self-Check Hooks：useSelfCheck / useSelfCheckEvents"]
+  end
+
+  subgraph GW["Backend Gateway（FastAPI）"]
+    GW1["main.py：lifespan 装配依赖"]
+    GW2["routes_tasks：任务、SSE、导出、重跑D"]
+    GW3["routes_config：LLM/Whisper/Prompt 配置"]
+    GW4["routes_self_check：自检与自动修复"]
+    GW5["routes_health：健康检查"]
+  end
+
+  subgraph ORCH["Orchestration（应用编排层）"]
+    O1["TaskRunner：A/B/C/D 主流水线"]
+    O2["ModelRuntimeManager：GPU 运行时租约与驱逐"]
+    O3["ResourceGuard：容量校验与配置守卫"]
+    O4["SelfCheckService：环境自检与脚本修复"]
+  end
+
+  subgraph CORE["Domain Services（核心能力层）"]
+    C1["Ingestion：yt-dlp 下载 + 本地文件准备"]
+    C2["Audio Pipeline：ffmpeg 提取 + WAV 切块"]
+    C3["WhisperService：faster-whisper 转写与模型缓存"]
+    C4["LLMService：转写优化、摘要、导图、Mermaid 修复"]
+    C5["Exporters：Markmap HTML 与归档导出"]
+  end
+
+  subgraph STORE["State & Config Stores（状态与配置）"]
+    S1["TaskStore：任务记录/阶段指标/告警/分析结果"]
+    S2["StageArtifactStore：阶段产物文件"]
+    S3["EventBus：内存历史 + 订阅队列 + trace_id"]
+    S4["RuntimeConfigStore：Whisper config.toml"]
+    S5["LLMConfigStore：model_config.json"]
+    S6["PromptTemplateStore：prompts/templates + selection"]
+  end
+
+  subgraph FS["Persistence Layout（文件系统持久化）"]
+    F1["storage/tasks/records/*.json"]
+    F2["storage/tasks/stage-artifacts/{task_id}/..."]
+    F3["storage/tasks/stage-metrics + runtime-warnings + analysis-results"]
+    F4["storage/event-logs/{task_id}.jsonl"]
+    F5["storage/runtime/config.toml"]
+    F6["storage/model_config.json"]
+    F7["storage/prompts/templates/*.json + selection.json"]
+    F8["storage/model-hub/faster-whisper-small/*"]
+  end
+
+  subgraph EXT["External Systems（外部系统）"]
+    X1["Bilibili 视频源"]
+    X2["本地视频文件/上传文件"]
+    X3["ffmpeg 二进制"]
+    X4["hf-mirror.com / huggingface.co"]
+    X5["OpenAI 兼容 LLM API"]
+    X6["浏览器端 SSE 连接"]
+    X7["PowerShell/Bash 自检修复脚本"]
+  end
+
+  FE1 --> FE2 --> FE3
+  FE1 --> FE4
+  FE1 --> FE5
+  FE1 --> FE6
+
+  FE4 --> GW2
+  FE4 --> GW3
+  FE4 --> GW4
+  FE4 --> GW5
+  FE5 --> GW2
+  FE6 --> GW4
+  X6 --> FE5
+
+  GW1 --> GW2
+  GW1 --> GW3
+  GW1 --> GW4
+  GW1 --> GW5
+
+  GW2 --> O1
+  GW2 --> S1
+  GW2 --> S3
+  GW2 --> C5
+
+  GW3 --> S4
+  GW3 --> S5
+  GW3 --> S6
+  GW3 --> O3
+
+  GW4 --> O4
+  GW4 --> S3
+
+  O1 --> O2
+  O1 --> O3
+  O1 --> C1
+  O1 --> C2
+  O1 --> C3
+  O1 --> C4
+  O1 --> S1
+  O1 --> S2
+  O1 --> S3
+  O1 --> S4
+  O1 --> S5
+  O1 --> S6
+
+  C1 --> X1
+  C1 --> X2
+  C2 --> X3
+  C3 --> X4
+  C4 --> X5
+  O4 --> X7
+
+  S1 --> F1
+  S1 --> F3
+  S2 --> F2
+  S3 --> F4
+  S4 --> F5
+  S5 --> F6
+  S6 --> F7
+  C3 --> F8
+
+  classDef frontend fill:#E6F7FF,stroke:#0B74A5,color:#063247,stroke-width:1.4px;
+  classDef gateway fill:#FFF4E5,stroke:#C77700,color:#4A2D00,stroke-width:1.4px;
+  classDef orchestrator fill:#F0E9FF,stroke:#6D28D9,color:#2F145C,stroke-width:1.4px;
+  classDef service fill:#EAFBE7,stroke:#2E7D32,color:#0F3B16,stroke-width:1.2px;
+  classDef store fill:#F5F7FA,stroke:#546E7A,color:#1F2D3D,stroke-width:1.2px;
+  classDef filesystem fill:#EEF2FF,stroke:#4F46E5,color:#1E1B4B,stroke-width:1.2px;
+  classDef external fill:#FFFDE7,stroke:#B28C00,color:#4B3A00,stroke-width:1.2px;
+
+  class FE1,FE2,FE3,FE4,FE5,FE6 frontend;
+  class GW1,GW2,GW3,GW4,GW5 gateway;
+  class O1,O2,O3,O4 orchestrator;
+  class C1,C2,C3,C4,C5 service;
+  class S1,S2,S3,S4,S5,S6 store;
+  class F1,F2,F3,F4,F5,F6,F7,F8 filesystem;
+  class X1,X2,X3,X4,X5,X6,X7 external;
