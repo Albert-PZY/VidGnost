@@ -174,6 +174,17 @@ function formatArtifactSize(sizeBytes: number): string {
   return `${(sizeBytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
+function formatArtifactTotalSizeMb(sizeBytes: number): string {
+  if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) return '0 MB'
+  const sizeMb = sizeBytes / (1024 * 1024)
+  const rawValue = sizeMb >= 100 ? sizeMb.toFixed(0) : sizeMb >= 10 ? sizeMb.toFixed(1) : sizeMb.toFixed(2)
+  return `${Number.parseFloat(rawValue).toString()} MB`
+}
+
+function formatArtifactTotalSummary(count: number, sizeBytes: number): string {
+  return `${Math.max(0, count)} 个 · ${formatArtifactTotalSizeMb(sizeBytes)}`
+}
+
 function countMarkdownBlocks(value: string): number {
   if (!value.trim()) return 0
   return value
@@ -645,7 +656,10 @@ export function WorkbenchRuntimeMain({
             [t('runtime.phaseView.shared.updatedAt'), taskUpdatedAtLabel],
             [
               t('runtime.phaseView.shared.totalArtifacts'),
-              `${activeTask.artifact_index.length} · ${formatArtifactSize(activeTask.artifact_total_bytes)}`,
+              formatArtifactTotalSummary(
+                activeTask.artifact_index.length,
+                activeTask.artifact_total_bytes,
+              ),
             ],
           ].map(([label, value]) => (
             <div key={label} className="rounded-xl border border-border/65 bg-bg-base/75 px-3 py-2">
@@ -953,7 +967,10 @@ export function WorkbenchRuntimeMain({
         [t('runtime.phaseView.shared.mindmapLength'), `${mindmapBlocks}`],
         [
           t('runtime.phaseView.shared.totalArtifacts'),
-          `${activeTask?.artifact_index.length ?? 0} · ${formatArtifactSize(activeTask?.artifact_total_bytes ?? 0)}`,
+          formatArtifactTotalSummary(
+            activeTask?.artifact_index.length ?? 0,
+            activeTask?.artifact_total_bytes ?? 0,
+          ),
         ],
       ].map(([label, value]) => (
         <div
