@@ -909,6 +909,9 @@ class TaskRunner:
                         "optimized_segment_count": len(correction.segments),
                         "summary_source_chars": len(summary_source_text),
                         "notes_source_chars": len(transcript_text),
+                        "notes_source_mode": "full_transcript_segments"
+                        if all_segments
+                        else "full_transcript_text",
                     },
                 )
 
@@ -1287,6 +1290,9 @@ class TaskRunner:
                         "optimized_segment_count": len(correction.segments),
                         "summary_source_chars": len(summary_source_text),
                         "notes_source_chars": len(transcript_text),
+                        "notes_source_mode": "full_transcript_segments"
+                        if transcript_segments
+                        else "full_transcript_text",
                         "retry_stage_d": True,
                     },
                 )
@@ -1824,7 +1830,7 @@ class TaskRunner:
             await self._emit_log(
                 task_id,
                 "D",
-                "Extracting detailed note evidence cards...",
+                "Extracting detailed note evidence cards directly from the full transcript (no summary compression)...",
                 stage_logs,
                 substage="notes_extract",
             )
@@ -2047,7 +2053,7 @@ class TaskRunner:
             await self._emit_log(
                 task_id,
                 "D",
-                "Generating mindmap from outline and notes...",
+                "Generating mindmap from outline and high-fidelity evidence cards...",
                 stage_logs,
                 substage="mindmap_delivery",
             )
@@ -2055,6 +2061,7 @@ class TaskRunner:
                 title=task_title,
                 outline_markdown=notes_artifacts.outline_markdown,
                 notes_markdown=notes_artifacts.notes_markdown,
+                evidence_cards=notes_artifacts.evidence_cards,
                 mindmap_prompt=mindmap_prompt,
                 llm_config_override=llm_runtime_config,
                 on_mindmap_delta=mindmap_delta,

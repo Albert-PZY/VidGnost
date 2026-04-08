@@ -12,8 +12,10 @@ from app.services.summarizer import (
     _ensure_single_markdown_title,
     _extract_mermaid_code,
     _normalize_correction_mode,
+    _normalize_mindmap_markdown_structure,
     _normalize_summary_markdown_structure,
     _parse_strict_correction_response,
+    _select_notes_section_cards,
 )
 
 
@@ -113,6 +115,38 @@ def test_extract_mermaid_code_from_fence() -> None:
     raw = "文本\n```mermaid\nflowchart TD\nA-->B\n```\n"
     extracted = _extract_mermaid_code(raw)
     assert extracted == "flowchart TD\nA-->B"
+
+
+def test_normalize_mindmap_structure_strips_markdown_tokens_inside_nodes() -> None:
+    raw = """```mindmap
+mindmap
+  root((网上的电脑优化教程，真的有用吗？))
+    # 网上电脑优化教程有效性分析
+    ## 核心结论
+    *   **受众局限**：普通用户风险高
+```"""
+    normalized = _normalize_mindmap_markdown_structure(
+        raw,
+        title="网上的电脑优化教程，真的有用吗？",
+    )
+    assert normalized.startswith("```mindmap")
+    assert "# 网上电脑优化教程有效性分析" not in normalized
+    assert "**受众局限**" not in normalized
+    assert "受众局限：普通用户风险高" in normalized
+
+
+def test_select_notes_section_cards_preserves_explicit_source_batch_cards() -> None:
+    cards = [
+        {"batch_id": index, "core_points": [f"要点 {index}"]}
+        for index in range(1, 13)
+    ]
+    selected = _select_notes_section_cards(
+        cards,
+        {"source_batch_ids": list(range(1, 13))},
+        limit=4,
+    )
+    assert len(selected) == 12
+    assert [int(card["batch_id"]) for card in selected] == list(range(1, 13))
 
 
 class _DummyLLMConfigStore:

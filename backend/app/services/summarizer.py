@@ -55,7 +55,8 @@ _WINDOW_AGGREGATE_OVERLAP = 1
 _CONTEXT_COMPRESS_MAX_ROUNDS = 2
 _NOTES_BATCH_MAX_CHARS = 7000
 _NOTES_BATCH_OVERLAP_SEGMENTS = 3
-_NOTES_SECTION_CARD_LIMIT = 8
+_NOTES_SECTION_CARD_LIMIT = 10
+_NOTES_EXPLICIT_SECTION_CARD_LIMIT = 16
 _NOTES_COVERAGE_MAX_MISSING = 10
 _MERMAID_REPAIR_RETRIES = 3
 _MERMAID_PLACEHOLDER_TEMPLATE = "> [Mermaid 图示已省略：自动渲染失败（已重试 {retries} 次）。]"
@@ -180,6 +181,7 @@ class LLMService:
                 title=title,
                 outline_markdown=notes_artifacts.outline_markdown,
                 notes_markdown=notes_artifacts.notes_markdown,
+                evidence_cards=notes_artifacts.evidence_cards,
                 mindmap_prompt=mindmap_prompt,
                 llm_config_override=llm_config,
                 on_mindmap_delta=on_mindmap_delta,
@@ -760,6 +762,7 @@ class LLMService:
         title: str,
         outline_markdown: str,
         notes_markdown: str,
+        evidence_cards: list[dict[str, object]] | None = None,
         mindmap_prompt: str,
         llm_config_override: dict[str, object] | None = None,
         on_mindmap_delta: Callable[[str, StreamMode], Awaitable[None]] | None = None,
@@ -770,11 +773,21 @@ class LLMService:
             else await self._config_store.get()
         )
         llm_mode, client, model_name = self._resolve_generation_runtime(llm_config)
-        user_content = (
-            f"视频标题：{title}\n\n"
-            f"详细笔记提纲：\n{outline_markdown[:14000]}\n\n"
-            f"详细笔记正文：\n{notes_markdown[:_MAX_DIRECT_TRANSCRIPT_CHARS]}"
+        sections = [
+            f"视频标题：{title}",
+            f"详细笔记提纲：\n{outline_markdown[:14000]}",
+        ]
+        evidence_payload = _render_notes_cards_payload(
+            evidence_cards or [],
+            mode="mindmap",
         )
+        if evidence_payload.strip():
+            sections.append(
+                f"高保真信息卡片：\n{evidence_payload[:_MAX_DIRECT_TRANSCRIPT_CHARS]}"
+            )
+        else:
+            sections.append(f"详细笔记正文：\n{notes_markdown[:_MAX_DIRECT_TRANSCRIPT_CHARS]}")
+        user_content = "\n\n".join(section for section in sections if section.strip())
         if llm_mode == "local":
             raw = await self._chat_markdown_once_local(
                 model_id=model_name,
@@ -799,7 +812,8 @@ class LLMService:
                     else None
                 ),
             )
-        return raw.strip() or _build_fallback_mindmap_from_outline(title, outline_markdown)
+        normalized = _normalize_mindmap_markdown_structure(raw, title=title)
+        return normalized or _build_fallback_mindmap_from_outline(title, outline_markdown)
 
     def _resolve_generation_runtime(
         self,
@@ -2000,6 +2014,19 @@ def _render_notes_cards_payload(evidence_cards: list[dict[str, object]], *, mode
             "caveats",
             "terms",
         ),
+        "mindmap": (
+            "batch_id",
+            "time_range",
+            "core_points",
+            "definitions",
+            "steps",
+            "examples",
+            "comparisons",
+            "constraints",
+            "caveats",
+            "terms",
+            "open_loops",
+        ),
         "coverage": (
             "batch_id",
             "time_range",
@@ -2143,7 +2170,11 @@ def _select_notes_section_cards(
             card for card in evidence_cards if int(card.get("batch_id", 0) or 0) in source_batch_ids
         ]
         if selected:
-            return selected[:safe_limit]
+            explicit_limit = max(
+                safe_limit,
+                min(_NOTES_EXPLICIT_SECTION_CARD_LIMIT, len(selected)),
+            )
+            return selected[:explicit_limit]
 
     title = str(section.get("title", "")).strip()
     key_points = _normalize_string_list(section.get("key_points"))
@@ -2299,6 +2330,135 @@ def _ensure_single_markdown_title(markdown: str, title: str) -> str:
     if body:
         return f"# {final_title}\n\n{body}".strip()
     return f"# {final_title}"
+
+
+def _sanitize_mindmap_topic(value: str) -> str:
+    normalized = (value or "").strip()
+    if not normalized:
+        return ""
+    normalized = re.sub(r"\[(.*?)\]\((.*?)\)", r"\1", normalized)
+    normalized = re.sub(r"</?[^>]+>", "", normalized)
+    normalized = normalized.replace("**", "").replace("__", "").replace("`", "")
+    normalized = re.sub(r"^\s*(?:[-*+]\s+|\d+\.\s+|#{1,6}\s+)", "", normalized)
+    normalized = re.sub(r"[*~]+", "", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized.strip("\"'“”‘’")
+
+
+def _extract_mindmap_topic_from_line(raw_line: str) -> str:
+    candidate = (raw_line or "").strip()
+    if not candidate:
+        return ""
+    if candidate.lower().startswith("mindmap"):
+        return ""
+    candidate = re.sub(r"^root\b", "", candidate, flags=re.IGNORECASE).strip()
+    if re.match(r"^[A-Za-z0-9_-]+\s*(?=[(\[{])", candidate):
+        candidate = re.sub(r"^[A-Za-z0-9_-]+\s*", "", candidate, count=1).strip()
+    while True:
+        updated = candidate
+        for opening, closing in (
+            ("((", "))"),
+            ("[[", "]]"),
+            ("{{", "}}"),
+            ("(", ")"),
+            ("[", "]"),
+            ("{", "}"),
+        ):
+            if updated.startswith(opening) and updated.endswith(closing):
+                updated = updated[len(opening) : -len(closing)].strip()
+                break
+        if updated == candidate:
+            break
+        candidate = updated
+    return _sanitize_mindmap_topic(candidate)
+
+
+def _normalize_mermaid_mindmap_code(raw: str, *, title: str) -> str:
+    normalized = (raw or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not normalized:
+        return ""
+    lines = [line.rstrip() for line in normalized.splitlines() if line.strip()]
+    if lines and lines[0].strip().lower().startswith("mindmap"):
+        lines = lines[1:]
+
+    topics: list[tuple[int, str]] = []
+    for raw_line in lines:
+        indent = len(raw_line) - len(raw_line.lstrip(" "))
+        topic = _extract_mindmap_topic_from_line(raw_line)
+        if topic:
+            topics.append((indent, topic))
+    if not topics:
+        return ""
+
+    base_indent = topics[0][0]
+    root_topic = topics[0][1] or _sanitize_mindmap_topic(title) or "思维导图"
+    normalized_lines = ["mindmap", f"  root(({root_topic}))"]
+    for indent, topic in topics[1:]:
+        relative_depth = max(1, max(0, indent - base_indent) // 2)
+        normalized_lines.append(f"{' ' * (2 + relative_depth * 2)}{topic}")
+    return "\n".join(normalized_lines).strip()
+
+
+def _normalize_mindmap_markdown_structure(raw: str, *, title: str) -> str:
+    normalized = (raw or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not normalized:
+        return ""
+
+    fenced_match = re.fullmatch(
+        r"```(mindmap|mermaid)\s*([\s\S]*?)\s*```",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    if fenced_match:
+        language = str(fenced_match.group(1) or "").strip().lower()
+        code = str(fenced_match.group(2) or "").strip()
+        if code.lower().startswith("mindmap"):
+            normalized_code = _normalize_mermaid_mindmap_code(code, title=title)
+            if normalized_code:
+                return f"```mindmap\n{normalized_code}\n```".strip()
+        if language == "mermaid" and code.lower().startswith(("graph", "flowchart")):
+            return f"```mermaid\n{code}\n```".strip()
+
+    if normalized.lower().startswith("mindmap"):
+        normalized_code = _normalize_mermaid_mindmap_code(normalized, title=title)
+        if normalized_code:
+            return f"```mindmap\n{normalized_code}\n```".strip()
+    if normalized.lower().startswith(("graph", "flowchart")):
+        return normalized
+
+    cleaned_lines: list[str] = []
+    has_structure = False
+    for raw_line in normalized.splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("```"):
+            continue
+        heading_match = re.match(r"^(#{1,6})\s+(.+)$", stripped)
+        if heading_match:
+            level = max(1, min(4, len(heading_match.group(1))))
+            topic = _sanitize_mindmap_topic(heading_match.group(2))
+            if topic:
+                cleaned_lines.append(f"{'#' * level} {topic}")
+                has_structure = True
+            continue
+        bullet_match = re.match(r"^([-*+]|\d+\.)\s+(.+)$", stripped)
+        if bullet_match:
+            topic = _sanitize_mindmap_topic(bullet_match.group(2))
+            if topic:
+                cleaned_lines.append(f"- {topic}")
+                has_structure = True
+            continue
+        topic = _sanitize_mindmap_topic(stripped)
+        if topic:
+            cleaned_lines.append(topic)
+
+    if not cleaned_lines:
+        return ""
+    if has_structure:
+        return _ensure_single_markdown_title("\n".join(cleaned_lines).strip(), title)
+    return _ensure_single_markdown_title(
+        "## 核心主题\n- " + "\n- ".join(cleaned_lines),
+        title,
+    )
 
 
 def _build_summary_from_notes_fallback(notes_markdown: str, outline_markdown: str) -> str:
