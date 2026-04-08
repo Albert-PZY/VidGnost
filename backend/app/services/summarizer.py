@@ -18,7 +18,6 @@ from app.config import Settings
 from app.services.llm_client_runtime import OpenAICompatRuntime
 from app.services.llm_config_store import LLMConfigStore
 from app.services.prompt_constants import (
-    AGGREGATE_SUMMARY_SECTION_TEMPLATE,
     CHAT_TRANSCRIPT_USER_CONTENT_TEMPLATE,
     NOTES_COVERAGE_PATCH_PROMPT,
     NOTES_COVERAGE_PATCH_USER_CONTENT_TEMPLATE,
@@ -32,14 +31,8 @@ from app.services.prompt_constants import (
     NOTES_SECTION_USER_CONTENT_TEMPLATE,
     REWRITE_TRANSCRIPT_PROMPT,
     REWRITE_TRANSCRIPT_USER_CONTENT_TEMPLATE,
-    SLIDING_WINDOW_SUMMARY_PROMPT,
-    SLIDING_WINDOW_USER_CONTENT_TEMPLATE,
     STRICT_CORRECTION_PROMPT,
     STRICT_CORRECTION_USER_CONTENT_TEMPLATE,
-    WINDOW_AGGREGATE_ENTRY_TEMPLATE,
-    WINDOW_AGGREGATE_PROMPT,
-    WINDOW_AGGREGATE_USER_CONTENT_TEMPLATE,
-    WINDOW_COMPRESS_USER_CONTENT_TEMPLATE,
 )
 from app.services.prompt_template_store import PromptTemplateStore
 
@@ -47,12 +40,6 @@ _JSON_CODE_FENCE_PATTERN = re.compile(r"```(?:json)?\s*([\s\S]*?)\s*```", flags=
 _MERMAID_CODE_FENCE_PATTERN = re.compile(r"```mermaid\s*([\s\S]*?)\s*```", flags=re.IGNORECASE)
 _LOCAL_LLM_MODES = {"local", "api"}
 _MAX_DIRECT_TRANSCRIPT_CHARS = 24000
-_SUMMARY_WINDOW_CHARS = 9000
-_SUMMARY_WINDOW_OVERLAP_CHARS = 1200
-_SUMMARY_WINDOW_LIMIT = 16
-_WINDOW_AGGREGATE_BATCH_SIZE = 4
-_WINDOW_AGGREGATE_OVERLAP = 1
-_CONTEXT_COMPRESS_MAX_ROUNDS = 2
 _NOTES_BATCH_MAX_CHARS = 7000
 _NOTES_BATCH_OVERLAP_SEGMENTS = 3
 _NOTES_SECTION_CARD_LIMIT = 10
@@ -1033,137 +1020,6 @@ class LLMService:
             max_tokens=max_tokens,
         )
 
-    async def _build_summary_context(
-        self,
-        *,
-        title: str,
-        transcript_text: str,
-        llm_mode: Literal["api", "local"],
-        client: AsyncOpenAI | None,
-        model_name: str,
-    ) -> str:
-        normalized = transcript_text.strip()
-        if not normalized:
-            return ""
-        windows = _build_text_windows(
-            normalized,
-            window_chars=_SUMMARY_WINDOW_CHARS,
-            overlap_chars=_SUMMARY_WINDOW_OVERLAP_CHARS,
-            max_windows=_SUMMARY_WINDOW_LIMIT,
-        )
-        if len(windows) <= 1:
-            return normalized[:_MAX_DIRECT_TRANSCRIPT_CHARS]
-
-        window_summaries: list[str] = []
-        for index, window in enumerate(windows):
-            user_content = SLIDING_WINDOW_USER_CONTENT_TEMPLATE.format(
-                title=title,
-                window_index=index + 1,
-                window_total=len(windows),
-                window_text=window[:_MAX_DIRECT_TRANSCRIPT_CHARS],
-            )
-            chunk_summary = await self._chat_markdown_once_by_mode(
-                llm_mode=llm_mode,
-                client=client,
-                model_name=model_name,
-                instruction=SLIDING_WINDOW_SUMMARY_PROMPT,
-                user_content=user_content,
-                temperature=0.0,
-            )
-            normalized_chunk = chunk_summary.strip()
-            if not normalized_chunk:
-                normalized_chunk = window[: min(1200, len(window))]
-            window_summaries.append(normalized_chunk)
-
-        aggregate_chunks = _build_window_groups(
-            window_summaries,
-            batch_size=_WINDOW_AGGREGATE_BATCH_SIZE,
-            overlap=_WINDOW_AGGREGATE_OVERLAP,
-        )
-        aggregated_summaries: list[str] = []
-        for index, chunk_group in enumerate(aggregate_chunks):
-            joined = "\n\n".join(
-                WINDOW_AGGREGATE_ENTRY_TEMPLATE.format(
-                    segment_index=offset + 1,
-                    segment_content=item,
-                )
-                for offset, item in enumerate(chunk_group)
-            )
-            aggregate_summary = await self._chat_markdown_once_by_mode(
-                llm_mode=llm_mode,
-                client=client,
-                model_name=model_name,
-                instruction=WINDOW_AGGREGATE_PROMPT,
-                user_content=WINDOW_AGGREGATE_USER_CONTENT_TEMPLATE.format(
-                    title=title,
-                    batch_index=index + 1,
-                    batch_total=len(aggregate_chunks),
-                    joined_content=joined[:_MAX_DIRECT_TRANSCRIPT_CHARS],
-                ),
-                temperature=0.0,
-            )
-            normalized_aggregate = aggregate_summary.strip()
-            if not normalized_aggregate:
-                normalized_aggregate = joined[: min(2400, len(joined))]
-            aggregated_summaries.append(normalized_aggregate)
-
-        if not aggregated_summaries:
-            aggregated_summaries = window_summaries
-        context = "\n\n".join(
-            AGGREGATE_SUMMARY_SECTION_TEMPLATE.format(
-                section_index=index + 1,
-                section_content=item,
-            )
-            for index, item in enumerate(aggregated_summaries)
-            if item.strip()
-        ).strip()
-        if not context:
-            context = normalized
-        return await self._compress_context_to_limit(
-            title=title,
-            llm_mode=llm_mode,
-            client=client,
-            model_name=model_name,
-            context=context,
-        )
-
-    async def _compress_context_to_limit(
-        self,
-        *,
-        title: str,
-        llm_mode: Literal["api", "local"],
-        client: AsyncOpenAI | None,
-        model_name: str,
-        context: str,
-    ) -> str:
-        current = context.strip()
-        if len(current) <= _MAX_DIRECT_TRANSCRIPT_CHARS:
-            return current
-
-        for round_index in range(_CONTEXT_COMPRESS_MAX_ROUNDS):
-            candidate = await self._chat_markdown_once_by_mode(
-                llm_mode=llm_mode,
-                client=client,
-                model_name=model_name,
-                instruction=WINDOW_AGGREGATE_PROMPT,
-                user_content=WINDOW_COMPRESS_USER_CONTENT_TEMPLATE.format(
-                    title=title,
-                    round_index=round_index + 1,
-                    round_total=_CONTEXT_COMPRESS_MAX_ROUNDS,
-                    context_text=current[: _MAX_DIRECT_TRANSCRIPT_CHARS * 2],
-                ),
-                temperature=0.0,
-            )
-            normalized_candidate = candidate.strip()
-            if not normalized_candidate:
-                break
-            if len(normalized_candidate) >= len(current):
-                break
-            current = normalized_candidate
-            if len(current) <= _MAX_DIRECT_TRANSCRIPT_CHARS:
-                return current
-        return current[:_MAX_DIRECT_TRANSCRIPT_CHARS]
-
     async def _correct_transcript_strict(
         self,
         llm_mode: Literal["api", "local"],
@@ -1654,77 +1510,6 @@ class LLMService:
             f"{normalized_user_content}\n"
             "~~~"
         )
-
-
-def _build_text_windows(
-    text: str,
-    *,
-    window_chars: int,
-    overlap_chars: int,
-    max_windows: int,
-) -> list[str]:
-    cleaned = text.strip()
-    if not cleaned:
-        return []
-    safe_window = max(200, window_chars)
-    safe_overlap = max(0, min(overlap_chars, safe_window - 1))
-    step = max(1, safe_window - safe_overlap)
-    windows: list[str] = []
-    start = 0
-    while start < len(cleaned):
-        end = min(len(cleaned), start + safe_window)
-        window = cleaned[start:end].strip()
-        if window:
-            windows.append(window)
-        if end >= len(cleaned):
-            break
-        start += step
-    if not windows:
-        windows.append(cleaned[:safe_window])
-        return windows
-
-    limit = max(1, max_windows)
-    if len(windows) <= limit:
-        return windows
-
-    if limit == 1:
-        return [windows[0]]
-    step_ratio = (len(windows) - 1) / (limit - 1)
-    sampled: list[str] = []
-    sampled_indices: set[int] = set()
-    for idx in range(limit):
-        source_index = int(round(idx * step_ratio))
-        source_index = max(0, min(len(windows) - 1, source_index))
-        if source_index in sampled_indices:
-            continue
-        sampled_indices.add(source_index)
-        sampled.append(windows[source_index])
-    if (len(windows) - 1) not in sampled_indices:
-        sampled[-1] = windows[-1]
-    return sampled
-
-
-def _build_window_groups(
-    windows: list[str],
-    *,
-    batch_size: int,
-    overlap: int,
-) -> list[list[str]]:
-    if not windows:
-        return []
-    safe_batch = max(1, batch_size)
-    safe_overlap = max(0, min(overlap, safe_batch - 1))
-    step = max(1, safe_batch - safe_overlap)
-    groups: list[list[str]] = []
-    for start in range(0, len(windows), step):
-        group = windows[start : start + safe_batch]
-        if not group:
-            continue
-        groups.append(group)
-        if start + safe_batch >= len(windows):
-            break
-    return groups
-
 
 def _normalize_correction_mode(raw: object) -> Literal["off", "strict", "rewrite"]:
     candidate = str(raw).strip().lower()

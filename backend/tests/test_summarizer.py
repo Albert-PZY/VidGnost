@@ -7,8 +7,6 @@ from app.services.exporters import render_markmap_html
 from app.services.summarizer import (
     LLMService,
     NotesPipelineArtifacts,
-    _build_text_windows,
-    _build_window_groups,
     _ensure_single_markdown_title,
     _extract_mermaid_code,
     _normalize_correction_mode,
@@ -69,40 +67,6 @@ def test_normalize_correction_mode_defaults_to_strict() -> None:
     assert _normalize_correction_mode("rewrite") == "rewrite"
     assert _normalize_correction_mode("off") == "off"
     assert _normalize_correction_mode("bad-mode") == "strict"
-
-
-def test_build_text_windows_with_overlap_preserves_tail_context() -> None:
-    text = "\n".join(f"line-{index:02d}" for index in range(60))
-    windows = _build_text_windows(
-        text,
-        window_chars=120,
-        overlap_chars=24,
-        max_windows=12,
-    )
-    assert len(windows) >= 2
-    assert windows[0].startswith("line-00")
-    assert any("line-59" in chunk for chunk in windows)
-
-
-def test_build_window_groups_respects_batch_and_overlap() -> None:
-    windows = [f"chunk-{index}" for index in range(7)]
-    groups = _build_window_groups(windows, batch_size=3, overlap=1)
-    assert groups[0] == ["chunk-0", "chunk-1", "chunk-2"]
-    assert groups[1] == ["chunk-2", "chunk-3", "chunk-4"]
-    assert groups[-1][-1] == "chunk-6"
-
-
-def test_build_text_windows_downsamples_with_tail_coverage() -> None:
-    text = "".join(f"section-{index:02d}\n" for index in range(240))
-    windows = _build_text_windows(
-        text,
-        window_chars=180,
-        overlap_chars=24,
-        max_windows=6,
-    )
-    assert len(windows) <= 6
-    assert windows[0].startswith("section-00")
-    assert "section-239" in windows[-1]
 
 
 def test_normalize_summary_keeps_mermaid_fence() -> None:
