@@ -337,12 +337,17 @@ export function WorkbenchRuntimeMain({
   }, [activeTask?.status, activeVmPhase, isTaskRunning, vmPhaseMetrics])
 
   const selectedVmPhase = useMemo(() => {
-    if (!isTaskRunning || !activeTask?.id) return autoVmPhase
+    if (!activeTask?.id) {
+      if (manualVmPhaseSelection?.taskId === '__no_task__') {
+        return manualVmPhaseSelection.phase
+      }
+      return autoVmPhase
+    }
     if (manualVmPhaseSelection?.taskId === activeTask.id) {
       return manualVmPhaseSelection.phase
     }
     return autoVmPhase
-  }, [activeTask, autoVmPhase, isTaskRunning, manualVmPhaseSelection])
+  }, [activeTask, autoVmPhase, manualVmPhaseSelection])
 
   const debugArtifacts = useMemo(
     () => filterArtifactsForPhase(activeTask?.artifact_index ?? [], selectedVmPhase),
@@ -458,7 +463,8 @@ export function WorkbenchRuntimeMain({
     }
     return statusText(activeTask.status)
   }, [activeTask, activeVmPhase, isTaskRunning, statusText, t, vmPhaseMetrics])
-  const runtimeStatusMessage = error ?? (activeTask ? runtimeStatusLabel : t('task.noTask'))
+  const runtimeStatusMessage = error ?? runtimeStatusLabel
+  const shouldShowRuntimeStatusRow = Boolean(error || activeTask)
 
   const handleSelectPhase = (phase: VmPhaseKey) => {
     setManualVmPhaseSelection({
@@ -588,8 +594,46 @@ export function WorkbenchRuntimeMain({
         <span className="text-xs text-text-subtle">{activeTask?.id?.slice(0, 8) ?? '—'}</span>
       </div>
       {!activeTask ? (
-        <div className="rounded-xl border border-dashed border-border/70 bg-surface-muted/35 px-3 py-6 text-center text-sm text-text-subtle">
-          {t('runtime.phaseView.shared.noActiveTask')}
+        <div className="space-y-3 rounded-xl border border-dashed border-border/70 bg-surface-muted/35 px-3 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.12em] text-text-subtle">
+                {t('runtime.phaseView.shared.currentPhase')}
+              </div>
+              <div className="mt-1 text-sm font-semibold leading-6 text-text-main">
+                {t(`stages.${selectedVmPhase}.label`)}
+              </div>
+            </div>
+            <span className="rounded-full border border-accent/20 bg-accent/10 px-2 py-1 text-[11px] font-medium text-accent">
+              {selectedVmPhase}
+            </span>
+          </div>
+          <div className="rounded-xl border border-border/65 bg-bg-base/75 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-[0.12em] text-text-subtle">
+              {t('runtime.phaseView.shared.phaseGoal')}
+            </div>
+            <div className="mt-1 text-sm leading-6 text-text-main">
+              {t(`stages.${selectedVmPhase}.description`)}
+            </div>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="rounded-xl border border-border/65 bg-bg-base/75 px-3 py-2">
+              <div className="text-[11px] uppercase tracking-[0.12em] text-text-subtle">
+                {t('runtime.phaseView.shared.phaseOutput')}
+              </div>
+              <div className="mt-1 text-sm leading-6 text-text-main">
+                {t(`runtime.phaseView.outputs.${selectedVmPhase}`)}
+              </div>
+            </div>
+            <div className="rounded-xl border border-border/65 bg-bg-base/75 px-3 py-2">
+              <div className="text-[11px] uppercase tracking-[0.12em] text-text-subtle">
+                {t('runtime.phaseView.shared.phaseHint')}
+              </div>
+              <div className="mt-1 text-sm leading-6 text-text-main">
+                {t('runtime.phaseView.shared.clickHint')}
+              </div>
+            </div>
+          </div>
         </div>
       ) : (
         <div className="grid gap-2 sm:grid-cols-2">
@@ -1134,53 +1178,55 @@ export function WorkbenchRuntimeMain({
             style={{ width: `${Math.max(0, Math.min(100, overallProgress))}%` }}
           />
         </div>
-        <div className="mb-3.5 flex items-center gap-2 text-[0.92rem]">
-          {isTaskCompleted && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
-          {!isTaskCompleted && isTaskRunning && (
-            <LoaderCircle className="h-4 w-4 animate-spin text-accent" />
-          )}
-          <span
-            className={cn('min-w-0 flex-1 truncate', error ? 'text-red-500' : 'text-text-subtle')}
-            title={runtimeStatusMessage}
-          >
-            {runtimeStatusMessage}
-          </span>
-          {canCancelTask && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className={cn(
-                'border-red-400/55 text-red-500 hover:bg-red-500/10',
-                !isTaskRunning && 'ml-auto',
-              )}
-              disabled={cancellingTask}
-              onClick={() => void onCancelTask()}
+        {shouldShowRuntimeStatusRow && (
+          <div className="mb-3.5 flex items-center gap-2 text-[0.92rem]">
+            {isTaskCompleted && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+            {!isTaskCompleted && isTaskRunning && (
+              <LoaderCircle className="h-4 w-4 animate-spin text-accent" />
+            )}
+            <span
+              className={cn('min-w-0 flex-1 truncate', error ? 'text-red-500' : 'text-text-subtle')}
+              title={runtimeStatusMessage}
             >
-              {cancellingTask ? (
-                <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <X className="mr-2 h-4 w-4" />
-              )}
-              {cancellingTask ? t('runtime.cancel.requesting') : t('runtime.cancel.action')}
-            </Button>
-          )}
-          {!canCancelTask && canRerunStageD && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="ml-auto border-accent/45 text-accent hover:bg-accent/10"
-              disabled={rerunningStageD}
-              onClick={() => void onRerunStageD()}
-            >
-              <LoaderCircle className={cn('mr-2 h-4 w-4', rerunningStageD && 'animate-spin')} />
-              {rerunningStageD
-                ? t('runtime.stageD.rerunRequesting', { defaultValue: '重跑中...' })
-                : t('runtime.stageD.rerunAction')}
-            </Button>
-          )}
-        </div>
+              {runtimeStatusMessage}
+            </span>
+            {canCancelTask && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={cn(
+                  'border-red-400/55 text-red-500 hover:bg-red-500/10',
+                  !isTaskRunning && 'ml-auto',
+                )}
+                disabled={cancellingTask}
+                onClick={() => void onCancelTask()}
+              >
+                {cancellingTask ? (
+                  <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <X className="mr-2 h-4 w-4" />
+                )}
+                {cancellingTask ? t('runtime.cancel.requesting') : t('runtime.cancel.action')}
+              </Button>
+            )}
+            {!canCancelTask && canRerunStageD && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="ml-auto border-accent/45 text-accent hover:bg-accent/10"
+                disabled={rerunningStageD}
+                onClick={() => void onRerunStageD()}
+              >
+                <LoaderCircle className={cn('mr-2 h-4 w-4', rerunningStageD && 'animate-spin')} />
+                {rerunningStageD
+                  ? t('runtime.stageD.rerunRequesting', { defaultValue: '重跑中...' })
+                  : t('runtime.stageD.rerunAction')}
+              </Button>
+            )}
+          </div>
+        )}
         <div className="mb-4 grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
           {VM_PHASES.map((phase) => {
             const metric = vmPhaseMetrics[phase]
