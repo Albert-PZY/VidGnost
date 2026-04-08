@@ -945,7 +945,7 @@ export function WorkbenchRuntimeMain({
     })
 
   const renderFinalDeliveryCards = () => (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
       {[
         [t('runtime.phaseView.shared.segmentCount'), `${transcriptSegmentCount}`],
         [t('runtime.phaseView.shared.notesLength'), `${notesCharacters}`],
@@ -956,9 +956,16 @@ export function WorkbenchRuntimeMain({
           `${activeTask?.artifact_index.length ?? 0} · ${formatArtifactSize(activeTask?.artifact_total_bytes ?? 0)}`,
         ],
       ].map(([label, value]) => (
-        <div key={label} className="runtime-panel rounded-xl border px-3 py-3 text-sm">
-          <div className="text-[11px] uppercase tracking-[0.12em] text-text-subtle">{label}</div>
-          <div className="mt-2 text-xl font-semibold tracking-tight text-text-main">{value}</div>
+        <div
+          key={label}
+          className="flex min-h-[3.25rem] items-center justify-between gap-3 rounded-lg border border-border/60 bg-bg-base/45 px-3 py-2 text-sm shadow-none"
+        >
+          <div className="min-w-0 text-[11px] leading-4 tracking-[0.08em] text-text-subtle">
+            {label}
+          </div>
+          <div className="shrink-0 text-lg font-semibold leading-none tracking-tight tabular-nums text-text-main">
+            {value}
+          </div>
         </div>
       ))}
     </div>
