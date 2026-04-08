@@ -978,23 +978,111 @@ html[data-theme='dark'] .workbench-brand-mark {
     0 0 0 4px color-mix(in oklab, var(--color-bg-base) 78%, transparent);
 }
 
-.runtime-mindmap-panel .markmap {
+.runtime-mindmap-panel {
+  position: relative;
+}
+
+.runtime-mindmap-panel .jsmind-inner {
+  border-radius: 0.9rem;
+  background:
+    radial-gradient(
+      circle at top,
+      color-mix(in oklab, var(--color-accent) 10%, transparent),
+      transparent 42%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--color-surface-elevated) 82%, transparent),
+      var(--color-bg-base)
+    );
+  cursor: grab;
+}
+
+.runtime-mindmap-panel .jsmind-inner:active {
+  cursor: grabbing;
+}
+
+.runtime-mindmap-panel jmnodes {
+  min-width: 100%;
+  min-height: 100%;
+}
+
+.runtime-mindmap-panel jmnode {
+  max-width: min(260px, 42vw);
+  padding: 0.65rem 0.9rem;
+  border: 1px solid color-mix(in oklab, var(--color-border) 88%, transparent);
+  border-radius: 1rem;
+  background: color-mix(in oklab, var(--color-surface-elevated) 92%, transparent);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  color: var(--color-text-main);
   font:
-    500 15px/1.36 'Sora',
+    600 0.87rem/1.45 'Sora',
     'Noto Sans SC',
     sans-serif;
 }
 
-.runtime-mindmap-panel .markmap .markmap-foreign > div > div {
-  color: var(--color-runtime-text);
+.runtime-mindmap-panel jmnode:hover {
+  background: color-mix(in oklab, var(--color-accent) 10%, var(--color-surface-elevated));
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.12);
 }
 
-.runtime-mindmap-panel .markmap .markmap-link {
-  stroke: color-mix(in oklab, var(--color-runtime-text) 50%, transparent);
+.runtime-mindmap-panel jmnode.root {
+  padding: 0.9rem 1.1rem;
+  border-color: color-mix(in oklab, var(--color-accent) 35%, transparent);
+  border-radius: 1.2rem;
+  background: linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--color-accent) 16%, var(--color-surface-elevated)),
+    color-mix(in oklab, var(--color-bg-base) 82%, transparent)
+  );
+  box-shadow: 0 16px 34px rgba(15, 23, 42, 0.14);
+  font-size: 1rem;
+  font-weight: 700;
 }
 
-html[data-theme='dark'] .runtime-mindmap-panel .markmap .markmap-link {
-  stroke: color-mix(in oklab, #9cc0ee 66%, transparent);
+.runtime-mindmap-panel jmexpander {
+  border-color: color-mix(in oklab, var(--color-border) 88%, transparent);
+  background: color-mix(in oklab, var(--color-surface-elevated) 90%, transparent);
+  color: var(--color-text-subtle);
+}
+
+.runtime-mindmap-panel jmexpander:hover {
+  border-color: color-mix(in oklab, var(--color-accent) 36%, transparent);
+  color: var(--color-accent);
+}
+
+html[data-theme='dark'] .runtime-mindmap-panel .jsmind-inner {
+  background:
+    radial-gradient(
+      circle at top,
+      color-mix(in oklab, var(--color-accent) 13%, transparent),
+      transparent 46%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, #0f1724 88%, transparent),
+      color-mix(in oklab, #08111b 96%, transparent)
+    );
+}
+
+html[data-theme='dark'] .runtime-mindmap-panel jmnode {
+  border-color: color-mix(in oklab, #6e8aab 36%, transparent);
+  background: color-mix(in oklab, #142131 92%, transparent);
+  box-shadow: 0 14px 28px rgba(2, 8, 20, 0.34);
+  color: #e6edf7;
+}
+
+html[data-theme='dark'] .runtime-mindmap-panel jmnode:hover {
+  background: color-mix(in oklab, var(--color-accent) 16%, #142131);
+}
+
+html[data-theme='dark'] .runtime-mindmap-panel jmnode.root {
+  border-color: color-mix(in oklab, var(--color-accent) 42%, transparent);
+  background: linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--color-accent) 22%, #142131),
+    color-mix(in oklab, #0b1320 88%, transparent)
+  );
 }
 
 .vm-working-indicator {

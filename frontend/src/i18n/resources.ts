@@ -477,6 +477,10 @@ export const resources = {
       bundleDownload: {
         ready: '任务已完成，可一键打包下载全部阶段产物',
         action: '下载全部产物（{{format}}）',
+        readyCompact: '下载产物',
+        actionCompact: '下载 {{format}}',
+        dragHint: '右侧吸附，可上下拖动',
+        positionHandle: '拖动调整下载浮层位置',
       },
       status: {
         queued: '排队中',
@@ -1047,6 +1051,10 @@ export const resources = {
       bundleDownload: {
         ready: 'Task completed. Package and download all stage artifacts in one click.',
         action: 'Download All Outputs ({{format}})',
+        readyCompact: 'Download bundle',
+        actionCompact: 'Download {{format}}',
+        dragHint: 'Docked right, drag vertically',
+        positionHandle: 'Drag to move the download floater',
       },
       status: {
         queued: 'Queued',

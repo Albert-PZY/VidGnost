@@ -1,11 +1,9 @@
 import type { ComponentProps, Dispatch, SetStateAction } from 'react'
 import type { TFunction } from 'i18next'
-import { Download, LoaderCircle } from 'lucide-react'
 
+import { BundleDownloadFloater } from './bundle-download-floater'
 import { HistoryModal } from './history-modal'
-import { PreText } from './pretext'
 import { SelfCheckModal } from './self-check-modal'
-import { Button } from './ui/button'
 import { WorkbenchConfigModal } from './workbench-config-modal'
 import {
   DeleteTaskConfirmModal,
@@ -112,23 +110,12 @@ export function WorkbenchMainView({
       </div>
 
       {isTaskCompleted && activeTask && (
-        <div className="pointer-events-none fixed bottom-5 right-5 z-30">
-          <div className="workbench-floating-card pointer-events-auto w-[360px] p-3.5">
-            <PreText variant="timestamp" className="mb-2">
-              {t('bundleDownload.ready')}
-            </PreText>
-            <Button className="w-full" onClick={onDownloadAllArtifacts} disabled={savingArtifacts}>
-              {savingArtifacts ? (
-                <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Download className="mr-2 h-4 w-4" />
-              )}
-              {savingArtifacts
-                ? t('runtime.stageD.saving')
-                : t('bundleDownload.action', { format: bundleArchiveFormat.toUpperCase() })}
-            </Button>
-          </div>
-        </div>
+        <BundleDownloadFloater
+          t={t}
+          bundleArchiveFormat={bundleArchiveFormat}
+          savingArtifacts={savingArtifacts}
+          onDownloadAllArtifacts={onDownloadAllArtifacts}
+        />
       )}
 
       <SourceTaskModal open={activeSidebarPanel === 'source'} t={t} {...sourceTaskModalProps} />
