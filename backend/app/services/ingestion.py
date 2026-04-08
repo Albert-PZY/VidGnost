@@ -10,6 +10,7 @@ from pathlib import Path
 import ffmpeg
 import yt_dlp
 
+
 ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mkv", ".mov", ".webm", ".flv", ".avi", ".m4v"}
 _LOGGER = logging.getLogger(__name__)
 
@@ -68,9 +69,7 @@ def download_bilibili_video(task_id: str, url: str, target_dir: Path) -> Ingesti
     duration = info.get("duration")
 
     media_path = _locate_downloaded_media(task_id, target_dir)
-    return IngestionResult(
-        media_path=media_path, title=title, duration_seconds=float(duration) if duration else None
-    )
+    return IngestionResult(media_path=media_path, title=title, duration_seconds=float(duration) if duration else None)
 
 
 def prepare_local_video(task_id: str, source_path: Path, target_dir: Path) -> IngestionResult:
@@ -87,9 +86,7 @@ def prepare_local_video(task_id: str, source_path: Path, target_dir: Path) -> In
     return IngestionResult(media_path=target_path, title=source_path.stem, duration_seconds=None)
 
 
-def extract_audio_wav(
-    media_path: Path, output_path: Path, channels: int = 1, sample_rate: int = 16000
-) -> Path:
+def extract_audio_wav(media_path: Path, output_path: Path, channels: int = 1, sample_rate: int = 16000) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     (
         ffmpeg.input(str(media_path))
@@ -100,9 +97,7 @@ def extract_audio_wav(
     return output_path
 
 
-def split_audio_wav(
-    audio_path: Path, output_dir: Path, chunk_seconds: int = 180
-) -> list[AudioChunk]:
+def split_audio_wav(audio_path: Path, output_dir: Path, chunk_seconds: int = 180) -> list[AudioChunk]:
     output_dir.mkdir(parents=True, exist_ok=True)
     chunks: list[AudioChunk] = []
     with wave.open(str(audio_path), "rb") as wav_in:

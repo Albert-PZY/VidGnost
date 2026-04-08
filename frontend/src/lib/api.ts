@@ -8,10 +8,7 @@ import type {
   WhisperConfig,
 } from '../types'
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL?.trim() || 'http://localhost:8000/api').replace(
-  /\/+$/,
-  '',
-)
+const API_BASE = 'http://localhost:8000/api'
 export type BundleArchiveFormat = 'zip' | 'tar'
 
 interface TaskCreateResponse {
@@ -108,9 +105,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     const payload = toApiErrorPayload(parsedBody)
     const message =
-      payload?.message ||
-      (typeof parsedBody === 'string' ? parsedBody : null) ||
-      `Request failed: ${response.status}`
+      payload?.message || (typeof parsedBody === 'string' ? parsedBody : null) || `Request failed: ${response.status}`
     throw new ApiError({
       status: response.status,
       code: payload?.code || `HTTP_${response.status}`,
@@ -203,10 +198,6 @@ export async function updateTaskArtifacts(
   })
 }
 
-export async function getTaskArtifactContent(taskId: string, path: string): Promise<string> {
-  return request<string>(`/tasks/${taskId}/artifacts/content?path=${encodeURIComponent(path)}`)
-}
-
 export async function deleteTask(taskId: string): Promise<void> {
   await request<void>(`/tasks/${taskId}`, {
     method: 'DELETE',
@@ -251,7 +242,6 @@ export async function getPromptTemplates(): Promise<PromptTemplateBundle> {
 
 export async function updatePromptTemplateSelection(input: {
   selected_summary_template_id: string
-  selected_notes_template_id: string
   selected_mindmap_template_id: string
 }): Promise<PromptTemplateBundle> {
   return request<PromptTemplateBundle>('/config/prompts/selection', {
@@ -278,26 +268,20 @@ export async function updatePromptTemplate(input: {
   name: string
   content: string
 }): Promise<PromptTemplateBundle> {
-  return request<PromptTemplateBundle>(
-    `/config/prompts/templates/${encodeURIComponent(input.template_id)}`,
-    {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: input.name,
-        content: input.content,
-      }),
-    },
-  )
+  return request<PromptTemplateBundle>(`/config/prompts/templates/${encodeURIComponent(input.template_id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: input.name,
+      content: input.content,
+    }),
+  })
 }
 
 export async function deletePromptTemplate(templateId: string): Promise<PromptTemplateBundle> {
-  return request<PromptTemplateBundle>(
-    `/config/prompts/templates/${encodeURIComponent(templateId)}`,
-    {
-      method: 'DELETE',
-    },
-  )
+  return request<PromptTemplateBundle>(`/config/prompts/templates/${encodeURIComponent(templateId)}`, {
+    method: 'DELETE',
+  })
 }
 
 export async function getWhisperConfig(): Promise<WhisperConfig> {

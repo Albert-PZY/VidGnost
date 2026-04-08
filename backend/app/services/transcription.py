@@ -7,8 +7,8 @@ import os
 import shutil
 import threading
 import time
-from collections import OrderedDict
 from collections.abc import Awaitable, Callable
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote
@@ -249,9 +249,7 @@ class WhisperService:
             },
         )
 
-        temp_root = (
-            self._download_root / ".tmp" / f"{self._MODEL_DIR_NAME}-{int(time.time() * 1000)}"
-        )
+        temp_root = self._download_root / ".tmp" / f"{self._MODEL_DIR_NAME}-{int(time.time() * 1000)}"
         temp_root.mkdir(parents=True, exist_ok=True)
         target_dir = self._small_model_dir()
 
@@ -270,11 +268,7 @@ class WhisperService:
                 if not should_emit:
                     return
                 elapsed = max(0.001, now - started_at)
-                percent = (
-                    100.0
-                    if total_bytes <= 0
-                    else min(100.0, (downloaded_bytes / total_bytes) * 100.0)
-                )
+                percent = 100.0 if total_bytes <= 0 else min(100.0, (downloaded_bytes / total_bytes) * 100.0)
                 await self._emit_prepare_progress(
                     on_progress,
                     {
@@ -289,14 +283,10 @@ class WhisperService:
                 )
                 last_emit_at = now
 
-        limits = httpx.Limits(
-            max_connections=64, max_keepalive_connections=32, keepalive_expiry=30.0
-        )
+        limits = httpx.Limits(max_connections=64, max_keepalive_connections=32, keepalive_expiry=30.0)
         timeout = httpx.Timeout(connect=20.0, read=120.0, write=120.0, pool=60.0)
         try:
-            async with httpx.AsyncClient(
-                http2=True, follow_redirects=True, limits=limits, timeout=timeout
-            ) as client:
+            async with httpx.AsyncClient(http2=True, follow_redirects=True, limits=limits, timeout=timeout) as client:
                 semaphore = asyncio.Semaphore(4)
                 tasks = [
                     asyncio.create_task(
@@ -353,9 +343,9 @@ class WhisperService:
                     "percent": 100.0,
                 },
             )
-        except Exception as exc:
+        except Exception:
             shutil.rmtree(temp_root, ignore_errors=True)
-            raise RuntimeError(_build_whisper_model_download_error(exc)) from exc
+            raise
 
     async def _resolve_model_files(self) -> tuple[str, list[tuple[str, int]]]:
         endpoints = self._candidate_model_endpoints()
@@ -388,9 +378,7 @@ class WhisperService:
                             size = int((file_item.get("lfs") or {}).get("size", 0) or 0)
                         resolved.append((required_name, max(0, size)))
                     if missing:
-                        raise RuntimeError(
-                            f"Missing required files from manifest: {', '.join(missing)}"
-                        )
+                        raise RuntimeError(f"Missing required files from manifest: {', '.join(missing)}")
                     return endpoint, resolved
                 except Exception as exc:  # noqa: BLE001
                     errors.append(f"{endpoint}: {type(exc).__name__}: {exc}")
@@ -443,9 +431,8 @@ class WhisperService:
         current_file: str,
         report_progress: Callable[[int, str], Awaitable[None]],
     ) -> None:
-        supports_range = (
-            expected_size >= self._RANGE_SEGMENT_THRESHOLD_BYTES
-            and await self._supports_range_download(client, url)
+        supports_range = expected_size >= self._RANGE_SEGMENT_THRESHOLD_BYTES and await self._supports_range_download(
+            client, url
         )
         if supports_range:
             await self._download_file_by_ranges(
@@ -615,17 +602,3 @@ def _normalize_load_profile(raw: object) -> LoadProfile:
     if candidate in {"balanced", "memory_first"}:
         return candidate
     return "balanced"
-
-
-def _build_whisper_model_download_error(exc: Exception) -> str:
-    message = str(exc).strip() or type(exc).__name__
-    normalized = message.lower()
-    if "no space" in normalized or "disk" in normalized:
-        hint = "磁盘空间不足或无写入权限，请清理磁盘并确认 storage 目录可写。"
-    elif "timeout" in normalized or "connect" in normalized or "tls" in normalized:
-        hint = "网络连接不稳定，请检查网络后重试。"
-    elif "size mismatch" in normalized or "missing after download" in normalized:
-        hint = "模型文件校验失败，请重试下载。"
-    else:
-        hint = "请检查网络、磁盘空间和模型目录权限后重试。"
-    return f"Whisper small 模型下载失败：{message}。{hint}"

@@ -12,3 +12,4 @@ router = APIRouter(prefix="/health", tags=["health"])
 def health() -> HealthResponse:
     settings = get_settings()
     return HealthResponse(status="ok", app=settings.app_name, version="0.1.0")
+

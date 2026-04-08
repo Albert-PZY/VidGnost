@@ -126,8 +126,6 @@ uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```bash
 cd frontend
 pnpm install
-# 可选：通过环境变量覆盖后端 API 地址，便于本地多环境切换。
-# 示例：VITE_API_BASE_URL=http://127.0.0.1:18000/api
 pnpm dev --host 0.0.0.0 --port 5173
 ```
 
@@ -200,5 +198,4 @@ powershell -ExecutionPolicy Bypass -File scripts/check-openspec.ps1
 
 - [快速开始（EN）](./frontend/src/docs/quick-start.en.md)
 - [快速开始（ZH）](./frontend/src/docs/quick-start.zh-CN.md)
-- [仓库文件格式策略（ZH）](./docs/repository-file-format-policy.zh-CN.md)
 - [错误码字典（ZH）](./docs/error-codes.zh-CN.md)

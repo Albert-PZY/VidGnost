@@ -3,7 +3,11 @@ import type { Dispatch, SetStateAction } from 'react'
 import type { TFunction } from 'i18next'
 import toast from 'react-hot-toast'
 
-import { getLLMConfig, updateLLMConfig, updateWhisperConfig } from '../lib/api'
+import {
+  getLLMConfig,
+  updateLLMConfig,
+  updateWhisperConfig,
+} from '../lib/api'
 import type { LLMConfig, WhisperConfig } from '../types'
 
 interface UseWorkbenchConfigManagerOptions {
@@ -14,9 +18,9 @@ interface UseWorkbenchConfigManagerOptions {
   setWhisperConfig: Dispatch<SetStateAction<WhisperConfig>>
   setWhisperDraft: Dispatch<SetStateAction<WhisperConfig>>
   setSavingWhisperConfig: Dispatch<SetStateAction<boolean>>
-  setSavingLlmConfig: Dispatch<SetStateAction<boolean>>
+  setSavingLocalModelConfig: Dispatch<SetStateAction<boolean>>
   setError: Dispatch<SetStateAction<string | null>>
-  normalizeWhisperConfigForCpu: (config: WhisperConfig) => WhisperConfig
+  normalizeWhisperConfigForGpu: (config: WhisperConfig) => WhisperConfig
   appendLog: (stage: 'A' | 'B' | 'C' | 'D', message: string) => void
 }
 
@@ -28,17 +32,17 @@ export function useWorkbenchConfigManager({
   setWhisperConfig,
   setWhisperDraft,
   setSavingWhisperConfig,
-  setSavingLlmConfig,
+  setSavingLocalModelConfig,
   setError,
-  normalizeWhisperConfigForCpu,
+  normalizeWhisperConfigForGpu,
   appendLog,
 }: UseWorkbenchConfigManagerOptions) {
   const saveWhisperRuntimeConfig = useCallback(async () => {
     setSavingWhisperConfig(true)
     setError(null)
     try {
-      const saved = await updateWhisperConfig(normalizeWhisperConfigForCpu(whisperDraft))
-      const normalizedSaved = normalizeWhisperConfigForCpu(saved)
+      const saved = await updateWhisperConfig(normalizeWhisperConfigForGpu(whisperDraft))
+      const normalizedSaved = normalizeWhisperConfigForGpu(saved)
       const persistedLLM = await getLLMConfig()
       const correctedLLM = await updateLLMConfig({
         ...persistedLLM,
@@ -69,7 +73,7 @@ export function useWorkbenchConfigManager({
   }, [
     appendLog,
     llmConfig.correction_mode,
-    normalizeWhisperConfigForCpu,
+    normalizeWhisperConfigForGpu,
     setError,
     setLLMConfig,
     setSavingWhisperConfig,
@@ -79,13 +83,13 @@ export function useWorkbenchConfigManager({
     whisperDraft,
   ])
 
-  const saveLlmConfig = useCallback(async () => {
-    setSavingLlmConfig(true)
+  const saveLocalModelConfig = useCallback(async () => {
+    setSavingLocalModelConfig(true)
     setError(null)
     try {
       const savedLLM = await updateLLMConfig(llmConfig)
-      const savedWhisper = await updateWhisperConfig(normalizeWhisperConfigForCpu(whisperDraft))
-      const normalizedWhisper = normalizeWhisperConfigForCpu(savedWhisper)
+      const savedWhisper = await updateWhisperConfig(normalizeWhisperConfigForGpu(whisperDraft))
+      const normalizedWhisper = normalizeWhisperConfigForGpu(savedWhisper)
       setLLMConfig(savedLLM)
       setWhisperConfig(normalizedWhisper)
       setWhisperDraft(normalizedWhisper)
@@ -100,14 +104,14 @@ export function useWorkbenchConfigManager({
       setError(message)
       toast.error(message)
     } finally {
-      setSavingLlmConfig(false)
+      setSavingLocalModelConfig(false)
     }
   }, [
     llmConfig,
-    normalizeWhisperConfigForCpu,
+    normalizeWhisperConfigForGpu,
     setError,
     setLLMConfig,
-    setSavingLlmConfig,
+    setSavingLocalModelConfig,
     setWhisperConfig,
     setWhisperDraft,
     whisperDraft,
@@ -115,6 +119,6 @@ export function useWorkbenchConfigManager({
 
   return {
     saveWhisperRuntimeConfig,
-    saveLlmConfig,
+    saveLocalModelConfig,
   }
 }

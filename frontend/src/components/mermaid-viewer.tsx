@@ -50,20 +50,16 @@ function formatMermaidError(error: unknown): string {
 export function MermaidViewer({ code }: MermaidViewerProps) {
   const source = useMemo(() => code.trim(), [code])
   const [theme, setTheme] = useState<ViewerTheme>(() =>
-    typeof document !== 'undefined' &&
-    document.documentElement.getAttribute('data-theme') === 'dark'
-      ? 'dark'
-      : 'light',
+    typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light',
   )
   const cacheKey = useMemo(() => `${theme}:${source}`, [source, theme])
-  const [svg, setSvg] = useState(() => (source ? (getCachedSvg(cacheKey) ?? '') : ''))
+  const [svg, setSvg] = useState(() => (source ? getCachedSvg(cacheKey) ?? '' : ''))
   const [errorMessage, setErrorMessage] = useState('')
 
   useEffect(() => {
     if (typeof document === 'undefined') return
     const root = document.documentElement
-    const updateTheme = () =>
-      setTheme(root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light')
+    const updateTheme = () => setTheme(root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light')
     updateTheme()
     const observer = new MutationObserver(updateTheme)
     observer.observe(root, { attributes: true, attributeFilter: ['data-theme'] })

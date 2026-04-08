@@ -13,7 +13,8 @@ const buttonVariants = cva(
         secondary:
           'ui-btn-secondary border border-border/80 text-text-main hover:-translate-y-[1px]',
         ghost: 'ui-btn-ghost bg-transparent text-text-main',
-        outline: 'ui-btn-outline border border-border/85 text-text-main',
+        outline:
+          'ui-btn-outline border border-border/85 text-text-main',
       },
       size: {
         default: 'h-10 px-4 py-2.5',
@@ -29,14 +30,12 @@ const buttonVariants = cva(
   },
 )
 
-export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {}
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {}
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, ...props }, ref) => {
-    return (
-      <button ref={ref} className={cn(buttonVariants({ variant, size, className }))} {...props} />
-    )
+    return <button ref={ref} className={cn(buttonVariants({ variant, size, className }))} {...props} />
   },
 )
 Button.displayName = 'Button'
+

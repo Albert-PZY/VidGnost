@@ -1,2 +1,0 @@
-#!/usr/bin/env sh
-python scripts/git-hooks/protect_local_config_secrets.py --mode pre-push

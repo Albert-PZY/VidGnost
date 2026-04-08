@@ -9,13 +9,13 @@ VidGnost defines a practical video-analysis workbench for local execution plus o
 - Implement asynchronous `A/B/C/D` runtime phases with explicit phase boundaries.
 - Use local `Systran/faster-whisper-small` transcription on CPU.
 - Auto-prepare Whisper `small` model files at task start when cache is missing, with realtime progress events.
-- Run stage-`D` as ordered subchain: `transcript_optimize -> notes_extract -> notes_outline -> notes_sections -> notes_coverage -> summary_delivery -> mindmap_delivery`.
-- Generate detailed notes, concise summary, and mindmap through OpenAI-compatible online API.
+- Run stage-`D` as ordered subchain: `transcript_optimize -> fusion_delivery`.
+- Generate notes and mindmap through OpenAI-compatible online API.
 - Stream logs/progress/transcript/generation deltas via SSE with per-event `trace_id`.
 - Persist runtime warnings, event logs, stage snapshots, and stage artifacts for replay diagnostics.
 - Provide runtime config center tabs: `在线 LLM`, `Faster-Whisper`, `Prompt Templates`.
 - Persist runtime config in local files: `model_config.json`, `config.toml`, and prompt template files.
-- Support prompt-template CRUD + active selection for summary, notes, and mindmap channels.
+- Support prompt-template CRUD + active selection for summary and mindmap channels.
 - Provide task history retrieval, title update, terminal-task deletion, and artifact markdown editing.
 - Provide transcript / notes / mindmap / subtitle export and one-click bundle export.
 - Provide quick-start docs view in workbench shell with bilingual content.
@@ -23,7 +23,6 @@ VidGnost defines a practical video-analysis workbench for local execution plus o
 ## Capabilities
 
 ### Core Capabilities
-
 - `video-ingestion`: create tasks from URL/path/upload sources.
 - `transcription-pipeline`: async phase pipeline with CPU Whisper transcription.
 - `llm-summary-mindmap`: online generation for notes and markmap markdown.
@@ -33,7 +32,6 @@ VidGnost defines a practical video-analysis workbench for local execution plus o
 - `web-workbench-ui`: bilingual workbench with phase tabs and config center.
 
 ### Engineering Capabilities
-
 - Stream/memory governance for long-running sessions.
 - Stage-level metrics and artifact indexing for observability.
 - Structured runtime-warning semantics for degraded-but-continuable conditions.

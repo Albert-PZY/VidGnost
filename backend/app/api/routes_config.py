@@ -52,6 +52,7 @@ async def get_llm_config(
     return LLMConfigResponse(
         mode=payload["mode"],  # type: ignore[arg-type]
         load_profile=payload["load_profile"],  # type: ignore[arg-type]
+        local_model_id=payload["local_model_id"],
         api_key=payload["api_key"],
         api_key_configured=payload["api_key_configured"],
         base_url=payload["base_url"],
@@ -72,6 +73,7 @@ async def update_llm_config(
         {
             "mode": body.mode,
             "load_profile": body.load_profile,
+            "local_model_id": body.local_model_id,
             "api_key": body.api_key,
             "base_url": body.base_url,
             "model": body.model,
@@ -93,6 +95,7 @@ async def update_llm_config(
     return LLMConfigResponse(
         mode=response_payload["mode"],  # type: ignore[arg-type]
         load_profile=response_payload["load_profile"],  # type: ignore[arg-type]
+        local_model_id=response_payload["local_model_id"],
         api_key=response_payload["api_key"],
         api_key_configured=response_payload["api_key_configured"],
         base_url=response_payload["base_url"],
@@ -104,9 +107,7 @@ async def update_llm_config(
 
 
 @router.get("/prompts", response_model=PromptTemplateBundleResponse)
-async def get_prompt_templates(
-    prompt_store: PromptTemplateStore = Depends(get_prompt_store),
-) -> PromptTemplateBundleResponse:
+async def get_prompt_templates(prompt_store: PromptTemplateStore = Depends(get_prompt_store)) -> PromptTemplateBundleResponse:
     payload = await prompt_store.get_bundle()
     return PromptTemplateBundleResponse.model_validate(payload)
 
@@ -119,7 +120,6 @@ async def update_prompt_template_selection(
     try:
         payload = await prompt_store.update_selection(
             selected_summary_template_id=body.selected_summary_template_id,
-            selected_notes_template_id=body.selected_notes_template_id,
             selected_mindmap_template_id=body.selected_mindmap_template_id,
         )
     except ValueError as exc:
@@ -136,9 +136,7 @@ async def create_prompt_template(
     prompt_store: PromptTemplateStore = Depends(get_prompt_store),
 ) -> PromptTemplateBundleResponse:
     try:
-        payload = await prompt_store.create_template(
-            channel=body.channel, name=body.name, content=body.content
-        )
+        payload = await prompt_store.create_template(channel=body.channel, name=body.name, content=body.content)
     except ValueError as exc:
         raise AppError.bad_request(
             str(exc),
@@ -154,9 +152,7 @@ async def update_prompt_template(
     prompt_store: PromptTemplateStore = Depends(get_prompt_store),
 ) -> PromptTemplateBundleResponse:
     try:
-        payload = await prompt_store.update_template(
-            template_id=template_id, name=body.name, content=body.content
-        )
+        payload = await prompt_store.update_template(template_id=template_id, name=body.name, content=body.content)
     except ValueError as exc:
         raise AppError.bad_request(
             str(exc),

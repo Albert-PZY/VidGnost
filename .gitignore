@@ -17,7 +17,6 @@ npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pytest_cache/
 
 # Environment and secrets
 .env
@@ -26,16 +25,13 @@ yarn-error.log*
 
 # Python backend
 backend/.venv/
-__pycache__/
 backend/__pycache__/
 backend/.pytest_cache/
 backend/.mypy_cache/
 backend/.ruff_cache/
 backend/.coverage
 backend/htmlcov/
-backend/storage/*
-!backend/storage/config.toml
-!backend/storage/model_config.json
+backend/storage/
 backend/*.sqlite3
 backend/.python-version
 backend/**/__pycache__/
@@ -47,8 +43,6 @@ frontend/.vite/
 frontend/coverage/
 frontend/.cache/
 frontend/.eslintcache
-frontend/test-results/
-frontend/playwright-report/
 frontend/**/*.tsbuildinfo
 
 # Build / cache

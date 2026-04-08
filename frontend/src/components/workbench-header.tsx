@@ -57,11 +57,7 @@ export function WorkbenchHeader({
               draggable={false}
             />
           </span>
-          <PreText
-            as="h1"
-            variant="h3"
-            className="truncate text-[0.98rem] font-semibold md:text-[1.04rem]"
-          >
+          <PreText as="h1" variant="h3" className="truncate text-[0.98rem] font-semibold md:text-[1.04rem]">
             VidGnost
           </PreText>
           <PreText variant="timestamp" className="workbench-subtitle-pill hidden truncate md:block">

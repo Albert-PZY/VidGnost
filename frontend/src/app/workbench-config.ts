@@ -22,30 +22,10 @@ export const TRANSCRIPT_CORRECTION_MODE_OPTIONS = ['off', 'strict', 'rewrite'] a
 export const LLM_MODE_OPTIONS = ['api'] as const
 export const MODEL_LOAD_PROFILE_OPTIONS = ['balanced', 'memory_first'] as const
 export const STAGES: StageKey[] = ['A', 'B', 'C', 'D']
-export const VM_PHASES: VmPhaseKey[] = [
-  'A',
-  'B',
-  'C',
-  'transcript_optimize',
-  'notes_extract',
-  'notes_outline',
-  'notes_sections',
-  'notes_coverage',
-  'summary_delivery',
-  'mindmap_delivery',
-  'D',
-]
+export const VM_PHASES: VmPhaseKey[] = ['A', 'B', 'C', 'transcript_optimize', 'D']
 export const UI_LOCALES = ['zh-CN', 'en'] as const
 export const WHISPER_PRESET_KEYS = ['speed', 'balanced', 'quality'] as const
-export const TASK_STATUS_KEYS: TaskStatus[] = [
-  'queued',
-  'preparing',
-  'transcribing',
-  'summarizing',
-  'cancelled',
-  'completed',
-  'failed',
-]
+export const TASK_STATUS_KEYS: TaskStatus[] = ['queued', 'preparing', 'transcribing', 'summarizing', 'cancelled', 'completed', 'failed']
 const TASK_STATUS_KEY_SET = new Set<TaskStatus>(TASK_STATUS_KEYS)
 
 export const FIELD_INPUT_CLASS_NAME =
@@ -101,12 +81,6 @@ export function createEmptyVmPhaseMetrics(): Record<VmPhaseKey, VmPhaseMetric> {
     B: create(false),
     C: create(false),
     transcript_optimize: create(true),
-    notes_extract: create(false),
-    notes_outline: create(false),
-    notes_sections: create(false),
-    notes_coverage: create(false),
-    summary_delivery: create(false),
-    mindmap_delivery: create(false),
     D: create(false),
   }
 }
@@ -118,8 +92,7 @@ export function normalizeLocale(locale: string): UILocale {
 export function detectBundleArchiveFormat(): BundleArchiveFormat {
   if (typeof navigator === 'undefined') return 'zip'
   const nav = navigator as Navigator & { userAgentData?: { platform?: string } }
-  const platform =
-    `${nav.userAgentData?.platform ?? ''} ${nav.platform ?? ''} ${nav.userAgent ?? ''}`.toLowerCase()
+  const platform = `${nav.userAgentData?.platform ?? ''} ${nav.platform ?? ''} ${nav.userAgent ?? ''}`.toLowerCase()
   if (platform.includes('linux')) {
     return 'tar'
   }
@@ -131,11 +104,7 @@ export function parseTaskStatus(status: string | undefined): TaskStatus | null {
   return TASK_STATUS_KEY_SET.has(status as TaskStatus) ? (status as TaskStatus) : null
 }
 
-export function parseInteger(
-  value: string,
-  fallback: number,
-  min = Number.MIN_SAFE_INTEGER,
-): number {
+export function parseInteger(value: string, fallback: number, min = Number.MIN_SAFE_INTEGER): number {
   const parsed = Number.parseInt(value, 10)
   if (Number.isNaN(parsed)) return fallback
   return Math.max(min, parsed)
@@ -170,9 +139,7 @@ export function isTaskTerminalStatus(status: string): boolean {
   return status === 'completed' || status === 'failed' || status === 'cancelled'
 }
 
-export function inferStageFromLogs(
-  logs: Partial<Record<StageKey, string[]>> | null | undefined,
-): StageKey {
+export function inferStageFromLogs(logs: Partial<Record<StageKey, string[]>> | null | undefined): StageKey {
   for (const stage of [...STAGES].reverse()) {
     const lines = logs?.[stage]
     if (Array.isArray(lines) && lines.length > 0) {
@@ -225,39 +192,31 @@ export function formatRuntimeWarningLine(event: TaskEvent): string {
   return `${prefixes.join(' ')} ${body}`.trim()
 }
 
-export function normalizeWhisperConfigForCpu(config: WhisperConfig): WhisperConfig {
+export function normalizeWhisperConfigForGpu(config: WhisperConfig): WhisperConfig {
   const normalizedComputeType = config.compute_type === 'float32' ? 'float32' : 'int8'
   return {
     ...config,
     device: 'cpu',
     compute_type: normalizedComputeType,
-    model_load_profile: config.model_load_profile === 'memory_first' ? 'memory_first' : 'balanced',
+    model_load_profile:
+      config.model_load_profile === 'memory_first'
+        ? 'memory_first'
+        : 'balanced',
   }
-}
-
-export function normalizeFusionPromptPreview(markdown: string): string {
-  const raw = markdown ?? ''
-  if (!raw.trim()) return ''
-  if (!raw.includes('# 最终输入给 LLM 的提示词')) {
-    return raw
-  }
-  return raw
-    .replace(/~~~text\s*([\s\S]*?)\s*~~~/gi, '$1')
-    .replace(/```text\s*([\s\S]*?)\s*```/gi, '$1')
 }
 
 function isSameWhisperConfig(left: WhisperConfig, right: WhisperConfig): boolean {
   return (
-    left.model_default === right.model_default &&
-    left.language === right.language &&
-    left.device === right.device &&
-    left.compute_type === right.compute_type &&
-    left.model_load_profile === right.model_load_profile &&
-    left.beam_size === right.beam_size &&
-    left.vad_filter === right.vad_filter &&
-    left.chunk_seconds === right.chunk_seconds &&
-    left.target_sample_rate === right.target_sample_rate &&
-    left.target_channels === right.target_channels
+    left.model_default === right.model_default
+    && left.language === right.language
+    && left.device === right.device
+    && left.compute_type === right.compute_type
+    && left.model_load_profile === right.model_load_profile
+    && left.beam_size === right.beam_size
+    && left.vad_filter === right.vad_filter
+    && left.chunk_seconds === right.chunk_seconds
+    && left.target_sample_rate === right.target_sample_rate
+    && left.target_channels === right.target_channels
   )
 }
 

@@ -50,6 +50,7 @@ def test_get_and_update_llm_config_persists_file() -> None:
 
         payload = {
             "mode": "api",
+            "local_model_id": "Qwen/Qwen2.5-7B-Instruct",
             "api_key": "  test-key  ",
             "base_url": " https://example.com/v1 ",
             "model": " test-model ",

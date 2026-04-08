@@ -36,10 +36,7 @@ interface PromptTemplatesTabProps {
   selectTemplateDraft: (template: PromptTemplateItem) => void
   copyPromptTemplateContent: (templateId: string, content: string) => Promise<void>
   requestDeletePromptTemplate: (channel: PromptTemplateChannel, templateId?: string) => void
-  updatePromptDraft: (
-    channel: PromptTemplateChannel,
-    patch: Partial<Pick<PromptTemplateDraft, 'name' | 'content'>>,
-  ) => void
+  updatePromptDraft: (channel: PromptTemplateChannel, patch: Partial<Pick<PromptTemplateDraft, 'name' | 'content'>>) => void
   resetPromptDraft: (channel: PromptTemplateChannel) => void
   savePromptTemplate: (channel: PromptTemplateChannel) => Promise<void>
   switchPromptTemplate: (channel: PromptTemplateChannel, templateId: string) => Promise<void>
@@ -78,10 +75,6 @@ export function PromptTemplatesTab({
             <TabsTrigger value="summary" className="flex-1 gap-1.5">
               <FileText className="h-3.5 w-3.5" />
               {t('llm.promptTemplates.summary.title')}
-            </TabsTrigger>
-            <TabsTrigger value="notes" className="flex-1 gap-1.5">
-              <FileText className="h-3.5 w-3.5" />
-              {t('llm.promptTemplates.notes.title')}
             </TabsTrigger>
             <TabsTrigger value="mindmap" className="flex-1 gap-1.5">
               <GitBranch className="h-3.5 w-3.5" />
@@ -125,8 +118,8 @@ export function PromptTemplatesTab({
                   'group relative block w-full cursor-pointer rounded-xl border p-3.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/55',
                   promptActionChannel === promptTemplateView && 'cursor-not-allowed opacity-70',
                   template.id === activePromptDraft.templateId
-                    ? 'border-border bg-bg-base'
-                    : 'border-accent/60 bg-accent/10 hover:border-accent/40',
+                    ? 'border-accent/60 bg-accent/10'
+                    : 'border-border bg-bg-base hover:border-accent/40',
                 )}
               >
                 <div className="mb-2 flex items-center justify-between gap-2">
@@ -136,9 +129,7 @@ export function PromptTemplatesTab({
                   <div
                     className={cn(
                       'flex items-center gap-1 transition-opacity',
-                      template.id === activePromptDraft.templateId
-                        ? 'opacity-100'
-                        : 'opacity-0 group-hover:opacity-100',
+                      template.id === activePromptDraft.templateId ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
                     )}
                   >
                     <Button
@@ -198,52 +189,40 @@ export function PromptTemplatesTab({
           <section className="rounded-xl border border-border/70 bg-bg-base/85 p-[1.125rem] shadow-[0_14px_38px_-28px_rgba(15,23,42,0.7)]">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <PreText as="h3" variant="h3">
-                {activePromptDraft.isNew
-                  ? t('llm.promptTemplates.createTitle')
-                  : t('llm.promptTemplates.editTitle')}
+                {activePromptDraft.isNew ? t('llm.promptTemplates.createTitle') : t('llm.promptTemplates.editTitle')}
               </PreText>
-              {!activePromptDraft.isNew &&
-                activePromptDraft.templateId === selectedPromptTemplateId && (
-                  <span className="inline-flex rounded-full border border-accent/40 bg-accent/10 px-2 py-0.5 text-[11px] text-accent">
-                    {t('llm.promptTemplates.selectedBadge')}
-                  </span>
-                )}
+              {!activePromptDraft.isNew && activePromptDraft.templateId === selectedPromptTemplateId && (
+                <span className="inline-flex rounded-full border border-accent/40 bg-accent/10 px-2 py-0.5 text-[11px] text-accent">
+                  {t('llm.promptTemplates.selectedBadge')}
+                </span>
+              )}
             </div>
             {promptDraftReadonly && (
-              <PreText
-                variant="timestamp"
-                className="mb-3 rounded-lg border border-border/70 bg-surface-muted/70 px-3 py-2"
-              >
+              <PreText variant="timestamp" className="mb-3 rounded-lg border border-border/70 bg-surface-muted/70 px-3 py-2">
                 {t('llm.promptTemplates.readonlyHint')}
               </PreText>
             )}
             <div className="mb-3 grid gap-2 md:grid-cols-[96px_minmax(0,1fr)] md:items-center">
-              <span className="text-xs font-medium text-text-subtle">
-                {t('llm.promptTemplates.nameLabel')}
-              </span>
+              <span className="text-xs font-medium text-text-subtle">{t('llm.promptTemplates.nameLabel')}</span>
               <input
                 className={fieldInputClassName}
                 value={activePromptDraft.name}
-                onChange={(event) =>
-                  updatePromptDraft(promptTemplateView, { name: event.target.value })
-                }
+                onChange={(event) => updatePromptDraft(promptTemplateView, { name: event.target.value })}
                 placeholder={
                   promptTemplateView === 'summary'
                     ? t('llm.placeholders.summaryPromptName')
-                    : promptTemplateView === 'notes'
-                      ? t('llm.placeholders.notesPromptName')
-                      : t('llm.placeholders.mindmapPromptName')
+                    : t('llm.placeholders.mindmapPromptName')
                 }
                 disabled={promptActionChannel === promptTemplateView || promptDraftReadonly}
               />
             </div>
             <div className="prompt-markdown-editor" data-color-mode={isDark ? 'dark' : 'light'}>
               <Suspense
-                fallback={
+                fallback={(
                   <div className="flex h-[500px] items-center justify-center rounded-xl border border-border/70 bg-surface-muted/70 text-text-subtle">
                     <LoaderCircle className="h-5 w-5 animate-spin" />
                   </div>
-                }
+                )}
               >
                 <LazyPromptMarkdownEditor
                   value={activePromptDraft.content}
@@ -258,9 +237,7 @@ export function PromptTemplatesTab({
                     placeholder:
                       promptTemplateView === 'summary'
                         ? t('llm.placeholders.summaryPromptCustom')
-                        : promptTemplateView === 'notes'
-                          ? t('llm.placeholders.notesPromptCustom')
-                          : t('llm.placeholders.mindmapPromptCustom'),
+                        : t('llm.placeholders.mindmapPromptCustom'),
                     readOnly: promptActionChannel === promptTemplateView || promptDraftReadonly,
                   }}
                 />
@@ -285,9 +262,7 @@ export function PromptTemplatesTab({
                 onClick={() => void savePromptTemplate(promptTemplateView)}
                 disabled={promptActionChannel === promptTemplateView || promptDraftReadonly}
               >
-                {promptActionChannel === promptTemplateView ? (
-                  <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-                ) : null}
+                {promptActionChannel === promptTemplateView ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
                 {t('llm.promptTemplates.saveAction')}
               </Button>
               <Button
@@ -310,12 +285,7 @@ export function PromptTemplatesTab({
                     type="button"
                     size="sm"
                     variant="outline"
-                    onClick={() =>
-                      void switchPromptTemplate(
-                        promptTemplateView,
-                        String(activePromptDraft.templateId),
-                      )
-                    }
+                    onClick={() => void switchPromptTemplate(promptTemplateView, String(activePromptDraft.templateId))}
                     disabled={promptActionChannel === promptTemplateView}
                   >
                     {t('llm.promptTemplates.activateAction')}

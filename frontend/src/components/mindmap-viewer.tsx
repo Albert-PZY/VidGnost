@@ -1,8 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-
-import 'jsmind/style/jsmind.css'
-
-import { buildJsMindMindmap } from '../lib/mindmap'
+import { useEffect, useRef, useState } from 'react'
 
 interface MindmapViewerProps {
   markdown: string
@@ -11,23 +7,54 @@ interface MindmapViewerProps {
 
 type ViewerTheme = 'light' | 'dark'
 
-interface JsMindInstance {
-  expand_all: () => void
-  resize: () => void
-  show: (mind: object | null, skipCentering?: boolean) => void
+interface MarkmapRenderOptions {
+  autoFit?: boolean
+  duration?: number
+  style?: (id: string) => string
+}
+
+interface LoadedMarkmapModules {
+  Transformer: { new (): { transform: (content: string) => { root: unknown } } }
+  Markmap: {
+    create: (
+      svg: SVGSVGElement,
+      options: MarkmapRenderOptions,
+      root: unknown,
+    ) => { setData?: (root: unknown, options?: MarkmapRenderOptions) => void; fit?: () => void; destroy: () => void }
+  }
+}
+
+let markmapModulesPromise: Promise<LoadedMarkmapModules> | null = null
+
+async function loadMarkmapModules(): Promise<LoadedMarkmapModules> {
+  if (!markmapModulesPromise) {
+    markmapModulesPromise = Promise.all([import('markmap-lib/no-plugins'), import('markmap-view')]).then(([lib, view]) => ({
+      Transformer: lib.Transformer as LoadedMarkmapModules['Transformer'],
+      Markmap: view.Markmap as LoadedMarkmapModules['Markmap'],
+    }))
+  }
+  return markmapModulesPromise
+}
+
+function useDebouncedValue(value: string, delayMs: number): string {
+  const [debounced, setDebounced] = useState(value)
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs)
+    return () => window.clearTimeout(timer)
+  }, [value, delayMs])
+
+  return debounced
 }
 
 export function MindmapViewer({ markdown, emptyText }: MindmapViewerProps) {
-  const panelRef = useRef<HTMLDivElement | null>(null)
-  const instanceRef = useRef<JsMindInstance | null>(null)
-  const [renderError, setRenderError] = useState<string | null>(null)
+  const ref = useRef<SVGSVGElement | null>(null)
+  const transformerRef = useRef<null | { transform: (content: string) => { root: unknown } }>(null)
+  const markmapRef = useRef<null | { setData?: (root: unknown, options?: MarkmapRenderOptions) => void; fit?: () => void; destroy: () => void }>(null)
+  const renderMarkdown = useDebouncedValue(markdown, 180)
   const [theme, setTheme] = useState<ViewerTheme>(() =>
-    typeof document !== 'undefined' &&
-    document.documentElement.getAttribute('data-theme') === 'dark'
-      ? 'dark'
-      : 'light',
+    typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light',
   )
-  const mindmapData = useMemo(() => buildJsMindMindmap(markdown, '思维导图'), [markdown])
 
   useEffect(() => {
     if (typeof document === 'undefined') return
@@ -42,97 +69,75 @@ export function MindmapViewer({ markdown, emptyText }: MindmapViewerProps) {
   }, [])
 
   useEffect(() => {
-    const container = panelRef.current
-    if (!container) return
-    if (!mindmapData) {
-      container.innerHTML = ''
-      instanceRef.current = null
-      setRenderError(null)
+    if (!ref.current) return
+    const content = renderMarkdown.trim()
+    if (!content) {
+      markmapRef.current?.destroy()
+      markmapRef.current = null
       return
     }
 
     let cancelled = false
 
     const render = async () => {
-      try {
-        const { default: JsMind } = await import('jsmind')
-        if (cancelled || !panelRef.current) return
-
-        panelRef.current.innerHTML = ''
-        const instance = new JsMind({
-          container: panelRef.current,
-          editable: false,
-          theme: theme === 'dark' ? 'asphalt' : 'clouds',
-          support_html: false,
-          log_level: 'error',
-          default_event_handle: {
-            enable_click_handle: false,
-            enable_dblclick_handle: false,
-          },
-          shortcut: {
-            enable: false,
-          },
-          view: {
-            engine: 'svg',
-            hmargin: 72,
-            vmargin: 38,
-            line_width: 2,
-            line_color: theme === 'dark' ? '#90abc8' : '#6f8399',
-            line_style: 'curved',
-            draggable: true,
-            hide_scrollbars_when_draggable: true,
-            node_overflow: 'wrap',
-            zoom: {
-              min: 0.4,
-              max: 2.2,
-              step: 0.12,
-              mask_key: 0,
-            },
-            expander_style: 'char',
-          },
-          layout: {
-            hspace: 54,
-            vspace: 20,
-            pspace: 20,
-            cousin_space: 10,
-          },
-        })
-        instance.show(mindmapData)
-        instance.expand_all()
-        instance.resize()
-        if (cancelled) return
-        instanceRef.current = instance as JsMindInstance
-        setRenderError(null)
-      } catch (error) {
-        if (cancelled) return
-        setRenderError(error instanceof Error ? error.message : String(error))
-        if (panelRef.current) {
-          panelRef.current.innerHTML = ''
-        }
-        instanceRef.current = null
+      const { Transformer, Markmap } = await loadMarkmapModules()
+      if (cancelled || !ref.current) return
+      if (!transformerRef.current) {
+        transformerRef.current = new Transformer()
       }
+      const { root } = transformerRef.current.transform(content)
+      const renderOptions: MarkmapRenderOptions = {
+        autoFit: true,
+        duration: 120,
+        style: (id) =>
+          theme === 'dark'
+            ? `
+#${id}.markmap {
+  --markmap-text-color: #e6efff;
+  --markmap-circle-open-bg: #1a2535;
+}
+#${id} .markmap-link {
+  stroke: #6e8eb4;
+  opacity: 0.86;
+}
+#${id} .markmap-foreign code {
+  color: #d7e6ff;
+  background: #233247;
+}
+`
+            : `
+#${id}.markmap {
+  --markmap-text-color: #213248;
+  --markmap-circle-open-bg: #ffffff;
+}
+#${id} .markmap-link {
+  stroke: #6c87a8;
+  opacity: 0.82;
+}
+`,
+      }
+      if (markmapRef.current?.setData) {
+        markmapRef.current.setData(root, renderOptions)
+        markmapRef.current.fit?.()
+        return
+      }
+      markmapRef.current = Markmap.create(ref.current, renderOptions, root)
     }
 
     void render()
 
     return () => {
       cancelled = true
-      if (panelRef.current) {
-        panelRef.current.innerHTML = ''
-      }
-      instanceRef.current = null
     }
-  }, [mindmapData, theme])
+  }, [renderMarkdown, theme])
 
   useEffect(() => {
-    const container = panelRef.current
-    if (!container || !mindmapData || typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(() => {
-      instanceRef.current?.resize()
-    })
-    observer.observe(container)
-    return () => observer.disconnect()
-  }, [mindmapData])
+    return () => {
+      markmapRef.current?.destroy()
+      markmapRef.current = null
+      transformerRef.current = null
+    }
+  }, [])
 
   if (!markdown.trim()) {
     return (
@@ -142,25 +147,9 @@ export function MindmapViewer({ markdown, emptyText }: MindmapViewerProps) {
     )
   }
 
-  if (!mindmapData || renderError) {
-    return (
-      <div className="runtime-mindmap-panel h-[420px] overflow-auto rounded-xl border border-border bg-surface-muted p-3">
-        <div className="mb-2 text-xs text-text-subtle">
-          {renderError
-            ? `jsMind 渲染失败，已降级显示原始内容：${renderError}`
-            : '当前导图内容暂时无法转换为 jsMind 结构，已显示原始文本。'}
-        </div>
-        <pre className="whitespace-pre-wrap text-xs leading-6 text-text-main">{markdown}</pre>
-      </div>
-    )
-  }
-
   return (
-    <div className="runtime-mindmap-panel h-[420px] overflow-hidden rounded-xl border border-border bg-surface-muted p-2">
-      <div
-        ref={panelRef}
-        className="jsmind-host h-full min-h-[380px] w-full overflow-hidden rounded-[0.9rem] border border-border/60 bg-bg-base/80"
-      />
+    <div className="runtime-mindmap-panel h-[420px] rounded-xl border border-border bg-surface-muted p-2">
+      <svg ref={ref} className="h-full w-full" />
     </div>
   )
 }

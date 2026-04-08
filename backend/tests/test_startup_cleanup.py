@@ -1,8 +1,7 @@
 from pathlib import Path
 
-import pytest
-
 import app.services.startup_cleanup as startup_cleanup
+import pytest
 from app.services.startup_cleanup import cleanup_temp_dir_once
 
 
@@ -34,9 +33,7 @@ def test_cleanup_temp_dir_once_creates_missing_root(tmp_path: Path) -> None:
     assert report.failed_entries == []
 
 
-def test_cleanup_temp_dir_once_collects_failures(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_cleanup_temp_dir_once_collects_failures(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     temp_dir = tmp_path / "tmp"
     target_dir = temp_dir / "task-b"
     target_dir.mkdir(parents=True)

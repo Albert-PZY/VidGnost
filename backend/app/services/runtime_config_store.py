@@ -54,25 +54,16 @@ class RuntimeConfigStore:
         async with self._lock:
             current = self._read_whisper_sync()
             merged: WhisperRuntimeConfig = {
-                "model_default": _normalize_model_size(
-                    payload.get("model_default", current["model_default"])
-                ),
-                "language": str(payload.get("language", current["language"])).strip()
-                or current["language"],
+                "model_default": _normalize_model_size(payload.get("model_default", current["model_default"])),
+                "language": str(payload.get("language", current["language"])).strip() or current["language"],
                 "device": _normalize_device(payload.get("device", current["device"])),
-                "compute_type": _normalize_compute_type(
-                    payload.get("compute_type", current["compute_type"])
-                ),
+                "compute_type": _normalize_compute_type(payload.get("compute_type", current["compute_type"])),
                 "model_load_profile": _normalize_load_profile(
                     payload.get("model_load_profile", current["model_load_profile"])
                 ),
-                "beam_size": _to_int(
-                    payload.get("beam_size"), current["beam_size"], minimum=1, maximum=12
-                ),
+                "beam_size": _to_int(payload.get("beam_size"), current["beam_size"], minimum=1, maximum=12),
                 "vad_filter": bool(payload.get("vad_filter", current["vad_filter"])),
-                "chunk_seconds": _to_int(
-                    payload.get("chunk_seconds"), current["chunk_seconds"], minimum=30, maximum=1200
-                ),
+                "chunk_seconds": _to_int(payload.get("chunk_seconds"), current["chunk_seconds"], minimum=30, maximum=1200),
                 "target_sample_rate": _to_int(
                     payload.get("target_sample_rate"),
                     current["target_sample_rate"],
@@ -106,30 +97,17 @@ class RuntimeConfigStore:
                 "model_default": _normalize_model_size(
                     whisper.get("model_default", DEFAULT_WHISPER_RUNTIME_CONFIG["model_default"])
                 ),
-                "language": str(
-                    whisper.get("language", DEFAULT_WHISPER_RUNTIME_CONFIG["language"])
-                ).strip()
+                "language": str(whisper.get("language", DEFAULT_WHISPER_RUNTIME_CONFIG["language"])).strip()
                 or DEFAULT_WHISPER_RUNTIME_CONFIG["language"],
-                "device": _normalize_device(
-                    whisper.get("device", DEFAULT_WHISPER_RUNTIME_CONFIG["device"])
-                ),
+                "device": _normalize_device(whisper.get("device", DEFAULT_WHISPER_RUNTIME_CONFIG["device"])),
                 "compute_type": _normalize_compute_type(
                     whisper.get("compute_type", DEFAULT_WHISPER_RUNTIME_CONFIG["compute_type"])
                 ),
                 "model_load_profile": _normalize_load_profile(
-                    whisper.get(
-                        "model_load_profile", DEFAULT_WHISPER_RUNTIME_CONFIG["model_load_profile"]
-                    )
+                    whisper.get("model_load_profile", DEFAULT_WHISPER_RUNTIME_CONFIG["model_load_profile"])
                 ),
-                "beam_size": _to_int(
-                    whisper.get("beam_size"),
-                    DEFAULT_WHISPER_RUNTIME_CONFIG["beam_size"],
-                    minimum=1,
-                    maximum=12,
-                ),
-                "vad_filter": bool(
-                    whisper.get("vad_filter", DEFAULT_WHISPER_RUNTIME_CONFIG["vad_filter"])
-                ),
+                "beam_size": _to_int(whisper.get("beam_size"), DEFAULT_WHISPER_RUNTIME_CONFIG["beam_size"], minimum=1, maximum=12),
+                "vad_filter": bool(whisper.get("vad_filter", DEFAULT_WHISPER_RUNTIME_CONFIG["vad_filter"])),
                 "chunk_seconds": _to_int(
                     whisper.get("chunk_seconds"),
                     DEFAULT_WHISPER_RUNTIME_CONFIG["chunk_seconds"],

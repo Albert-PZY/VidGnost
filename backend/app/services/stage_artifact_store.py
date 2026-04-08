@@ -42,26 +42,6 @@ class StageArtifactStore:
         self.write_json(task_id, stage, relative_path, payload)
         return relative_path.replace("\\", "/")
 
-    def read_text(self, task_id: str, stage: str, relative_path: str, *, default: str = "") -> str:
-        path = self._safe_stage_relative_path(task_id, stage, relative_path)
-        if not path.exists() or not path.is_file():
-            return default
-        try:
-            return path.read_text(encoding="utf-8")
-        except OSError:
-            return default
-
-    def read_bytes(
-        self, task_id: str, stage: str, relative_path: str, *, default: bytes = b""
-    ) -> bytes:
-        path = self._safe_stage_relative_path(task_id, stage, relative_path)
-        if not path.exists() or not path.is_file():
-            return default
-        try:
-            return path.read_bytes()
-        except OSError:
-            return default
-
     def reset_stage(self, task_id: str, stage: str) -> None:
         stage_dir = self._stage_dir(task_id, stage)
         if stage_dir.exists():

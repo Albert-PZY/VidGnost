@@ -1,9 +1,11 @@
 import type { ComponentProps, Dispatch, SetStateAction } from 'react'
 import type { TFunction } from 'i18next'
+import { Download, LoaderCircle } from 'lucide-react'
 
-import { BundleDownloadFloater } from './bundle-download-floater'
 import { HistoryModal } from './history-modal'
+import { PreText } from './pretext'
 import { SelfCheckModal } from './self-check-modal'
+import { Button } from './ui/button'
 import { WorkbenchConfigModal } from './workbench-config-modal'
 import {
   DeleteTaskConfirmModal,
@@ -20,10 +22,7 @@ type RuntimeMainProps = Omit<ComponentProps<typeof WorkbenchRuntimeMain>, 't'>
 type SourceTaskModalProps = Omit<ComponentProps<typeof SourceTaskModal>, 'open' | 't'>
 type HistoryModalProps = Omit<ComponentProps<typeof HistoryModal>, 'open' | 't'>
 type DeleteTaskConfirmModalProps = Omit<ComponentProps<typeof DeleteTaskConfirmModal>, 'open' | 't'>
-type PromptTemplateDeleteModalProps = Omit<
-  ComponentProps<typeof PromptTemplateDeleteModal>,
-  'open' | 't'
->
+type PromptTemplateDeleteModalProps = Omit<ComponentProps<typeof PromptTemplateDeleteModal>, 'open' | 't'>
 type ConfigModalProps = Omit<ComponentProps<typeof WorkbenchConfigModal>, 'open' | 't'>
 type SelfCheckModalProps = Omit<ComponentProps<typeof SelfCheckModal>, 'open' | 't'>
 
@@ -32,9 +31,9 @@ interface WorkbenchMainViewProps {
   sidebarCollapsed: boolean
   setSidebarCollapsed: Dispatch<SetStateAction<boolean>>
   activeSidebarPanel: SidebarPanelKey
-  setActiveSidebarPanel: (panel: SidebarPanelKey) => void
+  setActiveSidebarPanel: Dispatch<SetStateAction<SidebarPanelKey>>
   loadHistory: (query?: string) => Promise<void>
-  openConfigPanel: (tab?: 'llm' | 'whisper' | 'prompts') => void
+  openConfigPanel: (tab?: 'localModels' | 'whisper' | 'prompts') => void
   openSelfCheckPanel: () => void
   runtimeModel: string
   runtimeLanguage: string
@@ -85,9 +84,7 @@ export function WorkbenchMainView({
       <div
         className={cn(
           'grid w-full gap-4 px-3 py-3.5 md:gap-4 md:px-4 md:py-[1.125rem] xl:gap-5',
-          sidebarCollapsed
-            ? 'lg:grid-cols-[78px_minmax(0,1fr)]'
-            : 'lg:grid-cols-[264px_minmax(0,1fr)]',
+          sidebarCollapsed ? 'lg:grid-cols-[78px_minmax(0,1fr)]' : 'lg:grid-cols-[264px_minmax(0,1fr)]',
         )}
       >
         <WorkbenchSidebar
@@ -110,17 +107,32 @@ export function WorkbenchMainView({
       </div>
 
       {isTaskCompleted && activeTask && (
-        <BundleDownloadFloater
-          t={t}
-          bundleArchiveFormat={bundleArchiveFormat}
-          savingArtifacts={savingArtifacts}
-          onDownloadAllArtifacts={onDownloadAllArtifacts}
-        />
+        <div className="pointer-events-none fixed bottom-5 right-5 z-30">
+          <div className="workbench-floating-card pointer-events-auto w-[360px] p-3.5">
+            <PreText variant="timestamp" className="mb-2">
+              {t('bundleDownload.ready')}
+            </PreText>
+            <Button className="w-full" onClick={onDownloadAllArtifacts} disabled={savingArtifacts}>
+              {savingArtifacts ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+              {savingArtifacts
+                ? t('runtime.stageD.saving')
+                : t('bundleDownload.action', { format: bundleArchiveFormat.toUpperCase() })}
+            </Button>
+          </div>
+        </div>
       )}
 
-      <SourceTaskModal open={activeSidebarPanel === 'source'} t={t} {...sourceTaskModalProps} />
+      <SourceTaskModal
+        open={activeSidebarPanel === 'source'}
+        t={t}
+        {...sourceTaskModalProps}
+      />
 
-      <HistoryModal open={activeSidebarPanel === 'history'} t={t} {...historyModalProps} />
+      <HistoryModal
+        open={activeSidebarPanel === 'history'}
+        t={t}
+        {...historyModalProps}
+      />
 
       <DeleteTaskConfirmModal
         open={Boolean(deleteTaskConfirmModalProps.pendingDeleteTask)}
@@ -134,9 +146,17 @@ export function WorkbenchMainView({
         {...promptTemplateDeleteModalProps}
       />
 
-      <WorkbenchConfigModal open={activeSidebarPanel === 'config'} t={t} {...configModalProps} />
+      <WorkbenchConfigModal
+        open={activeSidebarPanel === 'config'}
+        t={t}
+        {...configModalProps}
+      />
 
-      <SelfCheckModal open={activeSidebarPanel === 'selfCheck'} t={t} {...selfCheckModalProps} />
+      <SelfCheckModal
+        open={activeSidebarPanel === 'selfCheck'}
+        t={t}
+        {...selfCheckModalProps}
+      />
     </>
   )
 }

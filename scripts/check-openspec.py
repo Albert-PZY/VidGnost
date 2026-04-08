@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
+
 
 RE_REQUIREMENT = re.compile(r"^### Requirement:", re.MULTILINE)
 RE_SCENARIO = re.compile(r"^#### Scenario:", re.MULTILINE)
@@ -18,7 +20,11 @@ def _find_active_changes(changes_dir: Path) -> list[Path]:
         return []
     ignored = {"archive", "templates"}
     return sorted(
-        [item for item in changes_dir.iterdir() if item.is_dir() and item.name not in ignored],
+        [
+            item
+            for item in changes_dir.iterdir()
+            if item.is_dir() and item.name not in ignored
+        ],
         key=lambda p: p.name,
     )
 
@@ -66,9 +72,7 @@ def main() -> int:
             errors.append(f"{change}: missing specs directory")
             continue
 
-        spec_capability_dirs = sorted(
-            [item for item in specs_dir.iterdir() if item.is_dir()], key=lambda p: p.name
-        )
+        spec_capability_dirs = sorted([item for item in specs_dir.iterdir() if item.is_dir()], key=lambda p: p.name)
         if not spec_capability_dirs:
             errors.append(f"{specs_dir}: no capability directories found")
             continue

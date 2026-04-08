@@ -28,7 +28,6 @@ def cleanup_task_history_once(
     *,
     max_total_bytes: int,
     max_tasks: int,
-    storage_dir: str | None = None,
 ) -> TaskHistoryCleanupReport:
     report = TaskHistoryCleanupReport(
         max_total_bytes=max(0, int(max_total_bytes)),
@@ -42,11 +41,12 @@ def cleanup_task_history_once(
     for record in records:
         if record.status not in _TERMINAL_STATUSES:
             continue
-        if _ensure_artifact_meta(record, storage_dir=storage_dir):
+        if _ensure_artifact_meta(record):
             task_store.replace(record)
         artifact_bytes = max(0, int(record.artifact_total_bytes or 0))
-        should_keep = terminal_kept < report.max_tasks and (
-            report.kept_total_bytes + artifact_bytes <= report.max_total_bytes or terminal_kept == 0
+        should_keep = (
+            terminal_kept < report.max_tasks
+            and (report.kept_total_bytes + artifact_bytes <= report.max_total_bytes or terminal_kept == 0)
         )
         if should_keep:
             terminal_kept += 1
@@ -60,7 +60,7 @@ def cleanup_task_history_once(
     return report
 
 
-def _ensure_artifact_meta(record: TaskRecord, *, storage_dir: str | None = None) -> bool:
+def _ensure_artifact_meta(record: TaskRecord) -> bool:
     if (record.artifact_total_bytes or 0) > 0 and record.artifact_index_json:
         return False
     index_json, total_bytes = build_task_artifact_index(
@@ -70,7 +70,6 @@ def _ensure_artifact_meta(record: TaskRecord, *, storage_dir: str | None = None)
         summary_markdown=record.summary_markdown,
         notes_markdown=record.notes_markdown,
         mindmap_markdown=record.mindmap_markdown,
-        storage_dir=storage_dir,
     )
     record.artifact_index_json = index_json
     record.artifact_total_bytes = total_bytes

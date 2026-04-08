@@ -118,10 +118,8 @@ export const resources = {
           apiKey: 'API Key',
           baseUrl: 'Base URL',
           model: 'Model Name',
-          summaryPromptName: '摘要模板名称',
-          summaryPromptCustom: '输入自定义摘要提示词',
-          notesPromptName: '详细笔记模板名称',
-          notesPromptCustom: '输入自定义详细笔记提示词（Markdown/自然语言均可）',
+          summaryPromptName: '笔记模板名称',
+          summaryPromptCustom: '输入自定义笔记提示词（Markdown/自然语言均可）',
           mindmapPromptName: '导图模板名称',
           mindmapPromptCustom: '输入自定义思维导图提示词',
         },
@@ -129,6 +127,7 @@ export const resources = {
         hideSecret: '隐藏原始内容',
         promptTemplates: {
           title: '提示词模板管理',
+          navDescription: '提示词模板已从 LLM 参数区独立出来，便于单独维护。',
           defaultHint: '模板数据持久化到本地文件，可新增和切换模板；默认模板为内置只读。',
           selectedBadge: '当前生效',
           defaultBadge: '默认只读',
@@ -154,12 +153,8 @@ export const resources = {
           deleteConfirm: '确认删除模板“{{name}}”吗？删除后不可恢复。',
           readonlyHint: '默认模板为内置模板，不可修改或删除。可先复制内容后新建模板进行编辑。',
           summary: {
-            title: '摘要模板管理',
-            description: '可切换、编辑、删除和新增多份摘要提示词模板。',
-          },
-          notes: {
             title: '详细笔记模板管理',
-            description: '可切换、编辑、删除和新增多份详细笔记提示词模板。',
+            description: '可切换、编辑、删除和新增多份笔记提示词模板。',
           },
           mindmap: {
             title: '思维导图模板管理',
@@ -171,6 +166,7 @@ export const resources = {
       },
       whisper: {
         title: 'Faster-Whisper 运行配置',
+        navDescription: '管理预下载、模板以及转写运行参数',
         meta: {
           inputLabel: '可选',
           explanationLabel: '说明',
@@ -260,6 +256,24 @@ export const resources = {
           customHint: '修改任意参数后会自动视为“自定义参数”。',
           applyHint: '点击模板仅填充当前草稿，需点击“保存当前配置”后才会生效。',
         },
+        preload: {
+          title: '模型预热下载',
+          description: '预下载 Whisper small 模型缓存，后续首次转写无需长时间等待。',
+          action: '预下载模型缓存',
+          running: '下载中...',
+          progressLabel: '下载进度',
+          session: '任务 ID：{{id}}',
+          success: '模型缓存预下载完成',
+          partialFailed: '部分模型下载失败（{{failed}}）',
+          endpoint: '下载端点：{{endpoint}}',
+          status: {
+            pending: '等待中',
+            running: '下载中',
+            cached: '已缓存',
+            downloaded: '已下载',
+            failed: '失败',
+          },
+        },
         vadFilter: '启用 VAD 过滤',
         correctionMode: {
           off: 'off（关闭）',
@@ -279,9 +293,10 @@ export const resources = {
           description: '侧边栏保持简洁，所有配置在弹窗内集中管理',
         },
         tabs: {
+          llm: 'LLM 配置',
           prompts: '提示词模板',
           whisper: 'Faster-Whisper',
-          llm: '在线 LLM',
+          localModels: '在线 LLM',
         },
       },
       history: {
@@ -398,7 +413,6 @@ export const resources = {
         stageD: {
           summaryTitle: '详细笔记流式输出',
           summaryPreviewTitle: '详细笔记实时预览',
-          phaseLogsTitle: '{{phase}}日志',
           optimizeSourceTitle: '语音转写原文本',
           optimizeResultTitle: '转录文本优化结果（实时更新）',
           waitingOptimizedTranscript: '等待优化文本输出...',
@@ -407,10 +421,6 @@ export const resources = {
           mindmapPreviewTitle: '导图实时渲染预览',
           waitingMindmap: '等待导图流输出...',
           mindmapEmpty: '暂无思维导图内容',
-          debugArtifactsTitle: '调试产物预览',
-          debugArtifactsCount: '{{count}} 个文件',
-          debugArtifactsEmpty: '当前子阶段暂未持久化可预览产物。',
-          debugArtifactsNoTask: '当前没有可读取的任务产物。',
           readonly: '生成中，只读',
           editable: '已完成，可编辑',
           unsaved: '有未保存修改',
@@ -425,50 +435,6 @@ export const resources = {
           fullscreen: '全屏查看',
           waitingFusionPrompt: '等待融合提示词...',
         },
-        phaseView: {
-          shared: {
-            currentPhase: '当前视图',
-            phaseHint: '阶段说明',
-            taskContext: '任务上下文',
-            deliveryContext: '交付上下文',
-            sourceType: '来源类型',
-            sourceInput: '来源输入',
-            language: '语言',
-            model: 'Whisper 模型',
-            updatedAt: '最近更新',
-            totalArtifacts: '累计产物',
-            phaseGoal: '本阶段作用',
-            phaseOutput: '当前产出',
-            nextHop: '下一步流向',
-            finalOutput: '最终交付',
-            currentExcerpt: '当前内容摘录',
-            clickHint: '可随时点击上方阶段切换视图',
-            reason: '说明',
-            transcriptPreview: '转写结果预览',
-            summaryPreview: '摘要预览',
-            emptySummary: '当前还没有可展示的摘要结果。',
-            noActiveTask: '当前暂无可展示的任务上下文。',
-            coverageNotesPreview: '覆盖修补后的详细笔记',
-            notesLength: '笔记字数',
-            summaryLength: '摘要字数',
-            mindmapLength: '导图块数',
-            segmentCount: '转写分段数',
-            emptyExcerpt: '当前阶段还没有可展示的内容摘录。',
-          },
-          outputs: {
-            A: '完成素材接入与预检，准备进入音频标准化',
-            B: '输出统一规格的可处理音频片段',
-            C: '输出带时间锚点的转写分段',
-            transcript_optimize: '得到可供笔记链路使用的优化转写稿',
-            notes_extract: '提取高召回信息卡片与证据片段',
-            notes_outline: '形成全局详细笔记提纲',
-            notes_sections: '逐节生成详细笔记正文',
-            notes_coverage: '补齐遗漏细节并完成覆盖修补',
-            summary_delivery: '生成最终摘要结果',
-            mindmap_delivery: '生成思维导图 Markdown',
-            D: '汇总最终笔记、摘要、导图与调试产物',
-          },
-        },
         modal: {
           close: '关闭窗口',
           exitFullscreen: '退出全屏',
@@ -477,10 +443,6 @@ export const resources = {
       bundleDownload: {
         ready: '任务已完成，可一键打包下载全部阶段产物',
         action: '下载全部产物（{{format}}）',
-        readyCompact: '下载产物',
-        actionCompact: '下载 {{format}}',
-        dragHint: '右侧吸附，可上下拖动',
-        positionHandle: '拖动调整下载浮层位置',
       },
       status: {
         queued: '排队中',
@@ -508,36 +470,12 @@ export const resources = {
           description: '输出带时间锚点的文本转写结果',
         },
         D: {
-          label: 'D. 最终产物归档',
-          description: '汇总 Stage D 产物状态与最终交付结果',
+          label: 'H. 融合生成与交付',
+          description: '融合证据生成笔记、导图与导出产物',
         },
         transcript_optimize: {
-          label: 'D1. 转录文本优化',
+          label: 'D. 转录文本优化',
           description: '按策略纠错或改写转录文本',
-        },
-        notes_extract: {
-          label: 'D2. 信息卡片提取',
-          description: '从完整转录中提取高保真信息卡片',
-        },
-        notes_outline: {
-          label: 'D3. 提纲生成',
-          description: '基于信息卡片规划全局详细笔记提纲',
-        },
-        notes_sections: {
-          label: 'D4. 章节写作',
-          description: '按章节生成详细笔记正文并流式展示',
-        },
-        notes_coverage: {
-          label: 'D5. 覆盖率补全',
-          description: '检查遗漏并对详细笔记做增量补写',
-        },
-        summary_delivery: {
-          label: 'D6. 摘要生成',
-          description: '基于详细笔记生成简版摘要',
-        },
-        mindmap_delivery: {
-          label: 'D7. 思维导图生成',
-          description: '基于提纲与详细笔记生成思维导图',
         },
       },
       errors: {
@@ -545,6 +483,7 @@ export const resources = {
         taskFailed: '任务失败',
         submitFailed: '提交任务失败',
         cancelTaskFailed: '终止任务失败',
+        preloadWhisperModelsFailed: '预下载模型缓存失败',
         saveConfigFailed: '保存配置失败',
         savePromptTemplateFailed: '保存提示词模板失败',
         deletePromptTemplateFailed: '删除提示词模板失败',
@@ -647,8 +586,7 @@ export const resources = {
         modeHint: {
           url: 'Use a BV ID or full Bilibili URL. The backend will fetch the source automatically.',
           path: 'Use an absolute local path to an accessible video file (MP4/MKV recommended).',
-          upload:
-            'Drag a file in or pick one manually. The upload will be prepared for analysis right away.',
+          upload: 'Drag a file in or pick one manually. The upload will be prepared for analysis right away.',
         },
         placeholders: {
           url: 'BV ID or https://www.bilibili.com/video/...',
@@ -683,10 +621,8 @@ export const resources = {
           apiKey: 'API Key',
           baseUrl: 'Base URL',
           model: 'Model Name',
-          summaryPromptName: 'Summary template name',
-          summaryPromptCustom: 'Input custom summary prompt',
-          notesPromptName: 'Detailed notes template name',
-          notesPromptCustom: 'Input custom detailed notes prompt',
+          summaryPromptName: 'Notes template name',
+          summaryPromptCustom: 'Input custom notes prompt',
           mindmapPromptName: 'Mindmap template name',
           mindmapPromptCustom: 'Input custom mindmap prompt',
         },
@@ -694,8 +630,8 @@ export const resources = {
         hideSecret: 'Hide raw value',
         promptTemplates: {
           title: 'Prompt Template Manager',
-          defaultHint:
-            'Templates are persisted to local files. You can create and switch templates, while default templates are read-only.',
+          navDescription: 'Prompt templates are separated from LLM runtime fields for focused editing.',
+          defaultHint: 'Templates are persisted to local files. You can create and switch templates, while default templates are read-only.',
           selectedBadge: 'Active',
           defaultBadge: 'Default (Read-only)',
           copyAction: 'Copy template',
@@ -718,16 +654,10 @@ export const resources = {
           deleteModalDescription: 'Please confirm deleting the current template',
           deleteDangerTitle: 'Dangerous action',
           deleteConfirm: 'Delete template "{{name}}"? This action cannot be undone.',
-          readonlyHint:
-            'Default templates are built-in and cannot be edited or deleted. Copy content and create a new template for custom changes.',
+          readonlyHint: 'Default templates are built-in and cannot be edited or deleted. Copy content and create a new template for custom changes.',
           summary: {
-            title: 'Summary Template Manager',
-            description: 'Switch, edit, delete, and create multiple summary prompt templates.',
-          },
-          notes: {
             title: 'Detailed Notes Template Manager',
-            description:
-              'Switch, edit, delete, and create multiple detailed notes prompt templates.',
+            description: 'Switch, edit, delete, and create multiple notes prompt templates.',
           },
           mindmap: {
             title: 'Mindmap Template Manager',
@@ -739,6 +669,7 @@ export const resources = {
       },
       whisper: {
         title: 'Faster-Whisper Runtime Config',
+        navDescription: 'Manage preload workflow, presets, and runtime transcription parameters',
         meta: {
           inputLabel: 'Options',
           explanationLabel: 'Explanation',
@@ -756,8 +687,7 @@ export const resources = {
           model: {
             label: 'Default Model',
             inputHint: 'small',
-            explanation:
-              'Whisper small is fixed; task start auto-checks and downloads cache when missing.',
+            explanation: 'Whisper small is fixed; task start auto-checks and downloads cache when missing.',
           },
           language: {
             label: 'Recognition Language',
@@ -777,8 +707,7 @@ export const resources = {
           modelLoadProfile: {
             label: 'Model Load Profile',
             inputHint: 'balanced / memory_first',
-            explanation:
-              'balanced keeps reuse performance; memory_first releases memory more aggressively after tasks.',
+            explanation: 'balanced keeps reuse performance; memory_first releases memory more aggressively after tasks.',
           },
           beamSize: {
             label: 'Beam Size',
@@ -803,8 +732,7 @@ export const resources = {
           correctionMode: {
             label: 'Transcript Optimization Mode',
             inputHint: 'off / strict / rewrite',
-            explanation:
-              'Controls Stage D transcript optimization before notes generation: off, strict correction, or rewrite.',
+            explanation: 'Controls Stage D transcript optimization before notes generation: off, strict correction, or rewrite.',
           },
           vadFilter: {
             label: 'VAD Filter',
@@ -829,8 +757,25 @@ export const resources = {
           },
           custom: 'Custom Parameters',
           customHint: 'Any manual parameter change turns the mode into custom.',
-          applyHint:
-            'Selecting a preset only fills the draft. Click "Save Current Config" to apply.',
+          applyHint: 'Selecting a preset only fills the draft. Click "Save Current Config" to apply.',
+        },
+        preload: {
+          title: 'Model Preload',
+          description: 'Pre-download Whisper small cache to avoid long wait on first transcription.',
+          action: 'Preload Model Cache',
+          running: 'Downloading...',
+          progressLabel: 'Download Progress',
+          session: 'Session: {{id}}',
+          success: 'Model cache preload completed',
+          partialFailed: 'Some model downloads failed ({{failed}})',
+          endpoint: 'Endpoint: {{endpoint}}',
+          status: {
+            pending: 'Pending',
+            running: 'Downloading',
+            cached: 'Cached',
+            downloaded: 'Downloaded',
+            failed: 'Failed',
+          },
         },
         vadFilter: 'Enable VAD filter',
         correctionMode: {
@@ -851,9 +796,10 @@ export const resources = {
           description: 'Keep sidebar clean and manage all configs in modal',
         },
         tabs: {
+          llm: 'LLM Config',
           prompts: 'Prompt Templates',
           whisper: 'Faster-Whisper',
-          llm: 'Online LLM',
+          localModels: 'Online LLM',
         },
       },
       history: {
@@ -885,8 +831,7 @@ export const resources = {
       selfCheck: {
         modal: {
           title: 'Environment Check & Auto Fix',
-          description:
-            'Run ordered checks for dependencies, config, and models, then auto-fix or follow manual actions',
+          description: 'Run ordered checks for dependencies, config, and models, then auto-fix or follow manual actions',
         },
         actions: {
           run: 'Run Checks Again',
@@ -972,7 +917,6 @@ export const resources = {
         stageD: {
           summaryTitle: 'Detailed Notes Stream',
           summaryPreviewTitle: 'Detailed Notes Live Preview',
-          phaseLogsTitle: '{{phase}} Logs',
           optimizeSourceTitle: 'Raw Transcript',
           optimizeResultTitle: 'Optimized Transcript (Live Updates)',
           waitingOptimizedTranscript: 'Waiting for optimized transcript output...',
@@ -981,10 +925,6 @@ export const resources = {
           mindmapPreviewTitle: 'Mindmap Live Preview',
           waitingMindmap: 'Waiting for mindmap stream...',
           mindmapEmpty: 'No mindmap content yet',
-          debugArtifactsTitle: 'Debug Artifact Preview',
-          debugArtifactsCount: '{{count}} files',
-          debugArtifactsEmpty: 'No persisted artifacts are available for this substage yet.',
-          debugArtifactsNoTask: 'There is no active task artifact to load.',
           readonly: 'Generating, read only',
           editable: 'Completed, editable',
           unsaved: 'Unsaved edits',
@@ -999,50 +939,6 @@ export const resources = {
           fullscreen: 'Fullscreen',
           waitingFusionPrompt: 'Waiting for fusion prompt...',
         },
-        phaseView: {
-          shared: {
-            currentPhase: 'Current view',
-            phaseHint: 'Phase guide',
-            taskContext: 'Task context',
-            deliveryContext: 'Delivery context',
-            sourceType: 'Source type',
-            sourceInput: 'Source input',
-            language: 'Language',
-            model: 'Whisper model',
-            updatedAt: 'Last updated',
-            totalArtifacts: 'Total artifacts',
-            phaseGoal: 'Phase goal',
-            phaseOutput: 'Current output',
-            nextHop: 'Next hop',
-            finalOutput: 'Final delivery',
-            currentExcerpt: 'Current excerpt',
-            clickHint: 'Click any phase above to switch the viewport at any time',
-            reason: 'Reason',
-            transcriptPreview: 'Transcript preview',
-            summaryPreview: 'Summary preview',
-            emptySummary: 'No summary is available yet for this task.',
-            noActiveTask: 'There is no active task context to display yet.',
-            coverageNotesPreview: 'Detailed notes after coverage patch',
-            notesLength: 'Notes chars',
-            summaryLength: 'Summary chars',
-            mindmapLength: 'Mindmap blocks',
-            segmentCount: 'Transcript segments',
-            emptyExcerpt: 'There is no excerpt available for this phase yet.',
-          },
-          outputs: {
-            A: 'Prepare the source and finish preflight checks before audio normalization',
-            B: 'Produce normalized audio chunks with stable processing settings',
-            C: 'Generate timestamped transcript segments',
-            transcript_optimize: 'Produce the optimized transcript for the notes pipeline',
-            notes_extract: 'Extract high-recall evidence cards and supporting snippets',
-            notes_outline: 'Build the global outline for detailed notes',
-            notes_sections: 'Write the detailed notes section by section',
-            notes_coverage: 'Patch omissions and complete coverage repair',
-            summary_delivery: 'Deliver the final summary output',
-            mindmap_delivery: 'Deliver the final mindmap markdown',
-            D: 'Aggregate notes, summary, mindmap, and debug artifacts for delivery',
-          },
-        },
         modal: {
           close: 'Close Window',
           exitFullscreen: 'Exit Fullscreen',
@@ -1051,10 +947,6 @@ export const resources = {
       bundleDownload: {
         ready: 'Task completed. Package and download all stage artifacts in one click.',
         action: 'Download All Outputs ({{format}})',
-        readyCompact: 'Download bundle',
-        actionCompact: 'Download {{format}}',
-        dragHint: 'Docked right, drag vertically',
-        positionHandle: 'Drag to move the download floater',
       },
       status: {
         queued: 'Queued',
@@ -1082,36 +974,12 @@ export const resources = {
           description: 'Generate timestamped transcript segments',
         },
         D: {
-          label: 'D. Final Delivery',
-          description: 'Aggregate Stage D artifacts and final output state',
+          label: 'H. Fusion & Delivery',
+          description: 'Fuse evidence into notes, mindmap, and exports',
         },
         transcript_optimize: {
-          label: 'D1. Transcript Optimization',
+          label: 'D. Transcript Optimization',
           description: 'Run correction or rewrite strategy on transcript',
-        },
-        notes_extract: {
-          label: 'D2. Evidence Extraction',
-          description: 'Extract high-recall evidence cards from the full transcript',
-        },
-        notes_outline: {
-          label: 'D3. Outline Planning',
-          description: 'Build a global detailed-notes outline from evidence cards',
-        },
-        notes_sections: {
-          label: 'D4. Section Writing',
-          description: 'Generate detailed notes section by section with live output',
-        },
-        notes_coverage: {
-          label: 'D5. Coverage Patch',
-          description: 'Inspect omissions and patch missing details into notes',
-        },
-        summary_delivery: {
-          label: 'D6. Summary Delivery',
-          description: 'Generate a concise summary from the detailed notes',
-        },
-        mindmap_delivery: {
-          label: 'D7. Mindmap Delivery',
-          description: 'Generate the mindmap from outline and detailed notes',
         },
       },
       errors: {
@@ -1119,6 +987,7 @@ export const resources = {
         taskFailed: 'Task failed',
         submitFailed: 'Failed to submit task',
         cancelTaskFailed: 'Failed to stop task',
+        preloadWhisperModelsFailed: 'Failed to preload Whisper model cache',
         saveConfigFailed: 'Failed to save config',
         savePromptTemplateFailed: 'Failed to save prompt template',
         deletePromptTemplateFailed: 'Failed to delete prompt template',
@@ -1130,8 +999,7 @@ export const resources = {
         historyTitleRequired: 'Task title cannot be empty',
         promptTemplateNameRequired: 'Template name is required',
         promptTemplateContentRequired: 'Template content is required',
-        defaultPromptTemplateReadonly:
-          'Default templates are read-only and cannot be edited or deleted',
+        defaultPromptTemplateReadonly: 'Default templates are read-only and cannot be edited or deleted',
         urlRequired: 'Please input BV ID or Bilibili URL',
         pathRequired: 'Please input local video path',
         fileRequired: 'Please select a video file first',
@@ -1141,3 +1009,5 @@ export const resources = {
 } as const
 
 export type AppLocale = keyof typeof resources
+
+

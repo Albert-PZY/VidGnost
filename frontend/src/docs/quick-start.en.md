@@ -7,8 +7,8 @@ VidGnost executes each analysis task with the following pipeline:
 1. Source ingestion and media preparation (`A`)
 2. Audio conversion and chunk planning (`B`)
 3. Local transcription with `Systran/faster-whisper-small` on CPU (`C`)
-4. Stage-D ordered subchain: `transcript_optimize -> notes_extract -> notes_outline -> notes_sections -> notes_coverage -> summary_delivery -> mindmap_delivery` (`D`)
-5. Online LLM generation of detailed notes, concise summary, and markmap markdown
+4. Stage-D ordered subchain: `transcript_optimize -> fusion_delivery` (`D`)
+5. Online LLM generation of notes + markmap markdown
 
 ## 2. Prerequisites
 

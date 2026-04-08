@@ -35,6 +35,7 @@ def test_ensure_runtime_capacity_does_not_emit_gpu_warnings(tmp_path: Path) -> N
         llm={
             "mode": "api",
             "load_profile": "balanced",
+            "local_model_id": "Qwen/Qwen2.5-7B-Instruct",
             "api_key": "x",
             "api_key_configured": True,
             "base_url": "https://example.com/v1",

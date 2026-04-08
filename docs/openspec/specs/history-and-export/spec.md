@@ -19,14 +19,6 @@ System SHALL persist task metadata, source info, phase logs, transcript, notes, 
 - **WHEN** user reopens a completed task after service restart
 - **THEN** server returns persisted logs, notes, and mindmap for replay
 
-### Requirement: Task history listing SHALL use incremental local index
-Backend SHALL maintain `tasks/index.json` incrementally to accelerate history query and avoid full-record scans on every list request.
-
-#### Scenario: List history with large local task set
-- **WHEN** client requests history list
-- **THEN** backend applies keyword filter and pagination on index entries first
-- **AND** backend loads only paged records from `tasks/records/*.json`
-
 ### Requirement: Task runtime snapshots SHALL be persisted as per-stage files
 Backend SHALL persist runtime analysis snapshots in per-stage files (`analysis-results/<task_id>/<stage>.json`) and SHALL NOT aggregate all phase snapshots into one monolithic JSON.
 

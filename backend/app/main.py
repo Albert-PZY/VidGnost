@@ -101,7 +101,6 @@ async def lifespan(app: FastAPI):
     app.state.task_runner = runner
     yield
     await runner.shutdown()
-    await event_bus.close()
 
 
 app = FastAPI(

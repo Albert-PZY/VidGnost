@@ -45,3 +45,4 @@ class AppError(Exception):
         detail: Any = None,
     ) -> "AppError":
         return cls(status_code=409, message=message, code=code, detail=detail)
+

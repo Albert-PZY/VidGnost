@@ -1084,6 +1084,21 @@ html[data-theme='dark'] .runtime-mindmap-panel jmnode.root {
     color-mix(in oklab, #0b1320 88%, transparent)
   );
 }
+.runtime-mindmap-panel .markmap {
+  font: 500 15px/1.36 'Sora', 'Noto Sans SC', sans-serif;
+}
+
+.runtime-mindmap-panel .markmap .markmap-foreign > div > div {
+  color: var(--color-runtime-text);
+}
+
+.runtime-mindmap-panel .markmap .markmap-link {
+  stroke: color-mix(in oklab, var(--color-runtime-text) 50%, transparent);
+}
+
+html[data-theme='dark'] .runtime-mindmap-panel .markmap .markmap-link {
+  stroke: color-mix(in oklab, #9cc0ee 66%, transparent);
+}
 
 .vm-working-indicator {
   position: relative;

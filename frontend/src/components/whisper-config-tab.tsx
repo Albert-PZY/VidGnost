@@ -60,10 +60,7 @@ export function WhisperConfigTab({
   saveWhisperRuntimeConfig,
 }: WhisperConfigTabProps) {
   return (
-    <TabsContent
-      value="whisper"
-      className="mx-auto w-full max-w-[1240px] space-y-5 px-1.5 md:px-5 lg:px-9"
-    >
+    <TabsContent value="whisper" className="mx-auto w-full max-w-[1240px] space-y-5 px-1.5 md:px-5 lg:px-9">
       <section className="rounded-xl border border-border bg-surface-muted p-4">
         <div className="mb-3.5 flex flex-wrap items-start justify-between gap-2.5">
           <div>
@@ -73,9 +70,7 @@ export function WhisperConfigTab({
             <PreText variant="timestamp">{t('whisper.templates.description')}</PreText>
           </div>
           <span className="rounded-full border border-accent/30 bg-accent/10 px-2 py-1 text-xs text-accent">
-            {whisperDraftPreset === 'custom'
-              ? t('whisper.templates.custom')
-              : t(`whisper.templates.${whisperDraftPreset}.label`)}
+            {whisperDraftPreset === 'custom' ? t('whisper.templates.custom') : t(`whisper.templates.${whisperDraftPreset}.label`)}
           </span>
         </div>
         <div className="grid gap-2.5 md:grid-cols-3">
@@ -141,12 +136,7 @@ export function WhisperConfigTab({
           inputHint={t('whisper.fields.device.inputHint')}
           explanation={t('whisper.fields.device.explanation')}
         >
-          <input
-            className={fieldInputClassName}
-            value={whisperDraft.device || 'cpu'}
-            readOnly
-            placeholder={t('whisper.placeholders.device')}
-          />
+          <input className={fieldInputClassName} value={whisperDraft.device || 'cpu'} readOnly placeholder={t('whisper.placeholders.device')} />
         </ConfigField>
 
         <ConfigField
@@ -279,43 +269,22 @@ export function WhisperConfigTab({
         explanation={t('whisper.fields.vadFilter.explanation')}
       >
         <div className="inline-flex items-center gap-3 rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm">
-          <div
-            className={cn(
-              'inline-flex items-center gap-1 text-xs',
-              !whisperDraft.vad_filter ? 'text-text-main' : 'text-text-subtle',
-            )}
-          >
+          <div className={cn('inline-flex items-center gap-1 text-xs', !whisperDraft.vad_filter ? 'text-text-main' : 'text-text-subtle')}>
             <span>{t('whisper.vadSwitch.off')}</span>
           </div>
           <Switch
             checked={whisperDraft.vad_filter}
-            onCheckedChange={(checked) =>
-              setWhisperDraft((prev) => ({ ...prev, vad_filter: checked }))
-            }
+            onCheckedChange={(checked) => setWhisperDraft((prev) => ({ ...prev, vad_filter: checked }))}
             aria-label={t('whisper.vadFilter')}
           />
-          <div
-            className={cn(
-              'inline-flex items-center gap-1 text-xs',
-              whisperDraft.vad_filter ? 'text-text-main' : 'text-text-subtle',
-            )}
-          >
+          <div className={cn('inline-flex items-center gap-1 text-xs', whisperDraft.vad_filter ? 'text-text-main' : 'text-text-subtle')}>
             <span>{t('whisper.vadSwitch.on')}</span>
           </div>
         </div>
       </ConfigField>
 
-      <Button
-        className="w-full"
-        variant="secondary"
-        onClick={() => void saveWhisperRuntimeConfig()}
-        disabled={savingWhisperConfig}
-      >
-        {savingWhisperConfig ? (
-          <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-        ) : (
-          <Settings className="mr-2 h-4 w-4" />
-        )}
+      <Button className="w-full" variant="secondary" onClick={() => void saveWhisperRuntimeConfig()} disabled={savingWhisperConfig}>
+        {savingWhisperConfig ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Settings className="mr-2 h-4 w-4" />}
         {t('whisper.save')}
       </Button>
     </TabsContent>

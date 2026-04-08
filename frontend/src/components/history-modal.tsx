@@ -99,8 +99,7 @@ export function HistoryModal({
               key={item.id}
               className={cn(
                 'w-full rounded-xl border border-transparent bg-surface-muted/92 px-3.5 py-2.5 transition hover:border-accent/40',
-                item.id === activeTaskId &&
-                  'border-accent/60 shadow-[0_10px_24px_-20px_rgba(31,142,241,0.7)]',
+                item.id === activeTaskId && 'border-accent/60 shadow-[0_10px_24px_-20px_rgba(31,142,241,0.7)]',
               )}
             >
               <div className="flex items-start gap-2">

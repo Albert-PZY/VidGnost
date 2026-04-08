@@ -8,18 +8,7 @@ export type TaskStatus =
   | 'failed'
 
 export type StageKey = 'A' | 'B' | 'C' | 'D'
-export type VmPhaseKey =
-  | 'A'
-  | 'B'
-  | 'C'
-  | 'transcript_optimize'
-  | 'notes_extract'
-  | 'notes_outline'
-  | 'notes_sections'
-  | 'notes_coverage'
-  | 'summary_delivery'
-  | 'mindmap_delivery'
-  | 'D'
+export type VmPhaseKey = 'A' | 'B' | 'C' | 'transcript_optimize' | 'D'
 export type VmPhaseStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
 
 export interface TranscriptSegment {
@@ -36,17 +25,6 @@ export interface TaskSummaryItem {
   status: TaskStatus
   progress: number
   created_at: string
-  updated_at: string
-}
-
-export interface TaskArtifactEntry {
-  key: string
-  logical_path: string
-  relative_path?: string | null
-  stage?: string | null
-  kind?: string | null
-  source?: string | null
-  size_bytes: number
   updated_at: string
 }
 
@@ -71,7 +49,7 @@ export interface TaskDetail {
   stage_metrics: Record<'A' | 'B' | 'C' | 'D', StageMetric>
   vm_phase_metrics: Record<VmPhaseKey, VmPhaseMetric>
   artifact_total_bytes: number
-  artifact_index: TaskArtifactEntry[]
+  artifact_index: Array<Record<string, unknown>>
   created_at: string
   updated_at: string
 }
@@ -107,7 +85,6 @@ export interface TaskEvent {
     | 'transcript_optimized_preview'
     | 'fusion_prompt_preview'
     | 'summary_delta'
-    | 'notes_delta'
     | 'mindmap_delta'
     | 'runtime_warning'
     | 'task_complete'
@@ -137,6 +114,7 @@ export interface TaskEvent {
 export interface LLMConfig {
   mode: 'api'
   load_profile: 'balanced' | 'memory_first'
+  local_model_id: string
   api_key: string
   base_url: string
   model: string
@@ -145,7 +123,7 @@ export interface LLMConfig {
   correction_overlap: number
 }
 
-export type PromptTemplateChannel = 'summary' | 'notes' | 'mindmap'
+export type PromptTemplateChannel = 'summary' | 'mindmap'
 
 export interface PromptTemplateItem {
   id: string
@@ -159,10 +137,8 @@ export interface PromptTemplateItem {
 
 export interface PromptTemplateBundle {
   summary_templates: PromptTemplateItem[]
-  notes_templates: PromptTemplateItem[]
   mindmap_templates: PromptTemplateItem[]
   selected_summary_template_id: string
-  selected_notes_template_id: string
   selected_mindmap_template_id: string
 }
 

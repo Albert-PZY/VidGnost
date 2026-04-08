@@ -5,6 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+
 ModelSize = Literal["small"]
 SourceType = Literal["bilibili", "local_file"]
 
@@ -93,6 +94,7 @@ class HealthResponse(BaseModel):
 class LLMConfigResponse(BaseModel):
     mode: Literal["api"] = "api"
     load_profile: Literal["balanced", "memory_first"] = "balanced"
+    local_model_id: str
     api_key: str
     api_key_configured: bool = False
     base_url: str
@@ -105,6 +107,7 @@ class LLMConfigResponse(BaseModel):
 class LLMConfigUpdateRequest(BaseModel):
     mode: Literal["api"] = "api"
     load_profile: Literal["balanced", "memory_first"] = "balanced"
+    local_model_id: str = "Qwen/Qwen2.5-7B-Instruct"
     api_key: str = ""
     base_url: str = ""
     model: str = ""
@@ -113,7 +116,7 @@ class LLMConfigUpdateRequest(BaseModel):
     correction_overlap: int = Field(default=3, ge=0, le=20)
 
 
-PromptTemplateChannel = Literal["summary", "notes", "mindmap"]
+PromptTemplateChannel = Literal["summary", "mindmap"]
 
 
 class PromptTemplateItem(BaseModel):
@@ -128,10 +131,8 @@ class PromptTemplateItem(BaseModel):
 
 class PromptTemplateBundleResponse(BaseModel):
     summary_templates: list[PromptTemplateItem] = Field(default_factory=list)
-    notes_templates: list[PromptTemplateItem] = Field(default_factory=list)
     mindmap_templates: list[PromptTemplateItem] = Field(default_factory=list)
     selected_summary_template_id: str = ""
-    selected_notes_template_id: str = ""
     selected_mindmap_template_id: str = ""
 
 
@@ -148,7 +149,6 @@ class PromptTemplateUpdateRequest(BaseModel):
 
 class PromptTemplateSelectionUpdateRequest(BaseModel):
     selected_summary_template_id: str = Field(min_length=1)
-    selected_notes_template_id: str = Field(min_length=1)
     selected_mindmap_template_id: str = Field(min_length=1)
 
 

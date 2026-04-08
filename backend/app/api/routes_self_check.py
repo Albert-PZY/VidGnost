@@ -23,9 +23,7 @@ def get_event_bus(request: Request) -> EventBus:
 
 
 @router.post("/start", response_model=SelfCheckStartResponse)
-async def start_self_check(
-    service: SelfCheckService = Depends(get_service),
-) -> SelfCheckStartResponse:
+async def start_self_check(service: SelfCheckService = Depends(get_service)) -> SelfCheckStartResponse:
     session_id = await service.start_check()
     return SelfCheckStartResponse(session_id=session_id, status="running")
 

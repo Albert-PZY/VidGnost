@@ -31,10 +31,8 @@ interface UsePromptTemplateManagerOptions {
 function createEmptyPromptTemplateBundle(): PromptTemplateBundle {
   return {
     summary_templates: [],
-    notes_templates: [],
     mindmap_templates: [],
     selected_summary_template_id: '',
-    selected_notes_template_id: '',
     selected_mindmap_template_id: '',
   }
 }
@@ -48,32 +46,12 @@ function createEmptyPromptTemplateDraft(): PromptTemplateDraft {
   }
 }
 
-function getChannelTemplates(
-  bundle: PromptTemplateBundle,
-  channel: PromptTemplateChannel,
-): PromptTemplateItem[] {
-  switch (channel) {
-    case 'summary':
-      return bundle.summary_templates ?? []
-    case 'notes':
-      return bundle.notes_templates ?? []
-    case 'mindmap':
-      return bundle.mindmap_templates ?? []
-  }
+function getChannelTemplates(bundle: PromptTemplateBundle, channel: PromptTemplateChannel): PromptTemplateItem[] {
+  return channel === 'summary' ? bundle.summary_templates : bundle.mindmap_templates
 }
 
-function getSelectedTemplateId(
-  bundle: PromptTemplateBundle,
-  channel: PromptTemplateChannel,
-): string {
-  switch (channel) {
-    case 'summary':
-      return bundle.selected_summary_template_id ?? ''
-    case 'notes':
-      return bundle.selected_notes_template_id ?? ''
-    case 'mindmap':
-      return bundle.selected_mindmap_template_id ?? ''
-  }
+function getSelectedTemplateId(bundle: PromptTemplateBundle, channel: PromptTemplateChannel): string {
+  return channel === 'summary' ? bundle.selected_summary_template_id : bundle.selected_mindmap_template_id
 }
 
 function findTemplateById(
@@ -96,10 +74,7 @@ function buildDraftFromTemplate(template: PromptTemplateItem | null): PromptTemp
   }
 }
 
-function isReadonlyDefaultPromptTemplate(
-  template: PromptTemplateItem | null,
-  isNewDraft: boolean,
-): boolean {
+function isReadonlyDefaultPromptTemplate(template: PromptTemplateItem | null, isNewDraft: boolean): boolean {
   return !isNewDraft && Boolean(template?.is_default)
 }
 
@@ -122,19 +97,14 @@ async function copyTextToClipboard(value: string): Promise<void> {
 
 export function usePromptTemplateManager({ t, setError }: UsePromptTemplateManagerOptions) {
   const promptTemplateCopyTimerRef = useRef<number | null>(null)
-  const [promptTemplateBundle, setPromptTemplateBundle] = useState<PromptTemplateBundle>(
-    createEmptyPromptTemplateBundle,
-  )
-  const [promptDrafts, setPromptDrafts] = useState<
-    Record<PromptTemplateChannel, PromptTemplateDraft>
-  >({
+  const [promptTemplateBundle, setPromptTemplateBundle] = useState<PromptTemplateBundle>(createEmptyPromptTemplateBundle)
+  const [promptDrafts, setPromptDrafts] = useState<Record<PromptTemplateChannel, PromptTemplateDraft>>({
     summary: createEmptyPromptTemplateDraft(),
-    notes: createEmptyPromptTemplateDraft(),
     mindmap: createEmptyPromptTemplateDraft(),
   })
   const [promptActionChannel, setPromptActionChannel] = useState<PromptTemplateChannel | null>(null)
   const [pendingPromptDelete, setPendingPromptDelete] = useState<PendingPromptDelete | null>(null)
-  const [promptTemplateView, setPromptTemplateView] = useState<PromptTemplateChannel>('notes')
+  const [promptTemplateView, setPromptTemplateView] = useState<PromptTemplateChannel>('summary')
   const [copiedPromptTemplateId, setCopiedPromptTemplateId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -161,10 +131,7 @@ export function usePromptTemplateManager({ t, setError }: UsePromptTemplateManag
         : null,
     [activePromptDraft.templateId, promptTemplateBundle, promptTemplateView],
   )
-  const promptDraftReadonly = isReadonlyDefaultPromptTemplate(
-    activePromptTemplate,
-    activePromptDraft.isNew,
-  )
+  const promptDraftReadonly = isReadonlyDefaultPromptTemplate(activePromptTemplate, activePromptDraft.isNew)
 
   const applyPromptTemplateBundle = useCallback((bundle: PromptTemplateBundle) => {
     setPromptTemplateBundle(bundle)
@@ -172,223 +139,184 @@ export function usePromptTemplateManager({ t, setError }: UsePromptTemplateManag
       summary: buildDraftFromTemplate(
         findTemplateById(bundle, 'summary', bundle.selected_summary_template_id),
       ),
-      notes: buildDraftFromTemplate(
-        findTemplateById(bundle, 'notes', bundle.selected_notes_template_id),
-      ),
       mindmap: buildDraftFromTemplate(
         findTemplateById(bundle, 'mindmap', bundle.selected_mindmap_template_id),
       ),
     })
   }, [])
 
-  const beginCreatePromptTemplate = useCallback(
-    (channel: PromptTemplateChannel) => {
-      const prefix = t('llm.promptTemplates.autoNamePrefix')
-      const index = getChannelTemplates(promptTemplateBundle, channel).length + 1
-      setPromptDrafts((prev) => ({
-        ...prev,
-        [channel]: {
-          templateId: null,
-          name: `${prefix}${index}`,
-          content: '',
-          isNew: true,
-        },
-      }))
-    },
-    [promptTemplateBundle, t],
-  )
+  const beginCreatePromptTemplate = useCallback((channel: PromptTemplateChannel) => {
+    const prefix = t('llm.promptTemplates.autoNamePrefix')
+    const index = getChannelTemplates(promptTemplateBundle, channel).length + 1
+    setPromptDrafts((prev) => ({
+      ...prev,
+      [channel]: {
+        templateId: null,
+        name: `${prefix}${index}`,
+        content: '',
+        isNew: true,
+      },
+    }))
+  }, [promptTemplateBundle, t])
 
-  const selectTemplateDraft = useCallback(
-    (template: PromptTemplateItem) => {
-      setPromptDrafts((prev) => ({
-        ...prev,
-        [promptTemplateView]: buildDraftFromTemplate(template),
-      }))
-    },
-    [promptTemplateView],
-  )
+  const selectTemplateDraft = useCallback((template: PromptTemplateItem) => {
+    setPromptDrafts((prev) => ({
+      ...prev,
+      [promptTemplateView]: buildDraftFromTemplate(template),
+    }))
+  }, [promptTemplateView])
 
-  const updatePromptDraft = useCallback(
-    (
-      channel: PromptTemplateChannel,
-      patch: Partial<Pick<PromptTemplateDraft, 'name' | 'content'>>,
-    ) => {
-      setPromptDrafts((prev) => ({
-        ...prev,
-        [channel]: {
-          ...prev[channel],
-          ...patch,
-        },
-      }))
-    },
-    [],
-  )
+  const updatePromptDraft = useCallback((
+    channel: PromptTemplateChannel,
+    patch: Partial<Pick<PromptTemplateDraft, 'name' | 'content'>>,
+  ) => {
+    setPromptDrafts((prev) => ({
+      ...prev,
+      [channel]: {
+        ...prev[channel],
+        ...patch,
+      },
+    }))
+  }, [])
 
-  const resetPromptDraft = useCallback(
-    (channel: PromptTemplateChannel) => {
-      const selectedId = getSelectedTemplateId(promptTemplateBundle, channel)
-      const selectedTemplate = selectedId
-        ? findTemplateById(promptTemplateBundle, channel, selectedId)
-        : null
-      setPromptDrafts((prev) => ({
-        ...prev,
-        [channel]: buildDraftFromTemplate(selectedTemplate),
-      }))
-    },
-    [promptTemplateBundle],
-  )
+  const resetPromptDraft = useCallback((channel: PromptTemplateChannel) => {
+    const selectedId = getSelectedTemplateId(promptTemplateBundle, channel)
+    const selectedTemplate = selectedId ? findTemplateById(promptTemplateBundle, channel, selectedId) : null
+    setPromptDrafts((prev) => ({
+      ...prev,
+      [channel]: buildDraftFromTemplate(selectedTemplate),
+    }))
+  }, [promptTemplateBundle])
 
-  const switchPromptTemplate = useCallback(
-    async (channel: PromptTemplateChannel, templateId: string) => {
-      if (!templateId) return
-      const nextSelection = {
-        selected_summary_template_id:
-          channel === 'summary' ? templateId : promptTemplateBundle.selected_summary_template_id,
-        selected_notes_template_id:
-          channel === 'notes' ? templateId : promptTemplateBundle.selected_notes_template_id,
-        selected_mindmap_template_id:
-          channel === 'mindmap' ? templateId : promptTemplateBundle.selected_mindmap_template_id,
+  const switchPromptTemplate = useCallback(async (channel: PromptTemplateChannel, templateId: string) => {
+    if (!templateId) return
+    const nextSelection = {
+      selected_summary_template_id:
+        channel === 'summary' ? templateId : promptTemplateBundle.selected_summary_template_id,
+      selected_mindmap_template_id:
+        channel === 'mindmap' ? templateId : promptTemplateBundle.selected_mindmap_template_id,
+    }
+
+    setPromptActionChannel(channel)
+    setError(null)
+    try {
+      const bundle = await updatePromptTemplateSelection(nextSelection)
+      applyPromptTemplateBundle(bundle)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t('errors.updatePromptTemplateSelectionFailed')
+      setError(message)
+      toast.error(message)
+    } finally {
+      setPromptActionChannel(null)
+    }
+  }, [applyPromptTemplateBundle, promptTemplateBundle.selected_mindmap_template_id, promptTemplateBundle.selected_summary_template_id, setError, t])
+
+  const copyPromptTemplateContent = useCallback(async (templateId: string, content: string) => {
+    try {
+      await copyTextToClipboard(content)
+      setCopiedPromptTemplateId(templateId)
+      if (promptTemplateCopyTimerRef.current !== null) {
+        window.clearTimeout(promptTemplateCopyTimerRef.current)
       }
+      promptTemplateCopyTimerRef.current = window.setTimeout(() => {
+        setCopiedPromptTemplateId((prev) => (prev === templateId ? null : prev))
+        promptTemplateCopyTimerRef.current = null
+      }, 1800)
+      toast.success(t('llm.promptTemplates.copySuccess'))
+    } catch {
+      toast.error(t('llm.promptTemplates.copyFailed'))
+    }
+  }, [t])
 
-      setPromptActionChannel(channel)
-      setError(null)
-      try {
-        const bundle = await updatePromptTemplateSelection(nextSelection)
-        applyPromptTemplateBundle(bundle)
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : t('errors.updatePromptTemplateSelectionFailed')
-        setError(message)
-        toast.error(message)
-      } finally {
-        setPromptActionChannel(null)
+  const savePromptTemplate = useCallback(async (channel: PromptTemplateChannel) => {
+    const draft = promptDrafts[channel]
+    const draftTemplate = draft.templateId ? findTemplateById(promptTemplateBundle, channel, draft.templateId) : null
+    if (isReadonlyDefaultPromptTemplate(draftTemplate, draft.isNew)) {
+      const message = t('errors.defaultPromptTemplateReadonly')
+      setError(message)
+      toast.error(message)
+      return
+    }
+    let name = draft.name.trim()
+    const content = draft.content.trim()
+    if (!content) {
+      const message = t('errors.promptTemplateContentRequired')
+      setError(message)
+      toast.error(message)
+      return
+    }
+    if (!name) {
+      if (draft.templateId) {
+        const existing = findTemplateById(promptTemplateBundle, channel, draft.templateId)
+        name = existing?.name?.trim() ?? ''
+      } else {
+        const prefix = t('llm.promptTemplates.autoNamePrefix')
+        name = `${prefix}${Date.now().toString().slice(-4)}`
       }
-    },
-    [
-      applyPromptTemplateBundle,
-      promptTemplateBundle.selected_mindmap_template_id,
-      promptTemplateBundle.selected_notes_template_id,
-      promptTemplateBundle.selected_summary_template_id,
-      setError,
-      t,
-    ],
-  )
+    }
+    if (!name) {
+      const message = t('errors.promptTemplateNameRequired')
+      setError(message)
+      toast.error(message)
+      return
+    }
 
-  const copyPromptTemplateContent = useCallback(
-    async (templateId: string, content: string) => {
-      try {
-        await copyTextToClipboard(content)
-        setCopiedPromptTemplateId(templateId)
-        if (promptTemplateCopyTimerRef.current !== null) {
-          window.clearTimeout(promptTemplateCopyTimerRef.current)
-        }
-        promptTemplateCopyTimerRef.current = window.setTimeout(() => {
-          setCopiedPromptTemplateId((prev) => (prev === templateId ? null : prev))
-          promptTemplateCopyTimerRef.current = null
-        }, 1800)
-        toast.success(t('llm.promptTemplates.copySuccess'))
-      } catch {
-        toast.error(t('llm.promptTemplates.copyFailed'))
-      }
-    },
-    [t],
-  )
-
-  const savePromptTemplate = useCallback(
-    async (channel: PromptTemplateChannel) => {
-      const draft = promptDrafts[channel]
-      const draftTemplate = draft.templateId
-        ? findTemplateById(promptTemplateBundle, channel, draft.templateId)
-        : null
-      if (isReadonlyDefaultPromptTemplate(draftTemplate, draft.isNew)) {
-        const message = t('errors.defaultPromptTemplateReadonly')
-        setError(message)
-        toast.error(message)
-        return
-      }
-      let name = draft.name.trim()
-      const content = draft.content.trim()
-      if (!content) {
-        const message = t('errors.promptTemplateContentRequired')
-        setError(message)
-        toast.error(message)
-        return
-      }
-      if (!name) {
-        if (draft.templateId) {
-          const existing = findTemplateById(promptTemplateBundle, channel, draft.templateId)
-          name = existing?.name?.trim() ?? ''
-        } else {
-          const prefix = t('llm.promptTemplates.autoNamePrefix')
-          name = `${prefix}${Date.now().toString().slice(-4)}`
-        }
-      }
-      if (!name) {
-        const message = t('errors.promptTemplateNameRequired')
-        setError(message)
-        toast.error(message)
-        return
-      }
-
-      setPromptActionChannel(channel)
-      setError(null)
-      try {
-        let bundle: PromptTemplateBundle
-        if (draft.isNew || !draft.templateId) {
-          bundle = await createPromptTemplate({ channel, name, content })
-          const templates = getChannelTemplates(bundle, channel)
-          const latest = templates[templates.length - 1]
-          if (latest) {
-            bundle = await updatePromptTemplateSelection({
-              selected_summary_template_id:
-                channel === 'summary' ? latest.id : bundle.selected_summary_template_id,
-              selected_notes_template_id:
-                channel === 'notes' ? latest.id : bundle.selected_notes_template_id,
-              selected_mindmap_template_id:
-                channel === 'mindmap' ? latest.id : bundle.selected_mindmap_template_id,
-            })
-          }
-          toast.success(t('llm.promptTemplates.createSuccess'))
-        } else {
-          bundle = await updatePromptTemplate({
-            template_id: draft.templateId,
-            name,
-            content,
+    setPromptActionChannel(channel)
+    setError(null)
+    try {
+      let bundle: PromptTemplateBundle
+      if (draft.isNew || !draft.templateId) {
+        bundle = await createPromptTemplate({ channel, name, content })
+        const templates = getChannelTemplates(bundle, channel)
+        const latest = templates[templates.length - 1]
+        if (latest) {
+          bundle = await updatePromptTemplateSelection({
+            selected_summary_template_id:
+              channel === 'summary'
+                ? latest.id
+                : bundle.selected_summary_template_id,
+            selected_mindmap_template_id:
+              channel === 'mindmap'
+                ? latest.id
+                : bundle.selected_mindmap_template_id,
           })
-          toast.success(t('llm.promptTemplates.updateSuccess'))
         }
-        applyPromptTemplateBundle(bundle)
-      } catch (err) {
-        const message = err instanceof Error ? err.message : t('errors.savePromptTemplateFailed')
-        setError(message)
-        toast.error(message)
-      } finally {
-        setPromptActionChannel(null)
+        toast.success(t('llm.promptTemplates.createSuccess'))
+      } else {
+        bundle = await updatePromptTemplate({
+          template_id: draft.templateId,
+          name,
+          content,
+        })
+        toast.success(t('llm.promptTemplates.updateSuccess'))
       }
-    },
-    [applyPromptTemplateBundle, promptDrafts, promptTemplateBundle, setError, t],
-  )
+      applyPromptTemplateBundle(bundle)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t('errors.savePromptTemplateFailed')
+      setError(message)
+      toast.error(message)
+    } finally {
+      setPromptActionChannel(null)
+    }
+  }, [applyPromptTemplateBundle, promptDrafts, promptTemplateBundle, setError, t])
 
-  const requestDeletePromptTemplate = useCallback(
-    (channel: PromptTemplateChannel, templateId?: string) => {
-      const targetId = templateId ?? getSelectedTemplateId(promptTemplateBundle, channel)
-      if (!targetId) return
-      const selectedTemplate = findTemplateById(promptTemplateBundle, channel, targetId)
-      if (!selectedTemplate) return
-      if (selectedTemplate.is_default) {
-        const message = t('errors.defaultPromptTemplateReadonly')
-        setError(message)
-        toast.error(message)
-        return
-      }
-      setPendingPromptDelete({
-        channel,
-        templateId: selectedTemplate.id,
-        name: selectedTemplate.name,
-      })
-    },
-    [promptTemplateBundle, setError, t],
-  )
+  const requestDeletePromptTemplate = useCallback((channel: PromptTemplateChannel, templateId?: string) => {
+    const targetId = templateId ?? getSelectedTemplateId(promptTemplateBundle, channel)
+    if (!targetId) return
+    const selectedTemplate = findTemplateById(promptTemplateBundle, channel, targetId)
+    if (!selectedTemplate) return
+    if (selectedTemplate.is_default) {
+      const message = t('errors.defaultPromptTemplateReadonly')
+      setError(message)
+      toast.error(message)
+      return
+    }
+    setPendingPromptDelete({
+      channel,
+      templateId: selectedTemplate.id,
+      name: selectedTemplate.name,
+    })
+  }, [promptTemplateBundle, setError, t])
 
   const closePromptDeleteConfirm = useCallback(() => {
     if (pendingPromptDelete && promptActionChannel === pendingPromptDelete.channel) return
