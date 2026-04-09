@@ -1,93 +1,75 @@
 ## ADDED Requirements
 
-### Requirement: System SHALL provide per-task SSE runtime stream
-The system SHALL expose per-task SSE endpoint and emit ordered runtime events for phase lifecycle, logs, progress, and generated outputs.
+### Requirement: System SHALL provide per-task runtime event stream
+Backend SHALL expose per-task event stream endpoint and emit ordered runtime events for lifecycle, logs, progress, and generation deltas.
 
-#### Scenario: Subscribe task event stream
+#### Scenario: Subscribe task stream
 - **WHEN** client connects to `/tasks/{task_id}/events`
-- **THEN** backend returns `text/event-stream`
-- **AND** emits events in chronological order for the task
+- **THEN** backend responds with `text/event-stream`
+- **AND** emits historical buffered events before live updates
 
-### Requirement: SSE events SHALL include stage-aware context
-Stage-related events SHALL carry phase key aligned with runtime model: `A`, `B`, `C`, `transcript_optimize`, `D`.
+### Requirement: Task events SHALL include stage-aware context
+Stage-related events SHALL carry phase keys aligned with runtime model: `A`, `B`, `C`, `transcript_optimize`, `D`.
 
-#### Scenario: Stage transition event arrives
-- **WHEN** runtime enters next phase or substage
-- **THEN** backend emits stage event with explicit phase key and status metadata
+#### Scenario: Stage transition arrives
+- **WHEN** runtime enters next phase/subphase
+- **THEN** event payload includes explicit stage key and status metadata
 
-### Requirement: SSE events SHALL include trace identifiers
-Each task event SHALL carry `trace_id` for cross-event diagnostics.
+### Requirement: Task events SHALL include trace identifiers
+Each task event SHALL include `trace_id` for diagnostics and replay correlation.
 
-#### Scenario: Event published without trace id
-- **WHEN** publisher does not provide `trace_id`
-- **THEN** event bus injects task-scoped trace identifier automatically
+#### Scenario: Publisher omits trace identifier
+- **WHEN** event publisher does not provide `trace_id`
+- **THEN** event bus injects task-scoped trace ID automatically
 
-### Requirement: Runtime log events SHALL expose elapsed timing metadata
-`log` events SHALL include `elapsed_seconds` when phase start timestamp is known.
+### Requirement: Runtime warning SHALL be streamed as structured events
+Backend SHALL emit `runtime_warning` events for degraded-but-continuable conditions.
 
-#### Scenario: Receive phase log while running
-- **WHEN** backend emits `log` event during active phase
-- **THEN** payload includes `elapsed_seconds`
-- **AND** frontend can render realtime running duration
+#### Scenario: Non-fatal runtime risk detected
+- **WHEN** backend detects warning condition during execution
+- **THEN** stream emits warning with `stage`, `code`, `component`, `action`, and human-readable message
 
-### Requirement: Runtime log events SHALL support optional substage context
-`log` events SHOULD include optional `substage` for fine-grained tracing inside phase `D`.
+### Requirement: SSE infrastructure SHALL bound in-memory queue and history
+Event stream layer SHALL keep bounded per-subscriber queues and release terminal task history when no subscribers remain.
 
-#### Scenario: Stage D emits substage logs
-- **WHEN** phase `D` executes `transcript_optimize` or `fusion_delivery`
-- **THEN** backend may emit `log` with `stage="D"` and matching `substage`
+#### Scenario: Long-running high-frequency stream
+- **WHEN** publisher rate exceeds consumer speed
+- **THEN** queue remains bounded and process memory does not grow unbounded
 
-### Requirement: System SHALL emit structured runtime-warning events
-SSE stream SHALL emit `runtime_warning` for degraded-but-continuable runtime conditions.
+#### Scenario: Terminal task has no subscribers
+- **WHEN** task reaches terminal state and subscribers disconnect
+- **THEN** in-memory history for that task is released
 
-#### Scenario: Runtime precheck warning
-- **WHEN** backend detects non-fatal runtime risk during precheck
-- **THEN** backend emits `runtime_warning` with `stage`, `message`, `code`, `component`, `action`
+### Requirement: Runtime events SHALL be persisted to JSONL without blocking stream
+Backend SHALL append task events to local JSONL logs while keeping stream delivery available.
 
-### Requirement: Transcript optimization preview events SHALL support timeline metadata
-`transcript_optimized_preview` events SHOULD support optional `start` / `end` fields for strict-mode timeline rendering.
+#### Scenario: Event-log append fails
+- **WHEN** local storage write fails
+- **THEN** stream delivery continues
+- **AND** backend logs diagnostic failure details
 
-#### Scenario: Emit strict correction preview segment
-- **WHEN** strict correction returns segment-level result
-- **THEN** preview event includes `text`, `start`, `end`, and stream metadata
-
-### Requirement: Compatibility stream mode SHALL publish batch payload directly
-When backend uses compatibility mode, it SHALL publish full batch text payload and SHALL NOT split updates into pseudo character stream chunks.
-
-#### Scenario: Emit compat summary/mindmap update
-- **WHEN** backend emits compat-mode delta
-- **THEN** payload contains full text batch for that update
-
-### Requirement: SSE layer SHALL bound in-memory queue and history
-SSE layer SHALL bound per-subscriber queue and release terminal task stream history when no subscribers remain.
-
-#### Scenario: High-volume long task stream
-- **WHEN** subscriber consumes slower than publish rate
-- **THEN** queue remains bounded and backend avoids unbounded memory growth
-
-#### Scenario: Terminal task stream has no subscribers
-- **WHEN** task reaches `completed|failed|cancelled` and all subscribers disconnect
-- **THEN** in-memory stream history for that task is released
-
-### Requirement: SSE event bus SHALL persist runtime events to JSONL log
-Backend SHALL append emitted task events to `storage/event-logs/{task_id}.jsonl` for postmortem diagnostics without blocking stream delivery.
-
-#### Scenario: Local event-log write fails
-- **WHEN** JSONL append fails due to local I/O issue
-- **THEN** backend keeps SSE delivery available
-- **AND** backend surfaces storage write issue in logs/metrics
-
-### Requirement: System SHALL provide SSE stream for self-check sessions
-The system SHALL expose SSE endpoint for self-check sessions and stream step progress, issue results, and auto-fix logs.
+### Requirement: Self-check sessions SHALL provide event stream
+Backend SHALL expose self-check session event stream endpoint for progress and autofix logs.
 
 #### Scenario: Subscribe self-check stream
 - **WHEN** client connects to `/self-check/{session_id}/events`
-- **THEN** backend emits ordered self-check/autofix events until terminal state
+- **THEN** backend emits ordered self-check events until terminal state
 
-### Requirement: Self-check stream cache SHALL be bounded
-Self-check stream/session cache SHALL evict oldest terminal sessions when capacity is exceeded.
+### Requirement: VQA chat streaming SHALL publish typed incremental events
+`POST /chat/stream` SHALL stream structured event payloads containing trace metadata, incremental answer chunks, status updates, and completion sentinel.
 
-#### Scenario: Self-check sessions exceed cache capacity
-- **WHEN** process accumulates more sessions than configured cache size
-- **THEN** running sessions are retained
-- **AND** oldest terminal sessions are pruned first
+#### Scenario: Stream starts and emits citations
+- **WHEN** chat stream begins
+- **THEN** stream emits citation payload with `type="citations"` and `trace_id`
+
+#### Scenario: Stream emits answer deltas
+- **WHEN** model returns incremental text
+- **THEN** stream emits `type="chunk"` with `delta` and `trace_id`
+
+#### Scenario: Stream emits status and completion
+- **WHEN** backend updates stream state and finishes
+- **THEN** stream emits `type="status"` updates and terminal sentinel `[DONE]`
+
+#### Scenario: Stream error and fallback
+- **WHEN** stream mode fails and backend auto-falls back
+- **THEN** stream emits error/status signals with same `trace_id` and preserves diagnostic continuity

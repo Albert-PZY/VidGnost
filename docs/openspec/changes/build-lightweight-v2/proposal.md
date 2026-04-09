@@ -18,7 +18,9 @@ VidGnost defines a practical video-analysis workbench for local execution plus o
 - Support prompt-template CRUD + active selection for summary and mindmap channels.
 - Provide task history retrieval, title update, terminal-task deletion, and artifact markdown editing.
 - Provide transcript / notes / mindmap / subtitle export and one-click bundle export.
-- Provide quick-start docs view in workbench shell with bilingual content.
+- Provide VQA search/chat/trace workflow with `flow/qa/debug` runtime modes.
+- Render Mermaid fences in notes as PNG assets and reference them by relative `notes-images/*` paths.
+- Provide Electron host bootstrap (`main/preload`) to run the same workbench as desktop app.
 
 ## Capabilities
 
@@ -29,7 +31,7 @@ VidGnost defines a practical video-analysis workbench for local execution plus o
 - `sse-runtime-stream`: realtime task stream and self-check stream.
 - `llm-runtime-config`: editable runtime config persisted in local storage files.
 - `history-and-export`: replayable history and deterministic artifact export.
-- `web-workbench-ui`: bilingual workbench with phase tabs and config center.
+- `web-workbench-ui`: bilingual workbench with phase tabs, VQA runtime modes, and config center.
 
 ### Engineering Capabilities
 - Stream/memory governance for long-running sessions.

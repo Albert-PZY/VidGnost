@@ -158,11 +158,6 @@ export function useWorkbenchUiEffects({
   }, [activeSidebarPanel, setActiveSidebarPanel])
 
   useEffect(() => {
-    if (mainView !== 'quickstart') return
-    setActiveSidebarPanel(null)
-  }, [mainView, setActiveSidebarPanel])
-
-  useEffect(() => {
     if (!activeSidebarPanel) return
     const body = document.body
     const html = document.documentElement

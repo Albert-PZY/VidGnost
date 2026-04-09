@@ -1,8 +1,8 @@
 <div align="center">
   <img src="./frontend/public/light.svg" alt="VidGnost Logo" width="120" />
   <h1>VidGnost</h1>
-  <p><strong>API-first multimodal video analysis workbench</strong></p>
-  <p>Analyze videos end to end with local transcription, online LLM generation, realtime observability, and exportable deliverables.</p>
+  <p><strong>Electron-ready multimodal video analysis workbench</strong></p>
+  <p>Local transcription, online LLM generation, VQA retrieval/chat, realtime observability, and reproducible exports.</p>
 </div>
 
 <div align="center">
@@ -15,6 +15,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![React](https://img.shields.io/badge/React-19.2.4-61DAFB?logo=react&logoColor=white)
+![Electron](https://img.shields.io/badge/Electron-41.2.0-47848F?logo=electron&logoColor=white)
 ![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white)
 ![uv](https://img.shields.io/badge/backend-uv-6C47FF)
 ![pnpm](https://img.shields.io/badge/frontend-pnpm-F69220?logo=pnpm&logoColor=white)
@@ -22,82 +23,131 @@
 
 </div>
 
-<div align="center">
+## 1. Product Snapshot
 
-[Quick Start (EN)](./frontend/src/docs/quick-start.en.md) · [Quick Start (ZH)](./frontend/src/docs/quick-start.zh-CN.md)
+VidGnost is a local-first video analysis workbench with web and Electron runtime forms:
 
-</div>
+- Source ingestion: Bilibili URL, local file path, file upload
+- Async runtime pipeline: `A -> B -> C -> D`, with stage-D subflow `transcript_optimize -> fusion_delivery`
+- Local ASR: `faster-whisper` (`small`, CPU)
+- Online generation: notes + mindmap through OpenAI-compatible APIs
+- VQA workflow: retrieval/search, chat streaming, and trace replay
+- Realtime observability: SSE logs/progress/warnings with per-event trace metadata
+- Persistence and replay: task history, editable titles, editable notes/mindmap markdown
+- Deterministic export: transcript, notes, mindmap, subtitles (`srt`/`vtt`), bundle (`zip`/`tar`)
 
-## 1. Product Overview
+## 2. Runtime and Architecture
 
-VidGnost is a local-first execution workbench for video understanding:
-
-- Source ingestion: Bilibili URL, local path, or direct upload
-- Realtime runtime view: phase progress, logs, elapsed timing, warnings, and task lifecycle via SSE
-- Speech transcription: local `Systran/faster-whisper-small` on CPU
-- Stage-D generation: ordered subchain `transcript_optimize -> fusion_delivery`
-- Deliverables: structured notes, markmap markdown, subtitles (`SRT` / `VTT`), and bundle export (`zip` / `tar`)
-- Persistence: replayable task history, editable title, editable notes/mindmap markdown, and artifact metadata
-
-## 2. Runtime Flow
+### 2.1 End-to-end pipeline
 
 1. Stage `A`: source validation and media preparation
 2. Stage `B`: audio conversion and chunk planning
-3. Stage `C`: Faster-Whisper transcription stream
-4. Stage `D`: transcript optimization + online LLM notes/mindmap generation
+3. Stage `C`: streaming transcription
+4. Stage `D`: transcript optimization and notes/mindmap fusion
 
-Key runtime contracts:
+### 2.2 Workbench modes
 
-- ASR runtime is CPU-only.
-- Stage `D` generation uses online LLM API configuration from config center.
-- Runtime warnings are surfaced as structured SSE events and persisted for replay diagnostics.
+- `flow`: runtime status, phase logs, transcript and generation editing/preview
+- `qa`: retrieval-augmented answer streaming with evidence citations
+- `debug`: dense/sparse/RRF/rerank comparison and trace record replay
 
-## 3. Repository Layout
+### 2.3 Host forms
+
+- Web: React + Vite app with backend API base `http://localhost:8000/api`
+- Desktop: Electron (`main/preload/renderer`) with IPC bridge
+  - Electron checks `/api/health` and can auto-spawn backend via `uv run uvicorn`
+
+## 3. API Surface (Current)
+
+Base URL: `/api`
+
+- Health
+  - `GET /health`
+- Tasks and runtime
+  - `POST /tasks/url`
+  - `POST /tasks/path`
+  - `POST /tasks/upload`
+  - `GET /tasks`
+  - `GET /tasks/{task_id}`
+  - `PATCH /tasks/{task_id}/title`
+  - `PATCH /tasks/{task_id}/artifacts`
+  - `DELETE /tasks/{task_id}`
+  - `POST /tasks/{task_id}/cancel`
+  - `POST /tasks/{task_id}/rerun-stage-d`
+  - `GET /tasks/{task_id}/events` (SSE)
+  - `GET /tasks/{task_id}/export/{kind}`
+- Runtime config
+  - `GET/PUT /config/llm`
+  - `GET/PUT /config/whisper`
+  - `GET /config/prompts`
+  - `PUT /config/prompts/selection`
+  - `POST /config/prompts/templates`
+  - `PATCH /config/prompts/templates/{template_id}`
+  - `DELETE /config/prompts/templates/{template_id}`
+- Self-check
+  - `POST /self-check/start`
+  - `POST /self-check/{session_id}/auto-fix`
+  - `GET /self-check/{session_id}/report`
+  - `GET /self-check/{session_id}/events` (SSE)
+- VQA
+  - `POST /search`
+  - `POST /chat`
+  - `POST /chat/stream` (SSE-like stream response)
+  - `POST /analyze`
+  - `GET /traces/{trace_id}`
+
+## 4. Mermaid Note Rendering Contract
+
+- Stage-D note output supports Mermaid code fences in LLM markdown.
+- Backend converts Mermaid blocks into PNG files under `notes-images/`.
+- Markdown artifacts reference images by relative paths (for example `![Mermaid 1](notes-images/mermaid-001.png)`), not base64.
+- Bundle export includes `notes-images/**/*.png` assets.
+
+## 5. Repository Layout
 
 ```text
 VidGnost/
-├─ backend/                     # FastAPI backend (Python 3.12 + uv)
+├─ backend/                              # FastAPI backend (Python 3.12 + uv)
 │  ├─ app/
-│  │  ├─ api/                   # tasks/config/health/self-check routes
-│  │  ├─ services/              # pipeline/runtime/guardrails/exporters
-│  │  ├─ models.py              # data models
-│  │  ├─ schemas.py             # API schemas
-│  │  └─ main.py                # FastAPI entry
-│  ├─ tests/                    # pytest suite
-│  ├─ pyproject.toml            # backend dependencies
-│  └─ uv.lock                   # lock file
-├─ frontend/                    # React + Vite + TypeScript
+│  │  ├─ api/                            # health/tasks/config/self-check/vqa routes
+│  │  ├─ services/                       # pipeline, summarizer, retrieval, trace, exporters
+│  │  ├─ schemas.py
+│  │  └─ main.py
+│  ├─ tests/
+│  ├─ pyproject.toml
+│  └─ uv.lock
+├─ frontend/                             # React + Electron + TypeScript
 │  ├─ src/
-│  │  ├─ App.tsx                # workbench entry
-│  │  ├─ lib/api.ts             # API client
-│  │  ├─ docs/                  # in-app quick-start docs
-│  │  └─ i18n/                  # i18n resources
+│  │  ├─ main/                           # Electron main process entry
+│  │  ├─ preload/                        # Electron preload bridge
+│  │  ├─ components/
+│  │  ├─ hooks/
+│  │  ├─ lib/
+│  │  └─ App.tsx
+│  ├─ electron.vite.config.ts
 │  ├─ package.json
 │  └─ pnpm-lock.yaml
 ├─ docs/
-│  ├─ openspec/                 # OpenSpec docs
-│  ├─ ui/                       # UI prompt docs
-│  └─ optimization-checklist.zh-CN.md
-├─ scripts/                     # bootstrap / self-check / OpenSpec checks
-└─ AGENTS.md                    # maintainer + agent index
+│  ├─ openspec/
+│  └─ electron-fullstack-rebuild-plan.zh-CN.md
+├─ scripts/
+└─ AGENTS.md
 ```
 
-## 4. Prerequisites
+## 6. Prerequisites
 
-- OS:
-  - Linux / macOS / WSL (`scripts/bootstrap-and-run.sh`)
-  - Windows PowerShell 7+ (`scripts/bootstrap-and-run.ps1`)
 - Python `3.12.x`
-- Node.js `>=18` (Corepack enabled)
-- Package managers: backend `uv`, frontend `pnpm`
-- `ffmpeg` available in system `PATH`
-- Online LLM API key for stage `D` generation
+- Node.js `>=18` with Corepack enabled
+- Backend package manager: `uv`
+- Frontend package manager: `pnpm`
+- `ffmpeg` available in `PATH`
+- Online LLM API credentials for stage-D generation and VQA answer quality
 
-## 5. Start the Project
+## 7. Run the Project
 
-### 5.1 One-click bootstrap
+### 7.1 One-click bootstrap scripts
 
-Linux / macOS / WSL:
+Linux/macOS/WSL:
 
 ```bash
 cd VidGnost
@@ -111,13 +161,13 @@ cd VidGnost
 powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap-and-run.ps1
 ```
 
-### 5.2 Manual startup
+### 7.2 Manual web mode
 
 Backend:
 
 ```bash
 cd backend
-uv sync --python 3.12 --index-url https://pypi.tuna.tsinghua.edu.cn/simple/
+uv sync --python 3.12
 uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
@@ -129,47 +179,41 @@ pnpm install
 pnpm dev --host 0.0.0.0 --port 5173
 ```
 
-Default URLs:
+### 7.3 Electron desktop mode
 
-- Frontend: `http://localhost:5173`
-- Backend: `http://localhost:8000`
+```bash
+cd frontend
+pnpm install
+pnpm desktop:dev
+```
 
-### 5.3 Runtime configuration checklist
+Build desktop packages:
 
-1. Open runtime config modal.
-2. In `Online LLM` tab, fill `base_url`, `model`, `api_key`.
-3. In `Faster-Whisper` tab, confirm:
-   - `model_default=small`
-   - `device=cpu`
-   - `compute_type=int8|float32`
-   - `language`, `chunk_seconds`, and other ASR knobs
-4. Save config and submit a task.
+```bash
+cd frontend
+pnpm desktop:build
+```
 
-## 6. Persistence and Storage
+## 8. Storage Layout
 
-Primary files and directories:
+- Runtime config
+  - `backend/storage/model_config.json`
+  - `backend/storage/config.toml`
+  - `backend/storage/prompts/templates/*.json`
+  - `backend/storage/prompts/selection.json`
+- Task state and artifacts
+  - `backend/storage/tasks/records/*.json`
+  - `backend/storage/tasks/analysis-results/<task_id>/<stage>.json`
+  - `backend/storage/tasks/stage-artifacts/<task_id>/<stage>/**`
+  - `backend/storage/tasks/stage-artifacts/<task_id>/D/fusion/notes-images/**/*.png`
+- Observability
+  - `backend/storage/tasks/runtime-warnings/<task_id>.jsonl`
+  - `backend/storage/event-logs/<task_id>.jsonl`
+  - `backend/storage/event-logs/traces/*.jsonl`
 
-- LLM config: `backend/storage/model_config.json`
-- Whisper runtime config: `backend/storage/config.toml`
-- Prompt templates: `backend/storage/prompts/templates/*.json`
-- Prompt selection: `backend/storage/prompts/selection.json`
-- Task records: `backend/storage/tasks/records/*.json`
-- Stage artifacts: `backend/storage/tasks/stage-artifacts/<task_id>/<stage>/**`
-- Stage snapshots: `backend/storage/tasks/analysis-results/<task_id>/<stage>.json`
-- Runtime warnings: `backend/storage/tasks/runtime-warnings/<task_id>.jsonl`
-- Event logs: `backend/storage/event-logs/<task_id>.jsonl`
+## 9. Development Checks
 
-## 7. Troubleshooting
-
-| Symptom | Meaning | Action |
-| --- | --- | --- |
-| `Task failed: RuntimeError: Library cublas64_12.dll is not found` | Whisper runtime was configured as CUDA in this environment | Save runtime config with `device=cpu` and rerun task |
-| `warning: Failed to hardlink files; falling back to full copy.` | `uv` cache and target directories are on different filesystems | Set `UV_LINK_MODE=copy` to suppress warning |
-| Stage D fails with auth/connectivity errors | Online LLM endpoint or credentials are invalid | Verify `base_url`, `model`, `api_key`, and quota |
-
-## 8. Development Commands
-
-Backend checks:
+Backend:
 
 ```bash
 cd backend
@@ -177,16 +221,16 @@ uv run pytest
 uv run python -m compileall app
 ```
 
-Frontend checks:
+Frontend:
 
 ```bash
 cd frontend
-pnpm test
-pnpm exec tsc --noEmit
+pnpm lint
 pnpm build
+pnpm test
 ```
 
-OpenSpec checks:
+OpenSpec:
 
 ```bash
 python scripts/check-openspec.py
@@ -194,8 +238,9 @@ bash scripts/check-openspec.sh
 powershell -ExecutionPolicy Bypass -File scripts/check-openspec.ps1
 ```
 
-## 9. Related Documentation
+## 10. Related Documents
 
-- [Quick Start (EN)](./frontend/src/docs/quick-start.en.md)
-- [Quick Start (ZH)](./frontend/src/docs/quick-start.zh-CN.md)
-- [Error Code Dictionary (ZH)](./docs/error-codes.zh-CN.md)
+- [OpenSpec Index](./docs/openspec/README.md)
+- [Active Change: build-lightweight-v2](./docs/openspec/changes/build-lightweight-v2/proposal.md)
+- [Electron Fullstack Rebuild Plan (ZH)](./docs/electron-fullstack-rebuild-plan.zh-CN.md)
+- [Git Commit Convention](./docs/git-commit-convention.md)
