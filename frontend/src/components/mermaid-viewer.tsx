@@ -100,7 +100,7 @@ export function MermaidViewer({ code }: MermaidViewerProps) {
           fontFamily: 'Manrope, Noto Sans SC, sans-serif',
         })
         mermaidRenderCounter += 1
-        const renderId = `quickstart-mermaid-${Date.now()}-${mermaidRenderCounter}`
+        const renderId = `notes-mermaid-${Date.now()}-${mermaidRenderCounter}`
         const result = await mermaid.render(renderId, source)
         if (cancelled) return
         setCachedSvg(cacheKey, result.svg)

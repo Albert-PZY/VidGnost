@@ -6,10 +6,8 @@ import { HistoryModal } from './history-modal'
 import { PreText } from './pretext'
 import { SelfCheckModal } from './self-check-modal'
 import { Button } from './ui/button'
-import { WorkbenchConfigModal } from './workbench-config-modal'
 import {
   DeleteTaskConfirmModal,
-  PromptTemplateDeleteModal,
   SourceTaskModal,
 } from './workbench-modals'
 import { WorkbenchRuntimeMain } from './workbench-runtime-main'
@@ -22,8 +20,6 @@ type RuntimeMainProps = Omit<ComponentProps<typeof WorkbenchRuntimeMain>, 't'>
 type SourceTaskModalProps = Omit<ComponentProps<typeof SourceTaskModal>, 'open' | 't'>
 type HistoryModalProps = Omit<ComponentProps<typeof HistoryModal>, 'open' | 't'>
 type DeleteTaskConfirmModalProps = Omit<ComponentProps<typeof DeleteTaskConfirmModal>, 'open' | 't'>
-type PromptTemplateDeleteModalProps = Omit<ComponentProps<typeof PromptTemplateDeleteModal>, 'open' | 't'>
-type ConfigModalProps = Omit<ComponentProps<typeof WorkbenchConfigModal>, 'open' | 't'>
 type SelfCheckModalProps = Omit<ComponentProps<typeof SelfCheckModal>, 'open' | 't'>
 
 interface WorkbenchMainViewProps {
@@ -33,7 +29,6 @@ interface WorkbenchMainViewProps {
   activeSidebarPanel: SidebarPanelKey
   setActiveSidebarPanel: Dispatch<SetStateAction<SidebarPanelKey>>
   loadHistory: (query?: string) => Promise<void>
-  openConfigPanel: (tab?: 'localModels' | 'whisper' | 'prompts') => void
   openSelfCheckPanel: () => void
   runtimeModel: string
   runtimeLanguage: string
@@ -48,8 +43,6 @@ interface WorkbenchMainViewProps {
   sourceTaskModalProps: SourceTaskModalProps
   historyModalProps: HistoryModalProps
   deleteTaskConfirmModalProps: DeleteTaskConfirmModalProps
-  promptTemplateDeleteModalProps: PromptTemplateDeleteModalProps
-  configModalProps: ConfigModalProps
   selfCheckModalProps: SelfCheckModalProps
 }
 
@@ -60,7 +53,6 @@ export function WorkbenchMainView({
   activeSidebarPanel,
   setActiveSidebarPanel,
   loadHistory,
-  openConfigPanel,
   openSelfCheckPanel,
   runtimeModel,
   runtimeLanguage,
@@ -75,8 +67,6 @@ export function WorkbenchMainView({
   sourceTaskModalProps,
   historyModalProps,
   deleteTaskConfirmModalProps,
-  promptTemplateDeleteModalProps,
-  configModalProps,
   selfCheckModalProps,
 }: WorkbenchMainViewProps) {
   return (
@@ -94,7 +84,6 @@ export function WorkbenchMainView({
           activeSidebarPanel={activeSidebarPanel}
           setActiveSidebarPanel={setActiveSidebarPanel}
           loadHistory={loadHistory}
-          openConfigPanel={openConfigPanel}
           openSelfCheckPanel={openSelfCheckPanel}
           runtimeModel={runtimeModel}
           runtimeLanguage={runtimeLanguage}
@@ -138,18 +127,6 @@ export function WorkbenchMainView({
         open={Boolean(deleteTaskConfirmModalProps.pendingDeleteTask)}
         t={t}
         {...deleteTaskConfirmModalProps}
-      />
-
-      <PromptTemplateDeleteModal
-        open={Boolean(promptTemplateDeleteModalProps.pendingPromptDelete)}
-        t={t}
-        {...promptTemplateDeleteModalProps}
-      />
-
-      <WorkbenchConfigModal
-        open={activeSidebarPanel === 'config'}
-        t={t}
-        {...configModalProps}
       />
 
       <SelfCheckModal

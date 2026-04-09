@@ -7,32 +7,30 @@ Scope: this file is an internal navigation index for coding agents and maintaine
 - Frontend package manager: use `pnpm` (do not use `npm`)
 - Generated file encoding: UTF-8 without BOM
 - Python dependency management: use `uv` with project-level venv; add/remove deps via `uv add` / `uv remove`
-- GitHub operations: prefer using `gh` CLI commands when possible.
-- After completing a requirement change, automatically determine whether a commit is needed; if needed, commit and push following `docs/git-commit-convention.md` without additional confirmation.
+- GitHub operations: prefer using `gh` CLI commands when possible
+- Documentation style: write all project docs as first-release baseline statements; avoid migration/history wording such as “删除/弃用/改为/不再/removed/deprecated/replaced”
+- After completing a requirement change, automatically determine whether a commit is needed; if needed, commit and push following `docs/git-commit-convention.md` without additional confirmation
 
 ## 2) Core Product Docs
 - Project overview (EN): `README.md`
 - Project overview (ZH): `README.zh-CN.md`
-- Multimodal roadmap: `docs/multimodal-transcription-roadmap.md`
+- Electron fullstack rebuild plan: `docs/electron-fullstack-rebuild-plan.zh-CN.md`
 
-## 3) UI Prompt Source
-- Main UI prompt (single source of truth): `docs/ui/vidsense-ui-prompt.md`
+## 3) Git Workflow Doc
+- Commit convention guide (Conventional Commits aligned): `docs/git-commit-convention.md`
 
-## 4) Git Commit Convention
-- Commit convention guide (Conventional Commits 1.0.0 aligned): `docs/git-commit-convention.md`
-
-## 5) OpenSpec Entry
+## 4) OpenSpec Entry
 - OpenSpec index: `docs/openspec/README.md`
-- OpenSpec beginner tutorial: `docs/OpenSpec-beginner-guide.zh-CN.md`
+- OpenSpec base specs index: `docs/openspec/specs/README.md`
 
-## 6) OpenSpec Active Change
-- Change ID root: `docs/openspec/changes/build-lightweight-v2/`
+## 5) OpenSpec Active Change
+- Active change root: `docs/openspec/changes/build-lightweight-v2/`
 - Change manifest: `docs/openspec/changes/build-lightweight-v2/.openspec.yaml`
 - Proposal: `docs/openspec/changes/build-lightweight-v2/proposal.md`
 - Design: `docs/openspec/changes/build-lightweight-v2/design.md`
 - Tasks: `docs/openspec/changes/build-lightweight-v2/tasks.md`
 
-## 7) OpenSpec Requirement Files (Active Change)
+## 6) OpenSpec Requirement Files (Active Change)
 - Video ingestion: `docs/openspec/changes/build-lightweight-v2/specs/video-ingestion/spec.md`
 - Transcription pipeline: `docs/openspec/changes/build-lightweight-v2/specs/transcription-pipeline/spec.md`
 - SSE runtime stream: `docs/openspec/changes/build-lightweight-v2/specs/sse-runtime-stream/spec.md`
@@ -41,8 +39,7 @@ Scope: this file is an internal navigation index for coding agents and maintaine
 - History and export: `docs/openspec/changes/build-lightweight-v2/specs/history-and-export/spec.md`
 - Web workbench UI: `docs/openspec/changes/build-lightweight-v2/specs/web-workbench-ui/spec.md`
 
-## 8) OpenSpec Base Specs (Current Baseline)
-- Base specs index: `docs/openspec/specs/README.md`
+## 7) OpenSpec Base Specs
 - Video ingestion: `docs/openspec/specs/video-ingestion/spec.md`
 - Transcription pipeline: `docs/openspec/specs/transcription-pipeline/spec.md`
 - SSE runtime stream: `docs/openspec/specs/sse-runtime-stream/spec.md`
@@ -51,7 +48,7 @@ Scope: this file is an internal navigation index for coding agents and maintaine
 - History and export: `docs/openspec/specs/history-and-export/spec.md`
 - Web workbench UI: `docs/openspec/specs/web-workbench-ui/spec.md`
 
-## 9) OpenSpec Templates and Archive
+## 8) OpenSpec Templates and Archive
 - Change template root: `docs/openspec/templates/change-template/`
 - Template manifest: `docs/openspec/templates/change-template/.openspec.yaml`
 - Template proposal: `docs/openspec/templates/change-template/proposal.md`
@@ -61,19 +58,22 @@ Scope: this file is an internal navigation index for coding agents and maintaine
 - Archived changes root: `docs/openspec/changes/archive/`
 - Archive guide: `docs/openspec/changes/archive/README.md`
 
+## 9) Startup Scripts
+- Root one-click startup (Windows): `start-all.ps1`
+- Root one-click startup (Linux/macOS/WSL): `start-all.sh`
+- Script wrappers:
+  - `scripts/bootstrap-and-run.ps1`
+  - `scripts/bootstrap-and-run.sh`
+
 ## 10) OpenSpec Checker Scripts
 - Python checker: `scripts/check-openspec.py`
 - Shell wrapper: `scripts/check-openspec.sh`
 - PowerShell wrapper: `scripts/check-openspec.ps1`
-- Usage:
-  - Linux/WSL: `bash scripts/check-openspec.sh`
-  - Windows: `powershell -ExecutionPolicy Bypass -File scripts/check-openspec.ps1`
 
-## 11) Maintenance Rule
-- Keep `AGENTS.md` as index-only.
-- Put UI prompt details in `docs/ui/vidsense-ui-prompt.md`.
-- When behavior changes, sync OpenSpec docs under the active change first, then promote stable rules to `docs/openspec/specs/`.
-- Before merging major doc/spec changes, run OpenSpec checker scripts:
+## 11) Maintenance Rules
+- Keep `AGENTS.md` as an index file (navigation + global constraints).
+- Keep active change specs and baseline specs aligned for stable capability contracts.
+- Before merging major doc/spec changes, run:
   - `scripts/check-openspec.py`
   - `scripts/check-openspec.sh`
   - `scripts/check-openspec.ps1`

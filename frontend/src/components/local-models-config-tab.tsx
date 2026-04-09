@@ -43,13 +43,13 @@ export function LocalModelsConfigTab({
           <PreText as="h3" variant="h3">
             在线 LLM 配置
           </PreText>
-          <PreText variant="timestamp">本项目分析阶段仅使用在线 LLM API。</PreText>
+          <PreText variant="timestamp">分析与问答生成使用在线 LLM API。</PreText>
         </div>
 
         <section className="rounded-lg border border-border/70 bg-bg-base px-3.5 py-3.5">
           <div className="mb-3.5">
             <PreText variant="h3">LLM API 配置</PreText>
-            <PreText variant="timestamp">本地 LLM 部署链路已移除。</PreText>
+            <PreText variant="timestamp">配置 base_url、model 与密钥后即可执行分析与问答流程。</PreText>
           </div>
           <div className="grid gap-3.5 md:grid-cols-2">
             <ConfigField label="LLM 模式" inputHint="api" explanation="固定为在线模式。">

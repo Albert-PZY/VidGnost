@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next'
-import { CloudUpload, FileCog, History, PanelLeftClose, PanelLeftOpen, Settings, ShieldCheck } from 'lucide-react'
+import { CloudUpload, History, PanelLeftClose, PanelLeftOpen, Settings, ShieldCheck } from 'lucide-react'
 
 import { PreText } from './pretext'
 import { SidebarMenuButton } from './workbench-panels'
@@ -7,7 +7,7 @@ import { Button } from './ui/button'
 import { cn } from '../lib/utils'
 import type { TaskDetail } from '../types'
 
-type SidebarPanelKey = 'source' | 'history' | 'config' | 'selfCheck' | null
+type SidebarPanelKey = 'source' | 'history' | 'selfCheck' | null
 
 interface WorkbenchSidebarProps {
   t: TFunction
@@ -16,7 +16,6 @@ interface WorkbenchSidebarProps {
   activeSidebarPanel: SidebarPanelKey
   setActiveSidebarPanel: (panel: SidebarPanelKey) => void
   loadHistory: () => Promise<void>
-  openConfigPanel: (tab?: 'localModels' | 'whisper' | 'prompts') => void
   openSelfCheckPanel: () => void
   runtimeModel: string
   runtimeLanguage: string
@@ -32,7 +31,6 @@ export function WorkbenchSidebar({
   activeSidebarPanel,
   setActiveSidebarPanel,
   loadHistory,
-  openConfigPanel,
   openSelfCheckPanel,
   runtimeModel,
   runtimeLanguage,
@@ -78,14 +76,6 @@ export function WorkbenchSidebar({
             void loadHistory()
             setActiveSidebarPanel('history')
           }}
-        />
-        <SidebarMenuButton
-          icon={FileCog}
-          title={t('sidebar.actions.config.title')}
-          description={t('sidebar.actions.config.description')}
-          active={activeSidebarPanel === 'config'}
-          collapsed={sidebarCollapsed}
-          onClick={() => openConfigPanel('localModels')}
         />
         <SidebarMenuButton
           icon={ShieldCheck}

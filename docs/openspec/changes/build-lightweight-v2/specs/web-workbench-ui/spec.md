@@ -11,8 +11,8 @@ Frontend SHALL provide Simplified Chinese and English locales, and light/dark th
 - **WHEN** user toggles theme switch
 - **THEN** UI updates via theme tokens without readability regression
 
-### Requirement: UI SHALL keep a single workbench main view
-Application shell SHALL always render workbench main view and SHALL NOT depend on in-app quick-start markdown pages.
+### Requirement: UI SHALL provide a single workbench main view
+Application shell SHALL render a unified workbench main area for runtime operations and settings navigation.
 
 #### Scenario: Enter app
 - **WHEN** user opens web or desktop app
@@ -51,11 +51,11 @@ Stage-D workspace SHALL provide notes and mindmap source editing with preview su
 - **THEN** notes/mindmap editors become editable and can be persisted
 
 ### Requirement: UI SHALL provide runtime config center with three tabs
-Config modal SHALL provide `在线 LLM`, `Faster-Whisper`, and `Prompt Templates` tabs.
+Settings page SHALL provide `在线 LLM`, `Faster-Whisper`, and `Prompt Templates` tabs.
 
-#### Scenario: Open config modal
-- **WHEN** user opens runtime config from sidebar
-- **THEN** modal displays three tabs and supports tab switching in-place
+#### Scenario: Open settings center
+- **WHEN** user clicks the global settings icon in header
+- **THEN** settings page displays three tabs and supports in-place tab switching
 
 ### Requirement: UI SHALL support prompt template CRUD and active selection
 Prompt template panel SHALL support create/update/delete/copy/select operations for summary and mindmap channels.

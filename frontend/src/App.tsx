@@ -11,6 +11,8 @@ import { Toaster } from 'react-hot-toast'
 import '@uiw/react-md-editor/markdown-editor.css'
 import '@uiw/react-markdown-preview/markdown.css'
 
+import { PromptTemplateDeleteModal } from './components/workbench-modals'
+import { SettingsPage } from './components/settings-page'
 import { WorkbenchHeader } from './components/workbench-header'
 import { WorkbenchMainView } from './components/workbench-main-view'
 import {
@@ -87,7 +89,7 @@ function GitHubIcon(props: ComponentProps<'svg'>) {
 function App() {
   const { t, i18n } = useTranslation()
 
-  const mainView = 'workbench' as const
+  const [shellPage, setShellPage] = useState<'workbench' | 'settings'>('workbench')
   const [isDark, setIsDark] = useState<boolean>(() => localStorage.getItem('vidgnost-theme') === 'dark')
   const [headerGlass, setHeaderGlass] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -348,7 +350,7 @@ function App() {
   })
   useWorkbenchUiEffects({
     isDark,
-    mainView,
+    activePage: shellPage,
     activeSidebarPanel,
     setMenuPortalTarget,
     setHeaderGlass,
@@ -620,18 +622,21 @@ function App() {
     await i18n.changeLanguage(locale)
   }
 
-  const openConfigPanel = (tab: 'localModels' | 'whisper' | 'prompts' = 'localModels') => {
+  const openSettingsPage = (tab: 'localModels' | 'whisper' | 'prompts' = 'localModels') => {
     setConfigTab(tab)
     if (tab === 'whisper') {
       setWhisperDraft({ ...whisperConfig })
     }
-    setActiveSidebarPanel('config')
+    setActiveSidebarPanel(null)
+    setShellPage('settings')
   }
 
-  const closeConfigPanel = () => {
-    setWhisperDraft({ ...whisperConfig })
-    setShowApiKey(true)
-    setActiveSidebarPanel(null)
+  const toggleSettingsPage = () => {
+    if (shellPage === 'settings') {
+      setShellPage('workbench')
+      return
+    }
+    openSettingsPage('localModels')
   }
 
   const openSelfCheckPanel = () => {
@@ -777,8 +782,8 @@ function App() {
     promptActionChannel,
     removePromptTemplate,
   }
-  const configModalProps = {
-    onClose: closeConfigPanel,
+  const settingsPageProps = {
+    t,
     configTab,
     setConfigTab,
     promptTemplatesTabProps: {
@@ -887,6 +892,8 @@ function App() {
         <WorkbenchHeader
           t={t}
           headerGlass={headerGlass}
+          settingsPageActive={shellPage === 'settings'}
+          onToggleSettingsPage={toggleSettingsPage}
           currentLocale={currentLocale}
           uiLocaleOptions={uiLocaleOptions}
           onSwitchLocale={switchLocale}
@@ -896,33 +903,42 @@ function App() {
           githubIcon={GitHubIcon}
         />
 
-        <WorkbenchMainView
+        {shellPage === 'workbench' ? (
+          <WorkbenchMainView
+            t={t}
+            sidebarCollapsed={sidebarCollapsed}
+            setSidebarCollapsed={setSidebarCollapsed}
+            activeSidebarPanel={activeSidebarPanel}
+            setActiveSidebarPanel={setActiveSidebarPanel}
+            loadHistory={reloadHistoryPanel}
+            openSelfCheckPanel={openSelfCheckPanel}
+            runtimeModel={runtimeModel}
+            runtimeLanguage={runtimeLanguage}
+            whisperPreset={whisperPreset}
+            activeTask={activeTask}
+            activeTaskStatusText={activeTaskRuntimeStatusText}
+            runtimeMainProps={runtimeMainProps}
+            isTaskCompleted={Boolean(isTaskCompleted)}
+            savingArtifacts={savingArtifacts}
+            bundleArchiveFormat={bundleArchiveFormat}
+            onDownloadAllArtifacts={() => {
+              void downloadAllArtifacts()
+            }}
+            sourceTaskModalProps={sourceTaskModalProps}
+            historyModalProps={historyModalProps}
+            deleteTaskConfirmModalProps={deleteTaskConfirmModalProps}
+            selfCheckModalProps={selfCheckModalProps}
+          />
+        ) : (
+          <SettingsPage
+            {...settingsPageProps}
+          />
+        )}
+
+        <PromptTemplateDeleteModal
+          open={Boolean(promptTemplateDeleteModalProps.pendingPromptDelete)}
           t={t}
-          sidebarCollapsed={sidebarCollapsed}
-          setSidebarCollapsed={setSidebarCollapsed}
-          activeSidebarPanel={activeSidebarPanel}
-          setActiveSidebarPanel={setActiveSidebarPanel}
-          loadHistory={reloadHistoryPanel}
-          openConfigPanel={openConfigPanel}
-          openSelfCheckPanel={openSelfCheckPanel}
-          runtimeModel={runtimeModel}
-          runtimeLanguage={runtimeLanguage}
-          whisperPreset={whisperPreset}
-          activeTask={activeTask}
-          activeTaskStatusText={activeTaskRuntimeStatusText}
-          runtimeMainProps={runtimeMainProps}
-          isTaskCompleted={Boolean(isTaskCompleted)}
-          savingArtifacts={savingArtifacts}
-          bundleArchiveFormat={bundleArchiveFormat}
-          onDownloadAllArtifacts={() => {
-            void downloadAllArtifacts()
-          }}
-          sourceTaskModalProps={sourceTaskModalProps}
-          historyModalProps={historyModalProps}
-          deleteTaskConfirmModalProps={deleteTaskConfirmModalProps}
-          promptTemplateDeleteModalProps={promptTemplateDeleteModalProps}
-          configModalProps={configModalProps}
-          selfCheckModalProps={selfCheckModalProps}
+          {...promptTemplateDeleteModalProps}
         />
       </div>
     </div>

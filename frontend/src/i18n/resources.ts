@@ -6,25 +6,7 @@ export const resources = {
         themeToggleAria: '切换主题',
         languageSwitcherAria: '切换界面语言',
         githubAria: '打开项目 GitHub 仓库',
-      },
-      quickStart: {
-        entry: '快速开始',
-        backToWorkbench: '返回工作台',
-        toc: {
-          title: '目录',
-          collapse: '收起目录',
-          expand: '展开目录',
-        },
-        copy: {
-          action: '复制 Markdown',
-          code: '复制代码',
-          copied: '已复制',
-        },
-        stats: {
-          characters: '字数 {{count}}',
-          words: '单词 {{count}}',
-          readingTime: '预计 {{minutes}} 分钟',
-        },
+        settingsAria: '打开设置中心',
       },
       locale: {
         long: {
@@ -46,10 +28,6 @@ export const resources = {
           history: {
             title: '历史记录',
             description: '弹窗查看任务并支持搜索',
-          },
-          config: {
-            title: '运行配置',
-            description: '管理视频分析阶段相关配置参数',
           },
           prompts: {
             title: '提示词模板',
@@ -288,9 +266,9 @@ export const resources = {
         saveSuccess: '配置保存成功',
       },
       config: {
-        modal: {
-          title: '运行配置中心',
-          description: '侧边栏保持简洁，所有配置在弹窗内集中管理',
+        page: {
+          title: '设置中心',
+          description: '所有运行相关配置统一集中在此页面，按模块分栏管理',
         },
         tabs: {
           llm: 'LLM 配置',
@@ -509,25 +487,7 @@ export const resources = {
         themeToggleAria: 'Toggle theme',
         languageSwitcherAria: 'Switch UI language',
         githubAria: 'Open project GitHub repository',
-      },
-      quickStart: {
-        entry: 'Quick Start',
-        backToWorkbench: 'Back to Workbench',
-        toc: {
-          title: 'Outline',
-          collapse: 'Collapse outline',
-          expand: 'Expand outline',
-        },
-        copy: {
-          action: 'Copy Markdown',
-          code: 'Copy code',
-          copied: 'Copied',
-        },
-        stats: {
-          characters: '{{count}} chars',
-          words: '{{count}} words',
-          readingTime: '{{minutes}} min read',
-        },
+        settingsAria: 'Open settings center',
       },
       locale: {
         long: {
@@ -549,10 +509,6 @@ export const resources = {
           history: {
             title: 'History',
             description: 'Open modal to search and select tasks',
-          },
-          config: {
-            title: 'Runtime Config',
-            description: 'Manage configuration parameters for video analysis stages',
           },
           prompts: {
             title: 'Prompt Templates',
@@ -791,9 +747,9 @@ export const resources = {
         saveSuccess: 'Configuration saved',
       },
       config: {
-        modal: {
-          title: 'Runtime Config Center',
-          description: 'Keep sidebar clean and manage all configs in modal',
+        page: {
+          title: 'Settings Center',
+          description: 'All runtime-related configuration is centralized on this page with modular tabs.',
         },
         tabs: {
           llm: 'LLM Config',

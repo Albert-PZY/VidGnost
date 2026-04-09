@@ -41,7 +41,7 @@
 - [x] 4.3 Implement runtime phase tabs (`A/B/C/transcript_optimize/D`) with auto-focus
 - [x] 4.4 Implement transcript stream panel and stage-D notes/mindmap dual pane
 - [x] 4.5 Implement history modal with search, reopen, title edit, delete actions
-- [x] 4.6 Implement config modal with tabs: `在线 LLM`, `Faster-Whisper`, `Prompt Templates`
+- [x] 4.6 Implement settings center with tabs: `在线 LLM`, `Faster-Whisper`, `Prompt Templates`
 - [x] 4.7 Implement prompt-template CRUD and active selection workflows
 - [x] 4.8 Implement runtime warning toast/log presentation from SSE events
 - [x] 4.9 Implement post-completion bundle download action

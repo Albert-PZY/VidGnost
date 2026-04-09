@@ -1,6 +1,6 @@
 import type { ComponentProps, ComponentType } from 'react'
 import type { TFunction } from 'i18next'
-import { Languages } from 'lucide-react'
+import { Languages, Settings } from 'lucide-react'
 
 import { PreText } from './pretext'
 import { ThemeToggle } from './theme-toggle'
@@ -13,6 +13,8 @@ type UILocale = 'zh-CN' | 'en'
 interface WorkbenchHeaderProps {
   t: TFunction
   headerGlass: boolean
+  settingsPageActive: boolean
+  onToggleSettingsPage: () => void
   currentLocale: UILocale
   uiLocaleOptions: SelectFieldOption[]
   onSwitchLocale: (locale: UILocale) => Promise<void>
@@ -25,6 +27,8 @@ interface WorkbenchHeaderProps {
 export function WorkbenchHeader({
   t,
   headerGlass,
+  settingsPageActive,
+  onToggleSettingsPage,
   currentLocale,
   uiLocaleOptions,
   onSwitchLocale,
@@ -61,6 +65,17 @@ export function WorkbenchHeader({
         </div>
 
         <div className="flex shrink-0 items-center gap-2.5">
+          <Button
+            type="button"
+            variant={settingsPageActive ? 'default' : 'outline'}
+            size="icon"
+            className="h-9 w-9 rounded-full"
+            aria-label={t('header.settingsAria', { defaultValue: '打开设置中心' })}
+            title={t('header.settingsAria', { defaultValue: '打开设置中心' })}
+            onClick={onToggleSettingsPage}
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
           <div className="w-40">
             <SelectField
               compact

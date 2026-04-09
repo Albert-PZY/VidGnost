@@ -122,7 +122,7 @@ fix(backend): handle missing CUDA runtime libs in self-check report
 docs(openspec): add self-check stream requirements and scenarios
 chore(scripts): force-stop occupied ports before bootstrap
 test(backend): add auto-fix conflict status test for self-check session
-revert(frontend): revert quick-start tab switch behavior
+revert(frontend): revert sidebar interaction behavior
 ```
 
 Example with body and footer:

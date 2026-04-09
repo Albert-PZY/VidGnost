@@ -59,6 +59,9 @@ _MERMAID_REPAIR_PROMPT = """你是一名 Mermaid 语法修复助手。
 - 禁止 `%%{init...}%%`、`click`、`style`、`classDef`、HTML 标签。
 - 节点文本使用短句纯文本，避免特殊符号与超长内容。
 - 节点 ID 仅用英文字母、数字、下划线。
+- 布局必须规整：统一单一方向（优先 `TB`，必要时 `LR`），避免方向混杂。
+- 连线必须清晰可见，尽量避免交叉；优先分层树状结构与顺向连线。
+- 如分支较多，使用中间节点或 `subgraph` 进行归并，减少跨层连线。
 """
 StreamMode = Literal["realtime", "compat"]
 PreviewSegment = dict[str, float | str]

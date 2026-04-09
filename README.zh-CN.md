@@ -151,15 +151,17 @@ Linux/macOS/WSL：
 
 ```bash
 cd VidGnost
-./scripts/bootstrap-and-run.sh
+./start-all.sh
 ```
 
 Windows PowerShell：
 
 ```powershell
 cd VidGnost
-powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap-and-run.ps1
+powershell -ExecutionPolicy Bypass -File .\start-all.ps1
 ```
+
+根目录脚本会自动安装前后端依赖，并一键启动两个服务。
 
 ### 7.2 手动启动（Web 模式）
 

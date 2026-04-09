@@ -1,11 +1,11 @@
 import { useEffect } from 'react'
 import type { Dispatch, RefObject, SetStateAction } from 'react'
 
-import type { MainViewMode, SidebarPanelKey } from '../app/workbench-config'
+import type { SidebarPanelKey } from '../app/workbench-config'
 
 interface UseWorkbenchUiEffectsOptions {
   isDark: boolean
-  mainView: MainViewMode
+  activePage: 'workbench' | 'settings'
   activeSidebarPanel: SidebarPanelKey
   setMenuPortalTarget: Dispatch<SetStateAction<HTMLElement | null>>
   setHeaderGlass: Dispatch<SetStateAction<boolean>>
@@ -29,7 +29,7 @@ function resolveNotesEditorTextarea(container: HTMLDivElement | null): HTMLTextA
 
 export function useWorkbenchUiEffects({
   isDark,
-  mainView,
+  activePage,
   activeSidebarPanel,
   setMenuPortalTarget,
   setHeaderGlass,
@@ -86,7 +86,7 @@ export function useWorkbenchUiEffects({
     if (document.body) {
       document.body.scrollTop = 0
     }
-  }, [mainView])
+  }, [activePage])
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {

@@ -151,15 +151,17 @@ Linux/macOS/WSL:
 
 ```bash
 cd VidGnost
-./scripts/bootstrap-and-run.sh
+./start-all.sh
 ```
 
 Windows PowerShell:
 
 ```powershell
 cd VidGnost
-powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap-and-run.ps1
+powershell -ExecutionPolicy Bypass -File .\start-all.ps1
 ```
+
+The root scripts install backend/frontend dependencies and launch both services in one command.
 
 ### 7.2 Manual web mode
 

@@ -451,26 +451,22 @@ html[data-theme='dark'] .modal-panel-surface {
   overscroll-behavior: contain;
 }
 
-.prompt-template-list,
-.quickstart-scroll-area {
+.prompt-template-list {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in oklab, var(--color-accent) 42%, transparent) transparent;
 }
 
-.prompt-template-list::-webkit-scrollbar,
-.quickstart-scroll-area::-webkit-scrollbar {
+.prompt-template-list::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
-.prompt-template-list::-webkit-scrollbar-thumb,
-.quickstart-scroll-area::-webkit-scrollbar-thumb {
+.prompt-template-list::-webkit-scrollbar-thumb {
   background: color-mix(in oklab, var(--color-accent) 40%, transparent);
   border-radius: 999px;
 }
 
-.prompt-template-list::-webkit-scrollbar-track,
-.quickstart-scroll-area::-webkit-scrollbar-track {
+.prompt-template-list::-webkit-scrollbar-track {
   background: transparent;
 }
 
