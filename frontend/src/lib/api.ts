@@ -2,13 +2,20 @@ import type {
   LLMConfig,
   PromptTemplateBundle,
   PromptTemplateChannel,
+  VQAChatResponse,
+  VQACitation,
+  VQARetrievalHit,
+  VQASearchResponse,
+  VQATraceRecord,
   SelfCheckReport,
   TaskDetail,
   TaskSummaryItem,
   WhisperConfig,
 } from '../types'
 
-const API_BASE = 'http://localhost:8000/api'
+const DEFAULT_API_BASE = 'http://localhost:8000/api'
+let resolvedApiBaseCache = DEFAULT_API_BASE
+let resolvingApiBasePromise: Promise<string> | null = null
 export type BundleArchiveFormat = 'zip' | 'tar'
 
 interface TaskCreateResponse {
@@ -30,6 +37,37 @@ interface ApiErrorPayload {
   code?: string
   message?: string
   detail?: unknown
+}
+
+function normalizeApiBase(input: string): string {
+  const normalized = input.trim().replace(/\/+$/, '')
+  if (!normalized) return DEFAULT_API_BASE
+  return normalized
+}
+
+async function resolveApiBase(): Promise<string> {
+  if (resolvingApiBasePromise) {
+    return resolvingApiBasePromise
+  }
+  const bridge = typeof window !== 'undefined' ? window.vidgnostBridge : undefined
+  if (!bridge?.getApiBase) {
+    return resolvedApiBaseCache
+  }
+  resolvingApiBasePromise = bridge
+    .getApiBase()
+    .then((value) => {
+      resolvedApiBaseCache = normalizeApiBase(typeof value === 'string' ? value : DEFAULT_API_BASE)
+      return resolvedApiBaseCache
+    })
+    .catch(() => resolvedApiBaseCache)
+    .finally(() => {
+      resolvingApiBasePromise = null
+    })
+  return resolvingApiBasePromise
+}
+
+if (typeof window !== 'undefined') {
+  void resolveApiBase()
 }
 
 export class ApiError extends Error {
@@ -71,7 +109,8 @@ function toApiErrorPayload(data: unknown): ApiErrorPayload | null {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const method = init?.method ?? 'GET'
-  const url = `${API_BASE}${path}`
+  const apiBase = await resolveApiBase()
+  const url = `${apiBase}${path}`
   let response: Response
   try {
     response = await fetch(url, init)
@@ -217,11 +256,11 @@ export async function rerunTaskStageD(taskId: string): Promise<void> {
 }
 
 export function exportTaskBundleUrl(taskId: string, archive: BundleArchiveFormat): string {
-  return `${API_BASE}/tasks/${taskId}/export/bundle?archive=${archive}`
+  return `${resolvedApiBaseCache}/tasks/${taskId}/export/bundle?archive=${archive}`
 }
 
 export function taskEventsUrl(taskId: string): string {
-  return `${API_BASE}/tasks/${taskId}/events`
+  return `${resolvedApiBaseCache}/tasks/${taskId}/events`
 }
 
 export async function getLLMConfig(): Promise<LLMConfig> {
@@ -313,5 +352,130 @@ export async function getSelfCheckReport(sessionId: string): Promise<SelfCheckRe
 }
 
 export function selfCheckEventsUrl(sessionId: string): string {
-  return `${API_BASE}/self-check/${sessionId}/events`
+  return `${resolvedApiBaseCache}/self-check/${sessionId}/events`
+}
+
+export async function searchVqa(input: {
+  query_text: string
+  task_id?: string
+  video_paths?: string[]
+  top_k?: number
+}): Promise<VQASearchResponse> {
+  return request<VQASearchResponse>('/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+}
+
+export async function chatVqa(input: {
+  query_text: string
+  task_id?: string
+  video_paths?: string[]
+  top_k?: number
+}): Promise<VQAChatResponse> {
+  return request<VQAChatResponse>('/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+}
+
+export async function analyzeVqa(input: {
+  query_text: string
+  task_id?: string
+  video_paths?: string[]
+  top_k?: number
+}): Promise<{
+  trace_id: string
+  query_text: string
+  retrieval: Omit<VQASearchResponse, 'trace_id' | 'hits' | 'query_text'>
+  hits: VQARetrievalHit[]
+  chat: Omit<VQAChatResponse, 'trace_id' | 'hits'>
+}> {
+  return request('/analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+}
+
+export async function streamChatVqa(
+  input: {
+    query_text: string
+    task_id?: string
+    video_paths?: string[]
+    top_k?: number
+  },
+  handlers: {
+    onCitations: (items: VQACitation[], traceId: string) => void
+    onChunk: (chunk: string, traceId: string) => void
+    onError: (message: string, traceId: string) => void
+    onStatus: (status: string, traceId: string) => void
+    onDone: (traceId: string) => void
+  },
+): Promise<void> {
+  const apiBase = await resolveApiBase()
+  const response = await fetch(`${apiBase}/chat/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...input, stream: true }),
+  })
+  if (!response.ok || !response.body) {
+    throw new ApiError({
+      status: response.status || 500,
+      code: `HTTP_${response.status || 500}`,
+      message: `Failed to open stream: ${response.status}`,
+      path: '/chat/stream',
+      method: 'POST',
+    })
+  }
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder('utf-8')
+  let buffer = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const chunks = buffer.split('\n\n')
+    buffer = chunks.pop() ?? ''
+    for (const entry of chunks) {
+      const line = entry.trim()
+      if (!line.startsWith('data:')) continue
+      const raw = line.slice(5).trim()
+      if (!raw) continue
+      if (raw === '[DONE]') {
+        handlers.onDone('')
+        return
+      }
+      let payload: Record<string, unknown>
+      try {
+        payload = JSON.parse(raw) as Record<string, unknown>
+      } catch {
+        continue
+      }
+      const traceId = String(payload.trace_id ?? '')
+      const type = String(payload.type ?? '')
+      if (type === 'citations') {
+        handlers.onCitations((payload.citations as VQACitation[]) ?? [], traceId)
+        continue
+      }
+      if (type === 'chunk') {
+        handlers.onChunk(String(payload.delta ?? ''), traceId)
+        continue
+      }
+      if (type === 'status') {
+        handlers.onStatus(String(payload.status ?? ''), traceId)
+        continue
+      }
+      if (type === 'error') {
+        const errorPayload = payload.error as { message?: string } | undefined
+        handlers.onError(String(errorPayload?.message ?? 'stream failed'), traceId)
+      }
+    }
+  }
+}
+
+export async function getVqaTrace(traceId: string): Promise<{ trace_id: string; records: VQATraceRecord[] }> {
+  return request<{ trace_id: string; records: VQATraceRecord[] }>(`/traces/${encodeURIComponent(traceId)}`)
 }

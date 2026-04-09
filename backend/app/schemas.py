@@ -85,6 +85,28 @@ class TaskArtifactsUpdateRequest(BaseModel):
     mindmap_markdown: str | None = None
 
 
+class VQASearchRequest(BaseModel):
+    query_text: str = Field(min_length=1)
+    task_id: str | None = None
+    video_paths: list[str] = Field(default_factory=list)
+    top_k: int | None = Field(default=None, ge=1, le=50)
+
+
+class VQAChatRequest(BaseModel):
+    query_text: str = Field(min_length=1)
+    task_id: str | None = None
+    video_paths: list[str] = Field(default_factory=list)
+    top_k: int | None = Field(default=None, ge=1, le=50)
+    stream: bool = True
+
+
+class VQAAnalyzeRequest(BaseModel):
+    query_text: str = Field(min_length=1)
+    task_id: str | None = None
+    video_paths: list[str] = Field(default_factory=list)
+    top_k: int | None = Field(default=None, ge=1, le=50)
+
+
 class HealthResponse(BaseModel):
     status: Literal["ok"]
     app: str

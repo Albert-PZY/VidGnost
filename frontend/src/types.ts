@@ -54,6 +54,60 @@ export interface TaskDetail {
   updated_at: string
 }
 
+export interface VQARetrievalHit {
+  doc_id: string
+  task_id: string
+  task_title: string
+  text: string
+  video_path: string
+  start: number
+  end: number
+  source: string
+  image_path: string
+  dense_score: number
+  sparse_score: number
+  rrf_score: number
+  rerank_score: number
+  final_score: number
+}
+
+export interface VQACitation {
+  doc_id: string
+  task_id: string
+  task_title: string
+  source: string
+  start: number
+  end: number
+  text: string
+  image_path: string
+}
+
+export interface VQASearchResponse {
+  trace_id: string
+  query_text: string
+  dense_hits: VQARetrievalHit[]
+  sparse_hits: VQARetrievalHit[]
+  rrf_hits: VQARetrievalHit[]
+  rerank_hits: VQARetrievalHit[]
+  hits: VQARetrievalHit[]
+}
+
+export interface VQAChatResponse {
+  trace_id: string
+  answer: string
+  citations: VQACitation[]
+  context_tokens_approx: number
+  error?: { code?: string; message?: string } | null
+  hits: VQARetrievalHit[]
+}
+
+export interface VQATraceRecord {
+  ts: string
+  trace_id: string
+  stage: string
+  payload: Record<string, unknown>
+}
+
 export interface StageMetric {
   started_at: string | null
   completed_at: string | null

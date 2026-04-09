@@ -15,6 +15,7 @@ from app.api.routes_config import router as config_router
 from app.api.routes_health import router as health_router
 from app.api.routes_self_check import router as self_check_router
 from app.api.routes_tasks import router as tasks_router
+from app.api.routes_vqa import router as vqa_router
 from app.config import get_settings
 from app.services.events import EventBus
 from app.services.llm_config_store import LLMConfigStore
@@ -26,6 +27,7 @@ from app.services.self_check import SelfCheckService
 from app.services.startup_cleanup import cleanup_temp_dir_once
 from app.services.task_runner import TaskRunner
 from app.services.task_store import TaskStore
+from app.services.vqa_runtime_service import VQARuntimeService
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +80,11 @@ async def lifespan(app: FastAPI):
     if startup_warning:
         logger.warning(startup_warning)
     self_check_service = SelfCheckService(settings=settings, event_bus=event_bus)
+    vqa_runtime = VQARuntimeService(
+        task_store=task_store,
+        llm_config_store=llm_config_store,
+        storage_dir=settings.storage_dir,
+    )
     runner = TaskRunner(
         settings=settings,
         event_bus=event_bus,
@@ -98,6 +105,7 @@ async def lifespan(app: FastAPI):
     app.state.resource_guard = resource_guard
     app.state.model_runtime_manager = model_runtime_manager
     app.state.self_check_service = self_check_service
+    app.state.vqa_runtime = vqa_runtime
     app.state.task_runner = runner
     yield
     await runner.shutdown()
@@ -123,3 +131,4 @@ app.include_router(health_router, prefix=settings.api_prefix)
 app.include_router(tasks_router, prefix=settings.api_prefix)
 app.include_router(config_router, prefix=settings.api_prefix)
 app.include_router(self_check_router, prefix=settings.api_prefix)
+app.include_router(vqa_router, prefix=settings.api_prefix)
