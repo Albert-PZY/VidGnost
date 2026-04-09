@@ -152,6 +152,9 @@ Linux/macOS/WSL：
 ```bash
 cd VidGnost
 ./start-all.sh
+# 或指定模式：
+# ./start-all.sh electron
+# ./start-all.sh web
 ```
 
 Windows PowerShell：
@@ -159,9 +162,13 @@ Windows PowerShell：
 ```powershell
 cd VidGnost
 powershell -ExecutionPolicy Bypass -File .\start-all.ps1
+# 或指定模式：
+# powershell -ExecutionPolicy Bypass -File .\start-all.ps1 -Mode electron
+# powershell -ExecutionPolicy Bypass -File .\start-all.ps1 -Mode web
 ```
 
 根目录脚本会自动安装前后端依赖，并一键启动两个服务。
+默认模式为 `electron`。
 
 ### 7.2 手动启动（Web 模式）
 

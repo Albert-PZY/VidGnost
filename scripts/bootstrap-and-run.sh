@@ -6,9 +6,37 @@ BACKEND_DIR="${ROOT_DIR}/backend"
 FRONTEND_DIR="${ROOT_DIR}/frontend"
 BACKEND_PORT=8000
 FRONTEND_PORT=5173
+MODE="web"
 PINNED_PYTHON_VERSION="3.12"
 UV_DEFAULT_INDEX_MIRROR="${UV_DEFAULT_INDEX_MIRROR:-https://pypi.tuna.tsinghua.edu.cn/simple}"
 PNPM_REGISTRY_MIRROR="${PNPM_REGISTRY_MIRROR:-https://registry.npmmirror.com}"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --mode|-m)
+      if [[ $# -lt 2 ]]; then
+        echo "[error] Missing value for $1. Use web or electron."
+        exit 1
+      fi
+      MODE="$2"
+      shift 2
+      ;;
+    web|electron)
+      MODE="$1"
+      shift
+      ;;
+    *)
+      echo "[error] Unsupported argument: $1"
+      echo "Usage: $0 [--mode web|electron]"
+      exit 1
+      ;;
+  esac
+done
+
+if [[ "${MODE}" != "web" && "${MODE}" != "electron" ]]; then
+  echo "[error] Invalid mode: ${MODE}. Use web or electron."
+  exit 1
+fi
 
 require_cmd() {
   local name="$1"
@@ -129,8 +157,13 @@ echo "[run] Starting backend at http://localhost:${BACKEND_PORT} ..."
 BACKEND_PID=$!
 wait_port_ready "${BACKEND_PORT}" "backend"
 
-echo "[run] Starting frontend at http://localhost:${FRONTEND_PORT} ..."
-(cd "${FRONTEND_DIR}" && pnpm dev --host 0.0.0.0 --port "${FRONTEND_PORT}") &
+if [[ "${MODE}" == "electron" ]]; then
+  echo "[run] Starting frontend in Electron mode ..."
+  (cd "${FRONTEND_DIR}" && pnpm desktop:dev) &
+else
+  echo "[run] Starting frontend at http://localhost:${FRONTEND_PORT} ..."
+  (cd "${FRONTEND_DIR}" && pnpm dev --host 0.0.0.0 --port "${FRONTEND_PORT}") &
+fi
 FRONTEND_PID=$!
 wait_port_ready "${FRONTEND_PORT}" "frontend"
 
@@ -139,6 +172,7 @@ FRONTEND_SERVICE_PIDS="$(port_pids "${FRONTEND_PORT}")"
 echo "[ready] Backend launcher PID: ${BACKEND_PID}, Frontend launcher PID: ${FRONTEND_PID}"
 echo "[ready] Backend service PID(s): ${BACKEND_SERVICE_PIDS}"
 echo "[ready] Frontend service PID(s): ${FRONTEND_SERVICE_PIDS}"
+echo "[ready] Frontend mode: ${MODE}"
 echo "[ready] Press Ctrl+C to stop both processes."
 
 wait -n "${BACKEND_PID}" "${FRONTEND_PID}"

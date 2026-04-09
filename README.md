@@ -152,6 +152,9 @@ Linux/macOS/WSL:
 ```bash
 cd VidGnost
 ./start-all.sh
+# or explicit mode:
+# ./start-all.sh electron
+# ./start-all.sh web
 ```
 
 Windows PowerShell:
@@ -159,9 +162,13 @@ Windows PowerShell:
 ```powershell
 cd VidGnost
 powershell -ExecutionPolicy Bypass -File .\start-all.ps1
+# or explicit mode:
+# powershell -ExecutionPolicy Bypass -File .\start-all.ps1 -Mode electron
+# powershell -ExecutionPolicy Bypass -File .\start-all.ps1 -Mode web
 ```
 
 The root scripts install backend/frontend dependencies and launch both services in one command.
+Default mode is `electron`.
 
 ### 7.2 Manual web mode
 

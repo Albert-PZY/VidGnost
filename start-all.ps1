@@ -1,3 +1,8 @@
+param(
+    [ValidateSet("web", "electron")]
+    [string]$Mode = "electron"
+)
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
@@ -8,4 +13,4 @@ if (-not (Test-Path -LiteralPath $ScriptPath)) {
     throw "Missing script: $ScriptPath"
 }
 
-& powershell -ExecutionPolicy Bypass -File $ScriptPath
+& powershell -ExecutionPolicy Bypass -File $ScriptPath -Mode $Mode

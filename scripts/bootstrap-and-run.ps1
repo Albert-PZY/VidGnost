@@ -1,7 +1,17 @@
+param(
+    [ValidateSet("web", "electron")]
+    [string]$Mode = "web"
+)
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 function Ensure-Admin {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$CurrentMode
+    )
+
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = [Security.Principal.WindowsPrincipal]::new($identity)
     $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -12,7 +22,7 @@ function Ensure-Admin {
     Write-Host "[setup] Administrator privilege required. Requesting elevation (UAC prompt)..."
     $escapedScriptPath = $PSCommandPath.Replace("'", "''")
     $escapedWorkingDir = $PWD.Path.Replace("'", "''")
-    $relaunchCommand = "Set-Location -LiteralPath '$escapedWorkingDir'; & '$escapedScriptPath'"
+    $relaunchCommand = "Set-Location -LiteralPath '$escapedWorkingDir'; & '$escapedScriptPath' -Mode '$CurrentMode'"
     Start-Process -FilePath "powershell" -Verb RunAs -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $relaunchCommand) | Out-Null
     Write-Host "[setup] Elevated instance launched. This window will exit."
     exit 0
@@ -213,7 +223,7 @@ function Wait-PortReady {
     throw "Port $Port ($Label) did not become ready within $TimeoutSeconds seconds."
 }
 
-Ensure-Admin
+Ensure-Admin -CurrentMode $Mode
 
 $RootDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $BackendDir = Join-Path $RootDir "backend"
@@ -258,17 +268,25 @@ Set-Location -LiteralPath '$escapedBackendDir'
 Write-Host '[run] Backend live logs (Ctrl+C to stop this window).'
 uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app --reload-exclude=.venv/* --reload-exclude=storage/*
 "@
-$frontendCommand = @"
+if ($Mode -eq "electron") {
+    $frontendCommand = @"
+Set-Location -LiteralPath '$escapedFrontendDir'
+Write-Host '[run] Frontend desktop live logs (Ctrl+C to stop this window).'
+pnpm desktop:dev
+"@
+} else {
+    $frontendCommand = @"
 Set-Location -LiteralPath '$escapedFrontendDir'
 Write-Host '[run] Frontend live logs (Ctrl+C to stop this window).'
 pnpm dev --host 0.0.0.0 --port 5173
 "@
+}
 
 Write-Host "[run] Starting backend..."
 $backendProc = Start-Process -FilePath "powershell" -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-Command", $backendCommand) -PassThru
 Wait-PortReady -Port $BackendPort -Label "backend"
 
-Write-Host "[run] Starting frontend..."
+Write-Host "[run] Starting frontend ($Mode)..."
 $frontendProc = Start-Process -FilePath "powershell" -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-Command", $frontendCommand) -PassThru
 Wait-PortReady -Port $FrontendPort -Label "frontend"
 
@@ -279,6 +297,7 @@ Write-Host "[ready] Backend launcher PID: $($backendProc.Id)"
 Write-Host "[ready] Frontend launcher PID: $($frontendProc.Id)"
 Write-Host "[ready] Backend service PID(s): $($backendListenPids -join ', ')"
 Write-Host "[ready] Frontend service PID(s): $($frontendListenPids -join ', ')"
+Write-Host "[ready] Frontend mode: $Mode"
 if ($stopPids.Count -gt 0) {
     Write-Host "[ready] Stop all with: Stop-Process -Id $($stopPids -join ',')"
 } else {
