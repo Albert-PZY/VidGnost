@@ -29,7 +29,7 @@ from app.services.prompt_template_store import PromptTemplateStore
 from app.services.resource_guard import ResourceGuard
 from app.services.runtime_config_store import RuntimeConfigStore
 from app.services.stage_artifact_store import StageArtifactStore
-from app.services.summarizer import LLMService
+from app.services.summarizer import LLMService, NotesImageAsset
 from app.services.task_artifact_index import build_task_artifact_index
 from app.services.task_store import TaskStore
 from app.services.transcription import WhisperService
@@ -836,6 +836,7 @@ class TaskRunner:
                         bundle.summary_markdown,
                         bundle.notes_markdown,
                         bundle.mindmap_markdown,
+                        bundle.notes_image_assets,
                     )
                     await self._d_substage_complete(
                         task_id,
@@ -1207,6 +1208,7 @@ class TaskRunner:
                         bundle.summary_markdown,
                         bundle.notes_markdown,
                         bundle.mindmap_markdown,
+                        bundle.notes_image_assets,
                     )
                     await self._d_substage_complete(task_id, "fusion_delivery", status="completed", message="详细笔记与导图生成完成。", progress=_PROGRESS_FUSION_DONE)
                 except Exception as generate_exc:  # noqa: BLE001
@@ -1765,6 +1767,21 @@ class TaskRunner:
             text,
         )
 
+    async def _persist_stage_artifact_bytes(
+        self,
+        task_id: str,
+        stage: str,
+        relative_path: str,
+        payload: bytes,
+    ) -> None:
+        await asyncio.to_thread(
+            self._stage_artifact_store.write_bytes,
+            task_id,
+            stage,
+            relative_path,
+            payload,
+        )
+
     async def _persist_stage_artifact_chunk_json(
         self,
         task_id: str,
@@ -1859,10 +1876,21 @@ class TaskRunner:
         summary_markdown: str,
         notes_markdown: str,
         mindmap_markdown: str,
+        notes_image_assets: list[NotesImageAsset],
     ) -> None:
         await self._persist_stage_artifact_text(task_id, "D", "fusion/summary.md", summary_markdown or "")
         await self._persist_stage_artifact_text(task_id, "D", "fusion/notes.md", notes_markdown or "")
         await self._persist_stage_artifact_text(task_id, "D", "fusion/mindmap.md", mindmap_markdown or "")
+        notes_image_paths: list[str] = []
+        for asset in notes_image_assets:
+            relative_path = _normalize_notes_image_relative_path(asset.relative_path)
+            await self._persist_stage_artifact_bytes(
+                task_id,
+                "D",
+                f"fusion/{relative_path}",
+                asset.content,
+            )
+            notes_image_paths.append(relative_path)
         await self._persist_stage_artifact_json(
             task_id,
             "D",
@@ -1872,6 +1900,8 @@ class TaskRunner:
                 "summary_chars": len(summary_markdown or ""),
                 "notes_chars": len(notes_markdown or ""),
                 "mindmap_chars": len(mindmap_markdown or ""),
+                "notes_image_count": len(notes_image_paths),
+                "notes_image_paths": notes_image_paths,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             },
         )
@@ -2207,6 +2237,15 @@ def _interpolate_progress(start: int, end: int, ratio: float) -> int:
 def _format_size_mb(size_bytes: int) -> str:
     safe_size = max(0, int(size_bytes))
     return f"{safe_size / (1024 * 1024):.1f} MiB"
+
+
+def _normalize_notes_image_relative_path(relative_path: str) -> str:
+    normalized = str(relative_path or "").strip().replace("\\", "/").lstrip("/")
+    if not normalized:
+        return "notes-images/mermaid-unknown.png"
+    if not normalized.startswith("notes-images/"):
+        normalized = f"notes-images/{normalized}"
+    return normalized
 
 
 def _probe_openai_compat_models_endpoint(*, base_url: str, api_key: str, timeout_seconds: float) -> tuple[bool, str]:

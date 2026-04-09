@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import gc
 import re
 import shutil
@@ -65,10 +64,17 @@ StreamMode = Literal["realtime", "compat"]
 PreviewSegment = dict[str, float | str]
 
 @dataclass(slots=True)
+class NotesImageAsset:
+    relative_path: str
+    content: bytes
+
+
+@dataclass(slots=True)
 class SummaryBundle:
     summary_markdown: str
     mindmap_markdown: str
     notes_markdown: str
+    notes_image_assets: list[NotesImageAsset]
 
 
 @dataclass(slots=True)
@@ -260,14 +266,19 @@ class LLMService:
             structured_summary = _normalize_summary_markdown_structure(summary)
             if structured_summary:
                 summary = structured_summary
-            summary = await self._replace_mermaid_with_images(
+            summary, notes_image_assets = await self._replace_mermaid_with_images(
                 markdown=summary,
                 llm_mode=resolved_llm_mode,
                 client=resolved_client,
                 model_name=resolved_model_name,
             )
             notes = self._compose_notes(title=title, summary=summary)
-            return SummaryBundle(summary_markdown=summary, mindmap_markdown=mindmap, notes_markdown=notes)
+            return SummaryBundle(
+                summary_markdown=summary,
+                mindmap_markdown=mindmap,
+                notes_markdown=notes,
+                notes_image_assets=notes_image_assets,
+            )
         finally:
             if mode == "local" and load_profile == "memory_first":
                 self.release_runtime_models()
@@ -930,31 +941,36 @@ class LLMService:
         llm_mode: Literal["api", "local"],
         client: AsyncOpenAI | None,
         model_name: str,
-    ) -> str:
+    ) -> tuple[str, list[NotesImageAsset]]:
         normalized = markdown.strip()
         if "```mermaid" not in normalized.lower():
-            return normalized
+            return normalized, []
 
         matches = list(_MERMAID_CODE_FENCE_PATTERN.finditer(normalized))
         if not matches:
-            return normalized
+            return normalized, []
 
         parts: list[str] = []
+        notes_image_assets: list[NotesImageAsset] = []
         cursor = 0
         for index, match in enumerate(matches, start=1):
             parts.append(normalized[cursor:match.start()])
             original_code = _normalize_mermaid_code(match.group(1))
-            replacement = await self._render_mermaid_block_with_retry(
+            image_relative_path = f"notes-images/mermaid-{index:03d}.png"
+            replacement, asset = await self._render_mermaid_block_with_retry(
                 block_index=index,
                 original_code=original_code,
                 llm_mode=llm_mode,
                 client=client,
                 model_name=model_name,
+                image_relative_path=image_relative_path,
             )
             parts.append(replacement)
+            if asset is not None:
+                notes_image_assets.append(asset)
             cursor = match.end()
         parts.append(normalized[cursor:])
-        return "".join(parts).strip()
+        return "".join(parts).strip(), notes_image_assets
 
     async def _render_mermaid_block_with_retry(
         self,
@@ -964,13 +980,17 @@ class LLMService:
         llm_mode: Literal["api", "local"],
         client: AsyncOpenAI | None,
         model_name: str,
-    ) -> str:
+        image_relative_path: str,
+    ) -> tuple[str, NotesImageAsset | None]:
         current_code = original_code
-        data_url, error_reason = await self._render_mermaid_png_data_url(current_code)
-        if data_url:
-            return self._build_mermaid_image_markdown(block_index, data_url)
+        image_bytes, error_reason = await self._render_mermaid_png_bytes(current_code)
+        if image_bytes:
+            return (
+                self._build_mermaid_image_markdown(block_index, image_relative_path),
+                NotesImageAsset(relative_path=image_relative_path, content=image_bytes),
+            )
         if _is_mermaid_renderer_unavailable(error_reason):
-            return _MERMAID_PLACEHOLDER_TEMPLATE.format(retries=0)
+            return _MERMAID_PLACEHOLDER_TEMPLATE.format(retries=0), None
 
         for _ in range(1, _MERMAID_REPAIR_RETRIES + 1):
             repaired_code = await self._repair_mermaid_code(
@@ -983,13 +1003,16 @@ class LLMService:
             if not repaired_code:
                 continue
             current_code = repaired_code
-            data_url, error_reason = await self._render_mermaid_png_data_url(current_code)
-            if data_url:
-                return self._build_mermaid_image_markdown(block_index, data_url)
+            image_bytes, error_reason = await self._render_mermaid_png_bytes(current_code)
+            if image_bytes:
+                return (
+                    self._build_mermaid_image_markdown(block_index, image_relative_path),
+                    NotesImageAsset(relative_path=image_relative_path, content=image_bytes),
+                )
             if _is_mermaid_renderer_unavailable(error_reason):
                 break
 
-        return _MERMAID_PLACEHOLDER_TEMPLATE.format(retries=_MERMAID_REPAIR_RETRIES)
+        return _MERMAID_PLACEHOLDER_TEMPLATE.format(retries=_MERMAID_REPAIR_RETRIES), None
 
     async def _repair_mermaid_code(
         self,
@@ -1026,13 +1049,13 @@ class LLMService:
             return None
         return repaired_code
 
-    def _build_mermaid_image_markdown(self, block_index: int, data_url: str) -> str:
-        return f"![Mermaid 图示 {block_index}]({data_url})"
+    def _build_mermaid_image_markdown(self, block_index: int, relative_path: str) -> str:
+        return f"![Mermaid 图示 {block_index}]({relative_path})"
 
-    async def _render_mermaid_png_data_url(self, mermaid_code: str) -> tuple[str | None, str]:
-        return await asyncio.to_thread(self._render_mermaid_png_data_url_sync, mermaid_code)
+    async def _render_mermaid_png_bytes(self, mermaid_code: str) -> tuple[bytes | None, str]:
+        return await asyncio.to_thread(self._render_mermaid_png_bytes_sync, mermaid_code)
 
-    def _render_mermaid_png_data_url_sync(self, mermaid_code: str) -> tuple[str | None, str]:
+    def _render_mermaid_png_bytes_sync(self, mermaid_code: str) -> tuple[bytes | None, str]:
         command_prefix = self._resolve_mermaid_renderer_command_sync()
         if command_prefix is None:
             return (None, "renderer_unavailable: mmdc and pnpm are unavailable")
@@ -1074,8 +1097,7 @@ class LLMService:
                 return (None, detail)
             if not output_path.exists() or output_path.stat().st_size <= 0:
                 return (None, "mmdc completed but output image is empty")
-            encoded = base64.b64encode(output_path.read_bytes()).decode("ascii")
-            return (f"data:image/png;base64,{encoded}", "")
+            return (output_path.read_bytes(), "")
 
     def _resolve_mermaid_renderer_command_sync(self) -> list[str] | None:
         if self._mermaid_renderer_checked:

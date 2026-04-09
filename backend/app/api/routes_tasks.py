@@ -375,6 +375,7 @@ async def stream_task_events(
 
 @router.get("/{task_id}/export/{kind}")
 def export_task(
+    request: Request,
     task_id: str,
     kind: str,
     archive: Literal["zip", "tar"] = Query(default="zip", description="bundle archive format"),
@@ -421,7 +422,12 @@ def export_task(
             headers={"Content-Disposition": _build_content_disposition(f"{title}-subtitles.vtt")},
         )
     if kind == "bundle":
-        payload = _build_artifact_bundle(record=record, title=title, archive=archive)
+        payload = _build_artifact_bundle(
+            record=record,
+            title=title,
+            archive=archive,
+            storage_dir=str(request.app.state.settings.storage_dir),
+        )
         ext = "zip" if archive == "zip" else "tar"
         media_type = "application/zip" if archive == "zip" else "application/x-tar"
         return Response(
@@ -435,19 +441,25 @@ def export_task(
     )
 
 
-def _build_artifact_bundle(record: TaskRecord, title: str, archive: Literal["zip", "tar"]) -> bytes:
-    files = _build_artifact_files(record=record, title=title)
+def _build_artifact_bundle(
+    record: TaskRecord,
+    title: str,
+    archive: Literal["zip", "tar"],
+    *,
+    storage_dir: str,
+) -> bytes:
+    files = _build_artifact_files(record=record, title=title, storage_dir=storage_dir)
     if archive == "zip":
         return _pack_zip(files)
     return _pack_tar(files)
 
 
-def _build_artifact_files(record: TaskRecord, title: str) -> dict[str, bytes]:
+def _build_artifact_files(record: TaskRecord, title: str, *, storage_dir: str) -> dict[str, bytes]:
     mindmap_html = render_markmap_html(record.mindmap_markdown or "# Empty", title=record.title or record.id)
     segments = _parse_transcript_segments(record.transcript_segments_json)
     srt_text = _build_srt(segments)
     vtt_text = _build_vtt(segments)
-    return {
+    files = {
         f"{title}-transcript.txt": (record.transcript_text or "").encode("utf-8"),
         f"{title}-notes.md": (record.notes_markdown or "").encode("utf-8"),
         f"{title}-mindmap.md": (record.mindmap_markdown or "").encode("utf-8"),
@@ -455,6 +467,32 @@ def _build_artifact_files(record: TaskRecord, title: str) -> dict[str, bytes]:
         f"{title}-subtitles.srt": srt_text.encode("utf-8"),
         f"{title}-subtitles.vtt": vtt_text.encode("utf-8"),
     }
+    files.update(_load_notes_image_assets(task_id=record.id, storage_dir=storage_dir))
+    return files
+
+
+def _load_notes_image_assets(*, task_id: str, storage_dir: str) -> dict[str, bytes]:
+    notes_images_dir = (
+        Path(storage_dir)
+        / "tasks"
+        / "stage-artifacts"
+        / task_id
+        / "D"
+        / "fusion"
+        / "notes-images"
+    )
+    if not notes_images_dir.exists() or not notes_images_dir.is_dir():
+        return {}
+    files: dict[str, bytes] = {}
+    for image_path in sorted(notes_images_dir.rglob("*.png")):
+        if not image_path.is_file():
+            continue
+        try:
+            relative_path = image_path.relative_to(notes_images_dir).as_posix()
+            files[f"notes-images/{relative_path}"] = image_path.read_bytes()
+        except OSError:
+            continue
+    return files
 
 
 def _build_content_disposition(filename: str) -> str:

@@ -29,6 +29,10 @@ class StageArtifactStore:
         path = self._safe_stage_relative_path(task_id, stage, relative_path)
         self._write_bytes(path, text.encode("utf-8"))
 
+    def write_bytes(self, task_id: str, stage: str, relative_path: str, payload: bytes) -> None:
+        path = self._safe_stage_relative_path(task_id, stage, relative_path)
+        self._write_bytes(path, payload)
+
     def write_chunk_json(
         self,
         task_id: str,
