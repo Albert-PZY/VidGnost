@@ -17,6 +17,7 @@ const DEFAULT_API_BASE = 'http://localhost:8000/api'
 let resolvedApiBaseCache = DEFAULT_API_BASE
 let resolvingApiBasePromise: Promise<string> | null = null
 export type BundleArchiveFormat = 'zip' | 'tar'
+export type TaskExportKind = 'transcript' | 'notes' | 'mindmap' | 'srt' | 'vtt' | 'bundle'
 
 interface TaskCreateResponse {
   task_id: string
@@ -255,8 +256,17 @@ export async function rerunTaskStageD(taskId: string): Promise<void> {
   })
 }
 
+export function exportTaskArtifactUrl(
+  taskId: string,
+  kind: TaskExportKind,
+  options?: { archive?: BundleArchiveFormat },
+): string {
+  const archiveQuery = kind === 'bundle' ? `?archive=${options?.archive ?? 'zip'}` : ''
+  return `${resolvedApiBaseCache}/tasks/${taskId}/export/${kind}${archiveQuery}`
+}
+
 export function exportTaskBundleUrl(taskId: string, archive: BundleArchiveFormat): string {
-  return `${resolvedApiBaseCache}/tasks/${taskId}/export/bundle?archive=${archive}`
+  return exportTaskArtifactUrl(taskId, 'bundle', { archive })
 }
 
 export function taskEventsUrl(taskId: string): string {

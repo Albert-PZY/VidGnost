@@ -9,7 +9,8 @@ import {
   createTaskByPath,
   createTaskByUrl,
   deleteTask,
-  exportTaskBundleUrl,
+  exportTaskArtifactUrl,
+  type TaskExportKind,
   listTasks,
   rerunTaskStageD,
   updateTaskArtifacts,
@@ -380,7 +381,24 @@ export function useWorkbenchTaskManager({
       if (!saved) return
     }
     const anchor = document.createElement('a')
-    anchor.href = exportTaskBundleUrl(activeTask.id, bundleArchiveFormat)
+    anchor.href = exportTaskArtifactUrl(activeTask.id, 'bundle', { archive: bundleArchiveFormat })
+    anchor.rel = 'noopener'
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+  }, [activeTask, bundleArchiveFormat, hasUnsavedArtifactEdits, persistEditedArtifacts])
+
+  const downloadTaskArtifact = useCallback(async (kind: TaskExportKind) => {
+    if (!activeTask) return
+    if (hasUnsavedArtifactEdits) {
+      const saved = await persistEditedArtifacts()
+      if (!saved) return
+    }
+    const anchor = document.createElement('a')
+    anchor.href =
+      kind === 'bundle'
+        ? exportTaskArtifactUrl(activeTask.id, 'bundle', { archive: bundleArchiveFormat })
+        : exportTaskArtifactUrl(activeTask.id, kind)
     anchor.rel = 'noopener'
     document.body.appendChild(anchor)
     anchor.click()
@@ -400,5 +418,6 @@ export function useWorkbenchTaskManager({
     submitTask,
     persistEditedArtifacts,
     downloadAllArtifacts,
+    downloadTaskArtifact,
   }
 }

@@ -479,6 +479,7 @@ function App() {
     submitTask,
     persistEditedArtifacts,
     downloadAllArtifacts,
+    downloadTaskArtifact,
   } = useWorkbenchTaskManager({
     t,
     sourceMode,
@@ -923,6 +924,9 @@ function App() {
             bundleArchiveFormat={bundleArchiveFormat}
             onDownloadAllArtifacts={() => {
               void downloadAllArtifacts()
+            }}
+            onDownloadTaskArtifact={(kind) => {
+              void downloadTaskArtifact(kind)
             }}
             sourceTaskModalProps={sourceTaskModalProps}
             historyModalProps={historyModalProps}

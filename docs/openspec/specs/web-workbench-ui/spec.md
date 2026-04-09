@@ -71,12 +71,12 @@ History panel SHALL support search, reopen, rename, and terminal-task delete ope
 - **WHEN** user selects a historical task
 - **THEN** frontend restores runtime artifacts/logs and updates active runtime context
 
-### Requirement: UI SHALL provide completion-only export action
-Workbench SHALL show one-click artifact bundle export only when active task is completed.
+### Requirement: UI SHALL provide completion-only artifact export actions
+Workbench SHALL expose completion-only export actions for `bundle`, `notes`, `transcript`, `mindmap`, `srt`, and `vtt`.
 
-#### Scenario: Completed task exports bundle
-- **WHEN** user clicks export action on completed task
-- **THEN** frontend downloads backend bundle artifact
+#### Scenario: Completed task exports selected artifact
+- **WHEN** user clicks any export action on completed task
+- **THEN** frontend downloads the selected backend artifact kind
 
 ### Requirement: UI SHALL provide three runtime modes for VQA workflow
 Runtime workspace SHALL support `flow`, `qa`, and `debug` modes for analysis, question answering, and retrieval diagnostics.
@@ -88,6 +88,10 @@ Runtime workspace SHALL support `flow`, `qa`, and `debug` modes for analysis, qu
 #### Scenario: Run chat action
 - **WHEN** user starts QA chat
 - **THEN** UI streams answer chunks, citations, and status updates in `qa` mode
+
+#### Scenario: Run combined analyze action
+- **WHEN** user runs analyze action in QA workspace
+- **THEN** UI receives retrieval debug payload and non-stream chat answer in one request
 
 ### Requirement: UI SHALL support VQA trace replay in runtime panel
 UI SHALL display trace identifier and fetch trace records for replay diagnostics.

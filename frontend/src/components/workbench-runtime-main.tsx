@@ -27,7 +27,7 @@ import { PreText } from './pretext'
 import { Button } from './ui/button'
 import { TerminalPanel } from './workbench-panels'
 import { cn } from '../lib/utils'
-import { getVqaTrace, searchVqa, streamChatVqa } from '../lib/api'
+import { analyzeVqa, chatVqa, getVqaTrace, searchVqa, streamChatVqa } from '../lib/api'
 import type {
   StageKey,
   TaskDetail,
@@ -331,6 +331,31 @@ export function WorkbenchRuntimeMain({
     }
   }, [])
 
+  const mapHitsToCitations = useCallback((hits: VQARetrievalHit[]): VQACitation[] => {
+    return (hits ?? []).map((item) => ({
+      doc_id: item.doc_id,
+      task_id: item.task_id,
+      task_title: item.task_title,
+      source: item.source,
+      start: item.start,
+      end: item.end,
+      text: item.text,
+      image_path: item.image_path,
+    }))
+  }, [])
+
+  const toSearchDebugFromHits = useCallback((traceId: string, queryText: string, hits: VQARetrievalHit[]): VQASearchResponse => {
+    return {
+      trace_id: traceId,
+      query_text: queryText,
+      dense_hits: [],
+      sparse_hits: [],
+      rrf_hits: [],
+      rerank_hits: hits ?? [],
+      hits: hits ?? [],
+    }
+  }, [])
+
   const handleRunQaSearch = useCallback(async () => {
     const queryText = qaQuery.trim()
     if (!queryText) {
@@ -348,18 +373,7 @@ export function WorkbenchRuntimeMain({
       startTransition(() => {
         setQaSearchDebug(payload)
         setQaTraceId(payload.trace_id)
-        setQaCitations(
-          (payload.hits ?? []).map((item) => ({
-            doc_id: item.doc_id,
-            task_id: item.task_id,
-            task_title: item.task_title,
-            source: item.source,
-            start: item.start,
-            end: item.end,
-            text: item.text,
-            image_path: item.image_path,
-          })),
-        )
+        setQaCitations(mapHitsToCitations(payload.hits ?? []))
       })
       void loadTraceRecords(payload.trace_id)
       setQaStatus('searched')
@@ -371,7 +385,86 @@ export function WorkbenchRuntimeMain({
     } finally {
       setQaBusy(false)
     }
+  }, [activeTask?.id, loadTraceRecords, mapHitsToCitations, qaQuery, t])
+
+  const handleRunQaAnalyze = useCallback(async () => {
+    const queryText = qaQuery.trim()
+    if (!queryText) {
+      setQaError(t('runtime.qa.queryRequired', { defaultValue: '请输入自然语言问题后再执行综合分析。' }))
+      return
+    }
+    setQaBusy(true)
+    setQaStatus('analyzing')
+    setQaError('')
+    setQaAnswer('')
+    setQaCitations([])
+    setWorkbenchMode('qa')
+    try {
+      const payload = await analyzeVqa({
+        query_text: queryText,
+        task_id: activeTask?.id,
+      })
+      startTransition(() => {
+        setQaTraceId(payload.trace_id)
+        setQaSearchDebug({
+          trace_id: payload.trace_id,
+          query_text: payload.query_text,
+          dense_hits: payload.retrieval.dense_hits,
+          sparse_hits: payload.retrieval.sparse_hits,
+          rrf_hits: payload.retrieval.rrf_hits,
+          rerank_hits: payload.retrieval.rerank_hits,
+          hits: payload.hits,
+        })
+        setQaAnswer(payload.chat.answer)
+        setQaCitations(payload.chat.citations)
+      })
+      void loadTraceRecords(payload.trace_id)
+      setQaStatus('done')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'analyze failed'
+      setQaError(message)
+      setQaStatus('error')
+    } finally {
+      setQaBusy(false)
+    }
   }, [activeTask?.id, loadTraceRecords, qaQuery, t])
+
+  const handleRunQaChatOnce = useCallback(async () => {
+    const queryText = qaQuery.trim()
+    if (!queryText) {
+      setQaError(t('runtime.qa.queryRequired', { defaultValue: '请输入自然语言问题后再执行问答。' }))
+      return
+    }
+    setQaBusy(true)
+    setQaStatus('chat_once')
+    setQaError('')
+    setQaAnswer('')
+    setQaCitations([])
+    setWorkbenchMode('qa')
+    try {
+      const payload = await chatVqa({
+        query_text: queryText,
+        task_id: activeTask?.id,
+      })
+      startTransition(() => {
+        setQaTraceId(payload.trace_id)
+        setQaAnswer(payload.answer)
+        setQaCitations(payload.citations?.length ? payload.citations : mapHitsToCitations(payload.hits ?? []))
+        setQaSearchDebug(toSearchDebugFromHits(payload.trace_id, queryText, payload.hits ?? []))
+      })
+      void loadTraceRecords(payload.trace_id)
+      setQaStatus(payload.error ? 'error' : 'done')
+      if (payload.error?.message) {
+        setQaError(payload.error.message)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'chat failed'
+      setQaError(message)
+      setQaStatus('error')
+    } finally {
+      setQaBusy(false)
+    }
+  }, [activeTask?.id, loadTraceRecords, mapHitsToCitations, qaQuery, t, toSearchDebugFromHits])
 
   const handleRunQaChat = useCallback(async () => {
     const queryText = qaQuery.trim()
@@ -481,7 +574,7 @@ export function WorkbenchRuntimeMain({
   )
   const qaStatusMeta = useMemo(() => {
     const status = qaStatus.toLowerCase()
-    if (status === 'searching' || status === 'streaming') {
+    if (status === 'searching' || status === 'streaming' || status === 'analyzing' || status === 'chat_once') {
       return {
         text: t('runtime.qa.status.running', { defaultValue: '处理中' }),
         className: 'border-info/40 bg-info/10 text-info',
@@ -1058,7 +1151,7 @@ export function WorkbenchRuntimeMain({
 
         {workbenchMode !== 'flow' && (
           <section className="mb-4 runtime-panel rounded-xl border p-3 text-sm">
-            <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto_auto_auto] lg:items-start">
+            <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto_auto] lg:items-start">
               <textarea
                 value={qaQuery}
                 onChange={(event) => setQaQuery(event.target.value)}
@@ -1081,9 +1174,17 @@ export function WorkbenchRuntimeMain({
                 {qaBusy && qaStatus === 'searching' ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
                 {t('runtime.qa.searchAction', { defaultValue: '仅检索' })}
               </Button>
+              <Button type="button" variant="outline" disabled={qaBusy} onClick={() => void handleRunQaAnalyze()}>
+                {qaBusy && qaStatus === 'analyzing' ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {t('runtime.qa.analyzeAction', { defaultValue: '综合分析' })}
+              </Button>
               <Button type="button" disabled={qaBusy} onClick={() => void handleRunQaChat()}>
                 {qaBusy && qaStatus === 'streaming' ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
-                {t('runtime.qa.chatAction', { defaultValue: '开始问答' })}
+                {t('runtime.qa.chatStreamAction', { defaultValue: '流式问答' })}
+              </Button>
+              <Button type="button" variant="outline" disabled={qaBusy} onClick={() => void handleRunQaChatOnce()}>
+                {qaBusy && qaStatus === 'chat_once' ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {t('runtime.qa.chatAction', { defaultValue: '快速问答' })}
               </Button>
               <Button type="button" variant="outline" disabled={!qaTraceId || qaBusy} onClick={() => void loadTraceRecords(qaTraceId)}>
                 {t('runtime.qa.refreshTrace', { defaultValue: '刷新 Trace' })}

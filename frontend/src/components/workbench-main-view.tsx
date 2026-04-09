@@ -14,6 +14,7 @@ import { WorkbenchRuntimeMain } from './workbench-runtime-main'
 import { WorkbenchSidebar } from './workbench-sidebar'
 import { cn } from '../lib/utils'
 import type { SidebarPanelKey } from '../app/workbench-config'
+import type { TaskExportKind } from '../lib/api'
 import type { TaskDetail } from '../types'
 
 type RuntimeMainProps = Omit<ComponentProps<typeof WorkbenchRuntimeMain>, 't'>
@@ -40,6 +41,7 @@ interface WorkbenchMainViewProps {
   savingArtifacts: boolean
   bundleArchiveFormat: string
   onDownloadAllArtifacts: () => void
+  onDownloadTaskArtifact: (kind: TaskExportKind) => void
   sourceTaskModalProps: SourceTaskModalProps
   historyModalProps: HistoryModalProps
   deleteTaskConfirmModalProps: DeleteTaskConfirmModalProps
@@ -64,6 +66,7 @@ export function WorkbenchMainView({
   savingArtifacts,
   bundleArchiveFormat,
   onDownloadAllArtifacts,
+  onDownloadTaskArtifact,
   sourceTaskModalProps,
   historyModalProps,
   deleteTaskConfirmModalProps,
@@ -101,6 +104,23 @@ export function WorkbenchMainView({
             <PreText variant="timestamp" className="mb-2">
               {t('bundleDownload.ready')}
             </PreText>
+            <div className="mb-2 grid grid-cols-2 gap-1.5">
+              <Button size="sm" variant="outline" onClick={() => onDownloadTaskArtifact('notes')} disabled={savingArtifacts}>
+                {t('bundleDownload.notesAction', { defaultValue: '下载笔记' })}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => onDownloadTaskArtifact('transcript')} disabled={savingArtifacts}>
+                {t('bundleDownload.transcriptAction', { defaultValue: '下载转录' })}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => onDownloadTaskArtifact('mindmap')} disabled={savingArtifacts}>
+                {t('bundleDownload.mindmapAction', { defaultValue: '下载导图HTML' })}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => onDownloadTaskArtifact('srt')} disabled={savingArtifacts}>
+                {t('bundleDownload.srtAction', { defaultValue: '下载字幕 SRT' })}
+              </Button>
+              <Button size="sm" variant="outline" className="col-span-2" onClick={() => onDownloadTaskArtifact('vtt')} disabled={savingArtifacts}>
+                {t('bundleDownload.vttAction', { defaultValue: '下载字幕 VTT' })}
+              </Button>
+            </div>
             <Button className="w-full" onClick={onDownloadAllArtifacts} disabled={savingArtifacts}>
               {savingArtifacts ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
               {savingArtifacts
