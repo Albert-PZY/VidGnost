@@ -7,6 +7,7 @@ Scope: this file is an internal navigation index for coding agents and maintaine
 - Frontend package manager: use `pnpm` (do not use `npm`)
 - Generated file encoding: UTF-8 without BOM
 - Python dependency management: use `uv` with project-level venv; add/remove deps via `uv add` / `uv remove`
+- GitHub operations: prefer using `gh` CLI commands when possible.
 - After completing a requirement change, automatically determine whether a commit is needed; if needed, commit and push following `docs/git-commit-convention.md` without additional confirmation.
 
 ## 2) Core Product Docs
