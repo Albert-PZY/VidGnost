@@ -208,12 +208,12 @@ async def test_generate_replaces_mermaid_block_with_image_markdown(tmp_path: Pat
             return "## 笔记\n\n```mermaid\nflowchart TD\nA-->B\n```"
         return "# mindmap"
 
-    async def _render_ok(_code: str) -> tuple[str | None, str]:
-        return ("data:image/png;base64,ZmFrZQ==", "")
+    async def _render_ok(_code: str) -> tuple[bytes | None, str]:
+        return (b"\x89PNG\r\n\x1a\nfake", "")
 
     service._chat_markdown_once_local = _local_response  # type: ignore[method-assign]
     service._build_client = lambda _config: None  # type: ignore[method-assign]
-    service._render_mermaid_png_data_url = _render_ok  # type: ignore[method-assign]
+    service._render_mermaid_png_bytes = _render_ok  # type: ignore[method-assign]
 
     bundle = await service.generate(
         title="demo",
@@ -221,4 +221,6 @@ async def test_generate_replaces_mermaid_block_with_image_markdown(tmp_path: Pat
         llm_config_override={"mode": "local"},
     )
     assert "```mermaid" not in bundle.summary_markdown
-    assert "data:image/png;base64,ZmFrZQ==" in bundle.summary_markdown
+    assert "![Mermaid 图示 1](notes-images/mermaid-001.png)" in bundle.summary_markdown
+    assert len(bundle.notes_image_assets) == 1
+    assert bundle.notes_image_assets[0].relative_path == "notes-images/mermaid-001.png"

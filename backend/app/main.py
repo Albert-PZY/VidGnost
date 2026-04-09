@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import os
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -34,6 +35,10 @@ logger = logging.getLogger(__name__)
 
 def _enable_windows_utf8_stdio() -> None:
     if sys.platform != "win32":
+        return
+    # Pytest capture replaces stdio streams; wrapping again will break teardown on Windows.
+    entry_name = Path(sys.argv[0]).name.lower() if sys.argv else ""
+    if "PYTEST_CURRENT_TEST" in os.environ or "pytest" in entry_name:
         return
     if hasattr(sys.stdout, "buffer"):
         sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
