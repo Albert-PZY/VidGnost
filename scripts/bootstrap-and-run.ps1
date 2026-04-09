@@ -223,6 +223,74 @@ function Wait-PortReady {
     throw "Port $Port ($Label) did not become ready within $TimeoutSeconds seconds."
 }
 
+function Get-ElectronAppPids {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FrontendPath
+    )
+
+    $rows = @(Get-CimInstance Win32_Process -Filter "Name = 'electron.exe'" -ErrorAction SilentlyContinue)
+    $pids = @()
+    foreach ($row in $rows) {
+        $commandLine = [string]$row.CommandLine
+        if ([string]::IsNullOrWhiteSpace($commandLine)) {
+            continue
+        }
+        if ($commandLine.Contains($FrontendPath)) {
+            $pids += [int]$row.ProcessId
+        }
+    }
+    return @($pids | Select-Object -Unique)
+}
+
+function Stop-ElectronAppProcesses {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FrontendPath
+    )
+
+    $targets = @((Get-ElectronAppPids -FrontendPath $FrontendPath) | Where-Object { $_ -and $_ -gt 0 -and $_ -ne $PID } | Select-Object -Unique)
+    if ($targets.Count -eq 0) {
+        return
+    }
+    Write-Host "[setup] Cleaning stale Electron process(es): $($targets -join ', ')"
+    foreach ($procId in $targets) {
+        try {
+            Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
+        } catch {}
+        try {
+            & taskkill.exe /PID "$procId" /T /F *> $null
+        } catch {}
+    }
+}
+
+function Wait-ElectronReady {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FrontendPath,
+        [Parameter(Mandatory = $true)]
+        [int]$LauncherPid,
+        [int]$TimeoutSeconds = 45
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        $launcher = Get-Process -Id $LauncherPid -ErrorAction SilentlyContinue
+        if ($null -eq $launcher) {
+            throw "Frontend launcher process exited before Electron app became ready."
+        }
+
+        $electronPids = @((Get-ElectronAppPids -FrontendPath $FrontendPath) | Where-Object { $_ -ne $LauncherPid })
+        if ($electronPids.Count -gt 0) {
+            Write-Host "[ready] Electron app process PID(s): $($electronPids -join ', ')"
+            return
+        }
+        Start-Sleep -Milliseconds 400
+    }
+
+    throw "Electron app did not become ready within $TimeoutSeconds seconds."
+}
+
 Ensure-Admin -CurrentMode $Mode
 
 $RootDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -245,7 +313,9 @@ $uvIndexDisplay = $UvDefaultIndexMirror
 Write-Host "[setup] Mirrors configured (uv index-url: $uvIndexDisplay, pnpm: $PnpmRegistryMirror)."
 
 Ensure-PortFree -Port $BackendPort -Label "backend"
-Ensure-PortFree -Port $FrontendPort -Label "frontend"
+if ($Mode -eq "web") {
+    Ensure-PortFree -Port $FrontendPort -Label "frontend"
+}
 
 Write-Host "[setup] Sync backend dependencies..."
 Push-Location $BackendDir
@@ -269,6 +339,7 @@ Write-Host '[run] Backend live logs (Ctrl+C to stop this window).'
 uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app --reload-exclude=.venv/* --reload-exclude=storage/*
 "@
 if ($Mode -eq "electron") {
+    Stop-ElectronAppProcesses -FrontendPath $FrontendDir
     $frontendCommand = @"
 Set-Location -LiteralPath '$escapedFrontendDir'
 Write-Host '[run] Frontend desktop live logs (Ctrl+C to stop this window).'
@@ -288,10 +359,18 @@ Wait-PortReady -Port $BackendPort -Label "backend"
 
 Write-Host "[run] Starting frontend ($Mode)..."
 $frontendProc = Start-Process -FilePath "powershell" -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-Command", $frontendCommand) -PassThru
-Wait-PortReady -Port $FrontendPort -Label "frontend"
+if ($Mode -eq "electron") {
+    Wait-ElectronReady -FrontendPath $FrontendDir -LauncherPid $frontendProc.Id
+} else {
+    Wait-PortReady -Port $FrontendPort -Label "frontend"
+}
 
 $backendListenPids = @(Get-PortOwningPids -Port $BackendPort)
-$frontendListenPids = @(Get-PortOwningPids -Port $FrontendPort)
+$frontendListenPids = if ($Mode -eq "electron") {
+    @(Get-ElectronAppPids -FrontendPath $FrontendDir)
+} else {
+    @(Get-PortOwningPids -Port $FrontendPort)
+}
 $stopPids = @($backendListenPids + $frontendListenPids) | Select-Object -Unique
 Write-Host "[ready] Backend launcher PID: $($backendProc.Id)"
 Write-Host "[ready] Frontend launcher PID: $($frontendProc.Id)"

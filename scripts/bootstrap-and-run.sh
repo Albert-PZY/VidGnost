@@ -119,6 +119,50 @@ wait_port_ready() {
   exit 1
 }
 
+electron_pids_for_project() {
+  if command -v pgrep >/dev/null 2>&1; then
+    pgrep -f "electron.*${FRONTEND_DIR}" 2>/dev/null || true
+    return
+  fi
+  ps -eo pid=,args= | awk -v key="${FRONTEND_DIR}" 'index($0, "electron") && index($0, key) { print $1 }'
+}
+
+stop_existing_electron_for_project() {
+  local pids
+  pids="$(electron_pids_for_project)"
+  if [[ -z "${pids//[[:space:]]/}" ]]; then
+    return
+  fi
+  echo "[setup] Cleaning stale Electron process(es): ${pids}"
+  local pid
+  for pid in ${pids}; do
+    if [[ "${pid}" =~ ^[0-9]+$ ]]; then
+      kill -9 "${pid}" >/dev/null 2>&1 || true
+    fi
+  done
+}
+
+wait_electron_ready() {
+  local timeout_seconds="${1:-45}"
+  local deadline=$((SECONDS + timeout_seconds))
+  while (( SECONDS < deadline )); do
+    if ! kill -0 "${FRONTEND_PID}" >/dev/null 2>&1; then
+      echo "[error] Frontend launcher exited before Electron app became ready."
+      exit 1
+    fi
+
+    local pids
+    pids="$(electron_pids_for_project)"
+    if [[ -n "${pids//[[:space:]]/}" ]]; then
+      echo "[ready] Electron app process PID(s): ${pids}"
+      return
+    fi
+    sleep 0.4
+  done
+  echo "[error] Electron app did not become ready within ${timeout_seconds}s"
+  exit 1
+}
+
 cleanup() {
   local exit_code=$?
   if [[ -n "${BACKEND_PID:-}" ]] && kill -0 "${BACKEND_PID}" >/dev/null 2>&1; then
@@ -142,7 +186,9 @@ uv_index_display="${UV_DEFAULT_INDEX_MIRROR}"
 echo "[setup] Mirrors configured (uv index-url: ${uv_index_display}, pnpm: ${PNPM_REGISTRY_MIRROR})."
 
 ensure_port_free "${BACKEND_PORT}" "backend"
-ensure_port_free "${FRONTEND_PORT}" "frontend"
+if [[ "${MODE}" == "web" ]]; then
+  ensure_port_free "${FRONTEND_PORT}" "frontend"
+fi
 
 echo "[setup] Sync backend dependencies..."
 uv_sync_args=(uv sync --python "${PINNED_PYTHON_VERSION}")
@@ -158,6 +204,7 @@ BACKEND_PID=$!
 wait_port_ready "${BACKEND_PORT}" "backend"
 
 if [[ "${MODE}" == "electron" ]]; then
+  stop_existing_electron_for_project
   echo "[run] Starting frontend in Electron mode ..."
   (cd "${FRONTEND_DIR}" && pnpm desktop:dev) &
 else
@@ -165,10 +212,18 @@ else
   (cd "${FRONTEND_DIR}" && pnpm dev --host 0.0.0.0 --port "${FRONTEND_PORT}") &
 fi
 FRONTEND_PID=$!
-wait_port_ready "${FRONTEND_PORT}" "frontend"
+if [[ "${MODE}" == "electron" ]]; then
+  wait_electron_ready 45
+else
+  wait_port_ready "${FRONTEND_PORT}" "frontend"
+fi
 
 BACKEND_SERVICE_PIDS="$(port_pids "${BACKEND_PORT}")"
-FRONTEND_SERVICE_PIDS="$(port_pids "${FRONTEND_PORT}")"
+if [[ "${MODE}" == "electron" ]]; then
+  FRONTEND_SERVICE_PIDS="$(electron_pids_for_project)"
+else
+  FRONTEND_SERVICE_PIDS="$(port_pids "${FRONTEND_PORT}")"
+fi
 echo "[ready] Backend launcher PID: ${BACKEND_PID}, Frontend launcher PID: ${FRONTEND_PID}"
 echo "[ready] Backend service PID(s): ${BACKEND_SERVICE_PIDS}"
 echo "[ready] Frontend service PID(s): ${FRONTEND_SERVICE_PIDS}"

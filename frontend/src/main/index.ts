@@ -10,6 +10,8 @@ const API_BASE = process.env.VIDGNOST_API_BASE ?? `http://${BACKEND_HOST}:${BACK
 const HEALTH_ENDPOINT = `${API_BASE}/health`
 const BACKEND_BOOT_TIMEOUT_MS = Number.parseInt(process.env.VIDGNOST_BACKEND_BOOT_TIMEOUT_MS ?? '30000', 10)
 const BACKEND_BOOT_POLL_MS = 800
+const APP_NAME = 'VidGnost'
+const USER_DATA_DIR = join(app.getPath('appData'), APP_NAME)
 
 let backendProcess: ChildProcess | null = null
 let backendSpawnAttempted = false
@@ -135,16 +137,38 @@ async function createWindow(): Promise<void> {
     return { action: 'deny' }
   })
 
+  let didShowWindow = false
+  const showWindowSafely = () => {
+    if (didShowWindow || window.isDestroyed()) return
+    didShowWindow = true
+    window.show()
+  }
+  window.once('ready-to-show', showWindowSafely)
+  window.webContents.once('did-finish-load', showWindowSafely)
+  window.webContents.on('did-fail-load', (_event, code, description, url) => {
+    console.warn(`[vidgnost-electron] renderer load failed code=${code} url=${url} description=${description}`)
+    showWindowSafely()
+  })
+  const forceShowTimer = setTimeout(() => {
+    if (!didShowWindow) {
+      console.warn('[vidgnost-electron] force showing window after startup timeout')
+      showWindowSafely()
+    }
+  }, 4000)
+  window.on('closed', () => {
+    clearTimeout(forceShowTimer)
+  })
+
   if (process.env.ELECTRON_RENDERER_URL) {
     await window.loadURL(process.env.ELECTRON_RENDERER_URL)
   } else {
     await window.loadFile(join(__dirname, '../renderer/index.html'))
   }
-
-  window.once('ready-to-show', () => {
-    window.show()
-  })
 }
+
+app.setName(APP_NAME)
+app.setPath('userData', USER_DATA_DIR)
+app.commandLine.appendSwitch('disk-cache-dir', join(USER_DATA_DIR, 'Cache'))
 
 app.whenReady().then(async () => {
   ipcMain.handle('vidgnost:get-api-base', () => API_BASE)
