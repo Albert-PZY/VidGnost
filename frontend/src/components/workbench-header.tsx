@@ -1,6 +1,6 @@
 import type { ComponentProps, ComponentType } from 'react'
 import type { TFunction } from 'i18next'
-import { BookOpen, Languages } from 'lucide-react'
+import { Languages } from 'lucide-react'
 
 import { PreText } from './pretext'
 import { ThemeToggle } from './theme-toggle'
@@ -8,14 +8,11 @@ import { Button } from './ui/button'
 import { SelectField, type SelectFieldOption } from './workbench-panels'
 import { cn } from '../lib/utils'
 
-type MainViewMode = 'workbench' | 'quickstart'
 type UILocale = 'zh-CN' | 'en'
 
 interface WorkbenchHeaderProps {
   t: TFunction
   headerGlass: boolean
-  mainView: MainViewMode
-  onToggleMainView: () => void
   currentLocale: UILocale
   uiLocaleOptions: SelectFieldOption[]
   onSwitchLocale: (locale: UILocale) => Promise<void>
@@ -28,8 +25,6 @@ interface WorkbenchHeaderProps {
 export function WorkbenchHeader({
   t,
   headerGlass,
-  mainView,
-  onToggleMainView,
   currentLocale,
   uiLocaleOptions,
   onSwitchLocale,
@@ -66,16 +61,6 @@ export function WorkbenchHeader({
         </div>
 
         <div className="flex shrink-0 items-center gap-2.5">
-          <Button
-            type="button"
-            variant={mainView === 'quickstart' ? 'default' : 'outline'}
-            size="sm"
-            className="h-9 px-3.5"
-            onClick={onToggleMainView}
-          >
-            <BookOpen className="mr-2 h-4 w-4" />
-            {mainView === 'quickstart' ? t('quickStart.backToWorkbench') : t('quickStart.entry')}
-          </Button>
           <div className="w-40">
             <SelectField
               compact

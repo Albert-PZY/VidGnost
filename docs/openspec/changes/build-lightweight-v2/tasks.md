@@ -45,13 +45,13 @@
 - [x] 4.7 Implement prompt-template CRUD and active selection workflows
 - [x] 4.8 Implement runtime warning toast/log presentation from SSE events
 - [x] 4.9 Implement post-completion bundle download action
-- [x] 4.10 Implement quick-start documentation page with outline navigation and markdown rendering
+- [x] 4.10 Implement VQA runtime workbench modes (`flow/qa/debug`) with retrieval debug panels and trace replay
 - [x] 4.11 Implement runtime UI performance optimizations (batched stream flush + lazy mindmap runtime)
 - [x] 4.12 Implement modal interaction polish (scroll lock, motion preferences, consistent toast placement)
 
 ## 5. Docs / Ops
 
-- [x] 5.1 Publish bilingual README and quick-start guides with runtime contract details
+- [x] 5.1 Publish synchronized bilingual README docs with web/desktop runtime contract details
 - [x] 5.2 Publish OpenSpec capabilities for ingestion, pipeline, SSE, config, generation, history, UI
 - [x] 5.3 Publish startup scripts for Linux/macOS/WSL and Windows PowerShell
 - [x] 5.4 Publish OpenSpec checker scripts and validation workflow

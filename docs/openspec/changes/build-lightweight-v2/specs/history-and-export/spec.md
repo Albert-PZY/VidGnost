@@ -1,125 +1,72 @@
 ## ADDED Requirements
 
 ### Requirement: System SHALL persist task history in local files
-System SHALL persist task metadata, source info, phase logs, transcript, notes, mindmap, and timestamps in local JSON files for later retrieval.
+Backend SHALL persist task metadata, source info, phase logs, transcript, notes, mindmap, and timestamps for replay retrieval.
 
 #### Scenario: Query task list
-- **WHEN** client requests history endpoint
-- **THEN** server returns paginated tasks ordered by latest update time
-
-#### Scenario: Query task list with keyword
-- **WHEN** client requests history endpoint with query keyword
-- **THEN** server returns tasks filtered by title/source input match
+- **WHEN** client requests task listing endpoint
+- **THEN** backend returns tasks ordered by latest update time with total count
 
 #### Scenario: Query task detail
 - **WHEN** client requests task detail by ID
-- **THEN** server returns persisted phase logs and artifacts if available
+- **THEN** backend returns persisted logs, artifacts, metrics, and artifact index metadata
 
-#### Scenario: Reopen historical session
-- **WHEN** user reopens a completed task after service restart
-- **THEN** server returns persisted logs, notes, and mindmap for replay
+### Requirement: Runtime snapshots SHALL be persisted by stage
+Backend SHALL persist per-stage analysis snapshots under `analysis-results/<task_id>/<stage>.json`.
 
-### Requirement: Task runtime snapshots SHALL be persisted as per-stage files
-Backend SHALL persist runtime analysis snapshots in per-stage files (`analysis-results/<task_id>/<stage>.json`) and SHALL NOT aggregate all phase snapshots into one monolithic JSON.
+#### Scenario: Stage status changes
+- **WHEN** phase `A/B/C/D` or stage-D substage state changes
+- **THEN** backend updates corresponding stage snapshot files
 
-#### Scenario: Persist stage-level analysis snapshots
-- **WHEN** phase `A/B/C/D` or stage-`D` substage status changes
-- **THEN** backend writes corresponding snapshot file for that stage/substage key
-- **AND** stage-level cleanup can target affected snapshots by prefix
+### Requirement: History operations SHALL support title update and terminal delete
+Backend SHALL allow title update and task deletion only for terminal tasks.
 
-### Requirement: Task deletion SHALL remove stage-artifact subtree
-Deleting terminal task SHALL remove associated stage-artifact files to avoid orphaned local persistence.
+#### Scenario: Update history title
+- **WHEN** client submits non-empty title to title-update API
+- **THEN** backend persists title and returns updated summary
 
-#### Scenario: Delete terminal task with stage artifacts
-- **WHEN** client deletes terminal task
-- **THEN** backend removes task record, stage metrics, runtime warnings, and event logs
-- **AND** backend removes `tasks/stage-artifacts/<task_id>/` and `tasks/analysis-results/<task_id>/` directories
+#### Scenario: Reject delete for running task
+- **WHEN** client attempts to delete a non-terminal task
+- **THEN** backend returns conflict and keeps task record unchanged
 
-### Requirement: Task detail SHALL include stage metrics and artifact index metadata
-Task persistence SHALL include stage observability metrics and artifact index/size metadata for replay diagnostics and storage governance.
+#### Scenario: Delete terminal task
+- **WHEN** client deletes completed/failed/cancelled task
+- **THEN** backend removes task record and related persisted artifacts
 
-#### Scenario: Query task detail with observability metadata
-- **WHEN** client requests task detail
-- **THEN** response includes `stage_metrics` for `A/B/C/D` and `artifact_total_bytes`
-- **AND** response includes `artifact_index` for generated deliverables
+### Requirement: Artifact markdown edits SHALL be supported after terminal status
+Backend SHALL allow notes/mindmap markdown update only after task reaches terminal state.
 
-### Requirement: Frontend SHALL surface history operations in modal workflow
-Frontend SHALL expose history browsing and keyword search through modal interactions triggered by sidebar actions.
+#### Scenario: Persist edited notes and mindmap
+- **WHEN** client updates artifacts for terminal task
+- **THEN** backend saves markdown and returns refreshed task detail
 
-#### Scenario: Search history in modal
-- **WHEN** user opens history modal and submits keyword
-- **THEN** frontend requests history API with keyword and renders filtered list
+#### Scenario: Reject edit for running task
+- **WHEN** client updates artifacts for non-terminal task
+- **THEN** backend returns conflict and does not mutate artifacts
 
-#### Scenario: Rename task title in modal
-- **WHEN** user edits task title and confirms save
-- **THEN** frontend calls title-update API and refreshes list/detail views
+### Requirement: Export endpoints SHALL provide deterministic deliverables
+System SHALL support transcript, notes, mindmap, subtitle, and bundle exports for completed tasks.
 
-#### Scenario: Delete task in modal
-- **WHEN** user confirms delete action for terminal task
-- **THEN** frontend calls delete API and removes task from modal list
+#### Scenario: Export transcript and notes
+- **WHEN** client calls transcript/notes export APIs on completed task
+- **THEN** backend returns UTF-8 payload with deterministic filename headers
 
-#### Scenario: Delete confirmation and feedback
-- **WHEN** user clicks delete icon in history modal
-- **THEN** frontend presents in-app confirmation modal and themed toast result
+#### Scenario: Export subtitles
+- **WHEN** client requests `srt` or `vtt`
+- **THEN** backend generates subtitles from persisted transcript segments
+- **AND** backend normalizes timeline ordering and minimum segment duration
 
-### Requirement: System SHALL support history title update and task deletion APIs
-Backend SHALL provide explicit APIs to update task title and delete historical task.
-Deletion SHALL reject non-terminal tasks to protect active pipeline execution.
+### Requirement: Bundle export SHALL include notes image assets
+Bundle export SHALL include markdown artifacts and PNG image assets referenced from notes markdown.
 
-#### Scenario: Update task title
-- **WHEN** client calls title-update API with non-empty title
-- **THEN** server persists title and returns updated summary payload
+#### Scenario: Bundle includes notes-images
+- **WHEN** completed task contains rendered note images under `D/fusion/notes-images`
+- **THEN** exported bundle includes `notes-images/**/*.png`
+- **AND** `notes.md` keeps relative image paths consistent with bundle layout
 
-#### Scenario: Reject deleting running task
-- **WHEN** client calls delete API for non-terminal task
-- **THEN** server returns conflict response and keeps task record
+### Requirement: Mindmap HTML export SHALL remain desktop-readable
+Mindmap HTML export SHALL use a white default canvas background for consistent readability.
 
-#### Scenario: Delete completed task
-- **WHEN** client calls delete API for completed/failed/cancelled task
-- **THEN** server removes task record and returns no-content response
-
-### Requirement: System SHALL support post-generation artifact markdown edits
-Backend SHALL provide task-artifact update API for terminal tasks so frontend can persist adjusted notes/mindmap markdown before export.
-
-#### Scenario: Update notes/mindmap markdown after completion
-- **WHEN** client calls artifact update API for terminal task with edited markdown
-- **THEN** server persists updated fields and returns latest task detail
-
-#### Scenario: Reject artifact update for running task
-- **WHEN** client calls artifact update API for non-terminal task
-- **THEN** server returns conflict response and keeps artifacts unchanged
-
-### Requirement: System SHALL provide artifact export endpoints
-System SHALL provide export endpoints for transcript, notes, mindmap, and subtitles.
-Subtitle generation SHALL be based on persisted `transcript_segments(start/end/text)`.
-
-#### Scenario: Export SRT subtitle for completed task
-- **WHEN** client requests `GET /tasks/{task_id}/export/srt` for completed task
-- **THEN** server returns UTF-8 `SRT` generated from persisted transcript segments
-- **AND** subtitle timestamps use `HH:MM:SS,mmm`
-
-#### Scenario: Export VTT subtitle for completed task
-- **WHEN** client requests `GET /tasks/{task_id}/export/vtt` for completed task
-- **THEN** server returns UTF-8 `VTT` generated from persisted transcript segments
-- **AND** subtitle timestamps use `HH:MM:SS.mmm`
-
-#### Scenario: Normalize subtitle boundaries during export
-- **WHEN** transcript segments contain overlap, non-positive duration, or empty text
-- **THEN** export logic filters empty text items
-- **AND** ensures each subtitle item has positive duration via minimum compensation
-- **AND** clips overlaps to keep timeline monotonic
-
-#### Scenario: Export markdown notes
-- **WHEN** client requests markdown export for completed task
-- **THEN** server returns generated markdown payload
-- **AND** notes content includes detailed notes section
-
-#### Scenario: Bundle export contains focused deliverables and subtitles
-- **WHEN** client requests bundle export for completed task
-- **THEN** archive includes `transcript.txt`, `notes.md`, `mindmap.md`, `mindmap.html`, `*.subtitles.srt`, and `*.subtitles.vtt`
-- **AND** `notes.md` / `mindmap.md` use latest persisted values (including manual edits)
-
-#### Scenario: Mindmap HTML export keeps white background
-- **WHEN** client exports or bundles `mindmap.html`
-- **THEN** exported HTML uses white background as default canvas theme
-- **AND** rendered text remains readable in common desktop browsers
+#### Scenario: Export mindmap html
+- **WHEN** client requests mindmap HTML export or bundle
+- **THEN** generated HTML uses readable default text/background contrast in common desktop browsers

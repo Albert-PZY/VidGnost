@@ -65,7 +65,7 @@ export const WHISPER_PRESET_CONFIGS: Record<(typeof WHISPER_PRESET_KEYS)[number]
 export type UILocale = (typeof UI_LOCALES)[number]
 export type WhisperPresetKey = (typeof WHISPER_PRESET_KEYS)[number]
 export type SidebarPanelKey = 'source' | 'history' | 'config' | 'selfCheck' | null
-export type MainViewMode = 'workbench' | 'quickstart'
+export type MainViewMode = 'workbench'
 
 export function createEmptyVmPhaseMetrics(): Record<VmPhaseKey, VmPhaseMetric> {
   const create = (optional = false): VmPhaseMetric => ({

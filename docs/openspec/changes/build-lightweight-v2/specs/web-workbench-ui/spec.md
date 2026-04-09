@@ -1,125 +1,104 @@
 ## ADDED Requirements
 
-### Requirement: UI SHALL provide bilingual minimalist workbench with theme switching
-Frontend SHALL provide Simplified Chinese and English locales, plus light/dark themes with accessibility-friendly contrast.
+### Requirement: UI SHALL provide bilingual workbench with persistent theme
+Frontend SHALL provide Simplified Chinese and English locales, and light/dark themes with persistent preference.
 
-#### Scenario: Switch locale and persist preference
-- **WHEN** user switches locale in header and refreshes page
+#### Scenario: Switch locale and reload page
+- **WHEN** user changes locale in header and refreshes
 - **THEN** UI keeps selected locale and renders translated labels consistently
 
 #### Scenario: Toggle theme
-- **WHEN** user toggles theme control
-- **THEN** workbench surfaces update through theme tokens without readability regression
+- **WHEN** user toggles theme switch
+- **THEN** UI updates via theme tokens without readability regression
 
-### Requirement: UI SHALL support full input-to-result workflow
-Workbench SHALL support `URL / local path / upload` task creation and display end-to-end analysis outputs.
+### Requirement: UI SHALL keep a single workbench main view
+Application shell SHALL always render workbench main view and SHALL NOT depend on in-app quick-start markdown pages.
+
+#### Scenario: Enter app
+- **WHEN** user opens web or desktop app
+- **THEN** main area renders workbench runtime view directly
+
+### Requirement: UI SHALL support URL/path/upload task submission workflow
+Workbench SHALL support task creation from `URL`, `local path`, and `file upload`.
 
 #### Scenario: Submit task from source modal
-- **WHEN** user submits a valid source
+- **WHEN** user submits valid source data
 - **THEN** frontend creates task and enters runtime monitoring state
 
-### Requirement: UI SHALL reflect task status and progress in realtime via SSE
-Workbench SHALL update active task status/progress/logs continuously from SSE events.
+### Requirement: UI SHALL reflect task progress and logs in realtime via SSE
+Workbench SHALL update active task status/progress/logs continuously from task event stream.
 
-#### Scenario: Active task is running
-- **WHEN** backend emits stage/progress/log events
-- **THEN** frontend updates runtime status and progress without manual refresh
+#### Scenario: Receive runtime events
+- **WHEN** backend emits `stage/progress/log/runtime_warning` events
+- **THEN** frontend updates runtime panels and warning feedback without manual refresh
 
-### Requirement: UI SHALL provide task cancellation control
-Runtime panel SHALL provide stop action for non-terminal tasks and reflect terminal cancellation state.
+### Requirement: UI SHALL provide phase tabs aligned with VM phase model
+Runtime area SHALL expose phase tabs `A`, `B`, `C`, `transcript_optimize`, `D` and auto-focus based on incoming runtime events.
 
-#### Scenario: Cancel active task
-- **WHEN** user clicks stop and backend emits `task_cancelled`
-- **THEN** UI updates task state to `cancelled` and stops running indicator
+#### Scenario: Stage-D optimization phase starts
+- **WHEN** backend enters `transcript_optimize`
+- **THEN** frontend highlights corresponding phase tab and logs
 
-### Requirement: UI SHALL display phase tabs aligned with runtime substage model
-Runtime area SHALL display tabs `A`, `B`, `C`, `transcript_optimize`, `D` and auto-switch by incoming stage events.
+### Requirement: UI SHALL render stage-D editing and preview workspace
+Stage-D workspace SHALL provide notes and mindmap source editing with preview support and terminal-state editing guard.
 
-#### Scenario: Backend enters substage `transcript_optimize`
-- **WHEN** stage event indicates `transcript_optimize`
-- **THEN** UI highlights corresponding tab and displays related logs/metrics
-
-### Requirement: UI SHALL stream stage-C transcript output
-Stage `C` panel SHALL render incremental transcript stream and keep latest output visible.
-
-#### Scenario: Receive transcript delta events
-- **WHEN** backend emits transcript deltas
-- **THEN** transcript panel appends text incrementally and keeps bottom-follow behavior
-
-### Requirement: UI SHALL render stage-D dual-pane editing and preview
-Stage `D` SHALL render notes and mindmap in source+preview split panes; source panes become editable after terminal status.
-
-#### Scenario: Task still running stage D
+#### Scenario: Task is still running
 - **WHEN** task status is non-terminal
-- **THEN** notes/mindmap source editors are read-only
+- **THEN** notes/mindmap editors are read-only
 
-#### Scenario: Task finished
+#### Scenario: Task becomes terminal
 - **WHEN** task status becomes `completed|failed|cancelled`
-- **THEN** notes/mindmap source editors become editable for manual adjustments
+- **THEN** notes/mindmap editors become editable and can be persisted
 
-### Requirement: Runtime config modal SHALL provide three tabs
+### Requirement: UI SHALL provide runtime config center with three tabs
 Config modal SHALL provide `在线 LLM`, `Faster-Whisper`, and `Prompt Templates` tabs.
 
 #### Scenario: Open config modal
-- **WHEN** user clicks runtime config entry
-- **THEN** modal shows three tabs and allows switching without leaving page context
+- **WHEN** user opens runtime config from sidebar
+- **THEN** modal displays three tabs and supports tab switching in-place
 
-### Requirement: 在线 LLM tab SHALL expose editable generation fields
-在线 LLM tab SHALL expose `mode`, `load_profile`, `base_url`, `model`, `api_key`, and correction controls.
+### Requirement: UI SHALL support prompt template CRUD and active selection
+Prompt template panel SHALL support create/update/delete/copy/select operations for summary and mindmap channels.
 
-#### Scenario: Save online LLM config
-- **WHEN** user edits and saves LLM fields
-- **THEN** frontend persists values via `/config/llm` and refreshes effective config
+#### Scenario: Create template and switch selection
+- **WHEN** user creates a template and sets it as selected
+- **THEN** frontend persists template and selected IDs through config APIs
 
-### Requirement: Faster-Whisper tab SHALL expose ASR runtime settings
-Faster-Whisper tab SHALL expose model/language/device/compute/chunk/vad and related runtime fields with save feedback.
+### Requirement: UI SHALL provide history modal operations
+History panel SHALL support search, reopen, rename, and terminal-task delete operations.
 
-#### Scenario: Save whisper runtime config
-- **WHEN** user saves edited ASR config
-- **THEN** frontend persists config and updates local draft with backend effective values
+#### Scenario: Reopen historical task
+- **WHEN** user selects a historical task
+- **THEN** frontend restores runtime artifacts/logs and updates active runtime context
 
-### Requirement: Faster-Whisper tab SHALL support transcript correction mode selection
-UI SHALL expose `correction_mode` (`off|strict|rewrite`) with batch/overlap parameters.
+### Requirement: UI SHALL provide completion-only export action
+Workbench SHALL show one-click artifact bundle export only when active task is completed.
 
-#### Scenario: Select strict correction mode
-- **WHEN** user saves strict mode and batch settings
-- **THEN** frontend persists correction config and subsequent tasks run strict correction
+#### Scenario: Completed task exports bundle
+- **WHEN** user clicks export action on completed task
+- **THEN** frontend downloads backend bundle artifact
 
-### Requirement: Prompt template panel SHALL support CRUD and selection
-Prompt template panel SHALL support create/update/delete/copy/select for notes and mindmap channels.
+### Requirement: UI SHALL provide three runtime modes for VQA workflow
+Runtime workspace SHALL support `flow`, `qa`, and `debug` modes for analysis, question answering, and retrieval diagnostics.
 
-#### Scenario: Create template and set selection
-- **WHEN** user creates new template and switches active selection
-- **THEN** frontend persists template content and selected IDs via config APIs
+#### Scenario: Run retrieval-only action
+- **WHEN** user submits query via retrieval action
+- **THEN** UI shows retrieval hit comparisons and trace panel in `debug` mode
 
-### Requirement: UI SHALL replay persisted artifacts and logs from task history
-History panel SHALL allow restoring transcript/logs/notes/mindmap from terminal tasks.
+#### Scenario: Run chat action
+- **WHEN** user starts QA chat
+- **THEN** UI streams answer chunks, citations, and status updates in `qa` mode
 
-#### Scenario: Open historical completed task
-- **WHEN** user selects task from history modal
-- **THEN** frontend loads persisted runtime artifacts and renders them in corresponding panels
+### Requirement: UI SHALL support VQA trace replay in runtime panel
+UI SHALL display trace identifier and fetch trace records for replay diagnostics.
 
-### Requirement: UI SHALL provide one-click artifact bundle download after completion
-After task completion, UI SHALL provide contextual bundle export action.
+#### Scenario: Refresh trace records
+- **WHEN** user triggers trace refresh with valid `trace_id`
+- **THEN** frontend requests `/traces/{trace_id}` and updates trace timeline
 
-#### Scenario: Download bundle from completed task
-- **WHEN** user clicks bundle download action
-- **THEN** frontend requests backend bundle export endpoint and downloads archive
+### Requirement: Desktop host SHALL resolve API base through Electron bridge
+When running in Electron, frontend API client SHALL resolve backend API base from preload IPC bridge.
 
-### Requirement: UI SHALL normalize backend errors and warnings for user feedback
-Frontend API client SHALL parse structured backend error payload and surface clear messages in toast/runtime panels.
-
-#### Scenario: Backend returns structured error
-- **WHEN** API response includes `{ code, message, detail }`
-- **THEN** frontend displays `message` and keeps diagnostic metadata for debugging
-
-#### Scenario: Receive `runtime_warning` SSE event
-- **WHEN** backend emits runtime warning during task execution
-- **THEN** UI appends warning log and shows warning toast immediately
-
-### Requirement: UI SHALL provide in-app quick-start documentation view
-Header quick-start entry SHALL switch main area to markdown guide view while preserving theme and locale style consistency.
-
-#### Scenario: Open quick-start page
-- **WHEN** user clicks quick-start entry
-- **THEN** main content switches to docs view with outline navigation and markdown body
+#### Scenario: Desktop bootstraps backend base URL
+- **WHEN** renderer initializes in Electron context
+- **THEN** frontend resolves API base by `vidgnostBridge.getApiBase()` before API requests

@@ -14,9 +14,6 @@ import '@uiw/react-markdown-preview/markdown.css'
 import { WorkbenchHeader } from './components/workbench-header'
 import { WorkbenchMainView } from './components/workbench-main-view'
 import {
-  QuickStartPanel,
-} from './components/workbench-panels'
-import {
   getLLMConfig,
   getPromptTemplates,
   getTask,
@@ -35,7 +32,6 @@ import {
   parseInteger,
   parseNumeric,
   VM_PHASES,
-  type MainViewMode,
   type SidebarPanelKey,
   type UILocale,
   type WhisperPresetKey,
@@ -67,15 +63,8 @@ import type {
   WhisperConfig,
 } from './types'
 
-type QuickStartDocModule = { default: string }
-
 const ACTIVE_TASK_STORAGE_KEY = 'vidgnost-active-task-id'
 const D_SUBPHASE_ORDER: VmPhaseKey[] = ['transcript_optimize']
-const quickStartDocLoaders: Record<UILocale, () => Promise<QuickStartDocModule>> = {
-  'zh-CN': () => import('./docs/quick-start.zh-CN.md?raw'),
-  en: () => import('./docs/quick-start.en.md?raw'),
-}
-const quickStartDocCache: Partial<Record<UILocale, string>> = {}
 
 function resolveRunningDSubphase(metrics: Record<VmPhaseKey, VmPhaseMetric>): VmPhaseKey {
   for (const phase of D_SUBPHASE_ORDER) {
@@ -98,7 +87,7 @@ function GitHubIcon(props: ComponentProps<'svg'>) {
 function App() {
   const { t, i18n } = useTranslation()
 
-  const [mainView, setMainView] = useState<MainViewMode>('workbench')
+  const mainView = 'workbench' as const
   const [isDark, setIsDark] = useState<boolean>(() => localStorage.getItem('vidgnost-theme') === 'dark')
   const [headerGlass, setHeaderGlass] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -150,7 +139,6 @@ function App() {
   const [fusionPromptPreview, setFusionPromptPreview] = useState('')
   const [configTab, setConfigTab] = useState<'localModels' | 'whisper' | 'prompts'>('localModels')
   const [showApiKey, setShowApiKey] = useState(true)
-  const [quickStartMarkdown, setQuickStartMarkdown] = useState('')
   const {
     promptTemplateView,
     setPromptTemplateView,
@@ -344,28 +332,6 @@ function App() {
       (activeTask.status === 'completed' || activeTask.status === 'failed' || activeTask.status === 'cancelled'),
   )
   const hasUnsavedArtifactEdits = notesMarkdownDirty || mindmapMarkdownDirty
-
-  useEffect(() => {
-    if (mainView !== 'quickstart') return
-    const locale = currentLocale
-    const cached = quickStartDocCache[locale]
-    if (cached) {
-      setQuickStartMarkdown(cached)
-      return
-    }
-
-    let cancelled = false
-    setQuickStartMarkdown('')
-    void quickStartDocLoaders[locale]().then((module) => {
-      if (cancelled) return
-      quickStartDocCache[locale] = module.default
-      setQuickStartMarkdown(module.default)
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [currentLocale, mainView])
 
   const {
     uiLocaleOptions,
@@ -921,8 +887,6 @@ function App() {
         <WorkbenchHeader
           t={t}
           headerGlass={headerGlass}
-          mainView={mainView}
-          onToggleMainView={() => setMainView((prev) => (prev === 'quickstart' ? 'workbench' : 'quickstart'))}
           currentLocale={currentLocale}
           uiLocaleOptions={uiLocaleOptions}
           onSwitchLocale={switchLocale}
@@ -932,42 +896,34 @@ function App() {
           githubIcon={GitHubIcon}
         />
 
-        {mainView === 'workbench' ? (
-          <WorkbenchMainView
-            t={t}
-            sidebarCollapsed={sidebarCollapsed}
-            setSidebarCollapsed={setSidebarCollapsed}
-            activeSidebarPanel={activeSidebarPanel}
-            setActiveSidebarPanel={setActiveSidebarPanel}
-            loadHistory={reloadHistoryPanel}
-            openConfigPanel={openConfigPanel}
-            openSelfCheckPanel={openSelfCheckPanel}
-            runtimeModel={runtimeModel}
-            runtimeLanguage={runtimeLanguage}
-            whisperPreset={whisperPreset}
-            activeTask={activeTask}
-            activeTaskStatusText={activeTaskRuntimeStatusText}
-            runtimeMainProps={runtimeMainProps}
-            isTaskCompleted={Boolean(isTaskCompleted)}
-            savingArtifacts={savingArtifacts}
-            bundleArchiveFormat={bundleArchiveFormat}
-            onDownloadAllArtifacts={() => {
-              void downloadAllArtifacts()
-            }}
-            sourceTaskModalProps={sourceTaskModalProps}
-            historyModalProps={historyModalProps}
-            deleteTaskConfirmModalProps={deleteTaskConfirmModalProps}
-            promptTemplateDeleteModalProps={promptTemplateDeleteModalProps}
-            configModalProps={configModalProps}
-            selfCheckModalProps={selfCheckModalProps}
-          />
-        ) : quickStartMarkdown ? (
-          <QuickStartPanel markdown={quickStartMarkdown} />
-        ) : (
-          <div className="mx-auto max-w-[1180px] px-4 py-8 text-sm text-text-subtle">
-            {t('quickStart.entry')}...
-          </div>
-        )}
+        <WorkbenchMainView
+          t={t}
+          sidebarCollapsed={sidebarCollapsed}
+          setSidebarCollapsed={setSidebarCollapsed}
+          activeSidebarPanel={activeSidebarPanel}
+          setActiveSidebarPanel={setActiveSidebarPanel}
+          loadHistory={reloadHistoryPanel}
+          openConfigPanel={openConfigPanel}
+          openSelfCheckPanel={openSelfCheckPanel}
+          runtimeModel={runtimeModel}
+          runtimeLanguage={runtimeLanguage}
+          whisperPreset={whisperPreset}
+          activeTask={activeTask}
+          activeTaskStatusText={activeTaskRuntimeStatusText}
+          runtimeMainProps={runtimeMainProps}
+          isTaskCompleted={Boolean(isTaskCompleted)}
+          savingArtifacts={savingArtifacts}
+          bundleArchiveFormat={bundleArchiveFormat}
+          onDownloadAllArtifacts={() => {
+            void downloadAllArtifacts()
+          }}
+          sourceTaskModalProps={sourceTaskModalProps}
+          historyModalProps={historyModalProps}
+          deleteTaskConfirmModalProps={deleteTaskConfirmModalProps}
+          promptTemplateDeleteModalProps={promptTemplateDeleteModalProps}
+          configModalProps={configModalProps}
+          selfCheckModalProps={selfCheckModalProps}
+        />
       </div>
     </div>
   )

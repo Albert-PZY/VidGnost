@@ -1,66 +1,52 @@
 ## ADDED Requirements
 
-### Requirement: System SHALL generate structured notes and mindmap via online LLM API
-Phase `D` generation SHALL call OpenAI-compatible chat completion API to produce detailed notes and markmap-compatible mindmap markdown.
+### Requirement: System SHALL generate notes and mindmap via online LLM API
+Stage-D generation SHALL use OpenAI-compatible completion APIs to produce structured notes markdown and markmap-compatible mindmap markdown.
 
-#### Scenario: Notes and mindmap generation succeeds
-- **WHEN** transcript source context is available and online API is reachable
+#### Scenario: Stage-D generation succeeds
+- **WHEN** transcript context is available and configured API is reachable
 - **THEN** backend persists `notes_markdown` and `mindmap_markdown` artifacts
 
-#### Scenario: LLM API call fails
-- **WHEN** remote API returns timeout/non-2xx/error payload
+#### Scenario: Generation runtime fails
+- **WHEN** API request times out, returns non-2xx, or fails validation
 - **THEN** task transitions to `failed` with actionable error metadata
 
-### Requirement: Summary runtime mode SHALL resolve to API
-Summary/mindmap runtime SHALL execute by effective online API configuration.
-
-#### Scenario: Run stage-D generation
-- **WHEN** backend starts notes/mindmap generation
-- **THEN** backend resolves runtime parameters from saved online LLM config
-
-### Requirement: Stage D SHALL stream summary and mindmap outputs incrementally
-Backend SHALL stream notes and mindmap deltas independently so frontend can render both channels in near realtime.
-
-#### Scenario: Parallel channel streaming
-- **WHEN** stage `D` starts generation
-- **THEN** backend emits `summary_delta` and `mindmap_delta` independently
-- **AND** frontend renders both channels without waiting for final completion
-
-### Requirement: Notes artifact SHALL be composed from normalized summary output
-Persisted `notes_markdown` SHALL be composed from normalized summary structure and SHALL NOT append full raw transcript blocks by default.
-
-#### Scenario: Persist notes after summary normalization
-- **WHEN** summary generation succeeds
-- **THEN** backend stores notes artifact as structured markdown
-- **AND** notes focus on conclusions, actions, and evidence highlights
-
 ### Requirement: Prompt-template-driven generation SHALL be supported
-Summary and mindmap generation SHALL resolve system prompts from template records persisted in local files.
+Summary and mindmap generation SHALL resolve prompts from persisted template records and active template selection.
 
-#### Scenario: Use selected templates for both channels
-- **WHEN** user selects template IDs in config center
-- **THEN** backend loads selected template content for summary/mindmap channels
-- **AND** subsequent tasks use selected templates until selection changes
+#### Scenario: Selected templates are applied
+- **WHEN** user sets selected template IDs in config center
+- **THEN** subsequent Stage-D generation uses selected template content for both channels
 
-### Requirement: Prompt templates SHALL be persisted as split files
-Template persistence SHALL store one template per file and keep active selection in a separate file.
+### Requirement: Stage-D output SHALL stream summary and mindmap deltas independently
+Backend SHALL emit independent `summary_delta` and `mindmap_delta` updates for near-realtime frontend rendering.
 
-#### Scenario: Create or update template
-- **WHEN** frontend performs template CRUD
-- **THEN** backend writes `storage/prompts/templates/<template_id>.json`
-- **AND** backend maintains selection in `storage/prompts/selection.json`
+#### Scenario: Stage-D stream is active
+- **WHEN** generation starts
+- **THEN** frontend receives and renders both channel deltas without waiting for final output
 
-### Requirement: Summary source context SHALL use transcript artifacts
-Stage `D` summarization source SHALL use transcript text and transcript-optimization results.
+### Requirement: Notes content SHALL focus on normalized synthesis
+Persisted `notes_markdown` SHALL be normalized synthesis output and SHALL NOT append full raw transcript by default.
 
-#### Scenario: Transcript source is available
-- **WHEN** stage `D` prepares prompt context
-- **THEN** backend composes context from transcript artifacts with correction outputs
+#### Scenario: Persist normalized notes
+- **WHEN** summary normalization finishes
+- **THEN** notes artifact focuses on conclusions, evidence, and actions
 
-### Requirement: Stage D SHALL fail explicitly when generation runtime is unavailable
-If generation runtime cannot produce notes/mindmap, backend SHALL fail phase `D` with explicit error classification.
+### Requirement: Mermaid code fences in notes SHALL be rendered as PNG assets
+When notes markdown includes Mermaid code blocks, backend SHALL render them into PNG files and replace code fences with markdown image links.
 
-#### Scenario: All generation attempts fail
-- **WHEN** configured API attempts fail during phase `D`
-- **THEN** backend raises terminal error with condensed attempt reasons
-- **AND** task status becomes `failed`
+#### Scenario: Mermaid render succeeds
+- **WHEN** notes contain Mermaid fences and renderer is available
+- **THEN** backend stores images under `notes-images/`
+- **AND** backend replaces each Mermaid fence with relative markdown image path
+
+#### Scenario: Mermaid renderer unavailable
+- **WHEN** renderer command is unavailable at runtime
+- **THEN** backend keeps generation pipeline available and records renderer failure context in runtime diagnostics
+
+### Requirement: Notes markdown SHALL reference Mermaid images by relative path
+Rendered notes SHALL reference Mermaid images using relative paths (for example `notes-images/mermaid-001.png`) and SHALL NOT embed base64 data URIs.
+
+#### Scenario: Export notes markdown
+- **WHEN** client exports notes or bundle artifacts
+- **THEN** markdown contains relative image references compatible with bundled `notes-images` assets
