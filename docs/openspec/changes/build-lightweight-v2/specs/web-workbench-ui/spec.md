@@ -40,6 +40,15 @@ Prompt template list and editor SHALL use channel-specific icons and labels for 
 - **THEN** each template card shows the channel label and a distinct icon marker
 - **AND** the editor dialog reflects the currently selected channel visually
 
+### Requirement: Prompt template editor SHALL provide split markdown editing with live preview
+Prompt template editor SHALL use a markdown editor that keeps the source editor and rendered preview visible at the same time. The editor theme SHALL follow the application light/dark theme, and editor-side scrolling SHALL remain synchronized with the preview pane during editing.
+
+#### Scenario: Edit a prompt template in the settings center
+- **WHEN** user opens the prompt template editor dialog
+- **THEN** the dialog shows a markdown editor with source editing on the left and live rendered preview on the right
+- **AND** the editor applies the same light or dark color mode as the renderer shell
+- **AND** scrolling one pane keeps the other pane aligned for long prompt content
+
 ### Requirement: Appearance settings SHALL persist theme hue, font size, and autosave
 UI settings SHALL persist `theme_hue`, `font_size`, and `auto_save`, and the renderer SHALL apply them immediately to the active shell.
 

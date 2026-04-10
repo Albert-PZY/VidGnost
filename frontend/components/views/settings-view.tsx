@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import MDEditor from "@uiw/react-md-editor"
 import { toast } from "react-hot-toast"
 import {
   CloudDownload,
@@ -27,7 +28,6 @@ import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
 import { Progress } from "@/components/ui/progress"
-import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -43,6 +43,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
 import {
   cancelModelDownload,
@@ -227,6 +228,7 @@ const localLlmPreset: ModelConfigPreset = {
 }
 
 export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewProps) {
+  const { resolvedTheme } = useTheme()
   const [activeSection, setActiveSection] = React.useState("models")
   const [fontSize, setFontSize] = React.useState([uiSettings.font_size])
   const [themeHue, setThemeHue] = React.useState([uiSettings.theme_hue])
@@ -249,6 +251,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
   const [isUpdatingWhisper, setIsUpdatingWhisper] = React.useState(false)
   const [pendingDeletePrompt, setPendingDeletePrompt] = React.useState<PromptTemplateItem | null>(null)
   const [isDeletingPrompt, setIsDeletingPrompt] = React.useState(false)
+  const markdownColorMode = resolvedTheme === "dark" ? "dark" : "light"
 
   React.useEffect(() => {
     setFontSize([uiSettings.font_size])
@@ -1361,7 +1364,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                         <Plus className="h-4 w-4 mr-2" />
                         新建模板
                       </Button>
-                      <DialogContent className="flex w-[min(92vw,56rem)] max-h-[min(88vh,54rem)] max-w-[56rem] flex-col gap-0 overflow-hidden p-0">
+                      <DialogContent className="flex w-[min(96vw,88rem)] max-h-[min(90vh,60rem)] max-w-[88rem] flex-col gap-0 overflow-hidden p-0 sm:max-w-[88rem]">
                         <DialogHeader className="shrink-0 border-b px-6 py-5 pr-14">
                           <DialogTitle>
                             {editingPrompt ? "编辑提示词模板" : "新建提示词模板"}
@@ -1370,72 +1373,108 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                             配置用于特定任务的提示词模板
                           </DialogDescription>
                         </DialogHeader>
-                        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-                          <div className="space-y-4">
-                          <div className="grid gap-4 md:grid-cols-2">
-                            <div className="space-y-2">
-                              <Label>模板名称</Label>
-                              <Input
-                                placeholder="输入模板名称"
-                                value={promptForm.name}
-                                onChange={(event) =>
-                                  setPromptForm((current) => ({ ...current, name: event.target.value }))
-                                }
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label>模板类型</Label>
-                              <Select
-                                value={promptForm.channel}
-                                onValueChange={(value) =>
-                                  setPromptForm((current) => ({
-                                    ...current,
-                                    channel: value as PromptTemplateChannel,
-                                  }))
-                                }
-                                disabled={Boolean(editingPrompt)}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="correction">文本纠错</SelectItem>
-                                  <SelectItem value="notes">笔记生成</SelectItem>
-                                  <SelectItem value="mindmap">思维导图</SelectItem>
-                                  <SelectItem value="vqa">问答检索</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          </div>
-                          <div className="flex items-start gap-3 rounded-xl border bg-muted/35 px-4 py-3">
-                            <Badge
-                              variant="outline"
-                              className={cn("shrink-0", promptTagClassNames[promptForm.channel])}
-                            >
-                              {promptTypeLabels[promptForm.channel]}
-                            </Badge>
-                            <p className="text-sm text-muted-foreground">
-                              {promptDescriptions[promptForm.channel]}
-                            </p>
-                          </div>
-                          <div className="space-y-2">
-                            <Label>模板说明</Label>
-                            <Input value={promptDescriptions[promptForm.channel]} readOnly />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>提示词内容</Label>
-                            <Textarea
-                              placeholder="输入提示词内容，使用 {text} 作为输入文本占位符"
-                              className="min-h-[200px] font-mono text-sm"
-                              value={promptForm.content}
-                              onChange={(event) =>
-                                setPromptForm((current) => ({ ...current, content: event.target.value }))
-                              }
-                            />
-                            <p className="text-xs text-muted-foreground">
-                              使用 {"{text}"} 表示输入文本，{"{context}"} 表示上下文信息
-                            </p>
-                          </div>
+                        <div className="themed-thin-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-5">
+                          <div className="grid gap-5 xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+                            <section className="space-y-4">
+                              <div className="rounded-xl border bg-card p-4">
+                                <div className="space-y-4">
+                                  <div className="grid gap-4">
+                                    <div className="space-y-2">
+                                      <Label>模板名称</Label>
+                                      <Input
+                                        placeholder="输入模板名称"
+                                        value={promptForm.name}
+                                        onChange={(event) =>
+                                          setPromptForm((current) => ({
+                                            ...current,
+                                            name: event.target.value,
+                                          }))
+                                        }
+                                      />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label>模板类型</Label>
+                                      <Select
+                                        value={promptForm.channel}
+                                        onValueChange={(value) =>
+                                          setPromptForm((current) => ({
+                                            ...current,
+                                            channel: value as PromptTemplateChannel,
+                                          }))
+                                        }
+                                        disabled={Boolean(editingPrompt)}
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          <SelectItem value="correction">文本纠错</SelectItem>
+                                          <SelectItem value="notes">笔记生成</SelectItem>
+                                          <SelectItem value="mindmap">思维导图</SelectItem>
+                                          <SelectItem value="vqa">问答检索</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                  </div>
+                                  <div className="rounded-xl border bg-muted/35 px-4 py-3">
+                                    <div className="flex flex-wrap items-start gap-3">
+                                      <Badge
+                                        variant="outline"
+                                        className={cn("shrink-0", promptTagClassNames[promptForm.channel])}
+                                      >
+                                        {promptTypeLabels[promptForm.channel]}
+                                      </Badge>
+                                      <p className="text-sm leading-relaxed text-muted-foreground">
+                                        {promptDescriptions[promptForm.channel]}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label>模板说明</Label>
+                                    <Input value={promptDescriptions[promptForm.channel]} readOnly />
+                                  </div>
+                                </div>
+                              </div>
+                            </section>
+
+                            <section className="space-y-3">
+                              <div className="rounded-xl border bg-card p-4">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                  <div className="space-y-1">
+                                    <Label className="text-sm font-medium">提示词内容</Label>
+                                    <p className="text-xs text-muted-foreground">
+                                      左侧编辑，右侧实时预览；使用 {"{text}"} 表示输入文本，{"{context}"} 表示上下文信息。
+                                    </p>
+                                  </div>
+                                  <Badge variant="outline" className="text-xs text-muted-foreground">
+                                    Markdown 实时预览
+                                  </Badge>
+                                </div>
+                                <div
+                                  data-color-mode={markdownColorMode}
+                                  className="prompt-markdown-editor-shell wmde-markdown-var mt-4"
+                                >
+                                  <MDEditor
+                                    value={promptForm.content}
+                                    onChange={(value) =>
+                                      setPromptForm((current) => ({
+                                        ...current,
+                                        content: value ?? "",
+                                      }))
+                                    }
+                                    preview="live"
+                                    visibleDragbar={false}
+                                    enableScroll
+                                    height={520}
+                                    data-color-mode={markdownColorMode}
+                                    textareaProps={{
+                                      placeholder: "输入提示词内容，使用 {text} 作为输入文本占位符",
+                                      "aria-label": "提示词内容 Markdown 编辑器",
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            </section>
                           </div>
                         </div>
                         <DialogFooter className="shrink-0 border-t px-6 py-4">

@@ -242,6 +242,114 @@
   background: color-mix(in oklch, var(--primary) 68%, var(--foreground) 8%);
 }
 
+.prompt-markdown-editor-shell {
+  border: 1px solid color-mix(in oklch, var(--border) 82%, var(--foreground) 6%);
+  border-radius: calc(var(--radius) + 0.125rem);
+  background: color-mix(in oklch, var(--background) 88%, var(--muted) 12%);
+  overflow: hidden;
+  --color-canvas-default: color-mix(in oklch, var(--background) 96%, transparent);
+  --color-canvas-subtle: color-mix(in oklch, var(--muted) 82%, transparent);
+  --color-fg-default: var(--foreground);
+  --color-fg-muted: var(--muted-foreground);
+  --color-neutral-muted: color-mix(in oklch, var(--muted) 76%, transparent);
+  --color-border-default: color-mix(in oklch, var(--border) 82%, var(--foreground) 6%);
+  --color-accent-fg: var(--primary);
+  --color-accent-emphasis: var(--primary);
+  --color-accent-subtle: color-mix(in oklch, var(--accent) 80%, transparent);
+}
+
+.dark .prompt-markdown-editor-shell {
+  background: color-mix(in oklch, var(--background) 90%, var(--muted) 10%);
+}
+
+.prompt-markdown-editor-shell .w-md-editor {
+  background: transparent;
+  color: var(--foreground);
+  border: 0;
+  box-shadow: none;
+}
+
+.prompt-markdown-editor-shell .w-md-editor-toolbar {
+  background: color-mix(in oklch, var(--muted) 78%, transparent);
+  border-bottom: 1px solid color-mix(in oklch, var(--border) 82%, var(--foreground) 6%);
+  padding: 0.4rem 0.5rem;
+}
+
+.prompt-markdown-editor-shell .w-md-editor-toolbar ul > li > button {
+  color: var(--muted-foreground);
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.prompt-markdown-editor-shell .w-md-editor-toolbar ul > li > button:hover,
+.prompt-markdown-editor-shell .w-md-editor-toolbar ul > li > button:focus,
+.prompt-markdown-editor-shell .w-md-editor-toolbar ul > li.active > button {
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--accent) 82%, transparent);
+}
+
+.prompt-markdown-editor-shell .w-md-editor-content,
+.prompt-markdown-editor-shell .w-md-editor-area,
+.prompt-markdown-editor-shell .w-md-editor-input,
+.prompt-markdown-editor-shell .w-md-editor-preview,
+.prompt-markdown-editor-shell .w-md-editor-text {
+  background: transparent;
+}
+
+.prompt-markdown-editor-shell .w-md-editor-text-pre,
+.prompt-markdown-editor-shell .w-md-editor-text-input,
+.prompt-markdown-editor-shell .w-md-editor-preview {
+  font-family: var(--font-mono);
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--primary) 52%, transparent) transparent;
+}
+
+.prompt-markdown-editor-shell .w-md-editor-text-input {
+  color: var(--foreground);
+  line-height: 1.65;
+  padding: 1rem 1rem 1.5rem;
+}
+
+.prompt-markdown-editor-shell .w-md-editor-text-pre {
+  line-height: 1.65;
+  padding: 1rem 1rem 1.5rem;
+}
+
+.prompt-markdown-editor-shell .w-md-editor-preview {
+  border-left: 1px solid color-mix(in oklch, var(--border) 82%, var(--foreground) 6%);
+  padding: 1rem 1rem 1.5rem !important;
+}
+
+.prompt-markdown-editor-shell .w-md-editor-text-pre > code,
+.prompt-markdown-editor-shell .wmde-markdown {
+  font-size: 0.9rem;
+}
+
+.prompt-markdown-editor-shell .w-md-editor-text-pre::-webkit-scrollbar,
+.prompt-markdown-editor-shell .w-md-editor-text-input::-webkit-scrollbar,
+.prompt-markdown-editor-shell .w-md-editor-preview::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.prompt-markdown-editor-shell .w-md-editor-text-pre::-webkit-scrollbar-track,
+.prompt-markdown-editor-shell .w-md-editor-text-input::-webkit-scrollbar-track,
+.prompt-markdown-editor-shell .w-md-editor-preview::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.prompt-markdown-editor-shell .w-md-editor-text-pre::-webkit-scrollbar-thumb,
+.prompt-markdown-editor-shell .w-md-editor-text-input::-webkit-scrollbar-thumb,
+.prompt-markdown-editor-shell .w-md-editor-preview::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--primary) 52%, transparent);
+  border-radius: 999px;
+}
+
+.prompt-markdown-editor-shell .w-md-editor-text-pre::-webkit-scrollbar-thumb:hover,
+.prompt-markdown-editor-shell .w-md-editor-text-input::-webkit-scrollbar-thumb:hover,
+.prompt-markdown-editor-shell .w-md-editor-preview::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--primary) 68%, var(--foreground) 8%);
+}
+
 .app-toast-shell {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
