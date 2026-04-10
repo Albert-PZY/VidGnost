@@ -72,6 +72,7 @@ Scope: this file is an internal navigation index for coding agents and maintaine
 - Python checker: `scripts/check-openspec.py`
 - Shell wrapper: `scripts/check-openspec.sh`
 - PowerShell wrapper: `scripts/check-openspec.ps1`
+- Spec sync guard: `scripts/check_spec_sync.py`
 
 ## 11) Maintenance Rules
 - Keep `AGENTS.md` as an index file (navigation + global constraints).

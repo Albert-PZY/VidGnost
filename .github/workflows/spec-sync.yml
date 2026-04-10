@@ -1,0 +1,53 @@
+name: spec-sync-guard
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  validate-spec-sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Collect changed files
+        id: changed
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base_ref="${{ github.base_ref }}"
+            git fetch origin "${base_ref}" --depth=1
+            git diff --name-only "origin/${base_ref}"...HEAD > changed-files.txt
+          else
+            before_sha="${{ github.event.before }}"
+            if [[ -n "${before_sha}" && "${before_sha}" != "0000000000000000000000000000000000000000" ]]; then
+              git diff --name-only "${before_sha}" "${{ github.sha }}" > changed-files.txt
+            else
+              git diff-tree --no-commit-id --name-only -r "${{ github.sha }}" > changed-files.txt
+            fi
+          fi
+
+          cat changed-files.txt
+
+      - name: Enforce spec sync for code changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t changed_files < changed-files.txt
+          python scripts/check_spec_sync.py "${changed_files[@]}"
+
+      - name: Validate OpenSpec structure
+        run: python scripts/check-openspec.py

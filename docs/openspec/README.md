@@ -51,6 +51,13 @@
 - 直接运行 Python:
   - `python scripts/check-openspec.py`
 
+提交与远程校验守卫：
+
+- Git pre-commit hook:
+  - `scripts/check_spec_sync.py`
+- GitHub Actions workflow:
+  - `.github/workflows/spec-sync.yml`
+
 ## 7. 同步约束
 
 1. 只要项目代码发生变更，就必须同步审查受影响的 OpenSpec 文档。

@@ -4,17 +4,27 @@ set -eu
 repo_root=$(git rev-parse --show-toplevel)
 cd "$repo_root"
 
-if command -v python >/dev/null 2>&1; then
-  exec python scripts/sanitize_staged_secrets.py
-fi
+run_python_script() {
+  script_path=$1
 
-if command -v py >/dev/null 2>&1; then
-  exec py -3 scripts/sanitize_staged_secrets.py
-fi
+  if command -v python >/dev/null 2>&1; then
+    python "$script_path"
+    return
+  fi
 
-if command -v python3 >/dev/null 2>&1; then
-  exec python3 scripts/sanitize_staged_secrets.py
-fi
+  if command -v py >/dev/null 2>&1; then
+    py -3 "$script_path"
+    return
+  fi
 
-echo "Python 3 is required to run the staged secret sanitizer." >&2
-exit 1
+  if command -v python3 >/dev/null 2>&1; then
+    python3 "$script_path"
+    return
+  fi
+
+  echo "Python 3 is required to run git hooks." >&2
+  exit 1
+}
+
+run_python_script "scripts/sanitize_staged_secrets.py"
+run_python_script "scripts/check_spec_sync.py"
