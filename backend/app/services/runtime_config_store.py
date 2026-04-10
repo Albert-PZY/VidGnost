@@ -10,6 +10,7 @@ from app.config import Settings
 SUPPORTED_MODEL_SIZES = {"small", "medium"}
 SUPPORTED_LOAD_PROFILES = {"balanced", "memory_first"}
 SUPPORTED_COMPUTE_TYPES = {"int8", "float32"}
+SUPPORTED_DEVICE_TYPES = {"auto", "cpu", "cuda"}
 
 
 class WhisperRuntimeConfig(TypedDict):
@@ -165,8 +166,10 @@ def _normalize_model_size(value: object) -> str:
 
 
 def _normalize_device(value: object) -> str:
-    _ = value
-    return "cpu"
+    candidate = str(value).strip().lower()
+    if candidate in SUPPORTED_DEVICE_TYPES:
+        return candidate
+    return DEFAULT_WHISPER_RUNTIME_CONFIG["device"]
 
 
 def _normalize_compute_type(value: object) -> str:

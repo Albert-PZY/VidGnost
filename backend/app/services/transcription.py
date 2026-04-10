@@ -593,7 +593,7 @@ class WhisperService:
     def _normalize_device(device: str) -> str:
         normalized = device.strip().lower()
         if normalized in {"", "auto", "cpu", "cuda"}:
-            return "cpu"
+            return normalized or "auto"
         return "cpu"
 
 
