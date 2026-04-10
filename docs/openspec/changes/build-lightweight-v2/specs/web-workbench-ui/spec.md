@@ -1,13 +1,5 @@
 ## ADDED Requirements
 
-### Requirement: UI SHALL preserve current frontend visual system as hard constraint
-All subsequent frontend work SHALL extend the current visual language, spacing rhythm, shell structure, dialog style, and interaction tone. New features SHALL not introduce a separate design system or conflicting visual direction.
-
-#### Scenario: Add a new UI control
-- **WHEN** frontend adds a new control, panel, or page
-- **THEN** it uses the current tokens, component density, title bar pattern, sidebar pattern, and card/dialog styling
-- **AND** it keeps the current frontend aesthetic direction as the governing baseline
-
 ### Requirement: Electron workbench SHALL render a fixed shell with isolated scroll regions
 The Electron renderer SHALL present a fixed top title bar, a left navigation sidebar, and a main content region. Scrollbars SHALL be confined to content regions below the title bar.
 

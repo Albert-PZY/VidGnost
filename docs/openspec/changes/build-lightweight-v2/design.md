@@ -3,7 +3,6 @@
 VidGnost 当前以 Electron 桌面工作台形态交付：
 - 渲染层使用 React + Vite，只负责渲染 Python 后端返回的数据与状态
 - Python FastAPI 后端负责任务编排、模型管理、存储读写、实时事件与数据处理
-- 当前前端已经形成稳定的视觉语言与交互密度，后续 UI 演进必须严格沿用这套基线
 
 ## Goals / Non-Goals
 
@@ -16,7 +15,6 @@ VidGnost 当前以 Electron 桌面工作台形态交付：
 
 **Non-Goals**
 - 当前阶段不引入 SSR 或服务端渲染前端框架
-- 当前阶段不引入新的前端视觉体系或重做现有布局语言
 - 当前阶段不设计多租户、远程账户系统或分布式队列
 
 ## Decisions
@@ -26,9 +24,7 @@ VidGnost 当前以 Electron 桌面工作台形态交付：
 - 渲染层使用 Vite + React，桌面壳层只暴露窗口控制、打开路径、打开外链等桌面能力。
 - 前端数据访问统一走 Python 后端 HTTP API。
 
-### 2. Frontend UI baseline
-- 当前前端视觉语言是硬性约束。
-- 新增控件、弹窗、页面与微交互必须延续现有颜色体系、间距密度、圆角、卡片和标题栏风格。
+### 2. Workbench shell layout
 - 顶部标题栏与下方页面滚动区域分离，标题栏保持吸顶可见。
 
 ### 3. Settings architecture
@@ -69,7 +65,7 @@ VidGnost 当前以 Electron 桌面工作台形态交付：
 
 ## Delivery Plan
 
-1. 维护当前前端视觉基线并完善设置中心与标题栏细节。
+1. 完善设置中心与标题栏相关实现。
 2. 持续补齐后端配置、模型管理与任务链路，使前端全部改为真实接口驱动。
 3. 保持 OpenSpec、AGENTS 与当前实现同步，避免文档再次失真。
 4. 对关键路径执行前端构建、后端编译与 OpenSpec 校验。
