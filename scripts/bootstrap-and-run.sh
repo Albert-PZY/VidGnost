@@ -6,37 +6,10 @@ BACKEND_DIR="${ROOT_DIR}/backend"
 FRONTEND_DIR="${ROOT_DIR}/frontend"
 BACKEND_PORT=8000
 FRONTEND_PORT=5173
-MODE="web"
 PINNED_PYTHON_VERSION="3.12"
 UV_DEFAULT_INDEX_MIRROR="${UV_DEFAULT_INDEX_MIRROR:-https://pypi.tuna.tsinghua.edu.cn/simple}"
 PNPM_REGISTRY_MIRROR="${PNPM_REGISTRY_MIRROR:-https://registry.npmmirror.com}"
-
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --mode|-m)
-      if [[ $# -lt 2 ]]; then
-        echo "[error] Missing value for $1. Use web."
-        exit 1
-      fi
-      MODE="$2"
-      shift 2
-      ;;
-    web)
-      MODE="$1"
-      shift
-      ;;
-    *)
-      echo "[error] Unsupported argument: $1"
-      echo "Usage: $0 [--mode web]"
-      exit 1
-      ;;
-  esac
-done
-
-if [[ "${MODE}" != "web" ]]; then
-  echo "[error] Invalid mode: ${MODE}. Use web."
-  exit 1
-fi
+ELECTRON_MIRROR="${ELECTRON_MIRROR:-https://npmmirror.com/mirrors/electron/}"
 
 require_cmd() {
   local name="$1"
@@ -181,14 +154,13 @@ require_cmd uv
 require_cmd pnpm
 
 export COREPACK_NPM_REGISTRY="${COREPACK_NPM_REGISTRY:-${PNPM_REGISTRY_MIRROR}}"
+export ELECTRON_MIRROR
 pnpm config set registry "${PNPM_REGISTRY_MIRROR}" >/dev/null 2>&1 || true
 uv_index_display="${UV_DEFAULT_INDEX_MIRROR}"
-echo "[setup] Mirrors configured (uv index-url: ${uv_index_display}, pnpm: ${PNPM_REGISTRY_MIRROR})."
+echo "[setup] Mirrors configured (uv index-url: ${uv_index_display}, pnpm: ${PNPM_REGISTRY_MIRROR}, electron: ${ELECTRON_MIRROR})."
 
 ensure_port_free "${BACKEND_PORT}" "backend"
-if [[ "${MODE}" == "web" ]]; then
-  ensure_port_free "${FRONTEND_PORT}" "frontend"
-fi
+ensure_port_free "${FRONTEND_PORT}" "frontend"
 
 echo "[setup] Sync backend dependencies..."
 uv_sync_args=(uv sync --python "${PINNED_PYTHON_VERSION}")
@@ -203,31 +175,18 @@ echo "[run] Starting backend at http://localhost:${BACKEND_PORT} ..."
 BACKEND_PID=$!
 wait_port_ready "${BACKEND_PORT}" "backend"
 
-if [[ "${MODE}" == "electron" ]]; then
-  stop_existing_electron_for_project
-  echo "[run] Starting frontend in Electron mode ..."
-  (cd "${FRONTEND_DIR}" && pnpm desktop:dev) &
-else
-  echo "[run] Starting frontend at http://localhost:${FRONTEND_PORT} ..."
-  (cd "${FRONTEND_DIR}" && pnpm dev --host 0.0.0.0 --port "${FRONTEND_PORT}") &
-fi
+stop_existing_electron_for_project
+echo "[run] Starting frontend in Electron mode ..."
+(cd "${FRONTEND_DIR}" && pnpm desktop:dev) &
 FRONTEND_PID=$!
-if [[ "${MODE}" == "electron" ]]; then
-  wait_electron_ready 45
-else
-  wait_port_ready "${FRONTEND_PORT}" "frontend"
-fi
+wait_electron_ready 45
 
 BACKEND_SERVICE_PIDS="$(port_pids "${BACKEND_PORT}")"
-if [[ "${MODE}" == "electron" ]]; then
-  FRONTEND_SERVICE_PIDS="$(electron_pids_for_project)"
-else
-  FRONTEND_SERVICE_PIDS="$(port_pids "${FRONTEND_PORT}")"
-fi
+FRONTEND_SERVICE_PIDS="$(electron_pids_for_project)"
 echo "[ready] Backend launcher PID: ${BACKEND_PID}, Frontend launcher PID: ${FRONTEND_PID}"
 echo "[ready] Backend service PID(s): ${BACKEND_SERVICE_PIDS}"
 echo "[ready] Frontend service PID(s): ${FRONTEND_SERVICE_PIDS}"
-echo "[ready] Frontend mode: ${MODE}"
+echo "[ready] Frontend mode: electron"
 echo "[ready] Press Ctrl+C to stop both processes."
 
 wait -n "${BACKEND_PID}" "${FRONTEND_PID}"

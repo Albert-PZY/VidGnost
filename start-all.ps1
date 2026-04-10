@@ -1,8 +1,3 @@
-param(
-    [ValidateSet("web")]
-    [string]$Mode = "web"
-)
-
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
@@ -13,4 +8,4 @@ if (-not (Test-Path -LiteralPath $ScriptPath)) {
     throw "Missing script: $ScriptPath"
 }
 
-& powershell -ExecutionPolicy Bypass -File $ScriptPath -Mode $Mode
+& powershell -ExecutionPolicy Bypass -File $ScriptPath

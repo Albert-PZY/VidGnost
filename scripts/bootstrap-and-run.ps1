@@ -1,17 +1,7 @@
-param(
-    [ValidateSet("web")]
-    [string]$Mode = "web"
-)
-
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 function Ensure-Admin {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$CurrentMode
-    )
-
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = [Security.Principal.WindowsPrincipal]::new($identity)
     $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -22,7 +12,7 @@ function Ensure-Admin {
     Write-Host "[setup] Administrator privilege required. Requesting elevation (UAC prompt)..."
     $escapedScriptPath = $PSCommandPath.Replace("'", "''")
     $escapedWorkingDir = $PWD.Path.Replace("'", "''")
-    $relaunchCommand = "Set-Location -LiteralPath '$escapedWorkingDir'; & '$escapedScriptPath' -Mode '$CurrentMode'"
+    $relaunchCommand = "Set-Location -LiteralPath '$escapedWorkingDir'; & '$escapedScriptPath'"
     Start-Process -FilePath "powershell" -Verb RunAs -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $relaunchCommand) | Out-Null
     Write-Host "[setup] Elevated instance launched. This window will exit."
     exit 0
@@ -291,7 +281,7 @@ function Wait-ElectronReady {
     throw "Electron app did not become ready within $TimeoutSeconds seconds."
 }
 
-Ensure-Admin -CurrentMode $Mode
+Ensure-Admin
 
 $RootDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $BackendDir = Join-Path $RootDir "backend"
@@ -301,21 +291,23 @@ $FrontendPort = 5173
 $PinnedPythonVersion = "3.12"
 $UvDefaultIndexMirror = if ($env:UV_DEFAULT_INDEX_MIRROR) { $env:UV_DEFAULT_INDEX_MIRROR } else { "https://pypi.tuna.tsinghua.edu.cn/simple" }
 $PnpmRegistryMirror = if ($env:PNPM_REGISTRY_MIRROR) { $env:PNPM_REGISTRY_MIRROR } else { "https://registry.npmmirror.com" }
+$ElectronMirror = if ($env:ELECTRON_MIRROR) { $env:ELECTRON_MIRROR } else { "https://npmmirror.com/mirrors/electron/" }
 
 if ([string]::IsNullOrWhiteSpace($env:COREPACK_NPM_REGISTRY)) {
     $env:COREPACK_NPM_REGISTRY = $PnpmRegistryMirror
+}
+if ([string]::IsNullOrWhiteSpace($env:ELECTRON_MIRROR)) {
+    $env:ELECTRON_MIRROR = $ElectronMirror
 }
 
 $uvExe = Resolve-CommandPath -Name "uv" -Candidates @("uv.exe")
 $pnpmExe = Resolve-CommandPath -Name "pnpm" -Candidates @("pnpm.cmd", "pnpm.exe")
 & $pnpmExe config set registry $PnpmRegistryMirror | Out-Null
 $uvIndexDisplay = $UvDefaultIndexMirror
-Write-Host "[setup] Mirrors configured (uv index-url: $uvIndexDisplay, pnpm: $PnpmRegistryMirror)."
+Write-Host "[setup] Mirrors configured (uv index-url: $uvIndexDisplay, pnpm: $PnpmRegistryMirror, electron: $($env:ELECTRON_MIRROR))."
 
 Ensure-PortFree -Port $BackendPort -Label "backend"
-if ($Mode -eq "web") {
-    Ensure-PortFree -Port $FrontendPort -Label "frontend"
-}
+Ensure-PortFree -Port $FrontendPort -Label "frontend"
 
 Write-Host "[setup] Sync backend dependencies..."
 Push-Location $BackendDir
@@ -338,45 +330,29 @@ Set-Location -LiteralPath '$escapedBackendDir'
 Write-Host '[run] Backend live logs (Ctrl+C to stop this window).'
 uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app --reload-exclude=.venv/* --reload-exclude=storage/*
 "@
-if ($Mode -eq "electron") {
-    Stop-ElectronAppProcesses -FrontendPath $FrontendDir
-    $frontendCommand = @"
+Stop-ElectronAppProcesses -FrontendPath $FrontendDir
+$frontendCommand = @"
 Set-Location -LiteralPath '$escapedFrontendDir'
 Write-Host '[run] Frontend desktop live logs (Ctrl+C to stop this window).'
 pnpm desktop:dev
 "@
-} else {
-    $frontendCommand = @"
-Set-Location -LiteralPath '$escapedFrontendDir'
-Write-Host '[run] Frontend live logs (Ctrl+C to stop this window).'
-pnpm dev --host 0.0.0.0 --port 5173
-"@
-}
 
 Write-Host "[run] Starting backend..."
 $backendProc = Start-Process -FilePath "powershell" -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-Command", $backendCommand) -PassThru
 Wait-PortReady -Port $BackendPort -Label "backend"
 
-Write-Host "[run] Starting frontend ($Mode)..."
+Write-Host "[run] Starting frontend (electron)..."
 $frontendProc = Start-Process -FilePath "powershell" -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-Command", $frontendCommand) -PassThru
-if ($Mode -eq "electron") {
-    Wait-ElectronReady -FrontendPath $FrontendDir -LauncherPid $frontendProc.Id
-} else {
-    Wait-PortReady -Port $FrontendPort -Label "frontend"
-}
+Wait-ElectronReady -FrontendPath $FrontendDir -LauncherPid $frontendProc.Id
 
 $backendListenPids = @(Get-PortOwningPids -Port $BackendPort)
-$frontendListenPids = if ($Mode -eq "electron") {
-    @(Get-ElectronAppPids -FrontendPath $FrontendDir)
-} else {
-    @(Get-PortOwningPids -Port $FrontendPort)
-}
+$frontendListenPids = @(Get-ElectronAppPids -FrontendPath $FrontendDir)
 $stopPids = @($backendListenPids + $frontendListenPids) | Select-Object -Unique
 Write-Host "[ready] Backend launcher PID: $($backendProc.Id)"
 Write-Host "[ready] Frontend launcher PID: $($frontendProc.Id)"
 Write-Host "[ready] Backend service PID(s): $($backendListenPids -join ', ')"
 Write-Host "[ready] Frontend service PID(s): $($frontendListenPids -join ', ')"
-Write-Host "[ready] Frontend mode: $Mode"
+Write-Host "[ready] Frontend mode: electron"
 if ($stopPids.Count -gt 0) {
     Write-Host "[ready] Stop all with: Stop-Process -Id $($stopPids -join ',')"
 } else {

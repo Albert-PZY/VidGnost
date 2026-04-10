@@ -5,6 +5,7 @@
 ## 1. 架构边界（已收敛）
 
 - 前端：纯客户端渲染（CSR），只负责界面渲染与交互，不承担服务端渲染。
+- 前端运行形态：仅 Electron 桌面壳层启动（内部加载本地 CSR 页面）。
 - 后端：Python 服务，负责任务编排、模型调用、数据处理、检索与存储、接口输出。
 - 通信方式：HTTP JSON + SSE（任务流与问答流）。
 
@@ -17,6 +18,7 @@
 - Vite 6（开发与打包）
 - React 19（UI 渲染）
 - TypeScript 5（类型系统）
+- Electron 31（桌面容器）
 
 ## 2.2 UI 与交互
 
@@ -38,7 +40,7 @@
   - `frontend/src/main.tsx`
   - `frontend/src/App.tsx`
 - 常用命令：
-  - `pnpm dev`
+  - `pnpm desktop:dev`
   - `pnpm build`
   - `pnpm preview`
 
