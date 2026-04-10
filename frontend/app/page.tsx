@@ -40,6 +40,8 @@ const DEFAULT_UI_SETTINGS: UISettingsResponse = {
   theme_hue: 220,
   background_image: null,
   background_image_opacity: 28,
+  background_image_blur: 0,
+  background_image_fill_mode: "cover",
 }
 
 const TaskProcessingView = React.lazy(async () => {
@@ -175,6 +177,23 @@ export default function VideoMindApp() {
       "--app-background-opacity",
       String(uiSettings.background_image_opacity),
     )
+    document.documentElement.style.setProperty(
+      "--app-background-blur",
+      `${uiSettings.background_image_blur}px`,
+    )
+    document.documentElement.style.setProperty(
+      "--app-background-size",
+      uiSettings.background_image_fill_mode === "contain"
+        ? "contain"
+        : uiSettings.background_image_fill_mode === "repeat" || uiSettings.background_image_fill_mode === "center"
+          ? "auto"
+          : "cover",
+    )
+    document.documentElement.style.setProperty(
+      "--app-background-repeat",
+      uiSettings.background_image_fill_mode === "repeat" ? "repeat" : "no-repeat",
+    )
+    document.documentElement.style.setProperty("--app-background-position", "center")
     document.body.dataset.appBackgroundActive = uiSettings.background_image ? "true" : "false"
 
     return () => {
@@ -182,10 +201,16 @@ export default function VideoMindApp() {
       document.documentElement.style.removeProperty("--theme-hue")
       document.documentElement.style.removeProperty("--app-background-image")
       document.documentElement.style.removeProperty("--app-background-opacity")
+      document.documentElement.style.removeProperty("--app-background-blur")
+      document.documentElement.style.removeProperty("--app-background-size")
+      document.documentElement.style.removeProperty("--app-background-repeat")
+      document.documentElement.style.removeProperty("--app-background-position")
       delete document.body.dataset.appBackgroundActive
     }
   }, [
     uiSettings.background_image,
+    uiSettings.background_image_blur,
+    uiSettings.background_image_fill_mode,
     uiSettings.background_image_opacity,
     uiSettings.font_size,
     uiSettings.language,
@@ -233,6 +258,10 @@ export default function VideoMindApp() {
           patch.background_image !== undefined ? patch.background_image : current.background_image,
         background_image_opacity:
           patch.background_image_opacity ?? current.background_image_opacity,
+        background_image_blur:
+          patch.background_image_blur ?? current.background_image_blur,
+        background_image_fill_mode:
+          patch.background_image_fill_mode ?? current.background_image_fill_mode,
       })
       setUiSettings(saved)
       return saved

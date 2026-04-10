@@ -103,7 +103,7 @@ export function AppHeader({
   return (
     <header
       style={dragRegionStyle}
-      className="sticky top-0 z-40 flex h-10 shrink-0 select-none items-center gap-1.5 border-b border-[color:var(--titlebar-border)] bg-[color:var(--titlebar)]/95 px-3 backdrop-blur-sm"
+      className="app-header-shell sticky top-0 z-40 flex h-10 shrink-0 select-none items-center gap-1.5 border-b border-[color:var(--titlebar-border)] bg-[color:var(--titlebar)]/95 px-3 backdrop-blur-sm"
     >
       <div style={noDragRegionStyle}>
         <SidebarTrigger className={cn("-ml-1", titlebarButtonClass)} />

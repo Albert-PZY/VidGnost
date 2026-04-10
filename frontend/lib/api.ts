@@ -388,6 +388,8 @@ export function updateUiSettings(payload: {
   theme_hue?: number
   background_image?: string | null
   background_image_opacity?: number
+  background_image_blur?: number
+  background_image_fill_mode?: "cover" | "contain" | "repeat" | "center"
 }): Promise<UISettingsResponse> {
   return apiFetch<UISettingsResponse>("/config/ui", {
     method: "PUT",

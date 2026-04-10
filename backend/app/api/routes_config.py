@@ -340,5 +340,7 @@ async def update_ui_settings(
         "theme_hue": payload.theme_hue,
         "background_image": payload.background_image,
         "background_image_opacity": payload.background_image_opacity,
+        "background_image_blur": payload.background_image_blur,
+        "background_image_fill_mode": payload.background_image_fill_mode,
     }
     return UISettingsResponse.model_validate(await store.update(updates))

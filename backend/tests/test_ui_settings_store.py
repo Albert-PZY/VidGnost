@@ -42,7 +42,7 @@ def test_ui_settings_store_normalizes_invalid_theme_hue(tmp_path: Path) -> None:
     assert saved["theme_hue"] == 360
 
 
-def test_ui_settings_store_persists_background_image_and_opacity(tmp_path: Path) -> None:
+def test_ui_settings_store_persists_background_image_and_rendering_controls(tmp_path: Path) -> None:
     settings = _build_settings(tmp_path)
     store = UISettingsStore(settings)
 
@@ -51,6 +51,8 @@ def test_ui_settings_store_persists_background_image_and_opacity(tmp_path: Path)
             {
                 "background_image": "data:image/png;base64,ZmFrZQ==",
                 "background_image_opacity": 64,
+                "background_image_blur": 12,
+                "background_image_fill_mode": "contain",
             }
         )
     )
@@ -59,5 +61,9 @@ def test_ui_settings_store_persists_background_image_and_opacity(tmp_path: Path)
 
     assert saved["background_image"] == "data:image/png;base64,ZmFrZQ=="
     assert saved["background_image_opacity"] == 64
+    assert saved["background_image_blur"] == 12
+    assert saved["background_image_fill_mode"] == "contain"
     assert current["background_image"] == "data:image/png;base64,ZmFrZQ=="
     assert current["background_image_opacity"] == 64
+    assert current["background_image_blur"] == 12
+    assert current["background_image_fill_mode"] == "contain"

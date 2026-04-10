@@ -9,6 +9,7 @@ export type SourceType = "bilibili" | "local_file" | "local_path"
 export type PromptTemplateChannel = "correction" | "notes" | "mindmap" | "vqa"
 
 export type ModelComponentType = "whisper" | "llm" | "embedding" | "vlm" | "rerank"
+export type BackgroundImageFillMode = "cover" | "contain" | "repeat" | "center"
 
 export type ModelRuntimeStatus = "ready" | "loading" | "not_ready" | "error"
 
@@ -208,6 +209,8 @@ export interface UISettingsResponse {
   theme_hue: number
   background_image: string | null
   background_image_opacity: number
+  background_image_blur: number
+  background_image_fill_mode: BackgroundImageFillMode
 }
 
 export interface SelfCheckStepResponse {

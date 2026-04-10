@@ -59,7 +59,7 @@ Heavy renderer modules such as settings subviews and embedded markdown editors S
 - **AND** the final surface replaces the skeleton once the async chunk and styles are ready
 
 ### Requirement: Appearance settings SHALL persist theme hue, font size, and autosave
-UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_image`, and `background_image_opacity`, and the renderer SHALL apply them immediately to the active shell.
+UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_image`, `background_image_opacity`, `background_image_blur`, and `background_image_fill_mode`, and the renderer SHALL apply them immediately to the active shell.
 
 #### Scenario: Adjust theme hue
 - **WHEN** user changes theme hue from the appearance section and saves it
@@ -71,10 +71,10 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **THEN** renderer applies the new root font size immediately and restores it on next launch
 
 #### Scenario: Upload a custom background image
-- **WHEN** user uploads a background image in appearance settings and adjusts opacity
+- **WHEN** user uploads a background image in appearance settings and adjusts opacity, blur, or fill mode
 - **THEN** the renderer applies the image as a full-shell cover background
 - **AND** the title bar, sidebar, and main content shell render above the same background layer
-- **AND** the chosen opacity is persisted and restored after application restart
+- **AND** the chosen opacity, blur, and fill mode are persisted and restored after application restart
 
 ### Requirement: Shell controls SHALL expose explicit language selection state
 Header language controls SHALL show the current selected language with explicit selected-state feedback and persist the language choice through UI settings.

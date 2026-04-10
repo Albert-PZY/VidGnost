@@ -3,6 +3,7 @@
 import * as React from "react"
 import { toast } from "react-hot-toast"
 import {
+  ChevronDown,
   CloudDownload,
   Cpu,
   FileCode,
@@ -14,12 +15,14 @@ import {
   Save,
   RefreshCw,
   HardDrive,
+  Sparkles,
   Zap,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
@@ -64,6 +67,7 @@ import {
 } from "@/lib/api"
 import { formatBytes } from "@/lib/format"
 import type {
+  BackgroundImageFillMode,
   LLMConfigResponse,
   ModelDescriptor,
   PromptTemplateBundleResponse,
@@ -125,6 +129,18 @@ const themeHuePresets = [
 ] as const
 const DEFAULT_THEME_HUE = themeHuePresets[0].value
 const BACKGROUND_IMAGE_FILE_SIZE_LIMIT = 4 * 1024 * 1024
+const DEFAULT_BACKGROUND_FILL_MODE: BackgroundImageFillMode = "cover"
+
+const backgroundFillModeOptions: Array<{
+  value: BackgroundImageFillMode
+  label: string
+  hint: string
+}> = [
+  { value: "cover", label: "Cover", hint: "铺满整个界面" },
+  { value: "contain", label: "Contain", hint: "完整显示整张图片" },
+  { value: "repeat", label: "Repeat", hint: "重复平铺纹理背景" },
+  { value: "center", label: "Center", hint: "原始尺寸居中显示" },
+]
 
 const PromptMarkdownEditor = React.lazy(async () => {
   const module = await import("@/components/editors/prompt-markdown-editor")
@@ -288,6 +304,24 @@ async function readFileAsDataUrl(file: File): Promise<string> {
   })
 }
 
+function getBackgroundPreviewStyle(
+  image: string,
+  fillMode: BackgroundImageFillMode,
+  blur: number,
+): React.CSSProperties {
+  const backgroundSize =
+    fillMode === "contain" ? "contain" : fillMode === "repeat" || fillMode === "center" ? "auto" : "cover"
+
+  return {
+    backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.14), rgba(15, 23, 42, 0.14)), url(${image})`,
+    backgroundPosition: "center",
+    backgroundRepeat: fillMode === "repeat" ? "repeat" : "no-repeat",
+    backgroundSize,
+    filter: `blur(${blur}px)`,
+    transform: blur > 0 ? "scale(1.03)" : undefined,
+  }
+}
+
 export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewProps) {
   const { resolvedTheme } = useTheme()
   const [activeSection, setActiveSection] = React.useState("models")
@@ -296,6 +330,13 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
   const [backgroundOpacity, setBackgroundOpacity] = React.useState([
     uiSettings.background_image_opacity,
   ])
+  const [backgroundBlur, setBackgroundBlur] = React.useState([uiSettings.background_image_blur])
+  const [backgroundFillMode, setBackgroundFillMode] = React.useState<BackgroundImageFillMode>(
+    uiSettings.background_image_fill_mode,
+  )
+  const [isBackgroundAdvancedOpen, setIsBackgroundAdvancedOpen] = React.useState(
+    uiSettings.background_image_blur > 0 || uiSettings.background_image_fill_mode !== DEFAULT_BACKGROUND_FILL_MODE,
+  )
   const [models, setModels] = React.useState<ModelDescriptor[]>([])
   const [promptBundle, setPromptBundle] = React.useState<PromptTemplateBundleResponse | null>(null)
   const [whisperConfig, setWhisperConfig] = React.useState<WhisperConfigResponse | null>(null)
@@ -329,6 +370,29 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
   React.useEffect(() => {
     setBackgroundOpacity([uiSettings.background_image_opacity])
   }, [uiSettings.background_image_opacity])
+
+  React.useEffect(() => {
+    setBackgroundBlur([uiSettings.background_image_blur])
+  }, [uiSettings.background_image_blur])
+
+  React.useEffect(() => {
+    setBackgroundFillMode(uiSettings.background_image_fill_mode)
+  }, [uiSettings.background_image_fill_mode])
+
+  React.useEffect(() => {
+    if (uiSettings.background_image_blur > 0 || uiSettings.background_image_fill_mode !== DEFAULT_BACKGROUND_FILL_MODE) {
+      setIsBackgroundAdvancedOpen(true)
+    }
+  }, [uiSettings.background_image_blur, uiSettings.background_image_fill_mode])
+
+  const hasBackgroundImage = Boolean(uiSettings.background_image)
+  const backgroundPreviewStyle = uiSettings.background_image
+    ? getBackgroundPreviewStyle(
+        uiSettings.background_image,
+        backgroundFillMode,
+        backgroundBlur[0] ?? uiSettings.background_image_blur,
+      )
+    : undefined
 
   React.useEffect(() => {
     const activeHue = themeHue[0] ?? uiSettings.theme_hue
@@ -734,6 +798,8 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
       setFontSize([uiSettings.font_size])
       setThemeHue([uiSettings.theme_hue])
       setBackgroundOpacity([uiSettings.background_image_opacity])
+      setBackgroundBlur([uiSettings.background_image_blur])
+      setBackgroundFillMode(uiSettings.background_image_fill_mode)
     } finally {
       setIsSavingUi(false)
     }
@@ -752,7 +818,23 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
     setBackgroundOpacity([nextOpacity])
     void handleUiSettingChange(
       { background_image_opacity: nextOpacity },
-      "背景透明度已更新",
+      "背景不透明度已更新",
+    )
+  }
+
+  const handleBackgroundBlurCommit = (nextBlur: number) => {
+    setBackgroundBlur([nextBlur])
+    void handleUiSettingChange(
+      { background_image_blur: nextBlur },
+      "背景模糊度已更新",
+    )
+  }
+
+  const handleBackgroundFillModeChange = (nextFillMode: BackgroundImageFillMode) => {
+    setBackgroundFillMode(nextFillMode)
+    void handleUiSettingChange(
+      { background_image_fill_mode: nextFillMode },
+      "背景填充模式已更新",
     )
   }
 
@@ -780,8 +862,10 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
         {
           background_image: backgroundImage,
           background_image_opacity: nextOpacity,
+          background_image_blur: backgroundBlur[0] ?? uiSettings.background_image_blur,
+          background_image_fill_mode: backgroundFillMode,
         },
-        "背景图片已更新（Beta）",
+        "自定义背景已更新",
       )
     } catch (error) {
       toast.error(getApiErrorMessage(error, "读取背景图片失败"))
@@ -793,7 +877,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
       {
         background_image: null,
       },
-      "背景图片已清除",
+      "自定义背景已清除",
     )
   }
 
@@ -1745,15 +1829,14 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                       }}
                     />
                     <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <Label>界面背景图</Label>
-                          <Badge variant="outline" className="text-[11px] uppercase tracking-[0.12em]">
-                            Beta
-                          </Badge>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2.5">
+                          <Sparkles className="h-4 w-4 text-primary drop-shadow-[0_0_10px_color-mix(in_oklch,var(--primary)_48%,transparent)]" />
+                          <h3 className="text-base font-medium">自定义背景</h3>
+                          <span className="text-sm font-medium text-muted-foreground">Beta功能</span>
                         </div>
-                        <p className="text-sm text-muted-foreground">
-                          上传自定义图片并覆盖到整个 UI 背景层，建议使用低噪点横向图片。
+                        <p className="pl-6 text-sm text-muted-foreground">
+                          上传图片后直接铺到整个桌面壳层，主题色和交互高亮会继续保留。
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
@@ -1777,23 +1860,41 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                     </div>
 
                     <div className="rounded-xl border bg-card p-4">
-                      {uiSettings.background_image ? (
+                      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(21rem,0.85fr)]">
+                        <div className="overflow-hidden rounded-xl border border-border/70 bg-muted/25">
+                          {backgroundPreviewStyle ? (
+                            <div className="relative h-48">
+                              <div className="absolute inset-0" style={backgroundPreviewStyle} />
+                              <div className="absolute inset-0 bg-gradient-to-br from-background/12 via-transparent to-background/22" />
+                              <div className="absolute inset-x-0 bottom-0 flex items-center justify-between border-t border-white/10 bg-background/35 px-4 py-2.5 backdrop-blur-sm">
+                                <div>
+                                  <p className="text-sm font-medium">界面实时预览</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {backgroundFillModeOptions.find((option) => option.value === backgroundFillMode)?.hint}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                  <span>{backgroundOpacity[0]}%</span>
+                                  <span>{backgroundBlur[0]}px</span>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex h-48 flex-col items-center justify-center gap-2 px-6 text-center">
+                              <Sparkles className="h-5 w-5 text-primary/70" />
+                              <p className="text-sm font-medium">当前未设置自定义背景</p>
+                              <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
+                                上传图片后会直接应用到整个 UI 壳层，侧边栏、顶部栏和主内容区域会自动切到半透明承载层。
+                              </p>
+                            </div>
+                          )}
+                        </div>
+
                         <div className="space-y-4">
-                          <div
-                            className="h-40 rounded-lg border border-border/70 bg-muted/30"
-                            style={{
-                              backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.08), rgba(15, 23, 42, 0.08)), url(${uiSettings.background_image})`,
-                              backgroundPosition: "center",
-                              backgroundRepeat: "no-repeat",
-                              backgroundSize: "cover",
-                            }}
-                          />
                           <div className="space-y-3">
                             <div className="flex items-center justify-between">
-                              <Label>背景透明度</Label>
-                              <span className="text-sm text-muted-foreground">
-                                {backgroundOpacity[0]}%
-                              </span>
+                              <Label>不透明度</Label>
+                              <span className="text-sm text-muted-foreground">{backgroundOpacity[0]}%</span>
                             </div>
                             <Slider
                               value={backgroundOpacity}
@@ -1804,20 +1905,69 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                               min={0}
                               max={100}
                               step={1}
-                              disabled={isSavingUi}
+                              disabled={isSavingUi || !hasBackgroundImage}
                             />
-                            <div className="flex justify-between text-xs text-muted-foreground">
-                              <span>更克制</span>
-                              <span>适度增强氛围</span>
-                              <span>更明显</span>
-                            </div>
                           </div>
+
+                          <Collapsible open={isBackgroundAdvancedOpen} onOpenChange={setIsBackgroundAdvancedOpen}>
+                            <CollapsibleTrigger
+                              className={cn(
+                                "flex w-full items-center justify-between rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5 text-sm font-medium transition-colors hover:bg-muted/35",
+                                !hasBackgroundImage && "cursor-default opacity-70",
+                              )}
+                            >
+                              <span>更多选项</span>
+                              <ChevronDown
+                                className={cn(
+                                  "h-4 w-4 text-muted-foreground transition-transform",
+                                  isBackgroundAdvancedOpen && "rotate-180",
+                                )}
+                              />
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="space-y-4 pt-4">
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <Label>模糊度</Label>
+                                  <span className="text-sm text-muted-foreground">{backgroundBlur[0]}px</span>
+                                </div>
+                                <Slider
+                                  value={backgroundBlur}
+                                  onValueChange={setBackgroundBlur}
+                                  onValueCommit={(value) => {
+                                    handleBackgroundBlurCommit(value[0])
+                                  }}
+                                  min={0}
+                                  max={24}
+                                  step={1}
+                                  disabled={isSavingUi || !hasBackgroundImage}
+                                />
+                              </div>
+
+                              <div className="space-y-2">
+                                <Label>填充模式</Label>
+                                <Select
+                                  value={backgroundFillMode}
+                                  onValueChange={(value) => {
+                                    handleBackgroundFillModeChange(value as BackgroundImageFillMode)
+                                  }}
+                                  disabled={isSavingUi || !hasBackgroundImage}
+                                >
+                                  <SelectTrigger className="w-full">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {backgroundFillModeOptions.map((option) => (
+                                      <SelectItem key={option.value} value={option.value}>
+                                        {option.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </CollapsibleContent>
+                          </Collapsible>
                         </div>
-                      ) : (
-                        <div className="rounded-lg border border-dashed border-border/80 bg-muted/20 px-4 py-6 text-sm text-muted-foreground">
-                          当前未设置自定义背景图。上传后将自动覆盖应用背景，并保留当前主题色和交互高亮。
-                        </div>
-                      )}
+                      </div>
                     </div>
                   </div>
 

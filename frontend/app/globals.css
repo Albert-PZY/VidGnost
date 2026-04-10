@@ -53,8 +53,12 @@
   --titlebar-border: oklch(0.9 0 0);
   --app-background-image: none;
   --app-background-opacity: 0;
-  --skeleton-base: color-mix(in oklch, var(--muted) 78%, var(--background) 22%);
-  --skeleton-highlight: color-mix(in oklch, white 72%, var(--muted) 28%);
+  --app-background-blur: 0px;
+  --app-background-size: cover;
+  --app-background-repeat: no-repeat;
+  --app-background-position: center;
+  --skeleton-base: color-mix(in oklch, var(--muted) 82%, var(--background) 18%);
+  --skeleton-highlight: color-mix(in oklch, white 84%, var(--muted) 16%);
 }
 
 .dark {
@@ -100,8 +104,8 @@
   --status-error: oklch(0.60 0.22 25);
   --titlebar: oklch(0.12 0 0);
   --titlebar-border: oklch(0.22 0 0);
-  --skeleton-base: color-mix(in oklch, var(--muted) 84%, var(--background) 16%);
-  --skeleton-highlight: color-mix(in oklch, white 12%, var(--muted) 88%);
+  --skeleton-base: color-mix(in oklch, var(--muted) 90%, black 10%);
+  --skeleton-highlight: color-mix(in oklch, white 28%, var(--muted) 72%);
 }
 
 @theme inline {
@@ -216,15 +220,17 @@
 body::before {
   content: "";
   position: fixed;
-  inset: 0;
+  inset: calc(var(--app-background-blur) * -2);
   z-index: -2;
   pointer-events: none;
   background-image: var(--app-background-image);
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
+  background-size: var(--app-background-size);
+  background-position: var(--app-background-position);
+  background-repeat: var(--app-background-repeat);
+  filter: blur(var(--app-background-blur));
   opacity: calc(var(--app-background-opacity) / 100);
-  transition: opacity 180ms ease;
+  transform: scale(1.03);
+  transition: opacity 180ms ease, filter 180ms ease;
 }
 
 body::after {
@@ -233,7 +239,7 @@ body::after {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background: color-mix(in oklch, var(--background) 72%, transparent);
+  background: color-mix(in oklch, var(--background) 36%, transparent);
   opacity: 0;
   transition: opacity 180ms ease;
 }
@@ -247,13 +253,23 @@ body[data-app-background-active="true"] [data-slot="sidebar-wrapper"] {
 }
 
 body[data-app-background-active="true"] [data-slot="sidebar"] {
-  background: color-mix(in oklch, var(--sidebar) 78%, transparent);
+  background: color-mix(in oklch, var(--sidebar) 70%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+body[data-app-background-active="true"] [data-slot="sidebar-inner"] {
+  background: color-mix(in oklch, var(--sidebar) 72%, transparent);
   backdrop-filter: blur(18px);
 }
 
 body[data-app-background-active="true"] [data-slot="sidebar-inset"] {
-  background: color-mix(in oklch, var(--background) 74%, transparent);
-  backdrop-filter: blur(18px);
+  background: color-mix(in oklch, var(--background) 56%, transparent);
+  backdrop-filter: blur(20px);
+}
+
+body[data-app-background-active="true"] .app-header-shell {
+  background: color-mix(in oklch, var(--titlebar) 72%, transparent);
+  backdrop-filter: blur(20px);
 }
 
 @keyframes download-progress-flow {
@@ -288,13 +304,15 @@ body[data-app-background-active="true"] [data-slot="sidebar-inset"] {
   background: linear-gradient(
     90deg,
     transparent 0%,
-    color-mix(in oklch, var(--skeleton-highlight) 20%, transparent) 28%,
-    color-mix(in oklch, var(--skeleton-highlight) 78%, transparent) 50%,
-    color-mix(in oklch, var(--skeleton-highlight) 20%, transparent) 72%,
+    color-mix(in oklch, var(--skeleton-highlight) 14%, transparent) 18%,
+    color-mix(in oklch, var(--skeleton-highlight) 44%, transparent) 34%,
+    color-mix(in oklch, var(--skeleton-highlight) 100%, transparent) 50%,
+    color-mix(in oklch, var(--skeleton-highlight) 44%, transparent) 66%,
+    color-mix(in oklch, var(--skeleton-highlight) 14%, transparent) 82%,
     transparent 100%
   );
   transform: translateX(-100%);
-  animation: app-skeleton-shimmer 1.45s ease-in-out infinite;
+  animation: app-skeleton-shimmer 0.95s linear infinite;
   pointer-events: none;
 }
 

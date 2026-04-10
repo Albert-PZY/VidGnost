@@ -16,6 +16,8 @@ class UISettings(TypedDict):
     theme_hue: int
     background_image: str | None
     background_image_opacity: int
+    background_image_blur: int
+    background_image_fill_mode: str
 
 
 DEFAULT_UI_SETTINGS: UISettings = {
@@ -25,6 +27,8 @@ DEFAULT_UI_SETTINGS: UISettings = {
     "theme_hue": 220,
     "background_image": None,
     "background_image_opacity": 28,
+    "background_image_blur": 0,
+    "background_image_fill_mode": "cover",
 }
 
 
@@ -76,6 +80,22 @@ class UISettingsStore:
             except (TypeError, ValueError):
                 background_image_opacity = current["background_image_opacity"]
             background_image_opacity = max(0, min(100, background_image_opacity))
+            background_image_blur_raw = updates.get(
+                "background_image_blur",
+                current["background_image_blur"],
+            )
+            try:
+                background_image_blur = int(background_image_blur_raw)
+            except (TypeError, ValueError):
+                background_image_blur = current["background_image_blur"]
+            background_image_blur = max(0, min(40, background_image_blur))
+            background_image_fill_mode_raw = updates.get(
+                "background_image_fill_mode",
+                current["background_image_fill_mode"],
+            )
+            background_image_fill_mode = str(background_image_fill_mode_raw or "").strip().lower()
+            if background_image_fill_mode not in {"cover", "contain", "repeat", "center"}:
+                background_image_fill_mode = current["background_image_fill_mode"]
             next_value: UISettings = {
                 "language": language,
                 "font_size": font_size,
@@ -83,6 +103,8 @@ class UISettingsStore:
                 "theme_hue": theme_hue,
                 "background_image": background_image,
                 "background_image_opacity": background_image_opacity,
+                "background_image_blur": background_image_blur,
+                "background_image_fill_mode": background_image_fill_mode,
             }
             self._write_sync(next_value)
             return next_value
@@ -132,6 +154,24 @@ class UISettingsStore:
         except (TypeError, ValueError):
             background_image_opacity = DEFAULT_UI_SETTINGS["background_image_opacity"]
         background_image_opacity = max(0, min(100, background_image_opacity))
+        try:
+            background_image_blur = int(
+                payload.get(
+                    "background_image_blur",
+                    DEFAULT_UI_SETTINGS["background_image_blur"],
+                )
+            )
+        except (TypeError, ValueError):
+            background_image_blur = DEFAULT_UI_SETTINGS["background_image_blur"]
+        background_image_blur = max(0, min(40, background_image_blur))
+        background_image_fill_mode = str(
+            payload.get(
+                "background_image_fill_mode",
+                DEFAULT_UI_SETTINGS["background_image_fill_mode"],
+            )
+        ).strip().lower()
+        if background_image_fill_mode not in {"cover", "contain", "repeat", "center"}:
+            background_image_fill_mode = DEFAULT_UI_SETTINGS["background_image_fill_mode"]
         return {
             "language": language,
             "font_size": font_size,
@@ -139,6 +179,8 @@ class UISettingsStore:
             "theme_hue": theme_hue,
             "background_image": background_image,
             "background_image_opacity": background_image_opacity,
+            "background_image_blur": background_image_blur,
+            "background_image_fill_mode": background_image_fill_mode,
         }
 
     def _write_sync(self, value: UISettings) -> None:

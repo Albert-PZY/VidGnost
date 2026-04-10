@@ -14,6 +14,7 @@ PromptTemplateChannel = Literal["correction", "notes", "mindmap", "vqa"]
 ModelComponentType = Literal["whisper", "llm", "embedding", "vlm", "rerank"]
 ModelRuntimeStatus = Literal["ready", "loading", "not_ready", "error"]
 ModelDownloadState = Literal["idle", "downloading", "completed", "cancelled", "failed"]
+BackgroundImageFillMode = Literal["cover", "contain", "repeat", "center"]
 
 
 class TranscriptSegment(BaseModel):
@@ -313,6 +314,8 @@ class UISettingsResponse(BaseModel):
     theme_hue: int = Field(default=220, ge=0, le=360)
     background_image: str | None = None
     background_image_opacity: int = Field(default=28, ge=0, le=100)
+    background_image_blur: int = Field(default=0, ge=0, le=40)
+    background_image_fill_mode: BackgroundImageFillMode = "cover"
 
 
 class UISettingsUpdateRequest(BaseModel):
@@ -322,6 +325,8 @@ class UISettingsUpdateRequest(BaseModel):
     theme_hue: int | None = Field(default=None, ge=0, le=360)
     background_image: str | None = None
     background_image_opacity: int | None = Field(default=None, ge=0, le=100)
+    background_image_blur: int | None = Field(default=None, ge=0, le=40)
+    background_image_fill_mode: BackgroundImageFillMode | None = None
 
 
 class SelfCheckStartResponse(BaseModel):
