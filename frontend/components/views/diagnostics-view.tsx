@@ -246,9 +246,9 @@ export function DiagnosticsView() {
         </div>
 
         {(isRunning || report !== null) && (
-          <Card className="gap-0 rounded-lg border-border/75 bg-card/80 py-0 shadow-none">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-3">
+          <Card className="gap-0 rounded-md border-border/70 bg-card/75 py-0 shadow-none">
+            <CardContent className="p-3.5">
+              <div className="mb-3 flex items-center justify-between">
                 <span className="text-sm font-medium">
                   检查进度 ({completedCount}/{checks.length})
                 </span>
@@ -276,85 +276,83 @@ export function DiagnosticsView() {
           </Card>
         )}
 
-        <div className="grid gap-4">
+        <Card className="gap-0 overflow-hidden rounded-md border-border/70 bg-card/70 py-0 shadow-none">
           {checks.map((check, index) => (
-            <Card
+            <div
               key={check.id}
               className={cn(
-                "gap-0 rounded-lg border-border/75 bg-card/70 py-0 shadow-none transition-colors",
-                currentCheckIndex === index && "border-primary/45 bg-primary/[0.035]",
+                "flex items-start gap-3.5 px-4 py-3 transition-colors",
+                index !== 0 && "border-t border-border/60",
+                currentCheckIndex === index && "bg-primary/[0.035]",
               )}
             >
-              <CardContent className="p-4">
-                <div className="flex items-start gap-4">
-                  <div
-                    className={cn(
-                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-background/80",
-                      check.status === "success" && "border-status-success/20 bg-status-success/6",
-                      check.status === "warning" && "border-amber-500/20 bg-amber-500/6",
-                      check.status === "error" && "border-status-error/20 bg-status-error/6",
-                      (check.status === "pending" || check.status === "checking") && "border-border/60",
-                    )}
-                  >
-                    <check.icon
+              <div
+                className={cn(
+                  "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-background/85",
+                  check.status === "success" && "border-status-success/20 bg-status-success/6",
+                  check.status === "warning" && "border-amber-500/20 bg-amber-500/6",
+                  check.status === "error" && "border-status-error/20 bg-status-error/6",
+                  (check.status === "pending" || check.status === "checking") && "border-border/60",
+                )}
+              >
+                <check.icon
+                  className={cn(
+                    "h-4 w-4",
+                    check.status === "success" && "text-status-success",
+                    check.status === "warning" && "text-amber-500",
+                    check.status === "error" && "text-status-error",
+                    (check.status === "pending" || check.status === "checking") && "text-muted-foreground",
+                  )}
+                />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">{check.name}</span>
+                  {check.status !== "pending" && (
+                    <Badge
+                      variant={
+                        check.status === "success"
+                          ? "default"
+                          : check.status === "warning"
+                            ? "secondary"
+                            : check.status === "error"
+                              ? "destructive"
+                              : "outline"
+                      }
                       className={cn(
-                        "h-5 w-5",
-                        check.status === "success" && "text-status-success",
-                        check.status === "warning" && "text-amber-500",
-                        check.status === "error" && "text-status-error",
-                        (check.status === "pending" || check.status === "checking") && "text-muted-foreground",
+                        "h-5 rounded-md px-1.5 text-[11px]",
+                        check.status === "success" && "bg-status-success",
+                        check.status === "checking" && "bg-status-processing",
                       )}
-                    />
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{check.name}</span>
-                      {check.status !== "pending" && (
-                        <Badge
-                          variant={
-                            check.status === "success"
-                              ? "default"
-                              : check.status === "warning"
-                                ? "secondary"
-                                : check.status === "error"
-                                  ? "destructive"
-                                  : "outline"
-                          }
-                          className={cn(
-                            check.status === "success" && "bg-status-success",
-                            check.status === "checking" && "bg-status-processing",
-                          )}
-                        >
-                          {getStatusText(check.status)}
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-0.5">
-                      {check.message || check.description}
-                    </p>
-
-                    {check.details && Object.keys(check.details).length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 border-t border-border/60 pt-3 text-xs">
-                        {Object.entries(check.details).map(([key, value]) => (
-                          <div key={key} className="flex items-center gap-1.5">
-                            <span className="text-muted-foreground">{key}:</span>
-                            <span className="font-medium">{value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="shrink-0">{getStatusIcon(check.status)}</div>
+                    >
+                      {getStatusText(check.status)}
+                    </Badge>
+                  )}
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  {check.message || check.description}
+                </p>
 
-        <Card className="gap-0 rounded-lg border-border/75 bg-card/80 py-0 shadow-none">
-          <CardHeader className="border-b border-border/60 px-4 py-4">
+                {check.details && Object.keys(check.details).length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1.5 text-xs">
+                    {Object.entries(check.details).map(([key, value]) => (
+                      <div key={key} className="flex items-center gap-1.5">
+                        <span className="text-muted-foreground">{key}:</span>
+                        <span className="font-medium">{value}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="shrink-0 pt-0.5">{getStatusIcon(check.status)}</div>
+            </div>
+          ))}
+        </Card>
+
+        <Card className="gap-0 rounded-md border-border/70 bg-card/75 py-0 shadow-none">
+          <CardHeader className="border-b border-border/60 px-4 py-3.5">
             <CardTitle className="text-base">运行时信息</CardTitle>
           </CardHeader>
           <CardContent className="p-4">
