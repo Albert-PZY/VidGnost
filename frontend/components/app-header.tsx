@@ -40,6 +40,8 @@ interface AppHeaderProps {
 const PROJECT_REPOSITORY_URL = "https://github.com/Albert-PZY/VidGnost"
 const dragRegionStyle = { WebkitAppRegion: "drag" } as React.CSSProperties
 const noDragRegionStyle = { WebkitAppRegion: "no-drag" } as React.CSSProperties
+const titlebarButtonClass =
+  "h-7 w-7 rounded-md transition-colors hover:bg-accent hover:text-accent-foreground active:bg-accent/80 data-[state=open]:bg-accent data-[state=open]:text-accent-foreground"
 
 export function AppHeader({
   title,
@@ -104,7 +106,7 @@ export function AppHeader({
       className="sticky top-0 z-40 flex h-10 shrink-0 select-none items-center gap-1.5 border-b border-[color:var(--titlebar-border)] bg-[color:var(--titlebar)]/95 px-3 backdrop-blur-sm"
     >
       <div style={noDragRegionStyle}>
-        <SidebarTrigger className="-ml-1 h-7 w-7 rounded-md hover:bg-background/60" />
+        <SidebarTrigger className={cn("-ml-1", titlebarButtonClass)} />
       </div>
       <Separator orientation="vertical" className="mr-1 h-3.5 bg-foreground/10" />
 
@@ -117,7 +119,7 @@ export function AppHeader({
       <div style={noDragRegionStyle} className="flex items-center gap-1">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-7 w-7 rounded-md hover:bg-background/60">
+            <Button variant="ghost" size="icon" className={titlebarButtonClass}>
               <Languages className="h-4 w-4" />
               <span className="sr-only">切换语言</span>
             </Button>
@@ -148,7 +150,7 @@ export function AppHeader({
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative h-7 w-7 rounded-md hover:bg-background/60">
+            <Button variant="ghost" size="icon" className={cn("relative", titlebarButtonClass)}>
               <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
               <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
               <span className="sr-only">切换主题</span>
@@ -173,7 +175,7 @@ export function AppHeader({
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 rounded-md hover:bg-background/60"
+          className={titlebarButtonClass}
           onClick={() => {
             void openProjectRepository().catch((error) => {
               toast.error(error instanceof Error ? error.message : "打开项目地址失败")
@@ -187,7 +189,7 @@ export function AppHeader({
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 rounded-md hover:bg-background/60"
+          className={titlebarButtonClass}
           onClick={onOpenSettings}
         >
           <Settings className="h-4 w-4" />
@@ -200,7 +202,7 @@ export function AppHeader({
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 rounded-md hover:bg-background/60"
+              className={titlebarButtonClass}
               onClick={() => {
                 void window.vidGnostDesktop?.minimizeWindow?.()
               }}
@@ -211,7 +213,7 @@ export function AppHeader({
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 rounded-md hover:bg-background/60"
+              className={titlebarButtonClass}
               onClick={() => {
                 void toggleWindowMaximize()
               }}
