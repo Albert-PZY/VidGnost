@@ -73,6 +73,7 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 #### Scenario: Configure a custom skin image
 - **WHEN** user chooses a skin image from the Electron shell and opens the skin dialog
 - **THEN** the renderer shows a crop-oriented skin dialog with a draggable selection frame and wheel-driven zoom
+- **AND** the selection frame stays fully inside the currently rendered image bounds, including at the minimum persisted `100%` scale
 - **AND** the current shell background updates in real time while the dialog is open
 - **AND** saving the dialog persists opacity, blur, scale, and focus coordinates for the selected image
 
@@ -80,6 +81,7 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **WHEN** renderer loads with persisted skin settings
 - **THEN** the fixed shell background layer restores the saved image using the stored opacity, blur, scale, and focus coordinates
 - **AND** the title bar, sidebar, and main content shell render above the same background layer
+- **AND** the workspace shell does not add extra renderer-side blur or tint beyond the persisted skin blur and opacity values
 
 ### Requirement: Shell controls SHALL expose explicit language selection state
 Header language controls SHALL show the current selected language with explicit selected-state feedback and persist the language choice through UI settings.

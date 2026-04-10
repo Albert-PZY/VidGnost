@@ -12,7 +12,8 @@ type SkinSettingsLike = Pick<
 
 export const APP_SHELL_ASPECT_RATIO = 16 / 10
 export const SKIN_SELECTION_RATIO = 0.72
-export const MIN_BACKGROUND_PREVIEW_SCALE = 0.6
+export const MIN_BACKGROUND_SCALE = 1
+export const MIN_BACKGROUND_PREVIEW_SCALE = MIN_BACKGROUND_SCALE * SKIN_SELECTION_RATIO
 export const MAX_BACKGROUND_SCALE = 4
 export const MAX_BACKGROUND_PREVIEW_SCALE = MAX_BACKGROUND_SCALE * SKIN_SELECTION_RATIO
 
@@ -52,7 +53,7 @@ export function getPreviewScaleFromSavedScale(savedScale: number) {
 }
 
 export function getSavedScaleFromPreviewScale(previewScale: number) {
-  return clamp(previewScale / SKIN_SELECTION_RATIO, 1, MAX_BACKGROUND_SCALE)
+  return clamp(previewScale / SKIN_SELECTION_RATIO, MIN_BACKGROUND_SCALE, MAX_BACKGROUND_SCALE)
 }
 
 export function getImageLayout(input: {

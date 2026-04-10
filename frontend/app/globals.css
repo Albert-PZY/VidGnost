@@ -228,8 +228,8 @@ body[data-app-background-active="true"] [data-slot="sidebar-inner"] {
 }
 
 body[data-app-background-active="true"] [data-slot="sidebar-inset"] {
-  background: color-mix(in oklch, var(--background) 56%, transparent);
-  backdrop-filter: blur(20px);
+  background: transparent;
+  backdrop-filter: none;
 }
 
 body[data-app-background-active="true"] .app-header-shell {

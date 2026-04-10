@@ -104,12 +104,6 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
             : { opacity: 0 }
         }
       />
-      <div
-        className="absolute inset-0"
-        style={{
-          background: "color-mix(in oklch, var(--background) 36%, transparent)",
-        }}
-      />
     </div>
   )
 }

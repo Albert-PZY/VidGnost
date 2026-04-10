@@ -51,6 +51,10 @@ type SurfaceGeometry = {
   imageTop: number
   frameWidth: number
   frameHeight: number
+  frameMinCenterX: number
+  frameMaxCenterX: number
+  frameMinCenterY: number
+  frameMaxCenterY: number
   frameCenterX: number
   frameCenterY: number
 }
@@ -191,15 +195,27 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
       surfaceSize.width,
       surfaceSize.height,
     )
+    const frameMinCenterX = imageWidth <= frameWidth
+      ? imageLeft + imageWidth / 2
+      : imageLeft + frameWidth / 2
+    const frameMaxCenterX = imageWidth <= frameWidth
+      ? imageLeft + imageWidth / 2
+      : imageLeft + imageWidth - frameWidth / 2
+    const frameMinCenterY = imageHeight <= frameHeight
+      ? imageTop + imageHeight / 2
+      : imageTop + frameHeight / 2
+    const frameMaxCenterY = imageHeight <= frameHeight
+      ? imageTop + imageHeight / 2
+      : imageTop + imageHeight - frameHeight / 2
     const frameCenterX = clamp(
       imageLeft + imageWidth * focus.x,
-      frameWidth / 2,
-      surfaceSize.width - frameWidth / 2,
+      frameMinCenterX,
+      frameMaxCenterX,
     )
     const frameCenterY = clamp(
       imageTop + imageHeight * focus.y,
-      frameHeight / 2,
-      surfaceSize.height - frameHeight / 2,
+      frameMinCenterY,
+      frameMaxCenterY,
     )
 
     return {
@@ -209,6 +225,10 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
       imageTop,
       frameWidth,
       frameHeight,
+      frameMinCenterX,
+      frameMaxCenterX,
+      frameMinCenterY,
+      frameMaxCenterY,
       frameCenterX,
       frameCenterY,
     }
@@ -254,13 +274,13 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
 
       const nextCenterX = clamp(
         dragState.startCenterX + (event.clientX - dragState.startX),
-        dragState.geometry.frameWidth / 2,
-        surfaceSize.width - dragState.geometry.frameWidth / 2,
+        dragState.geometry.frameMinCenterX,
+        dragState.geometry.frameMaxCenterX,
       )
       const nextCenterY = clamp(
         dragState.startCenterY + (event.clientY - dragState.startY),
-        dragState.geometry.frameHeight / 2,
-        surfaceSize.height - dragState.geometry.frameHeight / 2,
+        dragState.geometry.frameMinCenterY,
+        dragState.geometry.frameMaxCenterY,
       )
 
       setFocus({
