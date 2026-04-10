@@ -13,6 +13,7 @@ from typing import Literal
 
 from app.config import Settings
 from app.services.events import EventBus
+from app.services.model_catalog_store import ModelCatalogStore
 from app.services.naming import generate_time_key
 
 StepStatus = Literal["pending", "running", "passed", "warning", "failed"]
@@ -56,6 +57,7 @@ class SelfCheckService:
     def __init__(self, settings: Settings, event_bus: EventBus) -> None:
         self._settings = settings
         self._event_bus = event_bus
+        self._model_catalog_store = ModelCatalogStore(settings)
         self._sessions: dict[str, SelfCheckSession] = {}
         self._max_session_cache = _MAX_SELF_CHECK_SESSION_CACHE
         self._lock = asyncio.Lock()
@@ -343,10 +345,42 @@ class SelfCheckService:
         )
 
     async def _check_vlm(self) -> SelfCheckOutcome:
+        models = await self._model_catalog_store.list_models()
+        model = next((item for item in models if str(item.get("id", "")) == "vlm-default"), None)
+        if model is None:
+            return SelfCheckOutcome(
+                status="warning",
+                message="VLM 模型配置缺失",
+                details={"默认模型": "vikhyatk/moondream2"},
+                manual_action="检查模型目录配置并刷新模型状态。",
+            )
+
+        default_path = str(model.get("default_path", "")).strip()
+        current_path = str(model.get("path", "")).strip() or default_path or "未就绪"
+        details = {
+            "默认模型": str(model.get("model_id", "")).strip() or str(model.get("name", "")).strip() or "未配置",
+            "默认目录": default_path or "未配置",
+            "当前路径": current_path,
+            "加载策略": self._describe_load_profile(str(model.get("load_profile", "")).strip()),
+            "量化": str(model.get("quantization", "")).strip() or "未配置",
+        }
+
+        if not bool(model.get("enabled", True)):
+            return SelfCheckOutcome(
+                status="warning",
+                message="VLM 模型已停用",
+                details=details,
+                manual_action="在模型配置中重新启用视觉语言模型。",
+            )
+
+        if bool(model.get("is_installed", False)):
+            return SelfCheckOutcome(status="passed", message="VLM 模型已就绪", details=details)
+
         return SelfCheckOutcome(
             status="warning",
-            message="VLM 处于按需加载模式",
-            details={"默认模型": "vikhyatk/moondream2 (4bit)"},
+            message="VLM 模型未就绪，将在需要时自动准备",
+            details=details,
+            manual_action="检查模型目录或在模型配置中刷新检测状态。",
         )
 
     async def _check_chromadb(self) -> SelfCheckOutcome:
@@ -400,6 +434,15 @@ class SelfCheckService:
     @staticmethod
     def _topic(session_id: str) -> str:
         return f"self-check:{session_id}"
+
+    @staticmethod
+    def _describe_load_profile(load_profile: str) -> str:
+        labels = {
+            "balanced": "平衡模式",
+            "memory_first": "常驻内存优先",
+            "on_demand": "按需加载",
+        }
+        return labels.get(load_profile, load_profile or "未配置")
 
 
 @dataclass(slots=True)

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import time
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.main import app
 from app.services.events import EventBus
+from app.services.model_catalog_store import ModelCatalogStore
 from app.services.self_check import (
     SelfCheckService,
     SelfCheckSession,
@@ -81,3 +84,57 @@ def test_self_check_build_steps_is_api_only() -> None:
     assert "gpu-driver" not in step_ids
     assert "model-cache" in step_ids
     assert "llm-local-config" not in step_ids
+
+
+def _build_settings(tmp_path: Path) -> Settings:
+    storage_dir = tmp_path / "storage"
+    return Settings(
+        storage_dir=str(storage_dir),
+        temp_dir=str(storage_dir / "tmp"),
+        upload_dir=str(storage_dir / "uploads"),
+        output_dir=str(storage_dir / "outputs"),
+        runtime_config_path=str(storage_dir / "config.toml"),
+        llm_config_path=str(storage_dir / "model_config.json"),
+    )
+
+
+def _materialize_vlm_cache(model_dir: Path) -> None:
+    model_dir.mkdir(parents=True, exist_ok=True)
+    for file_name in ("config.json", "tokenizer.json", "model.safetensors"):
+        (model_dir / file_name).write_text("ready", encoding="utf-8")
+    (model_dir / ".ready.json").write_text(
+        (
+            "{\n"
+            '  "repo_id": "vikhyatk/moondream2",\n'
+            '  "revision": "main",\n'
+            '  "files": ["config.json", "tokenizer.json", "model.safetensors"]\n'
+            "}\n"
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_self_check_vlm_reports_ready_when_model_cache_exists(tmp_path: Path) -> None:
+    settings = _build_settings(tmp_path)
+    default_dir = Path(settings.storage_dir) / "model-hub" / "vikhyatk--moondream2"
+    _materialize_vlm_cache(default_dir)
+
+    service = SelfCheckService(settings=settings, event_bus=EventBus())
+    outcome = asyncio.run(service._check_vlm())  # type: ignore[attr-defined]
+
+    assert outcome.status == "passed"
+    assert outcome.message == "VLM 模型已就绪"
+    assert outcome.details["当前路径"] == str(default_dir)
+    assert outcome.details["加载策略"] == "常驻内存优先"
+
+
+def test_self_check_vlm_reports_disabled_when_model_is_turned_off(tmp_path: Path) -> None:
+    settings = _build_settings(tmp_path)
+    store = ModelCatalogStore(settings)
+    asyncio.run(store.update_model("vlm-default", {"enabled": False}))
+
+    service = SelfCheckService(settings=settings, event_bus=EventBus())
+    outcome = asyncio.run(service._check_vlm())  # type: ignore[attr-defined]
+
+    assert outcome.status == "warning"
+    assert outcome.message == "VLM 模型已停用"
