@@ -50,11 +50,12 @@ Prompt template editor SHALL use a markdown editor that keeps the source editor 
 - **AND** scrolling one pane keeps the other pane aligned for long prompt content
 
 ### Requirement: Heavy renderer modules SHALL lazy load with structured skeleton placeholders
-Heavy renderer modules such as settings subviews and embedded markdown editors SHALL load on demand and SHALL present structured skeleton placeholders instead of plain text loading prompts while code or CSS chunks are still resolving.
+Heavy renderer modules such as settings subviews and embedded markdown editors SHALL load on demand and SHALL present structured skeleton placeholders instead of plain text loading prompts while code or CSS chunks are still resolving. Those placeholders SHALL use neutral placeholder surfaces with subtle shimmer sweeps rather than accent-colored solid blocks.
 
 #### Scenario: Open a lazily loaded settings surface
 - **WHEN** user opens a lazily loaded view or prompt editor
 - **THEN** the renderer shows a layout-matched skeleton placeholder
+- **AND** the placeholder uses neutral, low-contrast loading tones with a restrained shimmer effect
 - **AND** the final surface replaces the skeleton once the async chunk and styles are ready
 
 ### Requirement: Appearance settings SHALL persist theme hue, font size, and autosave
