@@ -911,23 +911,27 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                   </Button>
 
                   <Dialog open={isModelDialogOpen} onOpenChange={handleModelDialogChange}>
-                    <DialogContent className="flex w-[min(96vw,70rem)] max-h-[min(92vh,58rem)] max-w-[70rem] flex-col gap-0 overflow-hidden p-0">
-                      <DialogHeader className="shrink-0 border-b bg-background px-7 py-6 pr-16">
-                        <DialogTitle>{activeModelPreset?.title || "模型常用配置"}</DialogTitle>
-                        <DialogDescription>
+                    <DialogContent className="flex w-[min(96vw,72rem)] max-h-[90vh] max-w-[72rem] flex-col gap-0 overflow-hidden p-0">
+                      <DialogHeader className="shrink-0 border-b bg-card px-6 py-5 pr-14">
+                        <DialogTitle className="text-lg font-medium leading-tight">
+                          {activeModelPreset?.title || "模型常用配置"}
+                        </DialogTitle>
+                        <DialogDescription className="text-xs leading-relaxed text-muted-foreground">
                           {activeModelPreset?.description || "更新模型配置。"}
                         </DialogDescription>
                       </DialogHeader>
-                      <div className="themed-thin-scrollbar min-h-0 flex-1 overflow-y-auto px-7 py-6">
-                        <div className="space-y-5">
-                          {editingModel ? (
-                            <div className="rounded-xl border bg-muted/35 p-5">
-                              <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-                                <div className="space-y-4">
+
+                      <div className="themed-thin-scrollbar min-h-0 flex-1 overflow-y-auto">
+                        <div className="grid gap-6 px-6 py-6 xl:grid-cols-[minmax(0,0.4fr)_minmax(0,0.6fr)]">
+                          {/* 左侧概览：集中展示当前模型身份、状态与关键指标 */}
+                          <div className="space-y-5">
+                            {editingModel ? (
+                              <div className="rounded-xl border bg-card p-6">
+                                <div className="space-y-5">
                                   <div className="flex items-start gap-4">
                                     <div
                                       className={cn(
-                                        "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg",
+                                        "flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40",
                                         getModelVisual(editingModel.component).surfaceClassName,
                                       )}
                                     >
@@ -935,96 +939,148 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                                         className: cn("h-5 w-5", getModelVisual(editingModel.component).iconClassName),
                                       })}
                                     </div>
-                                    <div className="min-w-0 space-y-2">
+                                    <div className="min-w-0 flex-1 space-y-2">
                                       <div className="flex flex-wrap items-center gap-2">
-                                        <div className="text-base font-medium">{editingModel.name}</div>
+                                        <div className="min-w-0 text-lg font-medium leading-tight text-foreground">
+                                          {editingModel.name}
+                                        </div>
                                         <Badge
                                           variant="outline"
                                           className={cn(
-                                            "rounded-md bg-background/80",
+                                            "rounded-md border bg-background/80",
                                             modelTypeTagClassNames[editingModel.component],
                                           )}
                                         >
                                           {modelTypeLabels[editingModel.component]}
                                         </Badge>
-                                        {getStatusBadge(editingModel.status)}
                                       </div>
-                                      <div className="truncate text-xs text-muted-foreground">
+                                      <div className="break-all text-xs leading-relaxed text-muted-foreground">
                                         {editingModel.model_id}
                                       </div>
-                                      <p className="text-sm leading-6 text-muted-foreground">
-                                        {activeModelPreset?.note ||
-                                          "根据当前模型类型调整常用运行参数，保存后会同步到桌面端后端配置。"}
+                                    </div>
+                                  </div>
+
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <Badge variant="outline" className="rounded-md border bg-background/80 text-foreground/90">
+                                      {`Provider · ${editingModel.provider.replaceAll("_", " ")}`}
+                                    </Badge>
+                                    <Badge variant="outline" className="rounded-md border bg-background/80 text-foreground/90">
+                                      {`Component · ${modelTypeLabels[editingModel.component]}`}
+                                    </Badge>
+                                    {getStatusBadge(editingModel.status)}
+                                    <Badge
+                                      variant="outline"
+                                      className={cn(
+                                        "rounded-md border bg-background/80",
+                                        editingModel.is_installed
+                                          ? "border-status-success/35 text-status-success"
+                                          : "text-muted-foreground",
+                                      )}
+                                    >
+                                      {editingModel.is_installed ? "已安装" : "未安装"}
+                                    </Badge>
+                                  </div>
+
+                                  <div className="rounded-xl border bg-muted/30 p-4">
+                                    <div className="space-y-1">
+                                      <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                                        默认目录
+                                      </div>
+                                      <div className="break-all text-xs leading-relaxed text-foreground/90">
+                                        {editingModel.default_path || "未就绪"}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                                    <div className="rounded-xl border bg-muted/30 p-4">
+                                      <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                                        当前启用
+                                      </div>
+                                      <div className="mt-2 text-base font-semibold leading-tight text-foreground">
+                                        {modelForm.enabled ? "已启用" : "已停用"}
+                                      </div>
+                                      <p className="mt-1 text-xs text-muted-foreground">
+                                        {modelForm.enabled ? "参与运行链路" : "不会参与任务执行"}
+                                      </p>
+                                    </div>
+                                    <div className="rounded-xl border bg-muted/30 p-4">
+                                      <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                                        加载策略
+                                      </div>
+                                      <div className="mt-2 text-base font-semibold leading-tight text-foreground">
+                                        {modelForm.load_profile || "balanced"}
+                                      </div>
+                                      <p className="mt-1 text-xs text-muted-foreground">
+                                        决定常驻内存与响应速度的取舍
+                                      </p>
+                                    </div>
+                                    <div className="rounded-xl border bg-muted/30 p-4">
+                                      <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                                        量化格式
+                                      </div>
+                                      <div className="mt-2 text-base font-semibold leading-tight text-foreground">
+                                        {modelDialogHasQuantization ? modelForm.quantization || "未设置" : "不适用"}
+                                      </div>
+                                      <p className="mt-1 text-xs text-muted-foreground">
+                                        影响显存占用与推理吞吐
+                                      </p>
+                                    </div>
+                                    <div className="rounded-xl border bg-muted/30 p-4">
+                                      <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                                        批大小
+                                      </div>
+                                      <div className="mt-2 text-base font-semibold leading-tight text-foreground">
+                                        {modelDialogHasBatchSize ? modelForm.max_batch_size || "1" : "默认"}
+                                      </div>
+                                      <p className="mt-1 text-xs text-muted-foreground">
+                                        过高可能提升吞吐但增加资源占用
                                       </p>
                                     </div>
                                   </div>
-                                </div>
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                  <div className="rounded-lg border bg-background/80 px-4 py-3">
-                                    <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                                      Provider
-                                    </div>
-                                    <div className="mt-2 text-sm font-medium text-foreground">
-                                      {editingModel.provider.replaceAll("_", " ")}
-                                    </div>
-                                  </div>
-                                  <div className="rounded-lg border bg-background/80 px-4 py-3">
-                                    <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                                      Component
-                                    </div>
-                                    <div className="mt-2 text-sm font-medium text-foreground">
-                                      {modelTypeLabels[editingModel.component]}
+
+                                  <div className="rounded-xl border bg-muted/30 p-4">
+                                    <div className="space-y-1">
+                                      <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                                        当前路径
+                                      </div>
+                                      <div className="break-all text-xs leading-relaxed text-foreground/90">
+                                        {modelForm.path || editingModel.path || editingModel.default_path || "使用默认托管目录"}
+                                      </div>
                                     </div>
                                   </div>
-                                  <div className="rounded-lg border bg-background/80 px-4 py-3 sm:col-span-2">
-                                    <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                                      默认目录
+
+                                  <div className="rounded-xl border bg-muted/30 p-4">
+                                    <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                                      运行说明
                                     </div>
-                                    <div className="mt-2 break-all text-sm font-medium text-foreground">
-                                      {editingModel.default_path || "未就绪"}
-                                    </div>
-                                  </div>
-                                  <div className="rounded-lg border bg-background/80 px-4 py-3">
-                                    <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                                      安装状态
-                                    </div>
-                                    <div className="mt-2 text-sm font-medium text-foreground">
-                                      {editingModel.is_installed ? "已落盘" : "尚未安装到默认目录"}
-                                    </div>
-                                  </div>
-                                  <div className="rounded-lg border bg-background/80 px-4 py-3">
-                                    <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                                      启用策略
-                                    </div>
-                                    <div className="mt-2 text-sm font-medium text-foreground">
-                                      {modelForm.enabled ? "已启用" : "已停用"}
-                                    </div>
+                                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                                      {activeModelPreset?.note ||
+                                        "根据当前模型类型调整常用运行参数，保存后会同步到桌面端后端配置。"}
+                                    </p>
                                   </div>
                                 </div>
                               </div>
-                            </div>
-                          ) : null}
+                            ) : null}
+                          </div>
 
-                          <div
-                            className={cn(
-                              "grid gap-5",
-                              showOnlineLlmFields ? "xl:grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)]" : "grid-cols-1",
-                            )}
-                          >
-                            <div className="rounded-xl border bg-background p-5">
+                          {/* 右侧配置：按运行参数与在线接口参数分组 */}
+                          <div className="space-y-6">
+                            <div className="rounded-xl border bg-card p-5 md:p-6">
                               <div className="space-y-1">
-                                <div className="text-sm font-medium">常用运行配置</div>
-                                <p className="text-xs text-muted-foreground">
-                                  仅展示当前模型实际可调整的常用参数，避免无关配置干扰。
+                                <div className="text-base font-semibold leading-tight">常用运行参数</div>
+                                <p className="text-xs leading-relaxed text-muted-foreground">
+                                  仅展示当前模型实际可调整的核心参数，避免无关配置干扰。
                                 </p>
                               </div>
 
-                              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                              <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2">
                                 {activeModelPreset?.fields.includes("path") ? (
                                   <div className="space-y-2 md:col-span-2">
                                     <Label htmlFor="model-path">{activeModelPreset.pathLabel || "本地路径"}</Label>
                                     <Input
                                       id="model-path"
+                                      className="bg-background/80"
                                       placeholder={
                                         isWhisperDialog
                                           ? "未就绪"
@@ -1036,11 +1092,11 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                                         setModelForm((current) => ({ ...current, path: event.target.value }))
                                       }
                                     />
-                                    {isWhisperDialog ? (
-                                      <p className="text-xs text-muted-foreground">
-                                        Whisper 模型目录由桌面端托管，点击上方“下载 / 重置”会自动写入默认目录。
-                                      </p>
-                                    ) : null}
+                                    <p className="text-xs text-muted-foreground">
+                                      {isWhisperDialog
+                                        ? "Whisper 模型目录由桌面端托管，点击上方“下载 / 重置”会自动写入默认目录。"
+                                        : "未填写时优先使用当前已检测到的模型目录或默认托管目录。"}
+                                    </p>
                                   </div>
                                 ) : null}
 
@@ -1053,7 +1109,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                                         setModelForm((current) => ({ ...current, load_profile: value }))
                                       }
                                     >
-                                      <SelectTrigger>
+                                      <SelectTrigger className="bg-background/80">
                                         <SelectValue />
                                       </SelectTrigger>
                                       <SelectContent>
@@ -1061,6 +1117,9 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                                         <SelectItem value="memory_first">memory_first</SelectItem>
                                       </SelectContent>
                                     </Select>
+                                    <p className="text-xs text-muted-foreground">
+                                      根据模型体积与硬件资源选择常驻或平衡模式。
+                                    </p>
                                   </div>
                                 ) : null}
 
@@ -1071,6 +1130,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                                     </Label>
                                     <Input
                                       id="model-quantization"
+                                      className="bg-background/80"
                                       placeholder={activeModelPreset?.quantizationPlaceholder || "如 int8 / 4bit / fp16"}
                                       value={modelForm.quantization}
                                       onChange={(event) =>
@@ -1080,6 +1140,9 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                                         }))
                                       }
                                     />
+                                    <p className="text-xs text-muted-foreground">
+                                      推荐与当前模型文件实际格式保持一致，避免加载异常。
+                                    </p>
                                   </div>
                                 ) : null}
 
@@ -1097,6 +1160,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                                     </Label>
                                     <Input
                                       id="model-max-batch"
+                                      className="bg-background/80"
                                       type="number"
                                       min={1}
                                       max={64}
@@ -1108,132 +1172,157 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                                         }))
                                       }
                                     />
-                                    {activeModelPreset?.batchDescription ? (
-                                      <p className="text-xs text-muted-foreground">
-                                        {activeModelPreset.batchDescription}
-                                      </p>
-                                    ) : null}
+                                    <p className="text-xs text-muted-foreground">
+                                      {activeModelPreset?.batchDescription || "影响同批次吞吐与资源占用。"}
+                                    </p>
+                                  </div>
+                                ) : null}
+
+                                {activeModelPreset?.fields.includes("enabled") ? (
+                                  <div className="md:col-span-2">
+                                    <div className="flex items-center justify-between gap-4 rounded-xl border bg-muted/30 px-4 py-3.5">
+                                      <div className="min-w-0 space-y-1">
+                                        <Label className="leading-tight">启用状态</Label>
+                                        <p className="text-xs leading-relaxed text-muted-foreground">
+                                          关闭后模型不会参与当前运行链路，但会保留已保存的目录与参数。
+                                        </p>
+                                      </div>
+                                      <Switch
+                                        checked={modelForm.enabled}
+                                        onCheckedChange={(checked) =>
+                                          setModelForm((current) => ({ ...current, enabled: checked }))
+                                        }
+                                      />
+                                    </div>
                                   </div>
                                 ) : null}
                               </div>
-
-                              {activeModelPreset?.fields.includes("enabled") ? (
-                                <div className="mt-5 flex items-end justify-between rounded-lg border bg-muted/20 px-4 py-3">
-                                  <div>
-                                    <Label>启用状态</Label>
-                                    <p className="text-xs text-muted-foreground">
-                                      关闭后模型不会参与运行链路。
-                                    </p>
-                                  </div>
-                                  <Switch
-                                    checked={modelForm.enabled}
-                                    onCheckedChange={(checked) =>
-                                      setModelForm((current) => ({ ...current, enabled: checked }))
-                                    }
-                                  />
-                                </div>
-                              ) : null}
                             </div>
 
                             {showOnlineLlmFields ? (
-                              <div className="rounded-xl border bg-muted/20 p-5">
+                              <div className="rounded-xl border bg-card p-5 md:p-6">
                                 <div className="space-y-1">
-                                  <div className="text-sm font-medium">OpenAI 兼容接口配置</div>
-                                  <p className="text-xs text-muted-foreground">
+                                  <div className="text-base font-semibold leading-tight">OpenAI 兼容接口配置</div>
+                                  <p className="text-xs leading-relaxed text-muted-foreground">
                                     保存后会同步写入后端在线 LLM 配置，用于实际请求 Base URL、模型名与 API Key。
                                   </p>
                                 </div>
-                                <div className="mt-5 space-y-4">
-                                  <div className="space-y-2">
+
+                                <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2">
+                                  <div className="space-y-2 md:col-span-2">
                                     <Label htmlFor="llm-base-url">Base URL</Label>
                                     <Input
                                       id="llm-base-url"
+                                      className="bg-background/80"
                                       placeholder="https://provider.example.com/v1"
                                       value={llmForm.base_url}
                                       onChange={(event) =>
                                         setLlmForm((current) => ({ ...current, base_url: event.target.value }))
                                       }
                                     />
+                                    <p className="text-xs text-muted-foreground">
+                                      使用兼容 OpenAI 的服务入口地址，通常以 `/v1` 结尾。
+                                    </p>
                                   </div>
-                                  <div className="grid gap-4 md:grid-cols-2">
-                                    <div className="space-y-2">
-                                      <Label htmlFor="llm-model">模型名称</Label>
-                                      <Input
-                                        id="llm-model"
-                                        placeholder="如 qwen3.5-flash / gpt-4.1-mini"
-                                        value={llmForm.model}
-                                        onChange={(event) =>
-                                          setLlmForm((current) => ({ ...current, model: event.target.value }))
-                                        }
-                                      />
-                                    </div>
-                                    <div className="space-y-2">
-                                      <Label htmlFor="llm-api-key">API Key</Label>
-                                      <Input
-                                        id="llm-api-key"
-                                        type="password"
-                                        placeholder="输入模型提供商的 API Key"
-                                        value={llmForm.api_key}
-                                        onChange={(event) =>
-                                          setLlmForm((current) => ({ ...current, api_key: event.target.value }))
-                                        }
-                                      />
-                                    </div>
+
+                                  <div className="space-y-2">
+                                    <Label htmlFor="llm-model">模型名称</Label>
+                                    <Input
+                                      id="llm-model"
+                                      className="bg-background/80"
+                                      placeholder="如 qwen3.5-flash / gpt-4.1-mini"
+                                      value={llmForm.model}
+                                      onChange={(event) =>
+                                        setLlmForm((current) => ({ ...current, model: event.target.value }))
+                                      }
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                      与提供商控制台中的可调用模型名保持一致。
+                                    </p>
                                   </div>
-                                  <div className="grid gap-4 md:grid-cols-3">
-                                    <div className="space-y-2">
-                                      <Label>文本纠错模式</Label>
-                                      <Select
-                                        value={llmForm.correction_mode}
-                                        onValueChange={(value) =>
-                                          setLlmForm((current) => ({
-                                            ...current,
-                                            correction_mode: value as LLMConfigResponse["correction_mode"],
-                                          }))
-                                        }
-                                      >
-                                        <SelectTrigger>
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          <SelectItem value="off">off</SelectItem>
-                                          <SelectItem value="strict">strict</SelectItem>
-                                          <SelectItem value="rewrite">rewrite</SelectItem>
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
-                                    <div className="space-y-2">
-                                      <Label htmlFor="llm-correction-batch">纠错批大小</Label>
-                                      <Input
-                                        id="llm-correction-batch"
-                                        type="number"
-                                        min={6}
-                                        max={80}
-                                        value={llmForm.correction_batch_size}
-                                        onChange={(event) =>
-                                          setLlmForm((current) => ({
-                                            ...current,
-                                            correction_batch_size: event.target.value,
-                                          }))
-                                        }
-                                      />
-                                    </div>
-                                    <div className="space-y-2">
-                                      <Label htmlFor="llm-correction-overlap">纠错重叠</Label>
-                                      <Input
-                                        id="llm-correction-overlap"
-                                        type="number"
-                                        min={0}
-                                        max={20}
-                                        value={llmForm.correction_overlap}
-                                        onChange={(event) =>
-                                          setLlmForm((current) => ({
-                                            ...current,
-                                            correction_overlap: event.target.value,
-                                          }))
-                                        }
-                                      />
-                                    </div>
+
+                                  <div className="space-y-2">
+                                    <Label htmlFor="llm-api-key">API Key</Label>
+                                    <Input
+                                      id="llm-api-key"
+                                      className="bg-background/80"
+                                      type="password"
+                                      placeholder="输入模型提供商的 API Key"
+                                      value={llmForm.api_key}
+                                      onChange={(event) =>
+                                        setLlmForm((current) => ({ ...current, api_key: event.target.value }))
+                                      }
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                      保存后将同步到后端在线模型配置文件。
+                                    </p>
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <Label>文本纠错模式</Label>
+                                    <Select
+                                      value={llmForm.correction_mode}
+                                      onValueChange={(value) =>
+                                        setLlmForm((current) => ({
+                                          ...current,
+                                          correction_mode: value as LLMConfigResponse["correction_mode"],
+                                        }))
+                                      }
+                                    >
+                                      <SelectTrigger className="bg-background/80">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="off">off</SelectItem>
+                                        <SelectItem value="strict">strict</SelectItem>
+                                        <SelectItem value="rewrite">rewrite</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground">
+                                      控制在线纠错阶段对原文的保守程度。
+                                    </p>
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <Label htmlFor="llm-correction-batch">纠错批大小</Label>
+                                    <Input
+                                      id="llm-correction-batch"
+                                      className="bg-background/80"
+                                      type="number"
+                                      min={6}
+                                      max={80}
+                                      value={llmForm.correction_batch_size}
+                                      onChange={(event) =>
+                                        setLlmForm((current) => ({
+                                          ...current,
+                                          correction_batch_size: event.target.value,
+                                        }))
+                                      }
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                      批次越大吞吐越高，但失败重试成本也会增加。
+                                    </p>
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <Label htmlFor="llm-correction-overlap">纠错重叠</Label>
+                                    <Input
+                                      id="llm-correction-overlap"
+                                      className="bg-background/80"
+                                      type="number"
+                                      min={0}
+                                      max={20}
+                                      value={llmForm.correction_overlap}
+                                      onChange={(event) =>
+                                        setLlmForm((current) => ({
+                                          ...current,
+                                          correction_overlap: event.target.value,
+                                        }))
+                                      }
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                      保留相邻片段重叠上下文，减少断句边界误差。
+                                    </p>
                                   </div>
                                 </div>
                               </div>
@@ -1241,7 +1330,8 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                           </div>
                         </div>
                       </div>
-                      <DialogFooter className="shrink-0 border-t bg-background px-7 py-4">
+
+                      <DialogFooter className="shrink-0 border-t bg-card px-6 py-4">
                         <Button variant="outline" onClick={() => handleModelDialogChange(false)}>
                           取消
                         </Button>

@@ -23,6 +23,15 @@ Model configuration and prompt-template configuration dialogs SHALL remain withi
 - **THEN** the dialog body becomes scrollable
 - **AND** the title, close control, cancel action, and save action remain visible
 
+### Requirement: Model configuration dialog SHALL separate overview and grouped controls
+Model configuration dialog SHALL use a responsive split layout with a left overview panel and a right grouped form panel. The overview panel SHALL expose model identity, component tag, provider, runtime status, install status, default path, current enabled state, and preset note. The form panel SHALL group common runtime parameters and, for `openai_compatible` providers, a separate OpenAI-compatible interface configuration card.
+
+#### Scenario: Open a model configuration dialog
+- **WHEN** user clicks `配置` on a model item
+- **THEN** the dialog shows a compact overview panel for model identity and state on the left
+- **AND** the right side groups editable runtime parameters into dedicated cards
+- **AND** path fields span the full row while regular scalar fields follow a responsive two-column grid
+
 ### Requirement: Prompt template UI SHALL distinguish channels visually
 Prompt template list and editor SHALL use channel-specific icons and labels for `correction`, `notes`, `mindmap`, and `vqa`.
 
