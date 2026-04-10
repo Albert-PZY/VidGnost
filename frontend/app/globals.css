@@ -219,6 +219,29 @@
   overflow: hidden;
 }
 
+.themed-thin-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--primary) 56%, transparent) transparent;
+}
+
+.themed-thin-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.themed-thin-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.themed-thin-scrollbar::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--primary) 52%, transparent);
+  border-radius: 999px;
+}
+
+.themed-thin-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--primary) 68%, var(--foreground) 8%);
+}
+
 .download-progress-indicator::after {
   content: "";
   position: absolute;

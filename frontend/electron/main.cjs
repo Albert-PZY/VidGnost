@@ -1,12 +1,38 @@
-const { app, BrowserWindow, ipcMain, shell } = require("electron")
+const { app, BrowserWindow, ipcMain, nativeImage, shell } = require("electron")
 const fs = require("node:fs")
 const path = require("node:path")
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://127.0.0.1:5173"
 const PRELOAD_PATH = path.join(__dirname, "preload.cjs")
-const ICON_PATH = path.join(__dirname, "..", "public", "icon-light-32x32.png")
+const APP_ICON_SVG_PATH = path.join(__dirname, "..", "public", "icon.svg")
+const FALLBACK_ICON_PATH = path.join(__dirname, "..", "public", "icon-light-32x32.png")
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(["http:", "https:"])
 const allowedToClose = new WeakSet()
+
+function loadAppIcon() {
+  try {
+    const svgContent = fs.readFileSync(APP_ICON_SVG_PATH, "utf8")
+    const embeddedPngMatch = svgContent.match(/(?:xlink:href|href)="(data:image\/png;base64,[^"]+)"/i)
+    if (embeddedPngMatch) {
+      const [prefix, payload = ""] = embeddedPngMatch[1].split(",", 2)
+      const iconFromDataUrl = nativeImage.createFromDataURL(`${prefix},${payload.replace(/\s+/g, "")}`)
+      if (!iconFromDataUrl.isEmpty()) {
+        return iconFromDataUrl
+      }
+    }
+
+    const iconFromSvg = nativeImage.createFromPath(APP_ICON_SVG_PATH)
+    if (!iconFromSvg.isEmpty()) {
+      return iconFromSvg
+    }
+  } catch (error) {
+    console.warn("[main] failed to load icon.svg, falling back to PNG icon.", error)
+  }
+
+  return nativeImage.createFromPath(FALLBACK_ICON_PATH)
+}
+
+const APP_ICON = loadAppIcon()
 
 ipcMain.handle("shell:open-path", async (_event, targetPath) => {
   if (typeof targetPath !== "string" || !targetPath.trim()) {
@@ -96,7 +122,7 @@ function createWindow() {
     frame: false,
     autoHideMenuBar: true,
     backgroundColor: "#0d131d",
-    icon: ICON_PATH,
+    icon: APP_ICON.isEmpty() ? undefined : APP_ICON,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -128,6 +154,9 @@ app.whenReady().then(() => {
   app.setName("VidGnost")
   if (process.platform === "win32") {
     app.setAppUserModelId("com.vidgnost.desktop")
+  }
+  if (process.platform === "darwin" && app.dock && !APP_ICON.isEmpty()) {
+    app.dock.setIcon(APP_ICON)
   }
   createWindow()
   app.on("activate", () => {
