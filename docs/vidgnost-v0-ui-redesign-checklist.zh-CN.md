@@ -14,8 +14,7 @@
 
 ## 2. 项目定位（Product Positioning）
 
-- 产品类型：本地优先的多模态视频分析工作台（Web + Electron 双形态）。
-- 核心目标：把“视频输入 -> 转写 -> 结构化笔记/导图 -> 检索问答 -> 导出复盘”整合为单一工作流。
+- 产品类型：本地优先的多模态视频分析软件（Electron）。
 - 主要价值：
   - 降低长视频信息提取与复盘成本。
   - 支持运行态可观测（SSE 日志/进度/告警）。
@@ -66,7 +65,6 @@
 - [x] 任务详情恢复（`GET /api/tasks/{task_id}`）
 - [x] 任务标题修改（`PATCH /api/tasks/{task_id}/title`）
 - [x] 终态任务删除（`DELETE /api/tasks/{task_id}`）
-- [x] 前端入口：侧栏“历史记录”弹窗
 
 ## 3.5 导出能力
 
@@ -77,7 +75,6 @@
   - `srt`
   - `vtt`
   - `bundle`（`zip/tar`）
-- [x] 前端入口：任务完成后右下角导出卡片，支持单项导出 + 全量打包导出
 
 ## 3.6 配置中心（统一设置页）
 
@@ -101,7 +98,6 @@
 - [x] 自动修复（`POST /api/self-check/{session_id}/auto-fix`）
 - [x] 报告查询（`GET /api/self-check/{session_id}/report`）
 - [x] 自检 SSE 事件流（`GET /api/self-check/{session_id}/events`）
-- [x] 前端入口：侧栏“环境自检”弹窗 + 时间线日志展示
 
 ## 3.8 VQA 工作流
 
@@ -137,23 +133,23 @@
 
 ## 4. 前后端能力映射（用于 UI 信息架构核对）
 
-| 后端能力 | API | 当前 GUI 入口 |
-|---|---|---|
-| 任务创建（URL/Path/Upload） | `/api/tasks/url` `/api/tasks/path` `/api/tasks/upload` | 侧栏“上传视频”弹窗 |
-| 任务运行事件流 | `/api/tasks/{id}/events` | 主工作台 runtime 区自动订阅 |
-| 任务取消 / D 重跑 | `/api/tasks/{id}/cancel` `/api/tasks/{id}/rerun-stage-d` | runtime 状态条右侧操作按钮 |
-| 历史查询 / 恢复 | `/api/tasks` `/api/tasks/{id}` | 侧栏“历史记录” |
-| 历史改名 / 删除 | `/api/tasks/{id}/title` `/api/tasks/{id}` | 历史弹窗操作区 |
-| 产物编辑保存 | `/api/tasks/{id}/artifacts` | D 阶段编辑区“保存修改” |
-| 单项 / 打包导出 | `/api/tasks/{id}/export/{kind}` | 右下角导出卡片 |
-| LLM 配置 | `/api/config/llm` | 设置中心 -> 在线 LLM |
-| Whisper 配置 | `/api/config/whisper` | 设置中心 -> Faster-Whisper |
-| Prompt 模板管理 | `/api/config/prompts*` | 设置中心 -> 提示词模板 |
-| 自检与自动修复 | `/api/self-check/*` | 侧栏“环境自检” |
-| VQA 检索 | `/api/search` | runtime -> qa/debug |
-| VQA 问答（流式/非流式） | `/api/chat/stream` `/api/chat` | runtime -> qa |
-| VQA 综合分析 | `/api/analyze` | runtime -> qa |
-| Trace 回放 | `/api/traces/{trace_id}` | runtime -> debug |
+| 后端能力 | API |
+|---|---|
+| 任务创建（URL/Path/Upload） | `/api/tasks/url` `/api/tasks/path` `/api/tasks/upload` |
+| 任务运行事件流 | `/api/tasks/{id}/events` |
+| 任务取消 / D 重跑 | `/api/tasks/{id}/cancel` `/api/tasks/{id}/rerun-stage-d`  |
+| 历史查询 / 恢复 | `/api/tasks` `/api/tasks/{id}` |
+| 历史改名 / 删除 | `/api/tasks/{id}/title` `/api/tasks/{id}` |
+| 产物编辑保存 | `/api/tasks/{id}/artifacts` |
+| 单项 / 打包导出 | `/api/tasks/{id}/export/{kind}` |
+| LLM 配置 | `/api/config/llm` |
+| Whisper 配置 | `/api/config/whisper` |
+| Prompt 模板管理 | `/api/config/prompts*` |
+| 自检与自动修复 | `/api/self-check/*` |
+| VQA 检索 | `/api/search` |
+| VQA 问答（流式/非流式） | `/api/chat/stream` `/api/chat` |
+| VQA 综合分析 | `/api/analyze` |
+| Trace 回放 | `/api/traces/{trace_id}` |
 
 ---
 
@@ -189,7 +185,7 @@
   - Vite `8`
 - 样式与 UI：
   - Tailwind CSS `3`
-  - Radix UI（Tabs / Switch）
+  - Radix UI
   - `lucide-react`
   - `react-select`
 - Markdown/可视化：
@@ -211,9 +207,6 @@
   - `main`：窗口管理、后端健康检查、可选后端拉起
   - `preload`：安全桥接（API base / external link）
   - `renderer`：React UI
-- 桌面启动策略：
-  - 一键脚本支持 `electron` / `web` 模式
-  - 默认使用 `electron` 模式
 
 ## 5.4 工程质量与验证
 
@@ -252,13 +245,13 @@
 ## 7. 给 V0 的推荐输入模板（可直接粘贴）
 
 ```text
-请基于以下产品能力重新设计 Electron 桌面 UI：
-1) 产品定位：本地优先多模态视频分析工作台，核心链路是 视频输入 -> 转写 -> 笔记/导图 -> VQA -> 导出。
-2) 当前信息架构包含：任务输入、运行工作台(flow/qa/debug)、设置中心、历史记录、自检。
-3) 运行工作台阶段语义：A/B/C/transcript_optimize/D，并显示状态、进度、日志、耗时。
-4) VQA 当前能力：仅检索、综合分析、流式问答、快速问答、Trace 回放。
-5) 设置中心现有模块：在线 LLM、Faster-Whisper、提示词模板 CRUD。
-6) 导出能力：bundle、notes、transcript、mindmap、srt、vtt。
-7) 支持中英双语、亮暗主题、终态任务 notes/mindmap 编辑。
+请基于以下产品能力设计 Electron 桌面 UI：
+1) 产品定位：本地优先多模态视频分析软件。
+目前有两大核心链路：
+第一大核心链路（笔记整理输出）：视频输入 -> 自动提取音频，音频按时长切分 -> 音频通过本地 FasterWhisper 转写文本（带时间戳） -> 转写文本通过 LLM 进行纠错优化 -> 转写文本交给 LLM 进行整理输出笔记和思维导图（支持用户进行预览和编辑） -> 用户选择性导出分析产物
+第二大核心链路（VQA）：视频输入 -> 自动提取音频，音频按时长切分 -> 音频通过本地 FasterWhisper 转写文本（带时间戳） -> 转写文本通过 LLM 进行纠错优化 -> 转写文本通过本地嵌入模型向量化并入库ChromaDB -> 视频场景切分 + 关键帧采样 -> 本地 VLM 模型对帧画面进行语义识别并通过嵌入模型向量化入库，然后用户通过 LLM 以自然语言进行提问，系统自动根据转写文本和帧画面两种证据进行语义识别，并通过本地 rerank 模型重排序，筛选出相关的视频片段的开始时间点列表，支持用户点击自动跳转到视频对应时间点进行预览
+两大核心链路都支持全过程透明化trace追踪
+2) 当前信息架构包含：任务输入、设置中心、历史记录、自检。
+5) 设置中心现有模块：本地模型配置、提示词模板 CRUD，UI界面字体大小调整、暗亮色切换、中英文切换等。
 8) 你可以完全自由地重构布局、视觉风格与交互方式，并根据你的设计判断决定能力呈现方式与优先级。
 ```
