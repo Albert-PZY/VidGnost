@@ -8,6 +8,8 @@ from typing import Any, TypedDict
 import orjson
 
 from app.config import Settings
+from app.services.huggingface_model_downloader import HuggingFaceModelDownloader
+from app.services.managed_model_registry import get_managed_model_spec, managed_model_target_dir, supports_managed_download
 
 
 class ModelEntry(TypedDict):
@@ -63,7 +65,7 @@ DEFAULT_MODELS: list[ModelEntry] = [
         "size_bytes": 0,
         "default_path": "",
         "is_installed": False,
-        "supports_managed_download": False,
+        "supports_managed_download": True,
         "last_check_at": "",
     },
     {
@@ -81,7 +83,7 @@ DEFAULT_MODELS: list[ModelEntry] = [
         "size_bytes": 0,
         "default_path": "",
         "is_installed": False,
-        "supports_managed_download": False,
+        "supports_managed_download": True,
         "last_check_at": "",
     },
     {
@@ -99,7 +101,7 @@ DEFAULT_MODELS: list[ModelEntry] = [
         "size_bytes": 0,
         "default_path": "",
         "is_installed": False,
-        "supports_managed_download": False,
+        "supports_managed_download": True,
         "last_check_at": "",
     },
     {
@@ -127,7 +129,7 @@ class ModelCatalogStore:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._path = Path(settings.storage_dir) / "models" / "catalog.json"
-        self._whisper_model_dir = Path(settings.storage_dir) / "model-hub" / "faster-whisper-small"
+        self._hf_downloader = HuggingFaceModelDownloader(settings)
         self._lock = asyncio.Lock()
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._ensure_file()
@@ -231,13 +233,7 @@ class ModelCatalogStore:
         default_path = self._resolve_default_path(item)
 
         if component == "whisper":
-            is_installed = self._is_whisper_ready()
-            hydrated["path"] = default_path if is_installed else ""
-            hydrated["default_path"] = default_path
-            hydrated["is_installed"] = is_installed
-            hydrated["supports_managed_download"] = True
-            hydrated["size_bytes"] = self._measure_path_size(Path(default_path)) if is_installed else 0
-            hydrated["status"] = "ready" if is_installed else "not_ready"
+            self._hydrate_managed_local_model(hydrated, item, default_path)
             return hydrated
 
         if provider == "openai_compatible":
@@ -247,6 +243,10 @@ class ModelCatalogStore:
             hydrated["supports_managed_download"] = False
             hydrated["size_bytes"] = 0
             hydrated["status"] = "ready" if item.get("enabled", True) else "not_ready"
+            return hydrated
+
+        if supports_managed_download(str(item.get("id", ""))):
+            self._hydrate_managed_local_model(hydrated, item, default_path)
             return hydrated
 
         resolved_path = self._resolve_local_model_path(raw_path) if raw_path else None
@@ -260,8 +260,9 @@ class ModelCatalogStore:
         return hydrated
 
     def _resolve_default_path(self, item: ModelEntry) -> str:
-        if item.get("component") == "whisper":
-            return str(self._whisper_model_dir)
+        spec = get_managed_model_spec(str(item.get("id", "")))
+        if spec is not None:
+            return str(managed_model_target_dir(self._settings.storage_dir, spec))
         raw_path = str(item.get("path", "")).strip()
         if not raw_path:
             return ""
@@ -276,17 +277,20 @@ class ModelCatalogStore:
             candidate = candidate.resolve()
         return candidate
 
-    def _is_whisper_ready(self) -> bool:
-        if not self._whisper_model_dir.is_dir():
-            return False
-        marker = self._whisper_model_dir / ".ready.json"
-        if not marker.exists():
-            return False
-        for file_name in ("config.json", "model.bin", "tokenizer.json", "vocabulary.txt"):
-            target = self._whisper_model_dir / file_name
-            if not target.is_file() or target.stat().st_size <= 0:
-                return False
-        return True
+    def _hydrate_managed_local_model(self, hydrated: ModelEntry, item: ModelEntry, default_path: str) -> None:
+        spec = get_managed_model_spec(str(item.get("id", "")))
+        target_dir = Path(default_path) if default_path else None
+        is_installed = bool(
+            spec is not None
+            and target_dir is not None
+            and self._hf_downloader.is_repo_ready(target_dir, required_files=spec.required_files)
+        )
+        hydrated["path"] = str(target_dir) if is_installed and target_dir is not None else ""
+        hydrated["default_path"] = default_path
+        hydrated["is_installed"] = is_installed
+        hydrated["supports_managed_download"] = True
+        hydrated["size_bytes"] = self._measure_path_size(target_dir) if is_installed and target_dir is not None else 0
+        hydrated["status"] = "ready" if is_installed else "not_ready"
 
     def _measure_path_size(self, target: Path) -> int:
         if target.is_file():

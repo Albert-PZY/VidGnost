@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from typing import TypedDict
 
 from app.config import Settings
+from app.services.huggingface_model_downloader import HuggingFaceModelDownloader
+from app.services.managed_model_registry import get_managed_model_spec, supports_managed_download
 from app.services.transcription import WhisperService
 
 
@@ -46,17 +48,21 @@ def _build_snapshot(
 
 
 class ModelDownloadService:
-    MANAGED_MODEL_IDS = frozenset({"whisper-default"})
-
-    def __init__(self, settings: Settings, whisper_service: WhisperService | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        whisper_service: WhisperService | None = None,
+        hf_downloader: HuggingFaceModelDownloader | None = None,
+    ) -> None:
         self._settings = settings
         self._whisper_service = whisper_service or WhisperService(settings)
+        self._hf_downloader = hf_downloader or HuggingFaceModelDownloader(settings)
         self._lock = asyncio.Lock()
         self._states: dict[str, ModelDownloadSnapshot] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
 
     def supports_managed_download(self, model_id: str) -> bool:
-        return model_id in self.MANAGED_MODEL_IDS
+        return supports_managed_download(model_id)
 
     async def list_snapshots(self) -> dict[str, ModelDownloadSnapshot]:
         async with self._lock:
@@ -113,11 +119,24 @@ class ModelDownloadService:
         self._whisper_service.shutdown()
 
     async def _run_whisper_download(self, *, model_id: str, force_redownload: bool) -> None:
+        spec = get_managed_model_spec(model_id)
+        if spec is None:
+            raise ValueError(f"Managed model spec not found: {model_id}")
         try:
-            await self._whisper_service.ensure_small_model_ready(
-                on_progress=lambda payload: self._handle_progress(model_id=model_id, payload=payload),
-                force_redownload=force_redownload,
-            )
+            if spec.component == "whisper":
+                await self._whisper_service.ensure_small_model_ready(
+                    on_progress=lambda payload: self._handle_progress(model_id=model_id, payload=payload),
+                    force_redownload=force_redownload,
+                )
+            else:
+                await self._hf_downloader.download_repo(
+                    repo_id=spec.repo_id,
+                    target_dir_name=spec.target_dir_name,
+                    revision=spec.revision,
+                    required_files=spec.required_files,
+                    on_progress=lambda payload: self._handle_progress(model_id=model_id, payload=payload),
+                    force_redownload=force_redownload,
+                )
             await self._set_snapshot(
                 model_id,
                 _build_snapshot(
@@ -183,4 +202,4 @@ class ModelDownloadService:
 
     def _ensure_supported(self, model_id: str) -> None:
         if not self.supports_managed_download(model_id):
-            raise ValueError("Only whisper-default supports managed downloads right now.")
+            raise ValueError(f"Managed downloads are not available for model: {model_id}")

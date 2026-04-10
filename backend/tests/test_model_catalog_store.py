@@ -54,3 +54,13 @@ def test_catalog_uses_default_whisper_install_directory_when_ready(tmp_path: Pat
     assert whisper["is_installed"] is True
     assert whisper["status"] == "ready"
     assert whisper["size_bytes"] > 0
+
+
+def test_catalog_marks_all_local_models_as_managed_download_targets(tmp_path: Path) -> None:
+    settings = _build_settings(tmp_path)
+    store = ModelCatalogStore(settings)
+
+    models = asyncio.run(store.list_models())
+    managed_ids = {item["id"] for item in models if item["supports_managed_download"]}
+
+    assert {"whisper-default", "embedding-default", "vlm-default", "rerank-default"}.issubset(managed_ids)
