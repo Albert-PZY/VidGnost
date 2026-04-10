@@ -17,12 +17,13 @@ import { Separator } from "@/components/ui/separator"
 interface AppHeaderProps {
   title?: string
   subtitle?: string
+  language: "zh" | "en"
+  onLanguageChange: (language: "zh" | "en") => void
 }
 
-export function AppHeader({ title, subtitle }: AppHeaderProps) {
-  const { setTheme, theme } = useTheme()
+export function AppHeader({ title, subtitle, language, onLanguageChange }: AppHeaderProps) {
+  const { setTheme } = useTheme()
   const [isFullscreen, setIsFullscreen] = React.useState(false)
-  const [language, setLanguage] = React.useState<"zh" | "en">("zh")
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -71,12 +72,12 @@ export function AppHeader({ title, subtitle }: AppHeaderProps) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setLanguage("zh")}>
+            <DropdownMenuItem onClick={() => onLanguageChange("zh")}>
               <span className={language === "zh" ? "font-medium" : ""}>
                 中文
               </span>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setLanguage("en")}>
+            <DropdownMenuItem onClick={() => onLanguageChange("en")}>
               <span className={language === "en" ? "font-medium" : ""}>
                 English
               </span>

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { toast } from "sonner"
 import {
   Search,
   Filter,
@@ -13,14 +14,12 @@ import {
   Download,
   FolderOpen,
   Calendar,
-  ChevronDown,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,137 +35,118 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
-
-type WorkflowType = "notes" | "vqa" | "all"
-type TaskStatus = "completed" | "processing" | "failed"
-
-interface HistoryTask {
-  id: string
-  videoName: string
-  workflow: "notes" | "vqa"
-  status: TaskStatus
-  createdAt: string
-  duration: string
-  fileSize: string
-}
+import {
+  deleteTask,
+  downloadTaskArtifact,
+  getApiErrorMessage,
+  getTaskStats,
+  listTasksWithQuery,
+  openTaskLocation,
+} from "@/lib/api"
+import { formatBytes, formatDateTime, formatDurationSeconds } from "@/lib/format"
+import type { TaskStatsResponse, TaskSummaryItem, WorkflowType } from "@/lib/types"
 
 interface HistoryViewProps {
-  onOpenTask: (taskId: string) => void
+  onOpenTask: (taskId: string, meta?: { title?: string; workflow?: WorkflowType }) => void
 }
 
-const mockHistory: HistoryTask[] = [
-  {
-    id: "1",
-    videoName: "产品设计讲座.mp4",
-    workflow: "notes",
-    status: "completed",
-    createdAt: "2024-01-15 14:30",
-    duration: "45:20",
-    fileSize: "1.2 GB",
-  },
-  {
-    id: "2",
-    videoName: "AI技术分享会议.mp4",
-    workflow: "vqa",
-    status: "completed",
-    createdAt: "2024-01-15 10:15",
-    duration: "1:23:45",
-    fileSize: "2.8 GB",
-  },
-  {
-    id: "3",
-    videoName: "用户调研访谈记录.mp4",
-    workflow: "notes",
-    status: "processing",
-    createdAt: "2024-01-14 16:45",
-    duration: "32:10",
-    fileSize: "856 MB",
-  },
-  {
-    id: "4",
-    videoName: "季度复盘会议.mp4",
-    workflow: "vqa",
-    status: "completed",
-    createdAt: "2024-01-14 09:00",
-    duration: "2:15:30",
-    fileSize: "4.2 GB",
-  },
-  {
-    id: "5",
-    videoName: "新员工培训视频.mp4",
-    workflow: "notes",
-    status: "failed",
-    createdAt: "2024-01-13 11:20",
-    duration: "58:40",
-    fileSize: "1.5 GB",
-  },
-  {
-    id: "6",
-    videoName: "技术架构评审.mp4",
-    workflow: "vqa",
-    status: "completed",
-    createdAt: "2024-01-12 15:30",
-    duration: "1:45:00",
-    fileSize: "3.1 GB",
-  },
-]
+type HistoryWorkflowFilter = WorkflowType | "all"
 
-const getStatusBadge = (status: TaskStatus) => {
+const EMPTY_STATS: TaskStatsResponse = {
+  total: 0,
+  notes: 0,
+  vqa: 0,
+  completed: 0,
+}
+
+const getStatusBadge = (status: string) => {
   switch (status) {
     case "completed":
       return <Badge variant="default" className="bg-status-success text-white">已完成</Badge>
-    case "processing":
+    case "running":
       return <Badge variant="secondary" className="bg-status-processing text-white">处理中</Badge>
+    case "queued":
+      return <Badge variant="secondary">排队中</Badge>
     case "failed":
       return <Badge variant="destructive">失败</Badge>
+    case "cancelled":
+      return <Badge variant="outline">已取消</Badge>
+    default:
+      return <Badge variant="outline">{status}</Badge>
   }
 }
 
 export function HistoryView({ onOpenTask }: HistoryViewProps) {
   const [searchQuery, setSearchQuery] = React.useState("")
-  const [workflowFilter, setWorkflowFilter] = React.useState<WorkflowType>("all")
+  const deferredSearchQuery = React.useDeferredValue(searchQuery)
+  const [workflowFilter, setWorkflowFilter] = React.useState<HistoryWorkflowFilter>("all")
   const [sortBy, setSortBy] = React.useState<"date" | "name" | "size">("date")
+  const [tasks, setTasks] = React.useState<TaskSummaryItem[]>([])
+  const [stats, setStats] = React.useState<TaskStatsResponse>(EMPTY_STATS)
+  const [isLoading, setIsLoading] = React.useState(true)
+  const [busyTaskId, setBusyTaskId] = React.useState<string>("")
 
-  const filteredHistory = React.useMemo(() => {
-    let result = [...mockHistory]
-
-    // 搜索过滤
-    if (searchQuery) {
-      result = result.filter((task) =>
-        task.videoName.toLowerCase().includes(searchQuery.toLowerCase())
-      )
+  const loadHistory = React.useCallback(async () => {
+    setIsLoading(true)
+    try {
+      const [listResponse, statsResponse] = await Promise.all([
+        listTasksWithQuery({
+          q: deferredSearchQuery || undefined,
+          workflow: workflowFilter,
+          sort_by: sortBy,
+          limit: 100,
+        }),
+        getTaskStats(),
+      ])
+      setTasks(listResponse.items)
+      setStats(statsResponse)
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "获取历史任务失败"))
+    } finally {
+      setIsLoading(false)
     }
+  }, [deferredSearchQuery, sortBy, workflowFilter])
 
-    // 工作流过滤
-    if (workflowFilter !== "all") {
-      result = result.filter((task) => task.workflow === workflowFilter)
+  React.useEffect(() => {
+    void loadHistory()
+  }, [loadHistory])
+
+  const handleDeleteTask = async (taskId: string) => {
+    setBusyTaskId(taskId)
+    try {
+      await deleteTask(taskId)
+      toast.success("任务已删除")
+      await loadHistory()
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "删除任务失败"))
+    } finally {
+      setBusyTaskId("")
     }
+  }
 
-    // 排序
-    result.sort((a, b) => {
-      switch (sortBy) {
-        case "date":
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        case "name":
-          return a.videoName.localeCompare(b.videoName)
-        case "size":
-          return parseFloat(b.fileSize) - parseFloat(a.fileSize)
-        default:
-          return 0
-      }
-    })
-
-    return result
-  }, [searchQuery, workflowFilter, sortBy])
-
-  const stats = React.useMemo(() => {
-    return {
-      total: mockHistory.length,
-      notes: mockHistory.filter((t) => t.workflow === "notes").length,
-      vqa: mockHistory.filter((t) => t.workflow === "vqa").length,
-      completed: mockHistory.filter((t) => t.status === "completed").length,
+  const handleExportTask = async (taskId: string) => {
+    setBusyTaskId(taskId)
+    try {
+      await downloadTaskArtifact(taskId, "bundle")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "导出结果失败"))
+    } finally {
+      setBusyTaskId("")
     }
-  }, [])
+  }
+
+  const handleOpenLocation = async (taskId: string) => {
+    setBusyTaskId(taskId)
+    try {
+      const payload = await openTaskLocation(taskId)
+      await navigator.clipboard.writeText(payload.path)
+      toast.success("任务目录路径已复制到剪贴板")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "获取任务目录失败"))
+    } finally {
+      setBusyTaskId("")
+    }
+  }
 
   return (
     <div className="flex-1 overflow-auto">
@@ -273,7 +253,12 @@ export function HistoryView({ onOpenTask }: HistoryViewProps) {
         <Card>
           <CardContent className="p-0">
             <div className="divide-y">
-              {filteredHistory.map((task) => (
+              {tasks.length === 0 && !isLoading && (
+                <div className="p-8 text-center text-sm text-muted-foreground">
+                  暂无匹配的历史任务
+                </div>
+              )}
+              {tasks.map((task) => (
                 <div
                   key={task.id}
                   className="flex items-center gap-4 p-4 hover:bg-muted/50 transition-colors"
@@ -293,19 +278,19 @@ export function HistoryView({ onOpenTask }: HistoryViewProps) {
                   {/* 信息 */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium truncate">{task.videoName}</span>
+                      <span className="font-medium truncate">{task.title || task.source_input}</span>
                       {getStatusBadge(task.status)}
                     </div>
                     <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
-                        {task.createdAt}
+                        {formatDateTime(task.created_at)}
                       </span>
                       <span className="flex items-center gap-1">
                         <Clock className="h-3 w-3" />
-                        {task.duration}
+                        {formatDurationSeconds(task.duration_seconds)}
                       </span>
-                      <span>{task.fileSize}</span>
+                      <span>{formatBytes(task.file_size_bytes)}</span>
                     </div>
                   </div>
 
@@ -314,29 +299,38 @@ export function HistoryView({ onOpenTask }: HistoryViewProps) {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => onOpenTask(task.id)}
-                      disabled={task.status !== "completed"}
+                      onClick={() =>
+                        onOpenTask(task.id, {
+                          title: task.title || task.source_input,
+                          workflow: task.workflow,
+                        })
+                      }
+                      disabled={task.status !== "completed" && task.status !== "running" && task.status !== "queued"}
                     >
                       <Play className="h-4 w-4 mr-1" />
                       查看
                     </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" disabled={busyTaskId === task.id}>
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => void handleExportTask(task.id)} disabled={task.status !== "completed"}>
                           <Download className="h-4 w-4 mr-2" />
                           导出结果
                         </DropdownMenuItem>
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => void handleOpenLocation(task.id)}>
                           <FolderOpen className="h-4 w-4 mr-2" />
                           打开文件位置
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem className="text-destructive">
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          disabled={!["completed", "failed", "cancelled"].includes(task.status)}
+                          onClick={() => void handleDeleteTask(task.id)}
+                        >
                           <Trash2 className="h-4 w-4 mr-2" />
                           删除
                         </DropdownMenuItem>

@@ -33,6 +33,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
+import type { TaskRecentItem, WorkflowType } from "@/lib/types"
 
 type NavigationItem = {
   id: string
@@ -41,16 +42,17 @@ type NavigationItem = {
   badge?: number
 }
 
-type WorkflowType = "notes" | "vqa"
-
 interface AppSidebarProps {
   activeNav: string
   onNavChange: (navId: string) => void
   selectedWorkflow: WorkflowType
   onWorkflowChange: (workflow: WorkflowType) => void
+  historyCount: number
+  recentTasks: TaskRecentItem[]
+  onOpenRecentTask: (taskId: string, meta?: { title?: string; workflow?: WorkflowType }) => void
 }
 
-const mainNavItems: NavigationItem[] = [
+const baseMainNavItems: NavigationItem[] = [
   {
     id: "new-task",
     title: "新建任务",
@@ -60,7 +62,6 @@ const mainNavItems: NavigationItem[] = [
     id: "history",
     title: "历史记录",
     icon: History,
-    badge: 12,
   },
 ]
 
@@ -97,9 +98,17 @@ export function AppSidebar({
   onNavChange,
   selectedWorkflow,
   onWorkflowChange,
+  historyCount,
+  recentTasks,
+  onOpenRecentTask,
 }: AppSidebarProps) {
-  const selectedWorkflowData = workflowOptions.find(
-    (w) => w.id === selectedWorkflow
+  const selectedWorkflowData = workflowOptions.find((w) => w.id === selectedWorkflow)
+  const mainNavItems = React.useMemo(
+    () =>
+      baseMainNavItems.map((item) =>
+        item.id === "history" ? { ...item, badge: historyCount } : item,
+      ),
+    [historyCount],
   )
 
   return (
@@ -198,24 +207,30 @@ export function AppSidebar({
           <SidebarGroupLabel>最近任务</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton tooltip="产品设计讲座">
-                  <FolderOpen className="h-4 w-4" />
-                  <span className="truncate">产品设计讲座.mp4</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton tooltip="AI技术分享">
-                  <FolderOpen className="h-4 w-4" />
-                  <span className="truncate">AI技术分享会议.mp4</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton tooltip="用户调研访谈">
-                  <FolderOpen className="h-4 w-4" />
-                  <span className="truncate">用户调研访谈记录.mp4</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+              {recentTasks.length === 0 && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton tooltip="暂无任务" disabled>
+                    <FolderOpen className="h-4 w-4" />
+                    <span className="truncate">暂无最近任务</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+              {recentTasks.map((task) => (
+                <SidebarMenuItem key={task.id}>
+                  <SidebarMenuButton
+                    tooltip={task.title}
+                    onClick={() =>
+                      onOpenRecentTask(task.id, {
+                        title: task.title,
+                        workflow: task.workflow,
+                      })
+                    }
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                    <span className="truncate">{task.title}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

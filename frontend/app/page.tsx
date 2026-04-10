@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { toast } from "sonner"
 
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
@@ -10,22 +11,42 @@ import { TaskProcessingView } from "@/components/views/task-processing-view"
 import { HistoryView } from "@/components/views/history-view"
 import { SettingsView } from "@/components/views/settings-view"
 import { DiagnosticsView } from "@/components/views/diagnostics-view"
+import {
+  getApiErrorMessage,
+  getRecentTasks,
+  getTaskStats,
+  getUiSettings,
+  updateUiSettings,
+  uploadTaskFiles,
+} from "@/lib/api"
+import type {
+  TaskDetailResponse,
+  TaskRecentItem,
+  TaskStatsResponse,
+  UISettingsResponse,
+  WorkflowType,
+} from "@/lib/types"
 
 type NavigationId = "new-task" | "history" | "settings" | "diagnostics"
-type WorkflowType = "notes" | "vqa"
-type ViewState = 
+type ViewState =
   | { type: "new-task" }
-  | { type: "processing"; videoName: string; workflow: WorkflowType }
+  | { type: "processing"; taskId: string; workflow: WorkflowType; taskTitle: string }
   | { type: "history" }
   | { type: "settings" }
   | { type: "diagnostics" }
+
+const DEFAULT_UI_SETTINGS: UISettingsResponse = {
+  language: "zh",
+  font_size: 14,
+  auto_save: true,
+}
 
 const getPageTitle = (viewState: ViewState) => {
   switch (viewState.type) {
     case "new-task":
       return { title: "新建任务", subtitle: "导入视频开始分析" }
     case "processing":
-      return { title: "任务处理", subtitle: viewState.videoName }
+      return { title: "任务处理", subtitle: viewState.taskTitle }
     case "history":
       return { title: "历史记录", subtitle: "查看所有分析任务" }
     case "settings":
@@ -39,6 +60,79 @@ export default function VideoMindApp() {
   const [activeNav, setActiveNav] = React.useState<NavigationId>("new-task")
   const [selectedWorkflow, setSelectedWorkflow] = React.useState<WorkflowType>("notes")
   const [viewState, setViewState] = React.useState<ViewState>({ type: "new-task" })
+  const [taskStats, setTaskStats] = React.useState<TaskStatsResponse>({
+    total: 0,
+    notes: 0,
+    vqa: 0,
+    completed: 0,
+  })
+  const [recentTasks, setRecentTasks] = React.useState<TaskRecentItem[]>([])
+  const [uiSettings, setUiSettings] = React.useState<UISettingsResponse>(DEFAULT_UI_SETTINGS)
+  const uiSettingsRef = React.useRef(uiSettings)
+
+  React.useEffect(() => {
+    uiSettingsRef.current = uiSettings
+  }, [uiSettings])
+
+  const refreshOverview = React.useCallback(async () => {
+    const [statsResponse, recentResponse] = await Promise.all([getTaskStats(), getRecentTasks(3)])
+    setTaskStats(statsResponse)
+    setRecentTasks(recentResponse.items)
+  }, [])
+
+  React.useEffect(() => {
+    let mounted = true
+
+    const bootstrap = async () => {
+      try {
+        const [statsResponse, recentResponse, uiResponse] = await Promise.all([
+          getTaskStats(),
+          getRecentTasks(3),
+          getUiSettings(),
+        ])
+        if (!mounted) {
+          return
+        }
+        setTaskStats(statsResponse)
+        setRecentTasks(recentResponse.items)
+        setUiSettings(uiResponse)
+      } catch (error) {
+        if (!mounted) {
+          return
+        }
+        toast.error(getApiErrorMessage(error, "初始化应用数据失败"))
+      }
+    }
+
+    void bootstrap()
+
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  React.useEffect(() => {
+    document.documentElement.lang = uiSettings.language
+    document.documentElement.style.fontSize = `${uiSettings.font_size}px`
+
+    return () => {
+      document.documentElement.style.removeProperty("font-size")
+    }
+  }, [uiSettings.font_size, uiSettings.language])
+
+  const persistUiSettings = React.useCallback(
+    async (patch: Partial<UISettingsResponse>) => {
+      const current = uiSettingsRef.current
+      const saved = await updateUiSettings({
+        language: patch.language ?? current.language,
+        font_size: patch.font_size ?? current.font_size,
+        auto_save: patch.auto_save ?? current.auto_save,
+      })
+      setUiSettings(saved)
+      return saved
+    },
+    [],
+  )
 
   const handleNavChange = (navId: string) => {
     setActiveNav(navId as NavigationId)
@@ -58,29 +152,77 @@ export default function VideoMindApp() {
     }
   }
 
-  const handleStartTask = (files: Array<{ id: string; name: string }>, workflow: WorkflowType) => {
-    if (files.length > 0) {
+  const handleStartTask = React.useCallback(
+    async (input: {
+      files: File[]
+      workflow: WorkflowType
+      onProgress: (progress: number) => void
+    }) => {
+      const { files, workflow, onProgress } = input
+      const response = await uploadTaskFiles({ files, workflow, onProgress })
+      const firstTask = response.tasks[0]
+      if (!firstTask) {
+        throw new Error("后端未返回任务信息。")
+      }
+
+      setSelectedWorkflow(firstTask.workflow)
       setViewState({
         type: "processing",
-        videoName: files[0].name,
-        workflow,
+        taskId: firstTask.task_id,
+        workflow: firstTask.workflow,
+        taskTitle: files[0]?.name || firstTask.task_id,
       })
-    }
-  }
+      await refreshOverview()
+      toast.success(
+        response.tasks.length > 1
+          ? `已创建 ${response.tasks.length} 个任务，当前打开第一个任务。`
+          : "任务已提交，正在进入处理页。",
+      )
+    },
+    [refreshOverview],
+  )
 
   const handleBackFromProcessing = () => {
     setViewState({ type: "new-task" })
     setActiveNav("new-task")
   }
 
-  const handleOpenTask = (taskId: string) => {
-    // 模拟打开历史任务
-    setViewState({
-      type: "processing",
-      videoName: "产品设计讲座.mp4",
-      workflow: "notes",
+  const handleOpenTask = React.useCallback(
+    (taskId: string, meta?: { title?: string; workflow?: WorkflowType }) => {
+      const workflow = meta?.workflow || "notes"
+      setSelectedWorkflow(workflow)
+      setActiveNav("history")
+      setViewState({
+        type: "processing",
+        taskId,
+        workflow,
+        taskTitle: meta?.title || taskId,
+      })
+    },
+    [],
+  )
+
+  const handleTaskLoaded = React.useCallback((task: TaskDetailResponse) => {
+    setViewState((current) => {
+      if (current.type !== "processing" || current.taskId !== task.id) {
+        return current
+      }
+      return {
+        type: "processing",
+        taskId: task.id,
+        workflow: task.workflow,
+        taskTitle: task.title || task.source_input || task.id,
+      }
     })
-  }
+  }, [])
+
+  const handleTaskChanged = React.useCallback(async () => {
+    try {
+      await refreshOverview()
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "刷新任务概览失败"))
+    }
+  }, [refreshOverview])
 
   const pageInfo = getPageTitle(viewState)
 
@@ -91,9 +233,21 @@ export default function VideoMindApp() {
         onNavChange={handleNavChange}
         selectedWorkflow={selectedWorkflow}
         onWorkflowChange={setSelectedWorkflow}
+        historyCount={taskStats.total}
+        recentTasks={recentTasks}
+        onOpenRecentTask={handleOpenTask}
       />
       <SidebarInset>
-        <AppHeader title={pageInfo.title} subtitle={pageInfo.subtitle} />
+        <AppHeader
+          title={pageInfo.title}
+          subtitle={pageInfo.subtitle}
+          language={uiSettings.language}
+          onLanguageChange={(language) => {
+            void persistUiSettings({ language }).catch((error) => {
+              toast.error(getApiErrorMessage(error, "更新语言设置失败"))
+            })
+          }}
+        />
         <main className="flex-1 flex flex-col overflow-hidden">
           {viewState.type === "new-task" && (
             <NewTaskView
@@ -103,15 +257,23 @@ export default function VideoMindApp() {
           )}
           {viewState.type === "processing" && (
             <TaskProcessingView
+              taskId={viewState.taskId}
               workflow={viewState.workflow}
-              videoName={viewState.videoName}
+              taskTitle={viewState.taskTitle}
               onBack={handleBackFromProcessing}
+              onTaskChanged={handleTaskChanged}
+              onTaskLoaded={handleTaskLoaded}
             />
           )}
           {viewState.type === "history" && (
             <HistoryView onOpenTask={handleOpenTask} />
           )}
-          {viewState.type === "settings" && <SettingsView />}
+          {viewState.type === "settings" && (
+            <SettingsView
+              uiSettings={uiSettings}
+              onUiSettingsChange={persistUiSettings}
+            />
+          )}
           {viewState.type === "diagnostics" && <DiagnosticsView />}
         </main>
       </SidebarInset>

@@ -1,11 +1,10 @@
 "use client"
 
 import * as React from "react"
+import { toast } from "sonner"
 import {
   Upload,
-  Video,
   FileVideo,
-  Play,
   Clock,
   HardDrive,
   Sparkles,
@@ -22,28 +21,26 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
-
-type WorkflowType = "notes" | "vqa"
+import { formatBytes } from "@/lib/format"
+import { getApiErrorMessage } from "@/lib/api"
+import type { WorkflowType } from "@/lib/types"
 
 interface VideoFile {
   id: string
   name: string
   size: number
   duration: string
+  file: File
   thumbnail?: string
 }
 
 interface NewTaskViewProps {
   selectedWorkflow: WorkflowType
-  onStartTask: (files: VideoFile[], workflow: WorkflowType) => void
-}
-
-const formatFileSize = (bytes: number) => {
-  if (bytes === 0) return "0 B"
-  const k = 1024
-  const sizes = ["B", "KB", "MB", "GB"]
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
+  onStartTask: (input: {
+    files: File[]
+    workflow: WorkflowType
+    onProgress: (progress: number) => void
+  }) => Promise<void>
 }
 
 const workflowSteps = {
@@ -70,6 +67,21 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
   const [isUploading, setIsUploading] = React.useState(false)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
+  const appendFiles = (files: File[]) => {
+    const nextFiles = files.map((file, index) => ({
+      id: `${file.name}-${file.size}-${file.lastModified}-${index}`,
+      name: file.name,
+      size: file.size,
+      duration: "--:--",
+      file,
+    }))
+
+    setUploadedFiles((prev) => {
+      const seen = new Set(prev.map((item) => item.id))
+      return [...prev, ...nextFiles.filter((item) => !seen.has(item.id))]
+    })
+  }
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(true)
@@ -87,40 +99,39 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
       f.type.startsWith("video/")
     )
     if (files.length > 0) {
-      simulateUpload(files)
+      appendFiles(files)
     }
   }
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     if (files.length > 0) {
-      simulateUpload(files)
+      appendFiles(files)
     }
+    e.target.value = ""
   }
 
-  const simulateUpload = (files: File[]) => {
+  const handleStartAnalysis = async () => {
+    if (uploadedFiles.length === 0) {
+      return
+    }
+
     setIsUploading(true)
     setUploadProgress(0)
 
-    // 模拟上传进度
-    const interval = setInterval(() => {
-      setUploadProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval)
-          setIsUploading(false)
-          // 添加文件到列表
-          const newFiles: VideoFile[] = files.map((f, index) => ({
-            id: `file-${Date.now()}-${index}`,
-            name: f.name,
-            size: f.size,
-            duration: "12:34", // 模拟时长
-          }))
-          setUploadedFiles((prev) => [...prev, ...newFiles])
-          return 0
-        }
-        return prev + 10
+    try {
+      await onStartTask({
+        files: uploadedFiles.map((item) => item.file),
+        workflow: selectedWorkflow,
+        onProgress: setUploadProgress,
       })
-    }, 100)
+      setUploadedFiles([])
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "创建任务失败"))
+    } finally {
+      setIsUploading(false)
+      setUploadProgress(0)
+    }
   }
 
   const removeFile = (fileId: string) => {
@@ -272,7 +283,7 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
                         <div className="flex items-center gap-3 text-xs text-muted-foreground">
                           <span className="flex items-center gap-1">
                             <HardDrive className="h-3 w-3" />
-                            {formatFileSize(file.size)}
+                            {formatBytes(file.size)}
                           </span>
                           <span className="flex items-center gap-1">
                             <Clock className="h-3 w-3" />
@@ -284,6 +295,7 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8 shrink-0"
+                        disabled={isUploading}
                         onClick={() => removeFile(file.id)}
                       >
                         <X className="h-4 w-4" />
@@ -310,8 +322,10 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
           </div>
           <Button
             size="lg"
-            disabled={uploadedFiles.length === 0}
-            onClick={() => onStartTask(uploadedFiles, selectedWorkflow)}
+            disabled={uploadedFiles.length === 0 || isUploading}
+            onClick={() => {
+              void handleStartAnalysis()
+            }}
             className="gap-2"
           >
             开始分析

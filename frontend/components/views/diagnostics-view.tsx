@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { toast } from "sonner"
 import {
   CheckCircle2,
   XCircle,
@@ -21,11 +22,24 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
+import {
+  getApiErrorMessage,
+  getRuntimeMetrics,
+  getSelfCheckReport,
+  startSelfCheck,
+  streamSelfCheckEvents,
+} from "@/lib/api"
+import { formatBytes, formatDurationSeconds } from "@/lib/format"
+import type {
+  RuntimeMetricsResponse,
+  SelfCheckReportResponse,
+  SelfCheckStepResponse,
+  SelfCheckStreamEvent,
+} from "@/lib/types"
 
 type CheckStatus = "pending" | "checking" | "success" | "warning" | "error"
 
@@ -39,64 +53,57 @@ interface DiagnosticCheck {
   details?: Record<string, string>
 }
 
-const initialChecks: DiagnosticCheck[] = [
-  {
-    id: "system",
-    name: "系统环境",
-    description: "检查系统资源和运行环境",
-    icon: Server,
-    status: "pending",
-  },
-  {
-    id: "gpu",
-    name: "GPU 加速",
-    description: "检查 CUDA 和 GPU 可用性",
-    icon: Zap,
-    status: "pending",
-  },
-  {
-    id: "whisper",
-    name: "FasterWhisper",
-    description: "语音转写模型状态",
-    icon: Mic,
-    status: "pending",
-  },
-  {
-    id: "llm",
-    name: "LLM 模型",
-    description: "大语言模型加载状态",
-    icon: Brain,
-    status: "pending",
-  },
-  {
-    id: "embedding",
-    name: "嵌入模型",
-    description: "文本向量化模型状态",
-    icon: Shuffle,
-    status: "pending",
-  },
-  {
-    id: "vlm",
-    name: "VLM 模型",
-    description: "视觉语言模型状态",
-    icon: Eye,
-    status: "pending",
-  },
-  {
-    id: "chromadb",
-    name: "ChromaDB",
-    description: "向量数据库连接状态",
-    icon: Database,
-    status: "pending",
-  },
-  {
-    id: "storage",
-    name: "存储空间",
-    description: "检查磁盘可用空间",
-    icon: HardDrive,
-    status: "pending",
-  },
+const CHECK_ICON_MAP: Record<string, React.ElementType> = {
+  env: Server,
+  gpu: Zap,
+  whisper: Mic,
+  llm: Brain,
+  embedding: Shuffle,
+  vlm: Eye,
+  chromadb: Database,
+  storage: HardDrive,
+  ffmpeg: Cpu,
+  "model-cache": HardDrive,
+}
+
+const INITIAL_CHECKS: DiagnosticCheck[] = [
+  { id: "env", name: "系统环境", description: "检查系统资源和运行环境", icon: Server, status: "pending" },
+  { id: "gpu", name: "GPU 加速", description: "检查 CUDA 和 GPU 可用性", icon: Zap, status: "pending" },
+  { id: "whisper", name: "FasterWhisper", description: "语音转写模型状态", icon: Mic, status: "pending" },
+  { id: "llm", name: "LLM 模型", description: "大语言模型加载状态", icon: Brain, status: "pending" },
+  { id: "embedding", name: "嵌入模型", description: "文本向量化模型状态", icon: Shuffle, status: "pending" },
+  { id: "vlm", name: "VLM 模型", description: "视觉语言模型状态", icon: Eye, status: "pending" },
+  { id: "chromadb", name: "ChromaDB", description: "向量数据库连接状态", icon: Database, status: "pending" },
+  { id: "storage", name: "存储空间", description: "检查磁盘可用空间", icon: HardDrive, status: "pending" },
+  { id: "ffmpeg", name: "FFmpeg", description: "检查视频预处理依赖", icon: Cpu, status: "pending" },
+  { id: "model-cache", name: "Whisper 模型缓存", description: "检查本地模型缓存目录", icon: HardDrive, status: "pending" },
 ]
+
+const EMPTY_METRICS: RuntimeMetricsResponse = {
+  uptime_seconds: 0,
+  cpu_percent: 0,
+  memory_used_bytes: 0,
+  memory_total_bytes: 0,
+  gpu_percent: 0,
+  gpu_memory_used_bytes: 0,
+  gpu_memory_total_bytes: 0,
+  sampled_at: "",
+}
+
+function mapStepStatus(status: string): CheckStatus {
+  switch (status) {
+    case "passed":
+      return "success"
+    case "warning":
+      return "warning"
+    case "failed":
+      return "error"
+    case "running":
+      return "checking"
+    default:
+      return "pending"
+  }
+}
 
 const getStatusIcon = (status: CheckStatus) => {
   switch (status) {
@@ -128,135 +135,103 @@ const getStatusText = (status: CheckStatus) => {
   }
 }
 
-export function DiagnosticsView() {
-  const [checks, setChecks] = React.useState<DiagnosticCheck[]>(initialChecks)
-  const [isRunning, setIsRunning] = React.useState(false)
-  const [currentCheckIndex, setCurrentCheckIndex] = React.useState(-1)
-
-  const completedCount = checks.filter((c) => 
-    c.status === "success" || c.status === "warning" || c.status === "error"
-  ).length
-  const progress = (completedCount / checks.length) * 100
-
-  const runDiagnostics = async () => {
-    setIsRunning(true)
-    setChecks(initialChecks)
-
-    // 模拟逐项检查
-    for (let i = 0; i < initialChecks.length; i++) {
-      setCurrentCheckIndex(i)
-      
-      // 设置当前项为检查中
-      setChecks((prev) =>
-        prev.map((c, idx) =>
-          idx === i ? { ...c, status: "checking" as CheckStatus } : c
-        )
-      )
-
-      // 模拟检查延迟
-      await new Promise((resolve) => setTimeout(resolve, 800 + Math.random() * 500))
-
-      // 模拟检查结果
-      const results: Record<string, { status: CheckStatus; message: string; details?: Record<string, string> }> = {
-        system: {
-          status: "success",
-          message: "系统环境正常",
-          details: {
-            "操作系统": "Windows 11 Pro",
-            "CPU": "Intel Core i9-13900K",
-            "内存": "64 GB DDR5",
-          },
-        },
-        gpu: {
-          status: "success",
-          message: "GPU 加速可用",
-          details: {
-            "显卡": "NVIDIA RTX 4090",
-            "显存": "24 GB",
-            "CUDA": "12.4",
-          },
-        },
-        whisper: {
-          status: "success",
-          message: "FasterWhisper Large-v3 已加载",
-          details: {
-            "模型版本": "large-v3",
-            "量化": "float16",
-          },
-        },
-        llm: {
-          status: "success",
-          message: "Qwen2.5-7B-Instruct 已加载",
-          details: {
-            "模型": "Qwen2.5-7B-Instruct",
-            "上下文长度": "32768",
-          },
-        },
-        embedding: {
-          status: "success",
-          message: "BGE-M3 已加载",
-          details: {
-            "模型": "BAAI/bge-m3",
-            "维度": "1024",
-          },
-        },
-        vlm: {
-          status: "warning",
-          message: "VLM 模型加载中，可能影响帧分析功能",
-          details: {
-            "模型": "Qwen2-VL-7B",
-            "状态": "加载中 (85%)",
-          },
-        },
-        chromadb: {
-          status: "success",
-          message: "ChromaDB 连接正常",
-          details: {
-            "版本": "0.4.22",
-            "集合数": "12",
-          },
-        },
-        storage: {
-          status: "success",
-          message: "存储空间充足",
-          details: {
-            "总空间": "2 TB",
-            "可用": "1.2 TB",
-            "已用": "40%",
-          },
-        },
-      }
-
-      const result = results[initialChecks[i].id]
-      setChecks((prev) =>
-        prev.map((c, idx) =>
-          idx === i
-            ? {
-                ...c,
-                status: result.status,
-                message: result.message,
-                details: result.details,
-              }
-            : c
-        )
-      )
-    }
-
-    setIsRunning(false)
-    setCurrentCheckIndex(-1)
+function buildChecks(report: SelfCheckReportResponse | null): DiagnosticCheck[] {
+  if (!report || report.steps.length === 0) {
+    return INITIAL_CHECKS
   }
 
+  return report.steps.map((step) => ({
+    id: step.id,
+    name: step.title,
+    description: step.message || "等待检查",
+    icon: CHECK_ICON_MAP[step.id] || Server,
+    status: mapStepStatus(step.status),
+    message: step.message,
+    details: step.details,
+  }))
+}
+
+export function DiagnosticsView() {
+  const [report, setReport] = React.useState<SelfCheckReportResponse | null>(null)
+  const [runtimeMetrics, setRuntimeMetrics] = React.useState<RuntimeMetricsResponse>(EMPTY_METRICS)
+  const [activeSessionId, setActiveSessionId] = React.useState("")
+  const [isStarting, setIsStarting] = React.useState(false)
+
+  const loadRuntimeMetrics = React.useCallback(async () => {
+    try {
+      const payload = await getRuntimeMetrics()
+      setRuntimeMetrics(payload)
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "获取运行时信息失败"))
+    }
+  }, [])
+
+  const refreshReport = React.useCallback(async (sessionId: string) => {
+    const nextReport = await getSelfCheckReport(sessionId)
+    setReport(nextReport)
+    return nextReport
+  }, [])
+
+  React.useEffect(() => {
+    void loadRuntimeMetrics()
+    const interval = window.setInterval(() => {
+      void loadRuntimeMetrics()
+    }, 5000)
+    return () => window.clearInterval(interval)
+  }, [loadRuntimeMetrics])
+
+  React.useEffect(() => {
+    if (!activeSessionId) {
+      return
+    }
+
+    const source = streamSelfCheckEvents(activeSessionId, (_event: SelfCheckStreamEvent) => {
+      void refreshReport(activeSessionId).catch((error) => {
+        toast.error(getApiErrorMessage(error, "同步自检状态失败"))
+      })
+    })
+
+    source.onerror = () => {
+      source.close()
+    }
+
+    return () => {
+      source.close()
+    }
+  }, [activeSessionId, refreshReport])
+
+  const runDiagnostics = async () => {
+    setIsStarting(true)
+    setReport(null)
+    try {
+      const payload = await startSelfCheck()
+      setActiveSessionId(payload.session_id)
+      await refreshReport(payload.session_id)
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "启动系统自检失败"))
+    } finally {
+      setIsStarting(false)
+    }
+  }
+
+  const checks = buildChecks(report)
+  const currentCheckIndex = checks.findIndex((check) => check.status === "checking")
+  const completedCount = checks.filter(
+    (check) => check.status === "success" || check.status === "warning" || check.status === "error",
+  ).length
+  const progress = report?.progress ?? (checks.length > 0 ? (completedCount / checks.length) * 100 : 0)
+  const isRunning = report?.status === "running" || isStarting
+
   const summary = React.useMemo(() => {
-    const success = checks.filter((c) => c.status === "success").length
-    const warning = checks.filter((c) => c.status === "warning").length
-    const error = checks.filter((c) => c.status === "error").length
+    const success = checks.filter((check) => check.status === "success").length
+    const warning = checks.filter((check) => check.status === "warning").length
+    const error = checks.filter((check) => check.status === "error").length
     return { success, warning, error }
   }, [checks])
 
   return (
     <div className="flex-1 overflow-auto">
       <div className="container max-w-4xl mx-auto p-6 space-y-6">
-        {/* 页面标题 */}
         <div className="flex items-center justify-between">
           <div className="space-y-2">
             <h1 className="text-2xl font-semibold tracking-tight">系统自检</h1>
@@ -264,14 +239,13 @@ export function DiagnosticsView() {
               检查系统环境和模型状态，确保所有组件正常运行
             </p>
           </div>
-          <Button onClick={runDiagnostics} disabled={isRunning}>
+          <Button onClick={() => void runDiagnostics()} disabled={isRunning}>
             <RefreshCw className={cn("h-4 w-4 mr-2", isRunning && "animate-spin")} />
             {isRunning ? "检查中..." : "开始检查"}
           </Button>
         </div>
 
-        {/* 进度和摘要 */}
-        {(isRunning || completedCount > 0) && (
+        {(isRunning || report !== null) && (
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-3">
@@ -302,36 +276,34 @@ export function DiagnosticsView() {
           </Card>
         )}
 
-        {/* 检查项列表 */}
         <div className="grid gap-4">
           {checks.map((check, index) => (
             <Card
               key={check.id}
-              className={cn(
-                "transition-all",
-                currentCheckIndex === index && "ring-2 ring-primary"
-              )}
+              className={cn("transition-all", currentCheckIndex === index && "ring-2 ring-primary")}
             >
               <CardContent className="p-4">
                 <div className="flex items-start gap-4">
-                  {/* 图标 */}
-                  <div className={cn(
-                    "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
-                    check.status === "success" && "bg-status-success/10",
-                    check.status === "warning" && "bg-amber-500/10",
-                    check.status === "error" && "bg-status-error/10",
-                    (check.status === "pending" || check.status === "checking") && "bg-muted"
-                  )}>
-                    <check.icon className={cn(
-                      "h-5 w-5",
-                      check.status === "success" && "text-status-success",
-                      check.status === "warning" && "text-amber-500",
-                      check.status === "error" && "text-status-error",
-                      (check.status === "pending" || check.status === "checking") && "text-muted-foreground"
-                    )} />
+                  <div
+                    className={cn(
+                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+                      check.status === "success" && "bg-status-success/10",
+                      check.status === "warning" && "bg-amber-500/10",
+                      check.status === "error" && "bg-status-error/10",
+                      (check.status === "pending" || check.status === "checking") && "bg-muted",
+                    )}
+                  >
+                    <check.icon
+                      className={cn(
+                        "h-5 w-5",
+                        check.status === "success" && "text-status-success",
+                        check.status === "warning" && "text-amber-500",
+                        check.status === "error" && "text-status-error",
+                        (check.status === "pending" || check.status === "checking") && "text-muted-foreground",
+                      )}
+                    />
                   </div>
 
-                  {/* 内容 */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{check.name}</span>
@@ -341,14 +313,14 @@ export function DiagnosticsView() {
                             check.status === "success"
                               ? "default"
                               : check.status === "warning"
-                              ? "secondary"
-                              : check.status === "error"
-                              ? "destructive"
-                              : "outline"
+                                ? "secondary"
+                                : check.status === "error"
+                                  ? "destructive"
+                                  : "outline"
                           }
                           className={cn(
                             check.status === "success" && "bg-status-success",
-                            check.status === "checking" && "bg-status-processing"
+                            check.status === "checking" && "bg-status-processing",
                           )}
                         >
                           {getStatusText(check.status)}
@@ -359,8 +331,7 @@ export function DiagnosticsView() {
                       {check.message || check.description}
                     </p>
 
-                    {/* 详细信息 */}
-                    {check.details && (
+                    {check.details && Object.keys(check.details).length > 0 && (
                       <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs">
                         {Object.entries(check.details).map(([key, value]) => (
                           <div key={key} className="flex items-center gap-1.5">
@@ -372,17 +343,13 @@ export function DiagnosticsView() {
                     )}
                   </div>
 
-                  {/* 状态图标 */}
-                  <div className="shrink-0">
-                    {getStatusIcon(check.status)}
-                  </div>
+                  <div className="shrink-0">{getStatusIcon(check.status)}</div>
                 </div>
               </CardContent>
             </Card>
           ))}
         </div>
 
-        {/* 系统信息卡片 */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">运行时信息</CardTitle>
@@ -394,28 +361,31 @@ export function DiagnosticsView() {
                   <Clock className="h-4 w-4" />
                   运行时间
                 </div>
-                <div className="text-lg font-semibold">2h 34m</div>
+                <div className="text-lg font-semibold">{formatDurationSeconds(runtimeMetrics.uptime_seconds)}</div>
               </div>
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Cpu className="h-4 w-4" />
                   CPU 使用率
                 </div>
-                <div className="text-lg font-semibold">23%</div>
+                <div className="text-lg font-semibold">{runtimeMetrics.cpu_percent.toFixed(0)}%</div>
               </div>
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <MemoryStick className="h-4 w-4" />
                   内存使用
                 </div>
-                <div className="text-lg font-semibold">18.4 GB</div>
+                <div className="text-lg font-semibold">
+                  {formatBytes(runtimeMetrics.memory_used_bytes)}
+                  {runtimeMetrics.memory_total_bytes > 0 ? ` / ${formatBytes(runtimeMetrics.memory_total_bytes)}` : ""}
+                </div>
               </div>
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Zap className="h-4 w-4" />
                   GPU 使用率
                 </div>
-                <div className="text-lg font-semibold">45%</div>
+                <div className="text-lg font-semibold">{runtimeMetrics.gpu_percent.toFixed(0)}%</div>
               </div>
             </div>
           </CardContent>
