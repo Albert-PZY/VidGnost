@@ -294,7 +294,7 @@ function Wait-ElectronReady {
 Ensure-Admin -CurrentMode $Mode
 
 $RootDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$BackendDir = Join-Path $RootDir "backend"
+$BackendDir = Join-Path $RootDir "backend-new"
 $FrontendDir = Join-Path $RootDir "frontend"
 $BackendPort = 8000
 $FrontendPort = 5173
