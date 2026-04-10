@@ -115,7 +115,14 @@ export function AppSidebar({
       <SidebarHeader className="p-4">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
-            <img src="/light.svg" alt="VidGnost Logo" className="h-full w-full object-cover" />
+            <img
+              src="/icon.svg"
+              alt="VidGnost Logo"
+              width={36}
+              height={36}
+              decoding="async"
+              className="h-full w-full object-cover"
+            />
           </div>
           <div className="flex min-w-0 flex-col group-data-[collapsible=icon]:hidden">
             <span className="truncate text-sm font-semibold">VidGnost</span>

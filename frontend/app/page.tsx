@@ -8,10 +8,6 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { AppHeader } from "@/components/app-header"
 import { NewTaskView } from "@/components/views/new-task-view"
-import { TaskProcessingView } from "@/components/views/task-processing-view"
-import { HistoryView } from "@/components/views/history-view"
-import { SettingsView } from "@/components/views/settings-view"
-import { DiagnosticsView } from "@/components/views/diagnostics-view"
 import {
   getApiErrorMessage,
   getRecentTasks,
@@ -43,6 +39,26 @@ const DEFAULT_UI_SETTINGS: UISettingsResponse = {
   theme_hue: 220,
 }
 
+const TaskProcessingView = React.lazy(async () => {
+  const module = await import("@/components/views/task-processing-view")
+  return { default: module.TaskProcessingView }
+})
+
+const HistoryView = React.lazy(async () => {
+  const module = await import("@/components/views/history-view")
+  return { default: module.HistoryView }
+})
+
+const SettingsView = React.lazy(async () => {
+  const module = await import("@/components/views/settings-view")
+  return { default: module.SettingsView }
+})
+
+const DiagnosticsView = React.lazy(async () => {
+  const module = await import("@/components/views/diagnostics-view")
+  return { default: module.DiagnosticsView }
+})
+
 const getPageTitle = (viewState: ViewState) => {
   switch (viewState.type) {
     case "new-task":
@@ -56,6 +72,16 @@ const getPageTitle = (viewState: ViewState) => {
     case "diagnostics":
       return { title: "系统自检", subtitle: "检查运行状态" }
   }
+}
+
+function ViewLoadingFallback() {
+  return (
+    <div className="flex flex-1 items-center justify-center px-6">
+      <div className="rounded-lg border border-border/70 bg-card/80 px-4 py-3 text-sm text-muted-foreground shadow-sm">
+        正在加载界面...
+      </div>
+    </div>
+  )
 }
 
 export default function VideoMindApp() {
@@ -131,6 +157,26 @@ export default function VideoMindApp() {
     })
     return () => {
       unsubscribe?.()
+    }
+  }, [])
+
+  React.useEffect(() => {
+    const warmupViews = () => {
+      void import("@/components/views/history-view")
+      void import("@/components/views/settings-view")
+      void import("@/components/views/diagnostics-view")
+    }
+
+    if (typeof window.requestIdleCallback === "function") {
+      const idleId = window.requestIdleCallback(warmupViews, { timeout: 1500 })
+      return () => {
+        window.cancelIdleCallback?.(idleId)
+      }
+    }
+
+    const timer = window.setTimeout(warmupViews, 900)
+    return () => {
+      window.clearTimeout(timer)
     }
   }, [])
 
@@ -266,32 +312,34 @@ export default function VideoMindApp() {
           }}
         />
         <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          {viewState.type === "new-task" && (
-            <NewTaskView
-              selectedWorkflow={selectedWorkflow}
-              onStartTask={handleStartTask}
-            />
-          )}
-          {viewState.type === "processing" && (
-            <TaskProcessingView
-              taskId={viewState.taskId}
-              workflow={viewState.workflow}
-              taskTitle={viewState.taskTitle}
-              onBack={handleBackFromProcessing}
-              onTaskChanged={handleTaskChanged}
-              onTaskLoaded={handleTaskLoaded}
-            />
-          )}
-          {viewState.type === "history" && (
-            <HistoryView onOpenTask={handleOpenTask} />
-          )}
-          {viewState.type === "settings" && (
-            <SettingsView
-              uiSettings={uiSettings}
-              onUiSettingsChange={persistUiSettings}
-            />
-          )}
-          {viewState.type === "diagnostics" && <DiagnosticsView />}
+          <React.Suspense fallback={<ViewLoadingFallback />}>
+            {viewState.type === "new-task" && (
+              <NewTaskView
+                selectedWorkflow={selectedWorkflow}
+                onStartTask={handleStartTask}
+              />
+            )}
+            {viewState.type === "processing" && (
+              <TaskProcessingView
+                taskId={viewState.taskId}
+                workflow={viewState.workflow}
+                taskTitle={viewState.taskTitle}
+                onBack={handleBackFromProcessing}
+                onTaskChanged={handleTaskChanged}
+                onTaskLoaded={handleTaskLoaded}
+              />
+            )}
+            {viewState.type === "history" && (
+              <HistoryView onOpenTask={handleOpenTask} />
+            )}
+            {viewState.type === "settings" && (
+              <SettingsView
+                uiSettings={uiSettings}
+                onUiSettingsChange={persistUiSettings}
+              />
+            )}
+            {viewState.type === "diagnostics" && <DiagnosticsView />}
+          </React.Suspense>
         </main>
         <ConfirmDialog
           open={isCloseConfirmOpen}
