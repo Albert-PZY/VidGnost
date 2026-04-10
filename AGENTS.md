@@ -9,6 +9,7 @@ Scope: this file is an internal navigation index for coding agents and maintaine
 - Python dependency management: use `uv` with project-level venv; add/remove deps via `uv add` / `uv remove`
 - GitHub operations: prefer using `gh` CLI commands when possible
 - Documentation style: write all project docs as first-release baseline statements; avoid migration/history wording such as “删除/弃用/改为/不再/removed/deprecated/replaced”
+- Spec sync rule: whenever project code changes, automatically review the impacted OpenSpec docs and sync their information density to the implementation in the same delivery. New or changed interfaces, states, parameters, constraints, error handling, and UI behavior must be reflected in spec updates; if no spec text changes are needed, explicitly verify that the existing spec already matches the latest code detail.
 - After completing a requirement change, automatically determine whether a commit is needed; if needed, commit and push following `docs/git-commit-convention.md` without additional confirmation
 
 ## 2) Core Product Docs
@@ -75,6 +76,7 @@ Scope: this file is an internal navigation index for coding agents and maintaine
 ## 11) Maintenance Rules
 - Keep `AGENTS.md` as an index file (navigation + global constraints).
 - Keep active change specs and baseline specs aligned for stable capability contracts.
+- Treat code change and spec densification as a single maintenance action; do not leave updated code behind coarser or stale specs.
 - Before merging major doc/spec changes, run:
   - `scripts/check-openspec.py`
   - `scripts/check-openspec.sh`

@@ -50,3 +50,9 @@
   - `powershell -ExecutionPolicy Bypass -File scripts/check-openspec.ps1`
 - 直接运行 Python:
   - `python scripts/check-openspec.py`
+
+## 7. 同步约束
+
+1. 只要项目代码发生变更，就必须同步审查受影响的 OpenSpec 文档。
+2. Spec 文档的信息密度必须和当前实现保持同级别对齐，不能只保留概述而遗漏真实接口、状态、参数、约束、错误处理或关键 UI 行为。
+3. 如果本次代码变更不需要改动 spec 文本，也必须确认现有 spec 已经完整覆盖最新实现细节。
