@@ -6,18 +6,24 @@ from app.errors import AppError
 from app.schemas import (
     LLMConfigResponse,
     LLMConfigUpdateRequest,
+    ModelListResponse,
+    ModelReloadRequest,
+    ModelUpdateRequest,
     PromptTemplateBundleResponse,
     PromptTemplateCreateRequest,
     PromptTemplateSelectionUpdateRequest,
     PromptTemplateUpdateRequest,
+    UISettingsResponse,
+    UISettingsUpdateRequest,
     WhisperConfigResponse,
     WhisperConfigUpdateRequest,
 )
 from app.services.llm_config_store import LLMConfigStore
+from app.services.model_catalog_store import ModelCatalogStore
 from app.services.prompt_template_store import PromptTemplateStore
 from app.services.resource_guard import ResourceGuard
 from app.services.runtime_config_store import RuntimeConfigStore
-from app.services.task_runner import TaskRunner
+from app.services.ui_settings_store import UISettingsStore
 
 router = APIRouter(prefix="/config", tags=["config"])
 
@@ -38,8 +44,12 @@ def get_resource_guard(request: Request) -> ResourceGuard:
     return request.app.state.resource_guard
 
 
-def get_runner(request: Request) -> TaskRunner:
-    return request.app.state.task_runner
+def get_model_catalog(request: Request) -> ModelCatalogStore:
+    return request.app.state.model_catalog_store
+
+
+def get_ui_settings_store(request: Request) -> UISettingsStore:
+    return request.app.state.ui_settings_store
 
 
 @router.get("/llm", response_model=LLMConfigResponse)
@@ -106,76 +116,6 @@ async def update_llm_config(
     )
 
 
-@router.get("/prompts", response_model=PromptTemplateBundleResponse)
-async def get_prompt_templates(prompt_store: PromptTemplateStore = Depends(get_prompt_store)) -> PromptTemplateBundleResponse:
-    payload = await prompt_store.get_bundle()
-    return PromptTemplateBundleResponse.model_validate(payload)
-
-
-@router.put("/prompts/selection", response_model=PromptTemplateBundleResponse)
-async def update_prompt_template_selection(
-    body: PromptTemplateSelectionUpdateRequest,
-    prompt_store: PromptTemplateStore = Depends(get_prompt_store),
-) -> PromptTemplateBundleResponse:
-    try:
-        payload = await prompt_store.update_selection(
-            selected_summary_template_id=body.selected_summary_template_id,
-            selected_mindmap_template_id=body.selected_mindmap_template_id,
-        )
-    except ValueError as exc:
-        raise AppError.bad_request(
-            str(exc),
-            code="PROMPT_TEMPLATE_SELECTION_INVALID",
-        ) from exc
-    return PromptTemplateBundleResponse.model_validate(payload)
-
-
-@router.post("/prompts/templates", response_model=PromptTemplateBundleResponse)
-async def create_prompt_template(
-    body: PromptTemplateCreateRequest,
-    prompt_store: PromptTemplateStore = Depends(get_prompt_store),
-) -> PromptTemplateBundleResponse:
-    try:
-        payload = await prompt_store.create_template(channel=body.channel, name=body.name, content=body.content)
-    except ValueError as exc:
-        raise AppError.bad_request(
-            str(exc),
-            code="PROMPT_TEMPLATE_CREATE_INVALID",
-        ) from exc
-    return PromptTemplateBundleResponse.model_validate(payload)
-
-
-@router.patch("/prompts/templates/{template_id}", response_model=PromptTemplateBundleResponse)
-async def update_prompt_template(
-    template_id: str,
-    body: PromptTemplateUpdateRequest,
-    prompt_store: PromptTemplateStore = Depends(get_prompt_store),
-) -> PromptTemplateBundleResponse:
-    try:
-        payload = await prompt_store.update_template(template_id=template_id, name=body.name, content=body.content)
-    except ValueError as exc:
-        raise AppError.bad_request(
-            str(exc),
-            code="PROMPT_TEMPLATE_UPDATE_INVALID",
-        ) from exc
-    return PromptTemplateBundleResponse.model_validate(payload)
-
-
-@router.delete("/prompts/templates/{template_id}", response_model=PromptTemplateBundleResponse)
-async def delete_prompt_template(
-    template_id: str,
-    prompt_store: PromptTemplateStore = Depends(get_prompt_store),
-) -> PromptTemplateBundleResponse:
-    try:
-        payload = await prompt_store.delete_template(template_id=template_id)
-    except ValueError as exc:
-        raise AppError.bad_request(
-            str(exc),
-            code="PROMPT_TEMPLATE_DELETE_INVALID",
-        ) from exc
-    return PromptTemplateBundleResponse.model_validate(payload)
-
-
 @router.get("/whisper", response_model=WhisperConfigResponse)
 async def get_whisper_config(
     reveal_secrets: bool = Query(default=False),
@@ -216,3 +156,118 @@ async def update_whisper_config(
         warnings=checked["warnings"],
         rollback_applied=checked["rollback_applied"],
     )
+
+
+@router.get("/prompts", response_model=PromptTemplateBundleResponse)
+async def get_prompt_templates(prompt_store: PromptTemplateStore = Depends(get_prompt_store)) -> PromptTemplateBundleResponse:
+    payload = await prompt_store.get_bundle()
+    return PromptTemplateBundleResponse.model_validate(payload)
+
+
+@router.put("/prompts/selection", response_model=PromptTemplateBundleResponse)
+async def update_prompt_template_selection(
+    body: PromptTemplateSelectionUpdateRequest,
+    prompt_store: PromptTemplateStore = Depends(get_prompt_store),
+) -> PromptTemplateBundleResponse:
+    updates = {
+        key: value
+        for key, value in {
+            "correction": body.correction,
+            "notes": body.notes,
+            "mindmap": body.mindmap,
+            "vqa": body.vqa,
+        }.items()
+        if value
+    }
+    try:
+        payload = await prompt_store.update_selection(updates)  # type: ignore[arg-type]
+    except ValueError as exc:
+        raise AppError.bad_request(str(exc), code="PROMPT_TEMPLATE_SELECTION_INVALID") from exc
+    return PromptTemplateBundleResponse.model_validate(payload)
+
+
+@router.post("/prompts/templates", response_model=PromptTemplateBundleResponse)
+async def create_prompt_template(
+    body: PromptTemplateCreateRequest,
+    prompt_store: PromptTemplateStore = Depends(get_prompt_store),
+) -> PromptTemplateBundleResponse:
+    try:
+        payload = await prompt_store.create_template(channel=body.channel, name=body.name, content=body.content)
+    except ValueError as exc:
+        raise AppError.bad_request(str(exc), code="PROMPT_TEMPLATE_CREATE_INVALID") from exc
+    return PromptTemplateBundleResponse.model_validate(payload)
+
+
+@router.patch("/prompts/templates/{template_id}", response_model=PromptTemplateBundleResponse)
+async def update_prompt_template(
+    template_id: str,
+    body: PromptTemplateUpdateRequest,
+    prompt_store: PromptTemplateStore = Depends(get_prompt_store),
+) -> PromptTemplateBundleResponse:
+    try:
+        payload = await prompt_store.update_template(template_id=template_id, name=body.name, content=body.content)
+    except ValueError as exc:
+        raise AppError.bad_request(str(exc), code="PROMPT_TEMPLATE_UPDATE_INVALID") from exc
+    return PromptTemplateBundleResponse.model_validate(payload)
+
+
+@router.delete("/prompts/templates/{template_id}", response_model=PromptTemplateBundleResponse)
+async def delete_prompt_template(
+    template_id: str,
+    prompt_store: PromptTemplateStore = Depends(get_prompt_store),
+) -> PromptTemplateBundleResponse:
+    try:
+        payload = await prompt_store.delete_template(template_id=template_id)
+    except ValueError as exc:
+        raise AppError.bad_request(str(exc), code="PROMPT_TEMPLATE_DELETE_INVALID") from exc
+    return PromptTemplateBundleResponse.model_validate(payload)
+
+
+@router.get("/models", response_model=ModelListResponse)
+async def list_models(catalog: ModelCatalogStore = Depends(get_model_catalog)) -> ModelListResponse:
+    return ModelListResponse(items=await catalog.list_models())
+
+
+@router.post("/models/reload", response_model=ModelListResponse)
+async def reload_models(
+    payload: ModelReloadRequest,
+    catalog: ModelCatalogStore = Depends(get_model_catalog),
+) -> ModelListResponse:
+    return ModelListResponse(items=await catalog.reload_models(model_id=payload.model_id))
+
+
+@router.patch("/models/{model_id}", response_model=ModelListResponse)
+async def update_model_config(
+    model_id: str,
+    payload: ModelUpdateRequest,
+    catalog: ModelCatalogStore = Depends(get_model_catalog),
+) -> ModelListResponse:
+    try:
+        rows = await catalog.update_model(
+            model_id,
+            {
+                "path": payload.path,
+                "status": payload.status,
+                "load_profile": payload.load_profile,
+                "quantization": payload.quantization,
+                "max_batch_size": payload.max_batch_size,
+                "enabled": payload.enabled,
+            },
+        )
+    except ValueError as exc:
+        raise AppError.bad_request(str(exc), code="MODEL_UPDATE_INVALID") from exc
+    return ModelListResponse(items=rows)
+
+
+@router.get("/ui", response_model=UISettingsResponse)
+async def get_ui_settings(store: UISettingsStore = Depends(get_ui_settings_store)) -> UISettingsResponse:
+    return UISettingsResponse.model_validate(await store.get())
+
+
+@router.put("/ui", response_model=UISettingsResponse)
+async def update_ui_settings(
+    payload: UISettingsUpdateRequest,
+    store: UISettingsStore = Depends(get_ui_settings_store),
+) -> UISettingsResponse:
+    updates = {"language": payload.language, "font_size": payload.font_size, "auto_save": payload.auto_save}
+    return UISettingsResponse.model_validate(await store.update(updates))

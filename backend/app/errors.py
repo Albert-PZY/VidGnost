@@ -11,6 +11,8 @@ class AppError(Exception):
     status_code: int
     message: str
     code: str = "APP_ERROR"
+    hint: str | None = None
+    retryable: bool = False
     detail: Any = None
 
     def __str__(self) -> str:
@@ -22,9 +24,18 @@ class AppError(Exception):
         message: str,
         *,
         code: str = "BAD_REQUEST",
+        hint: str | None = None,
+        retryable: bool = False,
         detail: Any = None,
     ) -> "AppError":
-        return cls(status_code=400, message=message, code=code, detail=detail)
+        return cls(
+            status_code=400,
+            message=message,
+            code=code,
+            hint=hint,
+            retryable=retryable,
+            detail=detail,
+        )
 
     @classmethod
     def not_found(
@@ -32,9 +43,18 @@ class AppError(Exception):
         message: str,
         *,
         code: str = "NOT_FOUND",
+        hint: str | None = None,
+        retryable: bool = False,
         detail: Any = None,
     ) -> "AppError":
-        return cls(status_code=404, message=message, code=code, detail=detail)
+        return cls(
+            status_code=404,
+            message=message,
+            code=code,
+            hint=hint,
+            retryable=retryable,
+            detail=detail,
+        )
 
     @classmethod
     def conflict(
@@ -42,7 +62,16 @@ class AppError(Exception):
         message: str,
         *,
         code: str = "CONFLICT",
+        hint: str | None = None,
+        retryable: bool = False,
         detail: Any = None,
     ) -> "AppError":
-        return cls(status_code=409, message=message, code=code, detail=detail)
+        return cls(
+            status_code=409,
+            message=message,
+            code=code,
+            hint=hint,
+            retryable=retryable,
+            detail=detail,
+        )
 

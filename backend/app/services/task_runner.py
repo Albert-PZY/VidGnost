@@ -73,6 +73,7 @@ class TaskSubmission:
     source_local_path: str | None
     model_size: str
     language: str
+    workflow: str = "notes"
 
 
 class TaskRunner:

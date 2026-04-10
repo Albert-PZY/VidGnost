@@ -1,2 +1,0 @@
-"""VidGnost backend package."""
-

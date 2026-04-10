@@ -1,6 +1,6 @@
 param(
-    [ValidateSet("web", "electron")]
-    [string]$Mode = "electron"
+    [ValidateSet("web")]
+    [string]$Mode = "web"
 )
 
 Set-StrictMode -Version Latest

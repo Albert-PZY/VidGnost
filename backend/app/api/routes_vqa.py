@@ -4,6 +4,7 @@ import orjson
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 
+from app.errors import AppError
 from app.schemas import VQAAnalyzeRequest, VQAChatRequest, VQASearchRequest
 from app.services.vqa_runtime_service import VQARuntimeService
 
@@ -19,13 +20,26 @@ async def analyze(
     payload: VQAAnalyzeRequest,
     runtime: VQARuntimeService = Depends(get_vqa_runtime),
 ) -> dict[str, object]:
+    query_text = _resolve_query_text(payload.query_text, payload.question)
     bundle = await runtime.analyze(
-        query_text=payload.query_text.strip(),
+        query_text=query_text,
         task_id=(payload.task_id or "").strip() or None,
         video_paths=payload.video_paths,
         top_k=payload.top_k,
     )
-    return runtime.build_analyze_payload(bundle)
+    payload = runtime.build_analyze_payload(bundle)
+    payload["results"] = [
+        {
+            "timestamp": item.start,
+            "relevance": item.final_score,
+            "context": item.text,
+            "source": item.source,
+            "start": item.start,
+            "end": item.end,
+        }
+        for item in bundle.search.rerank_hits
+    ]
+    return payload
 
 
 @router.post("/search")
@@ -33,13 +47,26 @@ async def search(
     payload: VQASearchRequest,
     runtime: VQARuntimeService = Depends(get_vqa_runtime),
 ) -> dict[str, object]:
+    query_text = _resolve_query_text(payload.query_text, payload.question)
     bundle = runtime.search(
-        query_text=payload.query_text.strip(),
+        query_text=query_text,
         task_id=(payload.task_id or "").strip() or None,
         video_paths=payload.video_paths,
         top_k=payload.top_k,
     )
-    return runtime.build_search_payload(bundle)
+    payload = runtime.build_search_payload(bundle)
+    payload["results"] = [
+        {
+            "timestamp": item.start,
+            "relevance": item.final_score,
+            "context": item.text,
+            "source": item.source,
+            "start": item.start,
+            "end": item.end,
+        }
+        for item in bundle.result.rerank_hits
+    ]
+    return payload
 
 
 @router.post("/chat")
@@ -47,17 +74,30 @@ async def chat(
     payload: VQAChatRequest,
     runtime: VQARuntimeService = Depends(get_vqa_runtime),
 ) -> dict[str, object]:
+    query_text = _resolve_query_text(payload.query_text, payload.question)
     bundle = await runtime.analyze(
-        query_text=payload.query_text.strip(),
+        query_text=query_text,
         task_id=(payload.task_id or "").strip() or None,
         video_paths=payload.video_paths,
         top_k=payload.top_k,
     )
-    return {
+    response = {
         "trace_id": bundle.trace_id,
         **bundle.chat.to_dict(),
         "hits": [item.to_dict() for item in bundle.search.rerank_hits],
     }
+    response["results"] = [
+        {
+            "timestamp": item.start,
+            "relevance": item.final_score,
+            "context": item.text,
+            "source": item.source,
+            "start": item.start,
+            "end": item.end,
+        }
+        for item in bundle.search.rerank_hits
+    ]
+    return response
 
 
 @router.post("/chat/stream")
@@ -65,9 +105,11 @@ async def chat_stream(
     payload: VQAChatRequest,
     runtime: VQARuntimeService = Depends(get_vqa_runtime),
 ) -> StreamingResponse:
+    query_text = _resolve_query_text(payload.query_text, payload.question)
+
     async def event_generator():
         async for event in runtime.stream_chat(
-            query_text=payload.query_text.strip(),
+            query_text=query_text,
             task_id=(payload.task_id or "").strip() or None,
             video_paths=payload.video_paths,
             top_k=payload.top_k,
@@ -89,3 +131,14 @@ async def chat_stream(
 @router.get("/traces/{trace_id}")
 async def get_trace(trace_id: str, runtime: VQARuntimeService = Depends(get_vqa_runtime)) -> dict[str, object]:
     return runtime.build_trace_payload(trace_id)
+
+
+def _resolve_query_text(query_text: str | None, question: str | None) -> str:
+    resolved = (query_text or question or "").strip()
+    if resolved:
+        return resolved
+    raise AppError.bad_request(
+        "query_text or question is required",
+        code="VQA_QUERY_REQUIRED",
+        hint="请传入 query_text（兼容字段 question）。",
+    )

@@ -38,10 +38,12 @@ class TaskRecord:
     source_input: str
     source_local_path: str | None = None
 
+    workflow: str = "notes"
     title: str | None = None
     duration_seconds: float | None = None
     language: str = "zh"
     model_size: str = "small"
+    file_size_bytes: int = 0
 
     status: str = TaskStatus.QUEUED.value
     progress: int = 0
@@ -78,10 +80,12 @@ class TaskRecord:
             source_type=resolved_source_type,
             source_input=resolved_source_input,
             source_local_path=_to_optional_str(payload.get("source_local_path")),
+            workflow=_normalize_workflow(payload.get("workflow")),
             title=_to_optional_str(payload.get("title")),
             duration_seconds=_to_optional_float(payload.get("duration_seconds")),
             language=str(payload.get("language", "zh") or "zh"),
             model_size=str(payload.get("model_size", "small") or "small"),
+            file_size_bytes=_to_int(payload.get("file_size_bytes"), default=0),
             status=str(payload.get("status", TaskStatus.QUEUED.value) or TaskStatus.QUEUED.value),
             progress=_to_int(payload.get("progress"), default=0),
             error_message=_to_optional_str(payload.get("error_message")),
@@ -105,10 +109,12 @@ class TaskRecord:
             "source_type": self.source_type,
             "source_input": self.source_input,
             "source_local_path": self.source_local_path,
+            "workflow": _normalize_workflow(self.workflow),
             "title": self.title,
             "duration_seconds": self.duration_seconds,
             "language": self.language,
             "model_size": self.model_size,
+            "file_size_bytes": max(0, int(self.file_size_bytes)),
             "status": self.status,
             "progress": self.progress,
             "error_message": self.error_message,
@@ -160,34 +166,46 @@ class PromptTemplateRecord:
 
 @dataclass(slots=True)
 class PromptTemplateSelectionRecord:
-    summary_template_id: str
-    mindmap_template_id: str
+    correction_template_id: str = ""
+    notes_template_id: str = ""
+    mindmap_template_id: str = ""
+    vqa_template_id: str = ""
     created_at: datetime = field(default_factory=utcnow)
     updated_at: datetime = field(default_factory=utcnow)
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "PromptTemplateSelectionRecord":
         return cls(
-            summary_template_id=str(payload.get("summary_template_id", "")),
+            correction_template_id=str(payload.get("correction_template_id", "")),
+            notes_template_id=str(payload.get("notes_template_id", payload.get("summary_template_id", ""))),
             mindmap_template_id=str(payload.get("mindmap_template_id", "")),
+            vqa_template_id=str(payload.get("vqa_template_id", "")),
             created_at=parse_datetime(payload.get("created_at")),
             updated_at=parse_datetime(payload.get("updated_at")),
         )
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "summary_template_id": self.summary_template_id,
+            "correction_template_id": self.correction_template_id,
+            "notes_template_id": self.notes_template_id,
             "mindmap_template_id": self.mindmap_template_id,
+            "vqa_template_id": self.vqa_template_id,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
         }
 
 
+def _normalize_workflow(value: Any) -> str:
+    candidate = str(value or "").strip().lower()
+    if candidate in {"notes", "vqa"}:
+        return candidate
+    return "notes"
+
+
 def _to_optional_str(value: Any) -> str | None:
     if value is None:
         return None
-    text = str(value)
-    return text
+    return str(value)
 
 
 def _to_optional_float(value: Any) -> float | None:
@@ -207,7 +225,7 @@ def _to_int(value: Any, *, default: int = 0) -> int:
     if isinstance(value, int):
         return value
     if isinstance(value, float):
-        if value != value:  # NaN
+        if value != value:
             return default
         return int(value)
     text = str(value).strip()

@@ -5,18 +5,28 @@ from datetime import datetime, timezone
 from pathlib import Path
 import shutil
 from threading import RLock
-from typing import Iterable
+from typing import Iterable, Literal
 from urllib.parse import quote, unquote
 
 import orjson
 
 from app.models import TaskRecord
 
+SortBy = Literal["date", "name", "size"]
+
 
 @dataclass(slots=True)
 class TaskListResult:
     items: list[TaskRecord]
     total: int
+
+
+@dataclass(slots=True)
+class TaskStatsResult:
+    total: int
+    notes: int
+    vqa: int
+    completed: int
 
 
 class TaskStore:
@@ -85,7 +95,16 @@ class TaskStore:
                     removed = True
             return removed
 
-    def list(self, *, q: str | None = None, limit: int = 50, offset: int = 0) -> TaskListResult:
+    def list(
+        self,
+        *,
+        q: str | None = None,
+        workflow: str | None = None,
+        status: str | None = None,
+        sort_by: SortBy = "date",
+        limit: int = 50,
+        offset: int = 0,
+    ) -> TaskListResult:
         records = self.list_all()
         if q:
             keyword = q.casefold()
@@ -94,10 +113,35 @@ class TaskStore:
                 for item in records
                 if keyword in (item.title or "").casefold() or keyword in (item.source_input or "").casefold()
             ]
-        records.sort(key=lambda item: item.updated_at, reverse=True)
+        if workflow and workflow in {"notes", "vqa"}:
+            records = [item for item in records if item.workflow == workflow]
+        if status:
+            status_lower = status.strip().lower()
+            records = [item for item in records if item.status.strip().lower() == status_lower]
+
+        if sort_by == "name":
+            records.sort(key=lambda item: (item.title or item.source_input or "").casefold())
+        elif sort_by == "size":
+            records.sort(key=lambda item: int(item.file_size_bytes or 0), reverse=True)
+        else:
+            records.sort(key=lambda item: item.updated_at, reverse=True)
+
         total = len(records)
         paged = records[offset : offset + limit]
         return TaskListResult(items=paged, total=total)
+
+    def stats(self) -> TaskStatsResult:
+        records = self.list_all()
+        total = len(records)
+        notes = sum(1 for item in records if item.workflow == "notes")
+        vqa = sum(1 for item in records if item.workflow == "vqa")
+        completed = sum(1 for item in records if item.status == "completed")
+        return TaskStatsResult(total=total, notes=notes, vqa=vqa, completed=completed)
+
+    def recent(self, *, limit: int = 8) -> list[TaskRecord]:
+        records = self.list_all()
+        records.sort(key=lambda item: item.updated_at, reverse=True)
+        return records[: max(1, limit)]
 
     def list_all(self) -> list[TaskRecord]:
         with self._lock:

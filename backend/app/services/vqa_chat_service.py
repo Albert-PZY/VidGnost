@@ -154,6 +154,7 @@ def _build_citations(hits: list[RetrievalHit]) -> list[Citation]:
             task_id=item.task_id,
             task_title=item.task_title,
             source=item.source,
+            source_set=list(item.source_set),
             start=item.start,
             end=item.end,
             text=item.text,

@@ -6,40 +6,67 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-ModelSize = Literal["small"]
-SourceType = Literal["bilibili", "local_file"]
+ModelSize = Literal["small", "medium"]
+WorkflowType = Literal["notes", "vqa"]
+TaskStatusPublic = Literal["queued", "running", "completed", "failed", "cancelled"]
+SourceType = Literal["bilibili", "local_file", "local_path"]
+PromptTemplateChannel = Literal["correction", "notes", "mindmap", "vqa"]
+ModelComponentType = Literal["whisper", "llm", "embedding", "vlm", "rerank"]
+ModelRuntimeStatus = Literal["ready", "loading", "error"]
 
 
 class TranscriptSegment(BaseModel):
     start: float
     end: float
     text: str
+    speaker: str | None = None
+
+
+class TaskStepItem(BaseModel):
+    id: str
+    name: str
+    status: Literal["pending", "processing", "completed", "error"]
+    progress: int = Field(default=0, ge=0, le=100)
+    duration: str = ""
+    logs: list[str] = Field(default_factory=list)
 
 
 class TaskCreateFromUrlRequest(BaseModel):
     url: str = Field(min_length=2)
     model_size: ModelSize = "small"
     language: str = "zh"
+    workflow: WorkflowType = "notes"
 
 
 class TaskCreateFromPathRequest(BaseModel):
     local_path: str = Field(min_length=1)
     model_size: ModelSize = "small"
     language: str = "zh"
+    workflow: WorkflowType = "notes"
 
 
 class TaskCreateResponse(BaseModel):
     task_id: str
-    status: str
+    status: TaskStatusPublic | str
+    workflow: WorkflowType = "notes"
+    initial_steps: list[TaskStepItem] = Field(default_factory=list)
+
+
+class TaskBatchCreateResponse(BaseModel):
+    strategy: Literal["single_task_per_file", "batch_task"]
+    tasks: list[TaskCreateResponse] = Field(default_factory=list)
 
 
 class TaskSummaryItem(BaseModel):
     id: str
     title: str | None
+    workflow: WorkflowType = "notes"
     source_type: SourceType
     source_input: str
-    status: str
+    status: TaskStatusPublic | str
     progress: int
+    file_size_bytes: int = 0
+    duration_seconds: float | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -49,15 +76,39 @@ class TaskListResponse(BaseModel):
     total: int
 
 
+class TaskStatsResponse(BaseModel):
+    total: int = 0
+    notes: int = 0
+    vqa: int = 0
+    completed: int = 0
+
+
+class TaskRecentItem(BaseModel):
+    id: str
+    title: str
+    workflow: WorkflowType
+    updated_at: datetime
+
+
+class TaskRecentResponse(BaseModel):
+    items: list[TaskRecentItem] = Field(default_factory=list)
+
+
 class TaskDetailResponse(BaseModel):
     id: str
     title: str | None
+    workflow: WorkflowType = "notes"
     source_type: SourceType
     source_input: str
+    source_local_path: str | None = None
     language: str
     model_size: str
-    status: str
+    status: TaskStatusPublic | str
     progress: int
+    overall_progress: int = 0
+    eta_seconds: int | None = None
+    current_step_id: str = ""
+    steps: list[TaskStepItem] = Field(default_factory=list)
     error_message: str | None = None
     duration_seconds: float | None = None
     transcript_text: str | None = None
@@ -86,14 +137,16 @@ class TaskArtifactsUpdateRequest(BaseModel):
 
 
 class VQASearchRequest(BaseModel):
-    query_text: str = Field(min_length=1)
+    query_text: str | None = Field(default=None, min_length=1)
+    question: str | None = Field(default=None, min_length=1)
     task_id: str | None = None
     video_paths: list[str] = Field(default_factory=list)
     top_k: int | None = Field(default=None, ge=1, le=50)
 
 
 class VQAChatRequest(BaseModel):
-    query_text: str = Field(min_length=1)
+    query_text: str | None = Field(default=None, min_length=1)
+    question: str | None = Field(default=None, min_length=1)
     task_id: str | None = None
     video_paths: list[str] = Field(default_factory=list)
     top_k: int | None = Field(default=None, ge=1, le=50)
@@ -101,7 +154,8 @@ class VQAChatRequest(BaseModel):
 
 
 class VQAAnalyzeRequest(BaseModel):
-    query_text: str = Field(min_length=1)
+    query_text: str | None = Field(default=None, min_length=1)
+    question: str | None = Field(default=None, min_length=1)
     task_id: str | None = None
     video_paths: list[str] = Field(default_factory=list)
     top_k: int | None = Field(default=None, ge=1, le=50)
@@ -138,9 +192,6 @@ class LLMConfigUpdateRequest(BaseModel):
     correction_overlap: int = Field(default=3, ge=0, le=20)
 
 
-PromptTemplateChannel = Literal["summary", "mindmap"]
-
-
 class PromptTemplateItem(BaseModel):
     id: str
     channel: PromptTemplateChannel
@@ -152,6 +203,8 @@ class PromptTemplateItem(BaseModel):
 
 
 class PromptTemplateBundleResponse(BaseModel):
+    templates: list[PromptTemplateItem] = Field(default_factory=list)
+    selection: dict[PromptTemplateChannel, str] = Field(default_factory=dict)
     summary_templates: list[PromptTemplateItem] = Field(default_factory=list)
     mindmap_templates: list[PromptTemplateItem] = Field(default_factory=list)
     selected_summary_template_id: str = ""
@@ -170,8 +223,10 @@ class PromptTemplateUpdateRequest(BaseModel):
 
 
 class PromptTemplateSelectionUpdateRequest(BaseModel):
-    selected_summary_template_id: str = Field(min_length=1)
-    selected_mindmap_template_id: str = Field(min_length=1)
+    correction: str | None = None
+    notes: str | None = None
+    mindmap: str | None = None
+    vqa: str | None = None
 
 
 class WhisperConfigResponse(BaseModel):
@@ -190,7 +245,7 @@ class WhisperConfigResponse(BaseModel):
 
 
 class WhisperConfigUpdateRequest(BaseModel):
-    model_default: Literal["small"] = "small"
+    model_default: Literal["small", "medium"] = "small"
     language: str = "zh"
     device: str = "auto"
     compute_type: str = "int8"
@@ -200,6 +255,51 @@ class WhisperConfigUpdateRequest(BaseModel):
     chunk_seconds: int = Field(default=180, ge=30, le=1200)
     target_sample_rate: int = Field(default=16000, ge=8000, le=48000)
     target_channels: int = Field(default=1, ge=1, le=2)
+
+
+class ModelDescriptor(BaseModel):
+    id: str
+    component: ModelComponentType
+    name: str
+    provider: str = "local"
+    model_id: str
+    path: str = ""
+    status: ModelRuntimeStatus = "ready"
+    quantization: str = ""
+    load_profile: str = "balanced"
+    max_batch_size: int = 1
+    enabled: bool = True
+    size_bytes: int = 0
+    last_check_at: str = ""
+
+
+class ModelListResponse(BaseModel):
+    items: list[ModelDescriptor] = Field(default_factory=list)
+
+
+class ModelReloadRequest(BaseModel):
+    model_id: str | None = None
+
+
+class ModelUpdateRequest(BaseModel):
+    path: str | None = None
+    status: ModelRuntimeStatus | None = None
+    load_profile: str | None = None
+    quantization: str | None = None
+    max_batch_size: int | None = Field(default=None, ge=1, le=64)
+    enabled: bool | None = None
+
+
+class UISettingsResponse(BaseModel):
+    language: Literal["zh", "en"] = "zh"
+    font_size: int = Field(default=14, ge=12, le=20)
+    auto_save: bool = True
+
+
+class UISettingsUpdateRequest(BaseModel):
+    language: Literal["zh", "en"] | None = None
+    font_size: int | None = Field(default=None, ge=12, le=20)
+    auto_save: bool | None = None
 
 
 class SelfCheckStartResponse(BaseModel):
@@ -217,6 +317,7 @@ class SelfCheckStepResponse(BaseModel):
     title: str
     status: str
     message: str
+    details: dict[str, str] = Field(default_factory=dict)
     auto_fixable: bool = False
     manual_action: str = ""
 
@@ -226,6 +327,7 @@ class SelfCheckIssueResponse(BaseModel):
     title: str
     status: str
     message: str
+    details: dict[str, str] = Field(default_factory=dict)
     auto_fixable: bool = False
     manual_action: str = ""
 
@@ -239,3 +341,14 @@ class SelfCheckReportResponse(BaseModel):
     auto_fix_available: bool = False
     updated_at: str
     last_error: str = ""
+
+
+class RuntimeMetricsResponse(BaseModel):
+    uptime_seconds: int = 0
+    cpu_percent: float = 0
+    memory_used_bytes: int = 0
+    memory_total_bytes: int = 0
+    gpu_percent: float = 0
+    gpu_memory_used_bytes: int = 0
+    gpu_memory_total_bytes: int = 0
+    sampled_at: str = ""

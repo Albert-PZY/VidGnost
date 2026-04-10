@@ -12,21 +12,27 @@ from urllib.parse import quote
 import aiofiles
 import orjson
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
-from fastapi.responses import HTMLResponse, PlainTextResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from starlette.responses import StreamingResponse
 
 from app.errors import AppError
 from app.models import TaskRecord, TaskStatus
 from app.schemas import (
     TaskArtifactsUpdateRequest,
+    TaskBatchCreateResponse,
     TaskCreateFromPathRequest,
     TaskCreateFromUrlRequest,
     TaskCreateResponse,
     TaskDetailResponse,
     TaskListResponse,
+    TaskRecentItem,
+    TaskRecentResponse,
+    TaskStatsResponse,
+    TaskStepItem,
     TaskSummaryItem,
     TaskTitleUpdateRequest,
     TranscriptSegment,
+    WorkflowType,
 )
 from app.services.events import EventBus
 from app.services.exporters import render_markmap_html
@@ -39,7 +45,6 @@ from app.services.task_store import TaskStore
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 StageKey = Literal["A", "B", "C", "D"]
 STAGE_KEYS: tuple[StageKey, StageKey, StageKey, StageKey] = ("A", "B", "C", "D")
-VM_PHASE_KEYS: tuple[str, ...] = ("A", "B", "C", "transcript_optimize", "D")
 D_SUBSTAGE_KEYS: tuple[str, ...] = ("transcript_optimize", "fusion_delivery")
 
 
@@ -83,6 +88,7 @@ async def create_task_from_url(
 ) -> TaskCreateResponse:
     task_id = _next_task_id(task_store)
     now = datetime.now(timezone.utc)
+    workflow: WorkflowType = payload.workflow
     record = TaskRecord(
         id=task_id,
         source_type="bilibili",
@@ -91,13 +97,13 @@ async def create_task_from_url(
         progress=0,
         model_size=payload.model_size,
         language=payload.language,
+        workflow=workflow,
         stage_logs_json=orjson.dumps(_empty_stage_logs()).decode("utf-8"),
         stage_metrics_json=orjson.dumps(_empty_stage_metrics()).decode("utf-8"),
         created_at=now,
         updated_at=now,
     )
     task_store.create(record)
-
     await runner.submit(
         TaskSubmission(
             task_id=task_id,
@@ -106,9 +112,15 @@ async def create_task_from_url(
             source_local_path=None,
             model_size=payload.model_size,
             language=payload.language,
+            workflow=workflow,
         )
     )
-    return TaskCreateResponse(task_id=task_id, status=TaskStatus.QUEUED.value)
+    return TaskCreateResponse(
+        task_id=task_id,
+        status=_to_public_status(TaskStatus.QUEUED.value),
+        workflow=workflow,
+        initial_steps=_build_initial_steps(workflow),
+    )
 
 
 @router.post("/path", response_model=TaskCreateResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -122,24 +134,26 @@ async def create_task_from_path(
         raise AppError.bad_request(f"Local path not found: {local_path}", code="LOCAL_PATH_NOT_FOUND")
     _validate_video_extension(local_path.suffix.lower())
 
+    workflow: WorkflowType = payload.workflow
     task_id = _next_task_id(task_store)
     now = datetime.now(timezone.utc)
     record = TaskRecord(
         id=task_id,
-        source_type="local_file",
+        source_type="local_path",
         source_input=str(local_path),
         source_local_path=str(local_path),
         status=TaskStatus.QUEUED.value,
         progress=0,
         model_size=payload.model_size,
         language=payload.language,
+        workflow=workflow,
+        file_size_bytes=max(0, int(local_path.stat().st_size)),
         stage_logs_json=orjson.dumps(_empty_stage_logs()).decode("utf-8"),
         stage_metrics_json=orjson.dumps(_empty_stage_metrics()).decode("utf-8"),
         created_at=now,
         updated_at=now,
     )
     task_store.create(record)
-
     await runner.submit(
         TaskSubmission(
             task_id=task_id,
@@ -148,9 +162,15 @@ async def create_task_from_path(
             source_local_path=str(local_path),
             model_size=payload.model_size,
             language=payload.language,
+            workflow=workflow,
         )
     )
-    return TaskCreateResponse(task_id=task_id, status=TaskStatus.QUEUED.value)
+    return TaskCreateResponse(
+        task_id=task_id,
+        status=_to_public_status(TaskStatus.QUEUED.value),
+        workflow=workflow,
+        initial_steps=_build_initial_steps(workflow),
+    )
 
 
 @router.post("/upload", response_model=TaskCreateResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -159,78 +179,105 @@ async def create_task_from_file(
     file: UploadFile = File(...),
     model_size: str = Form(default="small"),
     language: str = Form(default="zh"),
+    workflow: WorkflowType = Form(default="notes"),
     task_store: TaskStore = Depends(get_task_store),
     runner: TaskRunner = Depends(get_runner),
 ) -> TaskCreateResponse:
     _ = model_size
-    normalized_model_size = "small"
-    settings = request.app.state.settings
-    suffix = Path(file.filename or "").suffix.lower()
-    _validate_video_extension(suffix)
-
-    task_id = _next_task_id(task_store)
-    target_path = Path(settings.upload_dir) / f"{task_id}_{sanitize_filename(file.filename or 'upload')}"
-
-    max_bytes = settings.max_upload_mb * 1024 * 1024
-    size = 0
-    async with aiofiles.open(target_path, "wb") as out:
-        while True:
-            chunk = await file.read(1024 * 1024)
-            if not chunk:
-                break
-            size += len(chunk)
-            if size > max_bytes:
-                await out.close()
-                target_path.unlink(missing_ok=True)
-                raise AppError(
-                    status_code=413,
-                    message=f"File too large, max {settings.max_upload_mb}MB",
-                    code="UPLOAD_FILE_TOO_LARGE",
-                )
-            await out.write(chunk)
-    await file.close()
-
-    now = datetime.now(timezone.utc)
-    record = TaskRecord(
-        id=task_id,
-        source_type="local_file",
-        source_input=file.filename or "uploaded-video",
-        source_local_path=str(target_path),
-        status=TaskStatus.QUEUED.value,
-        progress=0,
-        model_size=normalized_model_size,
+    task = await _create_task_from_uploaded_file(
+        request=request,
+        file=file,
         language=language,
-        stage_logs_json=orjson.dumps(_empty_stage_logs()).decode("utf-8"),
-        stage_metrics_json=orjson.dumps(_empty_stage_metrics()).decode("utf-8"),
-        created_at=now,
-        updated_at=now,
+        workflow=workflow,
+        task_store=task_store,
+        runner=runner,
     )
-    task_store.create(record)
+    return task
 
-    await runner.submit(
-        TaskSubmission(
-            task_id=task_id,
-            source_type="local_file",
-            source_input=record.source_input,
-            source_local_path=str(target_path),
-            model_size=normalized_model_size,
-            language=language,
+
+@router.post("/upload/batch", response_model=TaskBatchCreateResponse, status_code=status.HTTP_202_ACCEPTED)
+async def create_tasks_from_files(
+    request: Request,
+    files: list[UploadFile] = File(...),
+    model_size: str = Form(default="small"),
+    language: str = Form(default="zh"),
+    workflow: WorkflowType = Form(default="notes"),
+    strategy: Literal["single_task_per_file", "batch_task"] = Form(default="single_task_per_file"),
+    task_store: TaskStore = Depends(get_task_store),
+    runner: TaskRunner = Depends(get_runner),
+) -> TaskBatchCreateResponse:
+    _ = model_size
+    if not files:
+        raise AppError.bad_request(
+            "No files uploaded",
+            code="UPLOAD_FILES_EMPTY",
+            hint="请至少上传一个视频文件。",
         )
+    if strategy != "single_task_per_file":
+        raise AppError.bad_request(
+            "Unsupported strategy",
+            code="UPLOAD_STRATEGY_UNSUPPORTED",
+            hint="当前版本支持 single_task_per_file。",
+        )
+
+    tasks: list[TaskCreateResponse] = []
+    for file in files:
+        created = await _create_task_from_uploaded_file(
+            request=request,
+            file=file,
+            language=language,
+            workflow=workflow,
+            task_store=task_store,
+            runner=runner,
+        )
+        tasks.append(created)
+    return TaskBatchCreateResponse(strategy=strategy, tasks=tasks)
+
+
+@router.get("/stats", response_model=TaskStatsResponse)
+def get_task_stats(task_store: TaskStore = Depends(get_task_store)) -> TaskStatsResponse:
+    stats = task_store.stats()
+    return TaskStatsResponse(total=stats.total, notes=stats.notes, vqa=stats.vqa, completed=stats.completed)
+
+
+@router.get("/recent", response_model=TaskRecentResponse)
+def get_recent_tasks(
+    limit: int = Query(default=6, ge=1, le=20),
+    task_store: TaskStore = Depends(get_task_store),
+) -> TaskRecentResponse:
+    rows = task_store.recent(limit=limit)
+    return TaskRecentResponse(
+        items=[
+            TaskRecentItem(
+                id=row.id,
+                title=(row.title or row.source_input or row.id),
+                workflow=_normalize_workflow(row.workflow),
+                updated_at=row.updated_at,
+            )
+            for row in rows
+        ]
     )
-    return TaskCreateResponse(task_id=task_id, status=TaskStatus.QUEUED.value)
 
 
 @router.get("", response_model=TaskListResponse)
 def list_tasks(
     q: str | None = Query(default=None, description="title/source search"),
+    workflow: WorkflowType | Literal["all"] = Query(default="all"),
+    status_filter: str | None = Query(default=None, alias="status"),
+    sort_by: Literal["date", "name", "size"] = Query(default="date"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     task_store: TaskStore = Depends(get_task_store),
 ) -> TaskListResponse:
-    listing = task_store.list(q=q, limit=limit, offset=offset)
-    rows = listing.items
-    total = listing.total
-    return TaskListResponse(items=[_to_summary_item(row) for row in rows], total=total)
+    listing = task_store.list(
+        q=q,
+        workflow=None if workflow == "all" else workflow,
+        status=status_filter,
+        sort_by=sort_by,
+        limit=limit,
+        offset=offset,
+    )
+    return TaskListResponse(items=[_to_summary_item(row) for row in listing.items], total=listing.total)
 
 
 @router.get("/{task_id}", response_model=TaskDetailResponse)
@@ -239,13 +286,25 @@ def get_task(task_id: str, task_store: TaskStore = Depends(get_task_store)) -> T
     return _to_detail(record)
 
 
+@router.get("/{task_id}/open-location")
+def open_task_location(task_id: str, task_store: TaskStore = Depends(get_task_store)) -> JSONResponse:
+    record = _require_task(task_store, task_id)
+    path_value = record.source_local_path or ""
+    if not path_value:
+        raise AppError.bad_request("Task has no local path", code="TASK_LOCAL_PATH_MISSING")
+    path = Path(path_value)
+    if path.is_file():
+        path = path.parent
+    return JSONResponse({"task_id": task_id, "path": str(path.resolve())})
+
+
 @router.patch("/{task_id}/title", response_model=TaskSummaryItem)
 def update_task_title(
     task_id: str,
     payload: TaskTitleUpdateRequest,
     task_store: TaskStore = Depends(get_task_store),
 ) -> TaskSummaryItem:
-    record = _require_task(task_store, task_id)
+    _require_task(task_store, task_id)
     next_title = payload.title.strip()
     if not next_title:
         raise AppError.bad_request("title cannot be empty", code="EMPTY_TASK_TITLE")
@@ -315,7 +374,13 @@ async def cancel_task(
     cancelled = await runner.cancel(task_id)
     if not cancelled:
         raise AppError.conflict("Task is already finished", code="TASK_ALREADY_FINISHED")
-    return TaskCreateResponse(task_id=task_id, status=TaskStatus.CANCELLED.value)
+    workflow = _normalize_workflow(record.workflow)
+    return TaskCreateResponse(
+        task_id=task_id,
+        status=_to_public_status(TaskStatus.CANCELLED.value),
+        workflow=workflow,
+        initial_steps=_build_initial_steps(workflow),
+    )
 
 
 @router.post("/{task_id}/rerun-stage-d", response_model=TaskCreateResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -335,7 +400,13 @@ async def rerun_task_stage_d(
         raise AppError.bad_request(str(exc), code="TASK_RERUN_INVALID") from exc
     if not started:
         raise AppError.conflict("Task is already running", code="TASK_ALREADY_RUNNING")
-    return TaskCreateResponse(task_id=task_id, status=TaskStatus.SUMMARIZING.value)
+    workflow = _normalize_workflow(record.workflow)
+    return TaskCreateResponse(
+        task_id=task_id,
+        status=TaskStatus.SUMMARIZING.value,
+        workflow=workflow,
+        initial_steps=_build_initial_steps(workflow),
+    )
 
 
 @router.get("/{task_id}/events")
@@ -343,20 +414,26 @@ async def stream_task_events(
     task_id: str,
     request: Request,
     event_bus: EventBus = Depends(get_event_bus),
+    task_store: TaskStore = Depends(get_task_store),
 ) -> StreamingResponse:
     subscription = await event_bus.subscribe(task_id)
+    workflow = "notes"
+    record = task_store.get(task_id)
+    if record is not None:
+        workflow = _normalize_workflow(record.workflow)
 
     async def event_generator():
         try:
             for item in subscription.history:
-                yield f"data: {orjson.dumps(item).decode('utf-8')}\n\n"
-
+                normalized = _normalize_stream_event(task_id=task_id, workflow=workflow, event=item)
+                yield f"data: {orjson.dumps(normalized).decode('utf-8')}\n\n"
             while True:
                 if await request.is_disconnected():
                     break
                 try:
                     event = await asyncio.wait_for(subscription.queue.get(), timeout=10)
-                    yield f"data: {orjson.dumps(event).decode('utf-8')}\n\n"
+                    normalized = _normalize_stream_event(task_id=task_id, workflow=workflow, event=event)
+                    yield f"data: {orjson.dumps(normalized).decode('utf-8')}\n\n"
                 except asyncio.TimeoutError:
                     yield ": keepalive\n\n"
         finally:
@@ -378,14 +455,14 @@ def export_task(
     request: Request,
     task_id: str,
     kind: str,
-    archive: Literal["zip", "tar"] = Query(default="zip", description="bundle archive format"),
+    archive: Literal["zip", "tar"] = Query(default="zip"),
     task_store: TaskStore = Depends(get_task_store),
 ):
     record = _require_task(task_store, task_id)
     if record.status != TaskStatus.COMPLETED.value:
         raise AppError.conflict("Task is not completed", code="TASK_NOT_COMPLETED")
-
     title = sanitize_filename(record.title or task_id)
+
     if kind == "transcript":
         return PlainTextResponse(
             record.transcript_text or "",
@@ -406,16 +483,14 @@ def export_task(
             headers={"Content-Disposition": _build_content_disposition(f"{title}-mindmap.html")},
         )
     if kind == "srt":
-        segments = _parse_transcript_segments(record.transcript_segments_json)
-        srt_text = _build_srt(segments)
+        srt_text = _build_srt(_parse_transcript_segments(record.transcript_segments_json))
         return PlainTextResponse(
             srt_text,
             media_type="text/plain; charset=utf-8",
             headers={"Content-Disposition": _build_content_disposition(f"{title}-subtitles.srt")},
         )
     if kind == "vtt":
-        segments = _parse_transcript_segments(record.transcript_segments_json)
-        vtt_text = _build_vtt(segments)
+        vtt_text = _build_vtt(_parse_transcript_segments(record.transcript_segments_json))
         return PlainTextResponse(
             vtt_text,
             media_type="text/vtt; charset=utf-8",
@@ -435,10 +510,96 @@ def export_task(
             media_type=media_type,
             headers={"Content-Disposition": _build_content_disposition(f"{title}-artifacts.{ext}")},
         )
-    raise AppError.bad_request(
-        "kind must be one of: transcript|notes|mindmap|srt|vtt|bundle",
-        code="INVALID_EXPORT_KIND",
+    raise AppError.bad_request("Unsupported export kind", code="INVALID_EXPORT_KIND")
+
+
+async def _create_task_from_uploaded_file(
+    *,
+    request: Request,
+    file: UploadFile,
+    language: str,
+    workflow: WorkflowType,
+    task_store: TaskStore,
+    runner: TaskRunner,
+) -> TaskCreateResponse:
+    normalized_model_size = "small"
+    settings = request.app.state.settings
+    file_name = file.filename or "uploaded-video"
+    suffix = Path(file_name).suffix.lower()
+    _validate_video_extension(suffix)
+
+    task_id = _next_task_id(task_store)
+    target_path = Path(settings.upload_dir) / f"{task_id}_{sanitize_filename(file_name)}"
+    size = await _persist_uploaded_video(
+        file=file,
+        target_path=target_path,
+        max_bytes=settings.max_upload_mb * 1024 * 1024,
+        max_upload_mb=settings.max_upload_mb,
     )
+
+    now = datetime.now(timezone.utc)
+    record = TaskRecord(
+        id=task_id,
+        source_type="local_file",
+        source_input=file_name,
+        source_local_path=str(target_path),
+        status=TaskStatus.QUEUED.value,
+        progress=0,
+        model_size=normalized_model_size,
+        language=language,
+        workflow=workflow,
+        file_size_bytes=max(0, int(size)),
+        stage_logs_json=orjson.dumps(_empty_stage_logs()).decode("utf-8"),
+        stage_metrics_json=orjson.dumps(_empty_stage_metrics()).decode("utf-8"),
+        created_at=now,
+        updated_at=now,
+    )
+    task_store.create(record)
+    await runner.submit(
+        TaskSubmission(
+            task_id=task_id,
+            source_type="local_file",
+            source_input=record.source_input,
+            source_local_path=str(target_path),
+            model_size=normalized_model_size,
+            language=language,
+            workflow=workflow,
+        )
+    )
+    return TaskCreateResponse(
+        task_id=task_id,
+        status=_to_public_status(TaskStatus.QUEUED.value),
+        workflow=workflow,
+        initial_steps=_build_initial_steps(workflow),
+    )
+
+
+async def _persist_uploaded_video(
+    *,
+    file: UploadFile,
+    target_path: Path,
+    max_bytes: int,
+    max_upload_mb: int,
+) -> int:
+    size = 0
+    async with aiofiles.open(target_path, "wb") as out:
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > max_bytes:
+                await out.close()
+                target_path.unlink(missing_ok=True)
+                raise AppError(
+                    status_code=413,
+                    message=f"File too large, max {max_upload_mb}MB",
+                    code="UPLOAD_FILE_TOO_LARGE",
+                    hint="请压缩视频或分片上传。",
+                )
+            await out.write(chunk)
+    await file.close()
+    return size
 
 
 def _build_artifact_bundle(
@@ -450,22 +611,31 @@ def _build_artifact_bundle(
 ) -> bytes:
     files = _build_artifact_files(record=record, title=title, storage_dir=storage_dir)
     if archive == "zip":
-        return _pack_zip(files)
-    return _pack_tar(files)
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zip_file:
+            for name, content in sorted(files.items()):
+                zip_file.writestr(name, content)
+        return buffer.getvalue()
+    buffer = io.BytesIO()
+    timestamp = int(datetime.now(timezone.utc).timestamp())
+    with tarfile.open(fileobj=buffer, mode="w") as tar_file:
+        for name, content in sorted(files.items()):
+            info = tarfile.TarInfo(name=name)
+            info.size = len(content)
+            info.mtime = timestamp
+            tar_file.addfile(info, io.BytesIO(content))
+    return buffer.getvalue()
 
 
 def _build_artifact_files(record: TaskRecord, title: str, *, storage_dir: str) -> dict[str, bytes]:
     mindmap_html = render_markmap_html(record.mindmap_markdown or "# Empty", title=record.title or record.id)
-    segments = _parse_transcript_segments(record.transcript_segments_json)
-    srt_text = _build_srt(segments)
-    vtt_text = _build_vtt(segments)
     files = {
         f"{title}-transcript.txt": (record.transcript_text or "").encode("utf-8"),
         f"{title}-notes.md": (record.notes_markdown or "").encode("utf-8"),
         f"{title}-mindmap.md": (record.mindmap_markdown or "").encode("utf-8"),
         f"{title}-mindmap.html": mindmap_html.encode("utf-8"),
-        f"{title}-subtitles.srt": srt_text.encode("utf-8"),
-        f"{title}-subtitles.vtt": vtt_text.encode("utf-8"),
+        f"{title}-subtitles.srt": _build_srt(_parse_transcript_segments(record.transcript_segments_json)).encode("utf-8"),
+        f"{title}-subtitles.vtt": _build_vtt(_parse_transcript_segments(record.transcript_segments_json)).encode("utf-8"),
     }
     files.update(_load_notes_image_assets(task_id=record.id, storage_dir=storage_dir))
     return files
@@ -502,59 +672,64 @@ def _build_content_disposition(filename: str) -> str:
     return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded_filename}"
 
 
-def _pack_zip(files: dict[str, bytes]) -> bytes:
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for name, content in sorted(files.items()):
-            archive.writestr(name, content)
-    return buffer.getvalue()
-
-
-def _pack_tar(files: dict[str, bytes]) -> bytes:
-    buffer = io.BytesIO()
-    timestamp = int(datetime.now(timezone.utc).timestamp())
-    with tarfile.open(fileobj=buffer, mode="w") as archive:
-        for name, content in sorted(files.items()):
-            info = tarfile.TarInfo(name=name)
-            info.size = len(content)
-            info.mtime = timestamp
-            archive.addfile(info, io.BytesIO(content))
-    return buffer.getvalue()
-
-
 def _to_summary_item(record: TaskRecord) -> TaskSummaryItem:
     return TaskSummaryItem(
         id=record.id,
         title=record.title,
+        workflow=_normalize_workflow(record.workflow),
         source_type=record.source_type,  # type: ignore[arg-type]
         source_input=record.source_input,
-        status=record.status,
-        progress=record.progress,
+        status=_to_public_status(record.status),
+        progress=max(0, min(100, int(record.progress))),
+        file_size_bytes=max(0, int(record.file_size_bytes or 0)),
+        duration_seconds=record.duration_seconds,
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
 
 
 def _to_detail(record: TaskRecord) -> TaskDetailResponse:
-    segments = _parse_transcript_segments(record.transcript_segments_json)
+    workflow = _normalize_workflow(record.workflow)
+    transcript_segments = _parse_transcript_segments(record.transcript_segments_json)
     stage_logs = _parse_stage_logs(record.stage_logs_json)
     stage_metrics = _parse_stage_metrics(record.stage_metrics_json)
     vm_phase_metrics = _build_vm_phase_metrics(stage_metrics)
-    artifact_index = parse_task_artifact_index(record.artifact_index_json)
+    steps = _build_steps_for_workflow(workflow=workflow, stage_metrics=stage_metrics, overall_progress=record.progress)
+    eta_seconds = _estimate_eta_seconds(
+        status=_to_public_status(record.status),
+        progress=max(0, min(100, int(record.progress))),
+        stage_metrics=stage_metrics,
+    )
+    current_step_id = ""
+    for step in steps:
+        if step.status == "processing":
+            current_step_id = step.id
+            break
+    if not current_step_id and steps:
+        for step in steps:
+            if step.status != "completed":
+                current_step_id = step.id
+                break
 
     return TaskDetailResponse(
         id=record.id,
         title=record.title,
+        workflow=workflow,
         source_type=record.source_type,  # type: ignore[arg-type]
         source_input=record.source_input,
+        source_local_path=record.source_local_path,
         language=record.language,
         model_size=record.model_size,
-        status=record.status,
-        progress=record.progress,
+        status=_to_public_status(record.status),
+        progress=max(0, min(100, int(record.progress))),
+        overall_progress=max(0, min(100, int(record.progress))),
+        eta_seconds=eta_seconds,
+        current_step_id=current_step_id,
+        steps=steps,
         error_message=record.error_message,
         duration_seconds=record.duration_seconds,
         transcript_text=record.transcript_text,
-        transcript_segments=segments,
+        transcript_segments=transcript_segments,
         summary_markdown=record.summary_markdown,
         mindmap_markdown=record.mindmap_markdown,
         notes_markdown=record.notes_markdown,
@@ -563,10 +738,171 @@ def _to_detail(record: TaskRecord) -> TaskDetailResponse:
         stage_metrics=stage_metrics,
         vm_phase_metrics=vm_phase_metrics,
         artifact_total_bytes=max(0, int(record.artifact_total_bytes or 0)),
-        artifact_index=artifact_index,
+        artifact_index=parse_task_artifact_index(record.artifact_index_json),
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
+
+
+def _build_initial_steps(workflow: WorkflowType) -> list[TaskStepItem]:
+    return [
+        TaskStepItem(id=item["id"], name=item["name"], status="pending", progress=0, duration="", logs=[])
+        for item in _workflow_step_blueprint(workflow)
+    ]
+
+
+def _build_steps_for_workflow(
+    *,
+    workflow: WorkflowType,
+    stage_metrics: dict[str, dict[str, object]],
+    overall_progress: int,
+) -> list[TaskStepItem]:
+    progress = max(0, min(100, int(overall_progress or 0)))
+    steps: list[TaskStepItem] = []
+    for item in _workflow_step_blueprint(workflow):
+        metric = _resolve_metric_for_step(item["id"], stage_metrics)
+        step_status = _metric_to_step_status(metric)
+        step_progress = 100 if step_status == "completed" else (progress if step_status == "processing" else 0)
+        elapsed_seconds = _to_optional_float(metric.get("elapsed_seconds")) if metric else None
+        steps.append(
+            TaskStepItem(
+                id=item["id"],
+                name=item["name"],
+                status=step_status,
+                progress=step_progress,
+                duration=_format_duration(elapsed_seconds),
+                logs=[],
+            )
+        )
+    return steps
+
+
+def _workflow_step_blueprint(workflow: WorkflowType) -> list[dict[str, str]]:
+    if workflow == "vqa":
+        return [
+            {"id": "extract", "name": "音频提取"},
+            {"id": "transcribe", "name": "语音转写"},
+            {"id": "correct", "name": "文本纠错"},
+            {"id": "embed", "name": "向量化入库"},
+            {"id": "frames", "name": "帧画面分析"},
+            {"id": "ready", "name": "问答就绪"},
+        ]
+    return [
+        {"id": "extract", "name": "音频提取"},
+        {"id": "transcribe", "name": "语音转写"},
+        {"id": "correct", "name": "文本纠错"},
+        {"id": "notes", "name": "笔记生成"},
+    ]
+
+
+def _resolve_metric_for_step(step_id: str, stage_metrics: dict[str, dict[str, object]]) -> dict[str, object]:
+    a_metric = stage_metrics.get("A", {})
+    c_metric = stage_metrics.get("C", {})
+    d_metric = stage_metrics.get("D", {})
+    sub = d_metric.get("substage_metrics", {}) if isinstance(d_metric, dict) else {}
+    sub_metrics = sub if isinstance(sub, dict) else {}
+    if step_id == "extract":
+        return a_metric if isinstance(a_metric, dict) else {}
+    if step_id == "transcribe":
+        return c_metric if isinstance(c_metric, dict) else {}
+    if step_id == "correct":
+        metric = sub_metrics.get("transcript_optimize", {})
+        return metric if isinstance(metric, dict) else {}
+    metric = sub_metrics.get("fusion_delivery", d_metric)
+    return metric if isinstance(metric, dict) else {}
+
+
+def _metric_to_step_status(metric: dict[str, object]) -> Literal["pending", "processing", "completed", "error"]:
+    if not metric:
+        return "pending"
+    raw = str(metric.get("status", "") or "").strip().lower()
+    if raw in {"failed", "error", "cancelled"}:
+        return "error"
+    if raw in {"completed", "done", "success"}:
+        return "completed"
+    if raw in {"running", "processing"}:
+        return "processing"
+    started_at = str(metric.get("started_at", "") or "").strip()
+    completed_at = str(metric.get("completed_at", "") or "").strip()
+    if completed_at:
+        return "completed"
+    if started_at:
+        return "processing"
+    return "pending"
+
+
+def _to_public_status(raw_status: str) -> str:
+    status_lower = str(raw_status or "").strip().lower()
+    if status_lower in {"completed", "failed", "cancelled", "queued"}:
+        return status_lower
+    if status_lower in {"preparing", "transcribing", "summarizing", "running"}:
+        return "running"
+    return "queued"
+
+
+def _normalize_workflow(raw: str) -> WorkflowType:
+    value = str(raw or "").strip().lower()
+    if value == "vqa":
+        return "vqa"
+    return "notes"
+
+
+def _estimate_eta_seconds(
+    *,
+    status: str,
+    progress: int,
+    stage_metrics: dict[str, dict[str, object]],
+) -> int | None:
+    if status != "running":
+        return None
+    if progress <= 0 or progress >= 100:
+        return None
+    elapsed = 0.0
+    for stage_key in STAGE_KEYS:
+        metric = stage_metrics.get(stage_key, {})
+        if not isinstance(metric, dict):
+            continue
+        elapsed_value = _to_optional_float(metric.get("elapsed_seconds"))
+        if elapsed_value and elapsed_value > 0:
+            elapsed += elapsed_value
+    if elapsed <= 0:
+        return None
+    estimated_total = elapsed * (100.0 / progress)
+    remaining = max(0.0, estimated_total - elapsed)
+    return int(round(remaining))
+
+
+def _normalize_stream_event(*, task_id: str, workflow: WorkflowType, event: dict[str, object]) -> dict[str, object]:
+    normalized = dict(event)
+    raw_type = str(event.get("type", "")).strip()
+    mapped = raw_type
+    if raw_type in {"progress", "stage_start", "stage_complete", "substage_start", "substage_complete", "log"}:
+        mapped = "step_updated"
+    elif raw_type == "transcript_delta":
+        mapped = "transcript_chunk"
+    elif raw_type in {"summary_delta", "mindmap_delta", "transcript_optimized_preview", "fusion_prompt_preview"}:
+        mapped = "artifact_ready"
+    elif raw_type == "task_complete":
+        mapped = "task_completed"
+    elif raw_type == "task_cancelled":
+        mapped = "task_failed"
+
+    normalized["type"] = mapped
+    normalized["task_id"] = task_id
+    normalized["workflow"] = workflow
+    normalized["timestamp"] = str(event.get("timestamp") or datetime.now(timezone.utc).isoformat())
+    if raw_type and raw_type != mapped:
+        normalized["original_type"] = raw_type
+    return normalized
+
+
+def _format_duration(elapsed_seconds: float | None) -> str:
+    if elapsed_seconds is None or elapsed_seconds <= 0:
+        return ""
+    total = int(round(elapsed_seconds))
+    minutes = total // 60
+    seconds = total % 60
+    return f"{minutes}:{seconds:02d}"
 
 
 def _empty_stage_logs() -> dict[str, list[str]]:
@@ -597,80 +933,6 @@ def _empty_stage_metrics() -> dict[str, dict[str, object]]:
         for substage in D_SUBSTAGE_KEYS
     }
     return metrics
-
-
-def _parse_transcript_segments(raw: str | None) -> list[TranscriptSegment]:
-    if not raw:
-        return []
-    try:
-        payload = orjson.loads(raw)
-        if not isinstance(payload, list):
-            return []
-        return [TranscriptSegment.model_validate(item) for item in payload]
-    except (orjson.JSONDecodeError, ValueError, TypeError):
-        return []
-
-
-def _normalize_subtitle_segments(
-    segments: list[TranscriptSegment],
-    *,
-    min_duration_seconds: float = 0.3,
-) -> list[TranscriptSegment]:
-    normalized: list[TranscriptSegment] = []
-    previous_end = 0.0
-    for segment in segments:
-        text = segment.text.strip()
-        if not text:
-            continue
-        start = max(0.0, float(segment.start))
-        end = max(0.0, float(segment.end))
-        if start < previous_end:
-            start = previous_end
-        if end <= start:
-            end = start + min_duration_seconds
-        previous_end = end
-        normalized.append(
-            TranscriptSegment(
-                start=round(start, 3),
-                end=round(end, 3),
-                text=text,
-            )
-        )
-    return normalized
-
-
-def _format_subtitle_timestamp(seconds: float, millisecond_separator: str) -> str:
-    total_milliseconds = max(0, int(round(seconds * 1000)))
-    hours = total_milliseconds // 3_600_000
-    minutes = (total_milliseconds % 3_600_000) // 60_000
-    secs = (total_milliseconds % 60_000) // 1_000
-    milliseconds = total_milliseconds % 1_000
-    return f"{hours:02}:{minutes:02}:{secs:02}{millisecond_separator}{milliseconds:03}"
-
-
-def _build_srt(segments: list[TranscriptSegment]) -> str:
-    lines: list[str] = []
-    normalized = _normalize_subtitle_segments(segments)
-    for index, segment in enumerate(normalized, start=1):
-        start = _format_subtitle_timestamp(segment.start, ",")
-        end = _format_subtitle_timestamp(segment.end, ",")
-        lines.append(str(index))
-        lines.append(f"{start} --> {end}")
-        lines.append(segment.text)
-        lines.append("")
-    return "\n".join(lines).rstrip()
-
-
-def _build_vtt(segments: list[TranscriptSegment]) -> str:
-    normalized = _normalize_subtitle_segments(segments)
-    lines = ["WEBVTT", ""]
-    for segment in normalized:
-        start = _format_subtitle_timestamp(segment.start, ".")
-        end = _format_subtitle_timestamp(segment.end, ".")
-        lines.append(f"{start} --> {end}")
-        lines.append(segment.text)
-        lines.append("")
-    return "\n".join(lines).rstrip() + "\n"
 
 
 def _parse_stage_logs(raw: str | None) -> dict[str, list[str]]:
@@ -757,31 +1019,14 @@ def _build_vm_phase_metrics(stage_metrics: dict[str, dict[str, object]]) -> dict
             "started_at": metric.get("started_at"),
             "completed_at": metric.get("completed_at"),
             "elapsed_seconds": metric.get("elapsed_seconds"),
-            "optional": bool(metric.get("optional", substage in {"transcript_optimize"})),
+            "optional": bool(metric.get("optional", True)),
             "reason": metric.get("reason"),
         }
 
     final_metric = substage_metrics.get("fusion_delivery", {})
     final_dict = final_metric if isinstance(final_metric, dict) else {}
-    final_status = str(final_dict.get("status", "")).strip().lower()
-    if final_status == "cancelled":
-        final_status = "failed"
-    if not final_status:
-        final_started_at = str(final_dict.get("started_at", "") or "").strip()
-        final_completed_at = str(final_dict.get("completed_at", "") or "").strip()
-        if final_completed_at:
-            final_status = "completed"
-        elif final_started_at:
-            final_status = "running"
-        else:
-            # Before fusion starts, keep H pending instead of inheriting full stage-D running state.
-            d_status = to_status(d_metric)
-            if d_status in {"completed", "failed", "skipped"}:
-                final_status = d_status
-            else:
-                final_status = "pending"
     result["D"] = {
-        "status": final_status or "pending",
+        "status": str(final_dict.get("status", to_status(d_metric))).strip().lower() or "pending",
         "started_at": final_dict.get("started_at", d_metric.get("started_at")),
         "completed_at": final_dict.get("completed_at", d_metric.get("completed_at")),
         "elapsed_seconds": final_dict.get("elapsed_seconds", d_metric.get("elapsed_seconds")),
@@ -789,3 +1034,80 @@ def _build_vm_phase_metrics(stage_metrics: dict[str, dict[str, object]]) -> dict
         "reason": final_dict.get("reason"),
     }
     return result
+
+
+def _to_optional_float(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_transcript_segments(raw: str | None) -> list[TranscriptSegment]:
+    if not raw:
+        return []
+    try:
+        payload = orjson.loads(raw)
+        if not isinstance(payload, list):
+            return []
+        return [TranscriptSegment.model_validate(item) for item in payload]
+    except (orjson.JSONDecodeError, ValueError, TypeError):
+        return []
+
+
+def _normalize_subtitle_segments(
+    segments: list[TranscriptSegment],
+    *,
+    min_duration_seconds: float = 0.3,
+) -> list[TranscriptSegment]:
+    normalized: list[TranscriptSegment] = []
+    previous_end = 0.0
+    for segment in segments:
+        text = segment.text.strip()
+        if not text:
+            continue
+        start = max(0.0, float(segment.start))
+        end = max(0.0, float(segment.end))
+        if start < previous_end:
+            start = previous_end
+        if end <= start:
+            end = start + min_duration_seconds
+        previous_end = end
+        normalized.append(TranscriptSegment(start=round(start, 3), end=round(end, 3), text=text))
+    return normalized
+
+
+def _format_subtitle_timestamp(seconds: float, separator: str) -> str:
+    total_milliseconds = max(0, int(round(seconds * 1000)))
+    hours = total_milliseconds // 3_600_000
+    minutes = (total_milliseconds % 3_600_000) // 60_000
+    secs = (total_milliseconds % 60_000) // 1_000
+    milliseconds = total_milliseconds % 1_000
+    return f"{hours:02}:{minutes:02}:{secs:02}{separator}{milliseconds:03}"
+
+
+def _build_srt(segments: list[TranscriptSegment]) -> str:
+    lines: list[str] = []
+    normalized = _normalize_subtitle_segments(segments)
+    for index, segment in enumerate(normalized, start=1):
+        start = _format_subtitle_timestamp(segment.start, ",")
+        end = _format_subtitle_timestamp(segment.end, ",")
+        lines.append(str(index))
+        lines.append(f"{start} --> {end}")
+        lines.append(segment.text)
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
+def _build_vtt(segments: list[TranscriptSegment]) -> str:
+    normalized = _normalize_subtitle_segments(segments)
+    lines = ["WEBVTT", ""]
+    for segment in normalized:
+        start = _format_subtitle_timestamp(segment.start, ".")
+        end = _format_subtitle_timestamp(segment.end, ".")
+        lines.append(f"{start} --> {end}")
+        lines.append(segment.text)
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"

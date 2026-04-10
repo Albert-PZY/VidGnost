@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -15,6 +15,8 @@ class EvidenceDocument:
     source: str
     text: str
     image_path: str = ""
+    language: str = "unknown"
+    source_set: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -27,6 +29,7 @@ class RetrievalHit:
     start: float
     end: float
     source: str
+    source_set: list[str]
     image_path: str
     dense_score: float = 0.0
     sparse_score: float = 0.0
@@ -44,6 +47,7 @@ class RetrievalHit:
             "start": self.start,
             "end": self.end,
             "source": self.source,
+            "source_set": list(self.source_set),
             "image_path": self.image_path,
             "dense_score": self.dense_score,
             "sparse_score": self.sparse_score,
@@ -77,6 +81,7 @@ class Citation:
     task_id: str
     task_title: str
     source: str
+    source_set: list[str]
     start: float
     end: float
     text: str
@@ -88,6 +93,7 @@ class Citation:
             "task_id": self.task_id,
             "task_title": self.task_title,
             "source": self.source,
+            "source_set": list(self.source_set),
             "start": self.start,
             "end": self.end,
             "text": self.text,

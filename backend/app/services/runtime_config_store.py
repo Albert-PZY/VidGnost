@@ -7,7 +7,7 @@ from typing import TypedDict
 
 from app.config import Settings
 
-SUPPORTED_MODEL_SIZES = {"small"}
+SUPPORTED_MODEL_SIZES = {"small", "medium"}
 SUPPORTED_LOAD_PROFILES = {"balanced", "memory_first"}
 SUPPORTED_COMPUTE_TYPES = {"int8", "float32"}
 

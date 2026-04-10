@@ -2,7 +2,7 @@
 
 ## 1. 适用范围
 
-本文件定义当前前端页面与 `backend-new` 的字段映射规则，作为实现与联调的统一基线。
+本文件定义当前前端页面与 `backend` 的字段映射规则，作为实现与联调的统一基线。
 
 ## 2. 任务领域模型
 
@@ -89,14 +89,14 @@
 
 ## 5. 存储字段映射
 
-- 任务记录：`backend-new/storage/tasks/records/*.json`
-- 任务产物：`backend-new/storage/tasks/stage-artifacts/<task_id>/<stage>/**`
-- 任务分析结果：`backend-new/storage/tasks/analysis-results/<task_id>/<stage>.json`
-- 事件日志：`backend-new/storage/event-logs/<task_id>.jsonl`
-- VQA trace：`backend-new/storage/event-logs/traces/*.jsonl`
+- 任务记录：`backend/storage/tasks/records/*.json`
+- 任务产物：`backend/storage/tasks/stage-artifacts/<task_id>/<stage>/**`
+- 任务分析结果：`backend/storage/tasks/analysis-results/<task_id>/<stage>.json`
+- 事件日志：`backend/storage/event-logs/<task_id>.jsonl`
+- VQA trace：`backend/storage/event-logs/traces/*.jsonl`
 - 配置中心：
-  - `backend-new/storage/model_config.json`
-  - `backend-new/storage/config.toml`
-  - `backend-new/storage/models/catalog.json`
-  - `backend-new/storage/config/ui_settings.json`
-  - `backend-new/storage/prompts/**`
+  - `backend/storage/model_config.json`
+  - `backend/storage/config.toml`
+  - `backend/storage/models/catalog.json`
+  - `backend/storage/config/ui_settings.json`
+  - `backend/storage/prompts/**`

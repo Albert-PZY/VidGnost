@@ -14,10 +14,19 @@ from app.errors import AppError
 logger = logging.getLogger(__name__)
 
 
-def _error_payload(*, code: str, message: str, detail: Any = None) -> dict[str, Any]:
+def _error_payload(
+    *,
+    code: str,
+    message: str,
+    hint: str | None = None,
+    retryable: bool = False,
+    detail: Any = None,
+) -> dict[str, Any]:
     return {
         "code": code,
         "message": message,
+        "hint": hint or "",
+        "retryable": bool(retryable),
         "detail": detail,
     }
 
@@ -27,7 +36,13 @@ def install_error_handlers(app: FastAPI) -> None:
     async def _handle_app_error(_: Request, exc: AppError) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
-            content=_error_payload(code=exc.code, message=exc.message, detail=exc.detail),
+            content=_error_payload(
+                code=exc.code,
+                message=exc.message,
+                hint=exc.hint,
+                retryable=exc.retryable,
+                detail=exc.detail,
+            ),
         )
 
     @app.exception_handler(StarletteHTTPException)
@@ -43,7 +58,7 @@ def install_error_handlers(app: FastAPI) -> None:
             payload_detail = None
         return JSONResponse(
             status_code=exc.status_code,
-            content=_error_payload(code=code, message=message, detail=payload_detail),
+            content=_error_payload(code=code, message=message, retryable=False, detail=payload_detail),
         )
 
     @app.exception_handler(RequestValidationError)
@@ -53,6 +68,8 @@ def install_error_handlers(app: FastAPI) -> None:
             content=_error_payload(
                 code="VALIDATION_ERROR",
                 message="Request validation failed",
+                hint="请检查请求字段与类型是否正确。",
+                retryable=False,
                 detail=exc.errors(),
             ),
         )
@@ -72,6 +89,8 @@ def install_error_handlers(app: FastAPI) -> None:
             content=_error_payload(
                 code="INTERNAL_SERVER_ERROR",
                 message="Internal server error",
+                hint="请稍后重试，如持续失败请检查服务日志并反馈 trace_id。",
+                retryable=True,
                 detail={"trace_id": trace_id},
             ),
         )

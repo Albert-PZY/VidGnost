@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BACKEND_DIR="${ROOT_DIR}/backend-new"
+BACKEND_DIR="${ROOT_DIR}/backend"
 FRONTEND_DIR="${ROOT_DIR}/frontend"
 BACKEND_PORT=8000
 FRONTEND_PORT=5173
@@ -15,26 +15,26 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --mode|-m)
       if [[ $# -lt 2 ]]; then
-        echo "[error] Missing value for $1. Use web or electron."
+        echo "[error] Missing value for $1. Use web."
         exit 1
       fi
       MODE="$2"
       shift 2
       ;;
-    web|electron)
+    web)
       MODE="$1"
       shift
       ;;
     *)
       echo "[error] Unsupported argument: $1"
-      echo "Usage: $0 [--mode web|electron]"
+      echo "Usage: $0 [--mode web]"
       exit 1
       ;;
   esac
 done
 
-if [[ "${MODE}" != "web" && "${MODE}" != "electron" ]]; then
-  echo "[error] Invalid mode: ${MODE}. Use web or electron."
+if [[ "${MODE}" != "web" ]]; then
+  echo "[error] Invalid mode: ${MODE}. Use web."
   exit 1
 fi
 

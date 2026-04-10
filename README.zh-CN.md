@@ -107,7 +107,7 @@ VidGnost 是一个本地优先的视频分析工作台，支持 Web 与 Electron
 
 ```text
 VidGnost/
-├─ backend-new/                          # FastAPI 后端（Python 3.12 + uv）
+├─ backend/                          # FastAPI 后端（Python 3.12 + uv）
 │  ├─ app/
 │  │  ├─ api/                            # health/tasks/config/self-check/vqa 路由
 │  │  ├─ services/                       # pipeline/summarizer/retriever/trace/exporters
@@ -175,7 +175,7 @@ powershell -ExecutionPolicy Bypass -File .\start-all.ps1
 后端：
 
 ```bash
-cd backend-new
+cd backend
 uv sync --python 3.12
 uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
@@ -206,26 +206,26 @@ pnpm desktop:build
 ## 8. 存储目录
 
 - 运行配置
-  - `backend-new/storage/model_config.json`
-  - `backend-new/storage/config.toml`
-  - `backend-new/storage/prompts/templates/*.json`
-  - `backend-new/storage/prompts/selection.json`
+  - `backend/storage/model_config.json`
+  - `backend/storage/config.toml`
+  - `backend/storage/prompts/templates/*.json`
+  - `backend/storage/prompts/selection.json`
 - 任务状态与产物
-  - `backend-new/storage/tasks/records/*.json`
-  - `backend-new/storage/tasks/analysis-results/<task_id>/<stage>.json`
-  - `backend-new/storage/tasks/stage-artifacts/<task_id>/<stage>/**`
-  - `backend-new/storage/tasks/stage-artifacts/<task_id>/D/fusion/notes-images/**/*.png`
+  - `backend/storage/tasks/records/*.json`
+  - `backend/storage/tasks/analysis-results/<task_id>/<stage>.json`
+  - `backend/storage/tasks/stage-artifacts/<task_id>/<stage>/**`
+  - `backend/storage/tasks/stage-artifacts/<task_id>/D/fusion/notes-images/**/*.png`
 - 可观测日志
-  - `backend-new/storage/tasks/runtime-warnings/<task_id>.jsonl`
-  - `backend-new/storage/event-logs/<task_id>.jsonl`
-  - `backend-new/storage/event-logs/traces/*.jsonl`
+  - `backend/storage/tasks/runtime-warnings/<task_id>.jsonl`
+  - `backend/storage/event-logs/<task_id>.jsonl`
+  - `backend/storage/event-logs/traces/*.jsonl`
 
 ## 9. 开发检查命令
 
 后端：
 
 ```bash
-cd backend-new
+cd backend
 uv run pytest
 uv run python -m compileall app
 ```

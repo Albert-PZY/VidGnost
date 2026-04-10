@@ -7,9 +7,9 @@
 
 ## 执行状态（2026-04-10）
 
-- 后端重构链路已完整落地到 `backend-new`，旧 `backend` 不再作为运行入口。
+- 后端重构链路已完整落地到 `backend`，旧 `backend` 不再作为运行入口。
 - 字段映射与契约基线见 `docs/frontend-backend-field-mapping.zh-CN.md`。
-- API 与运维执行基线见 `docs/backend-new-api-and-ops-baseline.zh-CN.md`。
+- API 与运维执行基线见 `docs/backend-api-and-ops-baseline.zh-CN.md`。
 
 ## 2. 范围边界
 
@@ -288,7 +288,7 @@
 
 ## 9.2 索引与持久化规范
 
-- [x] Dense 检索落地 ChromaDB `PersistentClient`，持久化目录：`backend-new/storage/vector-index/chroma-db`
+- [x] Dense 检索落地 ChromaDB `PersistentClient`，持久化目录：`backend/storage/vector-index/chroma-db`
 - [x] Collection 命名固定：`video_clips`
 - [x] 向量条目最小 metadata：
   - `doc_id`
@@ -367,7 +367,7 @@
   - `final_context_preview`
   - `llm_output_preview`
   - `latency_by_stage`
-- [x] trace 存储路径：`backend-new/storage/event-logs/traces`
+- [x] trace 存储路径：`backend/storage/event-logs/traces`
 - [x] 保留 OpenTelemetry 对接点（可选开关），默认本地 JSONL 可回放
 
 验收标准：

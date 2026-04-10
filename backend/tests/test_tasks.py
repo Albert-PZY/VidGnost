@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 import orjson
 import zipfile
 
+from app.api.routes_tasks import _normalize_stream_event
 from app.main import app
 from app.models import TaskStatus
 
@@ -569,4 +570,83 @@ def test_update_task_artifacts_rejects_running_task() -> None:
             },
         )
         assert patch_response.status_code == 409
+
+
+def test_upload_batch_creates_multiple_tasks() -> None:
+    with TestClient(app) as client:
+        submitted: list[str] = []
+
+        async def fake_submit(submission) -> None:  # type: ignore[no-untyped-def]
+            submitted.append(submission.task_id)
+
+        client.app.state.task_runner.submit = fake_submit
+        files = [
+            ("files", ("video-a.mp4", b"dummy-a", "video/mp4")),
+            ("files", ("video-b.mp4", b"dummy-b", "video/mp4")),
+        ]
+        response = client.post(
+            "/api/tasks/upload/batch",
+            data={"workflow": "notes", "strategy": "single_task_per_file"},
+            files=files,
+        )
+        assert response.status_code == 202
+        payload = response.json()
+        assert payload["strategy"] == "single_task_per_file"
+        assert len(payload["tasks"]) == 2
+        assert len(submitted) == 2
+
+
+def test_task_events_stream_maps_frontend_event_contract() -> None:
+    event = _normalize_stream_event(
+        task_id="task-demo",
+        workflow="vqa",
+        event={
+            "type": "progress",
+            "stage": "C",
+            "overall_progress": 45,
+        },
+    )
+    assert event["type"] == "step_updated"
+    assert event["task_id"] == "task-demo"
+    assert event["workflow"] == "vqa"
+    assert event["timestamp"]
+
+
+def test_running_task_has_eta_seconds() -> None:
+    with TestClient(app) as client:
+        async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
+            return
+
+        client.app.state.task_runner.submit = fake_submit
+        create_response = client.post(
+            "/api/tasks/url",
+            json={
+                "url": "BV1xx411c7mD",
+                "model_size": "small",
+                "language": "zh",
+            },
+        )
+        assert create_response.status_code == 202
+        task_id = create_response.json()["task_id"]
+
+        stage_metrics = {
+            "A": {"status": "completed", "elapsed_seconds": 10},
+            "B": {"status": "completed", "elapsed_seconds": 5},
+            "C": {"status": "running", "elapsed_seconds": 15},
+            "D": {"status": "pending"},
+        }
+        task_store = client.app.state.task_store
+        task_store.update(
+            task_id,
+            status=TaskStatus.TRANSCRIBING.value,
+            progress=50,
+            stage_metrics_json=orjson.dumps(stage_metrics).decode("utf-8"),
+        )
+
+        detail_response = client.get(f"/api/tasks/{task_id}")
+        assert detail_response.status_code == 200
+        payload = detail_response.json()
+        assert payload["status"] == "running"
+        assert payload["eta_seconds"] is not None
+        assert int(payload["eta_seconds"]) > 0
 
