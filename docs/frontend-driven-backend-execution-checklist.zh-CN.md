@@ -2,7 +2,7 @@
 
 ## 1. 文档目标
 
-本清单用于指导下一阶段后端重构工作，目标是让当前前端页面（基于 V0 重建后的 UI）从静态数据进入真实可用状态。  
+本清单用于指导下一阶段后端重构工作，目标是让当前前端页面（基于 V0 重建后的 UI）从静态数据进入真实可用状态。
 规划依据仅包含当前仓库中的前端与后端实现，不依赖既有 spec 文档。
 
 ## 2. 范围边界
@@ -10,14 +10,13 @@
 ### 2.1 本次范围
 
 - 以 `frontend/app/page.tsx` 与 `frontend/components/views/*.tsx` 展示能力为唯一功能输入
-- 重构后端逻辑链路与接口契约，使页面上的功能都有真实数据来源
+- 重构后端架构逻辑链路与接口契约，使页面上的功能都有真实数据来源
 - 建立可验证的任务状态流、结果产物流、配置流与诊断流
 - 补齐接口级、服务级、端到端联调验证
 
 ### 2.2 非本次范围
 
 - 前端视觉风格与交互方案改版
-- 模型算法能力升级（如更换模型架构、精度优化策略）
 - 多端同步与云端协同能力
 
 ## 3. 当前页面能力拆解（后端输入基线）
@@ -252,6 +251,195 @@
 - [ ] 今日完成（可验证结果）
 - [ ] 今日风险（阻塞项）
 - [ ] 明日计划（下一步）
+
+## 9. RAG 实现细节（补充落地）
+
+本章节用于细化阶段 3（VQA 问答链路）的实现标准，参数基线参考 `F:\in-house project\Local-VQA\docs\optimize.md`，并按 VidGnost 前端页面交互要求进行收敛。
+
+## 9.1 证据构建与切片规范
+
+- [ ] 检索证据单元统一为时间片段（window），默认 `window_seconds=2.0`、`stride_seconds=1.0`
+- [ ] 每个 window 聚合多模态证据字段：
+  - `asr_text`
+  - `ocr_text`
+  - `visual_caption`
+  - `start_seconds`
+  - `end_seconds`
+  - `source_set`（audio/visual/ocr）
+- [ ] 视觉证据采用“场景切分 + 关键帧采样”策略，默认参数：
+  - `preview_fps=1`
+  - `scene_diff_threshold=0.42`
+  - `max_scene_seconds=30`
+  - `candidate_fps=2`
+  - `min_gap_seconds=1.5`
+  - `quota=clamp(round(scene_len/8),1,4)`
+- [ ] 每个场景强制保留中点关键帧，保证长场景语义覆盖
+
+验收标准：
+
+- [ ] 任意返回证据都可回溯到 `start/end` 时间段
+- [ ] 检索命中可展示 audio/visual/ocr 来源标签
+
+## 9.2 索引与持久化规范
+
+- [ ] Dense 检索落地 ChromaDB `PersistentClient`，持久化目录：`backend/storage/vector-index/chroma-db`
+- [ ] Collection 命名固定：`video_clips`
+- [ ] 向量条目最小 metadata：
+  - `doc_id`
+  - `task_id`
+  - `start`
+  - `end`
+  - `source`
+  - `has_image`
+  - `language`
+- [ ] `doc_id` 在 Dense/Sparse/RRF/Rerank 四阶段保持一致，支持全链路追踪
+- [ ] 索引构建、持久化、批量写入在后台任务线程执行，避免阻塞主线程
+
+验收标准：
+
+- [ ] 后端重启后可直接复用历史索引
+- [ ] 任一命中项都可通过 `doc_id` 查询完整元数据
+
+## 9.3 Hybrid 检索与重排规范
+
+- [ ] 检索链路采用 `Dense + Sparse + RRF + Rerank` 四段式
+- [ ] Dense：ChromaDB 语义召回
+- [ ] Sparse：SQLite FTS5 关键词召回（与 Dense 并行）
+- [ ] RRF 融合参数：`rrf_k=60`
+- [ ] 召回与重排默认参数：
+  - `dense_top_k=80`
+  - `sparse_top_k=120`
+  - `fused_top_k=40`
+  - `rerank_top_n=8`
+- [ ] 输出结果包含 `dense_score/sparse_score/rrf_score/rerank_score/final_score`
+
+验收标准：
+
+- [ ] VQA 调试页可显示四阶段命中对比
+- [ ] 不同参数下可重复复现同一 trace 结果
+
+## 9.4 上下文构建与回答约束
+
+- [ ] RAG 上下文构建顺序：相关性优先 + 时间顺序校准
+- [ ] 上下文预算：`max_context_tokens=6000`
+- [ ] 默认回答证据规模：`retrieval_top_k=24`、`rerank_top_n=8`
+- [ ] 回答必须带证据锚点：
+  - 时间点或时间段
+  - 证据来源（audio/visual/ocr）
+  - 片段摘要
+- [ ] 图文混排输出限制：`max_images_per_answer=3`
+
+验收标准：
+
+- [ ] 前端问答消息可展示时间锚点并跳转播放器
+- [ ] 回答区可渲染文本 + 证据图卡 + 引用片段
+
+## 9.5 流式传输与降级策略
+
+- [ ] 首选流式协议：
+  - `POST /api/chat/stream`（SSE）
+  - 备选 `fetch + ReadableStream`
+- [ ] 事件规范：`citations -> chunk* -> done | error`
+- [ ] 流式异常时自动切换到非流式补全，并在事件中标记 `status=fallback`
+- [ ] 前端必须展示“流式中/降级中/完成”可视状态
+
+验收标准：
+
+- [ ] 在网络抖动场景下，问答可稳定完成且用户可见状态一致
+- [ ] 降级后仍保留证据锚点与可跳转时间链接
+
+## 9.6 可观测与白盒追踪
+
+- [ ] 每轮问答生成唯一 `trace_id`
+- [ ] trace 记录最小字段：
+  - `query_text`
+  - `config_snapshot`
+  - `dense_hits`
+  - `sparse_hits`
+  - `rrf_hits`
+  - `rerank_hits`
+  - `final_context_preview`
+  - `llm_output_preview`
+  - `latency_by_stage`
+- [ ] trace 存储路径：`backend/storage/event-logs/traces`
+- [ ] 保留 OpenTelemetry 对接点（可选开关），默认本地 JSONL 可回放
+
+验收标准：
+
+- [ ] 通过 `trace_id` 能完整回放一次问答决策链路
+- [ ] 关键阶段耗时可用于性能分析
+
+## 10. 模型选型与配置基线（补充）
+
+## 10.1 选型原则
+
+- [ ] 优先满足“16GB 内存 + 4GB 显存级别设备”的稳定运行
+- [ ] 模型能力按角色拆分：`whisper/llm/embedding/vlm/rerank`
+- [ ] 同一角色提供默认模型与扩展模型，便于设置中心动态切换
+
+## 10.2 模型矩阵（建议默认）
+
+| 角色 | 默认模型 | 可选模型 | 资源建议 | 选型理由 |
+|---|---|---|---|---|
+| ASR | `faster-whisper small` | `faster-whisper medium` | CPU 优先，显存占用低 | 语速与准确率平衡，适配本地转写 |
+| Embedding | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | `BAAI/bge-m3` | 384 维优先，索引体积小 | 多语覆盖广，适合中英混合语料 |
+| Rerank | `BAAI/bge-reranker-v2-m3` | `jinaai/jina-reranker-v2-base-multilingual` | CPU/GPU 均可，按批处理 | 提升 Top-K 精度，降低误召回 |
+| VLM | `vikhyatk/moondream2`（4bit） | `Qwen2-VL-7B-Instruct`（量化） | 默认 4bit，小显存优先 | 4GB 显存可运行，画面语义补充稳定 |
+| LLM（在线） | `gpt-4.1-mini`（OpenAI-compatible） | `qwen3.5-flash` 等兼容模型 | 走 API，降低本地压力 | 回答质量与延迟平衡，便于流式输出 |
+
+## 10.3 设置中心最小配置项
+
+- [ ] `model_id`
+- [ ] `provider`
+- [ ] `load_profile`
+- [ ] `device`
+- [ ] `quantization`
+- [ ] `max_batch_size`
+- [ ] `status`（ready/loading/error）
+- [ ] `last_check_at`
+
+验收标准：
+
+- [ ] 设置页可展示五类模型的状态与基础资源信息
+- [ ] 模型切换后新任务自动按新配置执行
+
+## 10.4 推荐配置片段（文档基线）
+
+```toml
+[semantic]
+model_id = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+query_prefix = ""
+document_prefix = ""
+
+[retrieval]
+mode = "hybrid"
+dense_top_k = 80
+sparse_top_k = 120
+rrf_k = 60
+fused_top_k = 40
+rerank_top_n = 8
+
+[rag]
+retrieval_top_k = 24
+rerank_top_n = 8
+max_context_tokens = 6000
+include_modalities = ["audio", "visual", "ocr"]
+max_images_per_answer = 3
+
+[llm]
+enabled = true
+provider = "openai_compatible"
+base_url = "https://api.openai.com/v1"
+model = "gpt-4.1-mini"
+timeout_seconds = 60
+stream = true
+```
+
+说明：
+
+- 配置读取统一从后端配置中心接口返回，前端只负责展示与提交。
+- 密钥统一走环境变量与安全存储，不进入日志与导出内容。
+- 参数调优以 trace 评估结果为准，保持可量化迭代。
 
 ---
 
