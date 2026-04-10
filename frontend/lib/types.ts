@@ -210,6 +210,9 @@ export interface UISettingsResponse {
   background_image: string | null
   background_image_opacity: number
   background_image_blur: number
+  background_image_scale: number
+  background_image_focus_x: number
+  background_image_focus_y: number
   background_image_fill_mode: BackgroundImageFillMode
 }
 

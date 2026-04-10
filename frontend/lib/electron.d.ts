@@ -9,6 +9,13 @@ declare global {
     vidGnostDesktop?: {
       openPath: (targetPath: string) => Promise<{ ok: boolean; message?: string }>
       openExternal: (targetUrl: string) => Promise<{ ok: boolean; message?: string }>
+      pickImageFile: () => Promise<{
+        canceled: boolean
+        fileName?: string
+        dataUrl?: string
+        sizeBytes?: number
+        message?: string
+      }>
       minimizeWindow: () => Promise<void>
       toggleMaximizeWindow: () => Promise<DesktopWindowState>
       closeWindow: () => Promise<void>

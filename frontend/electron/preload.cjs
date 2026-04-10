@@ -7,6 +7,9 @@ contextBridge.exposeInMainWorld("vidGnostDesktop", {
   openExternal(targetUrl) {
     return ipcRenderer.invoke("shell:open-external", targetUrl)
   },
+  pickImageFile() {
+    return ipcRenderer.invoke("dialog:pick-image-file")
+  },
   minimizeWindow() {
     return ipcRenderer.invoke("window:minimize")
   },

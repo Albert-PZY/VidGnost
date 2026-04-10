@@ -51,12 +51,8 @@
   --status-error: oklch(0.55 0.22 25);
   --titlebar: oklch(0.985 0 0);
   --titlebar-border: oklch(0.9 0 0);
-  --app-background-image: none;
   --app-background-opacity: 0;
   --app-background-blur: 0px;
-  --app-background-size: cover;
-  --app-background-repeat: no-repeat;
-  --app-background-position: center;
   --skeleton-base: color-mix(in oklch, var(--muted) 82%, var(--background) 18%);
   --skeleton-highlight: color-mix(in oklch, white 84%, var(--muted) 16%);
 }
@@ -215,37 +211,6 @@
     0%, 100% { opacity: 1; }
     50% { opacity: 0.5; }
   }
-}
-
-body::before {
-  content: "";
-  position: fixed;
-  inset: calc(var(--app-background-blur) * -2);
-  z-index: -2;
-  pointer-events: none;
-  background-image: var(--app-background-image);
-  background-size: var(--app-background-size);
-  background-position: var(--app-background-position);
-  background-repeat: var(--app-background-repeat);
-  filter: blur(var(--app-background-blur));
-  opacity: calc(var(--app-background-opacity) / 100);
-  transform: scale(1.03);
-  transition: opacity 180ms ease, filter 180ms ease;
-}
-
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background: color-mix(in oklch, var(--background) 36%, transparent);
-  opacity: 0;
-  transition: opacity 180ms ease;
-}
-
-body[data-app-background-active="true"]::after {
-  opacity: 1;
 }
 
 body[data-app-background-active="true"] [data-slot="sidebar-wrapper"] {

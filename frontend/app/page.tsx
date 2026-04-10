@@ -6,6 +6,7 @@ import { toast } from "react-hot-toast"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
+import { AppBackgroundLayer } from "@/components/app-background-layer"
 import { AppSidebar } from "@/components/app-sidebar"
 import { AppHeader } from "@/components/app-header"
 import { NewTaskView } from "@/components/views/new-task-view"
@@ -41,6 +42,9 @@ const DEFAULT_UI_SETTINGS: UISettingsResponse = {
   background_image: null,
   background_image_opacity: 28,
   background_image_blur: 0,
+  background_image_scale: 1,
+  background_image_focus_x: 0.5,
+  background_image_focus_y: 0.5,
   background_image_fill_mode: "cover",
 }
 
@@ -121,8 +125,16 @@ export default function VideoMindApp() {
   })
   const [recentTasks, setRecentTasks] = React.useState<TaskRecentItem[]>([])
   const [uiSettings, setUiSettings] = React.useState<UISettingsResponse>(DEFAULT_UI_SETTINGS)
+  const [uiSettingsPreviewPatch, setUiSettingsPreviewPatch] = React.useState<Partial<UISettingsResponse> | null>(null)
   const [isCloseConfirmOpen, setIsCloseConfirmOpen] = React.useState(false)
   const uiSettingsRef = React.useRef(uiSettings)
+  const effectiveUiSettings = React.useMemo(
+    () => ({
+      ...uiSettings,
+      ...(uiSettingsPreviewPatch || {}),
+    }),
+    [uiSettings, uiSettingsPreviewPatch],
+  )
 
   React.useEffect(() => {
     uiSettingsRef.current = uiSettings
@@ -166,55 +178,33 @@ export default function VideoMindApp() {
   }, [])
 
   React.useEffect(() => {
-    document.documentElement.lang = uiSettings.language
-    document.documentElement.style.fontSize = `${uiSettings.font_size}px`
-    document.documentElement.style.setProperty("--theme-hue", String(uiSettings.theme_hue))
-    document.documentElement.style.setProperty(
-      "--app-background-image",
-      uiSettings.background_image ? `url("${uiSettings.background_image}")` : "none",
-    )
+    document.documentElement.lang = effectiveUiSettings.language
+    document.documentElement.style.fontSize = `${effectiveUiSettings.font_size}px`
+    document.documentElement.style.setProperty("--theme-hue", String(effectiveUiSettings.theme_hue))
     document.documentElement.style.setProperty(
       "--app-background-opacity",
-      String(uiSettings.background_image_opacity),
+      String(effectiveUiSettings.background_image_opacity),
     )
     document.documentElement.style.setProperty(
       "--app-background-blur",
-      `${uiSettings.background_image_blur}px`,
+      `${effectiveUiSettings.background_image_blur}px`,
     )
-    document.documentElement.style.setProperty(
-      "--app-background-size",
-      uiSettings.background_image_fill_mode === "contain"
-        ? "contain"
-        : uiSettings.background_image_fill_mode === "repeat" || uiSettings.background_image_fill_mode === "center"
-          ? "auto"
-          : "cover",
-    )
-    document.documentElement.style.setProperty(
-      "--app-background-repeat",
-      uiSettings.background_image_fill_mode === "repeat" ? "repeat" : "no-repeat",
-    )
-    document.documentElement.style.setProperty("--app-background-position", "center")
-    document.body.dataset.appBackgroundActive = uiSettings.background_image ? "true" : "false"
+    document.body.dataset.appBackgroundActive = effectiveUiSettings.background_image ? "true" : "false"
 
     return () => {
       document.documentElement.style.removeProperty("font-size")
       document.documentElement.style.removeProperty("--theme-hue")
-      document.documentElement.style.removeProperty("--app-background-image")
       document.documentElement.style.removeProperty("--app-background-opacity")
       document.documentElement.style.removeProperty("--app-background-blur")
-      document.documentElement.style.removeProperty("--app-background-size")
-      document.documentElement.style.removeProperty("--app-background-repeat")
-      document.documentElement.style.removeProperty("--app-background-position")
       delete document.body.dataset.appBackgroundActive
     }
   }, [
-    uiSettings.background_image,
-    uiSettings.background_image_blur,
-    uiSettings.background_image_fill_mode,
-    uiSettings.background_image_opacity,
-    uiSettings.font_size,
-    uiSettings.language,
-    uiSettings.theme_hue,
+    effectiveUiSettings.background_image,
+    effectiveUiSettings.background_image_blur,
+    effectiveUiSettings.background_image_opacity,
+    effectiveUiSettings.font_size,
+    effectiveUiSettings.language,
+    effectiveUiSettings.theme_hue,
   ])
 
   React.useEffect(() => {
@@ -260,10 +250,17 @@ export default function VideoMindApp() {
           patch.background_image_opacity ?? current.background_image_opacity,
         background_image_blur:
           patch.background_image_blur ?? current.background_image_blur,
+        background_image_scale:
+          patch.background_image_scale ?? current.background_image_scale,
+        background_image_focus_x:
+          patch.background_image_focus_x ?? current.background_image_focus_x,
+        background_image_focus_y:
+          patch.background_image_focus_y ?? current.background_image_focus_y,
         background_image_fill_mode:
           patch.background_image_fill_mode ?? current.background_image_fill_mode,
       })
       setUiSettings(saved)
+      setUiSettingsPreviewPatch(null)
       return saved
     },
     [],
@@ -362,75 +359,81 @@ export default function VideoMindApp() {
   const pageInfo = getPageTitle(viewState)
 
   return (
-    <SidebarProvider>
-      <AppSidebar
-        activeNav={activeNav}
-        onNavChange={handleNavChange}
-        selectedWorkflow={selectedWorkflow}
-        onWorkflowChange={setSelectedWorkflow}
-        historyCount={taskStats.total}
-        recentTasks={recentTasks}
-        onOpenRecentTask={handleOpenTask}
-      />
-      <SidebarInset className="h-svh overflow-hidden">
-        <AppHeader
-          title={pageInfo.title}
-          subtitle={pageInfo.subtitle}
-          language={uiSettings.language}
-          onOpenSettings={() => handleNavChange("settings")}
-          onRequestClose={() => setIsCloseConfirmOpen(true)}
-          onLanguageChange={(language) => {
-            void persistUiSettings({ language }).catch((error) => {
-              toast.error(getApiErrorMessage(error, "更新语言设置失败"))
-            })
-          }}
-        />
-        <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <React.Suspense fallback={<ViewLoadingFallback />}>
-            {viewState.type === "new-task" && (
-              <NewTaskView
-                selectedWorkflow={selectedWorkflow}
-                onStartTask={handleStartTask}
-              />
-            )}
-            {viewState.type === "processing" && (
-              <TaskProcessingView
-                taskId={viewState.taskId}
-                workflow={viewState.workflow}
-                taskTitle={viewState.taskTitle}
-                onBack={handleBackFromProcessing}
-                onTaskChanged={handleTaskChanged}
-                onTaskLoaded={handleTaskLoaded}
-              />
-            )}
-            {viewState.type === "history" && (
-              <HistoryView onOpenTask={handleOpenTask} />
-            )}
-            {viewState.type === "settings" && (
-              <SettingsView
-                uiSettings={uiSettings}
-                onUiSettingsChange={persistUiSettings}
-              />
-            )}
-            {viewState.type === "diagnostics" && <DiagnosticsView />}
-          </React.Suspense>
-        </main>
-        <ConfirmDialog
-          open={isCloseConfirmOpen}
-          onOpenChange={setIsCloseConfirmOpen}
-          title="确认关闭应用？"
-          description="关闭窗口后将结束当前桌面会话。请确认当前操作已经处理完成。"
-          confirmLabel="关闭应用"
-          confirmVariant="destructive"
-          onConfirm={() => {
-            if (window.vidGnostDesktop?.closeWindow) {
-              void window.vidGnostDesktop.closeWindow()
-              return
-            }
-            window.close()
-          }}
-        />
-      </SidebarInset>
-    </SidebarProvider>
+    <>
+      <AppBackgroundLayer uiSettings={effectiveUiSettings} />
+      <div className="relative z-10 h-svh">
+        <SidebarProvider>
+          <AppSidebar
+            activeNav={activeNav}
+            onNavChange={handleNavChange}
+            selectedWorkflow={selectedWorkflow}
+            onWorkflowChange={setSelectedWorkflow}
+            historyCount={taskStats.total}
+            recentTasks={recentTasks}
+            onOpenRecentTask={handleOpenTask}
+          />
+          <SidebarInset className="h-svh overflow-hidden">
+            <AppHeader
+              title={pageInfo.title}
+              subtitle={pageInfo.subtitle}
+              language={effectiveUiSettings.language}
+              onOpenSettings={() => handleNavChange("settings")}
+              onRequestClose={() => setIsCloseConfirmOpen(true)}
+              onLanguageChange={(language) => {
+                void persistUiSettings({ language }).catch((error) => {
+                  toast.error(getApiErrorMessage(error, "更新语言设置失败"))
+                })
+              }}
+            />
+            <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <React.Suspense fallback={<ViewLoadingFallback />}>
+                {viewState.type === "new-task" && (
+                  <NewTaskView
+                    selectedWorkflow={selectedWorkflow}
+                    onStartTask={handleStartTask}
+                  />
+                )}
+                {viewState.type === "processing" && (
+                  <TaskProcessingView
+                    taskId={viewState.taskId}
+                    workflow={viewState.workflow}
+                    taskTitle={viewState.taskTitle}
+                    onBack={handleBackFromProcessing}
+                    onTaskChanged={handleTaskChanged}
+                    onTaskLoaded={handleTaskLoaded}
+                  />
+                )}
+                {viewState.type === "history" && (
+                  <HistoryView onOpenTask={handleOpenTask} />
+                )}
+                {viewState.type === "settings" && (
+                  <SettingsView
+                    uiSettings={uiSettings}
+                    onUiSettingsChange={persistUiSettings}
+                    onUiSettingsPreviewChange={setUiSettingsPreviewPatch}
+                  />
+                )}
+                {viewState.type === "diagnostics" && <DiagnosticsView />}
+              </React.Suspense>
+            </main>
+            <ConfirmDialog
+              open={isCloseConfirmOpen}
+              onOpenChange={setIsCloseConfirmOpen}
+              title="确认关闭应用？"
+              description="关闭窗口后将结束当前桌面会话。请确认当前操作已经处理完成。"
+              confirmLabel="关闭应用"
+              confirmVariant="destructive"
+              onConfirm={() => {
+                if (window.vidGnostDesktop?.closeWindow) {
+                  void window.vidGnostDesktop.closeWindow()
+                  return
+                }
+                window.close()
+              }}
+            />
+          </SidebarInset>
+        </SidebarProvider>
+      </div>
+    </>
   )
 }

@@ -17,6 +17,9 @@ class UISettings(TypedDict):
     background_image: str | None
     background_image_opacity: int
     background_image_blur: int
+    background_image_scale: float
+    background_image_focus_x: float
+    background_image_focus_y: float
     background_image_fill_mode: str
 
 
@@ -28,6 +31,9 @@ DEFAULT_UI_SETTINGS: UISettings = {
     "background_image": None,
     "background_image_opacity": 28,
     "background_image_blur": 0,
+    "background_image_scale": 1.0,
+    "background_image_focus_x": 0.5,
+    "background_image_focus_y": 0.5,
     "background_image_fill_mode": "cover",
 }
 
@@ -89,6 +95,33 @@ class UISettingsStore:
             except (TypeError, ValueError):
                 background_image_blur = current["background_image_blur"]
             background_image_blur = max(0, min(40, background_image_blur))
+            background_image_scale_raw = updates.get(
+                "background_image_scale",
+                current["background_image_scale"],
+            )
+            try:
+                background_image_scale = float(background_image_scale_raw)
+            except (TypeError, ValueError):
+                background_image_scale = current["background_image_scale"]
+            background_image_scale = max(1.0, min(4.0, background_image_scale))
+            background_image_focus_x_raw = updates.get(
+                "background_image_focus_x",
+                current["background_image_focus_x"],
+            )
+            try:
+                background_image_focus_x = float(background_image_focus_x_raw)
+            except (TypeError, ValueError):
+                background_image_focus_x = current["background_image_focus_x"]
+            background_image_focus_x = max(0.0, min(1.0, background_image_focus_x))
+            background_image_focus_y_raw = updates.get(
+                "background_image_focus_y",
+                current["background_image_focus_y"],
+            )
+            try:
+                background_image_focus_y = float(background_image_focus_y_raw)
+            except (TypeError, ValueError):
+                background_image_focus_y = current["background_image_focus_y"]
+            background_image_focus_y = max(0.0, min(1.0, background_image_focus_y))
             background_image_fill_mode_raw = updates.get(
                 "background_image_fill_mode",
                 current["background_image_fill_mode"],
@@ -104,6 +137,9 @@ class UISettingsStore:
                 "background_image": background_image,
                 "background_image_opacity": background_image_opacity,
                 "background_image_blur": background_image_blur,
+                "background_image_scale": background_image_scale,
+                "background_image_focus_x": background_image_focus_x,
+                "background_image_focus_y": background_image_focus_y,
                 "background_image_fill_mode": background_image_fill_mode,
             }
             self._write_sync(next_value)
@@ -164,6 +200,36 @@ class UISettingsStore:
         except (TypeError, ValueError):
             background_image_blur = DEFAULT_UI_SETTINGS["background_image_blur"]
         background_image_blur = max(0, min(40, background_image_blur))
+        try:
+            background_image_scale = float(
+                payload.get(
+                    "background_image_scale",
+                    DEFAULT_UI_SETTINGS["background_image_scale"],
+                )
+            )
+        except (TypeError, ValueError):
+            background_image_scale = DEFAULT_UI_SETTINGS["background_image_scale"]
+        background_image_scale = max(1.0, min(4.0, background_image_scale))
+        try:
+            background_image_focus_x = float(
+                payload.get(
+                    "background_image_focus_x",
+                    DEFAULT_UI_SETTINGS["background_image_focus_x"],
+                )
+            )
+        except (TypeError, ValueError):
+            background_image_focus_x = DEFAULT_UI_SETTINGS["background_image_focus_x"]
+        background_image_focus_x = max(0.0, min(1.0, background_image_focus_x))
+        try:
+            background_image_focus_y = float(
+                payload.get(
+                    "background_image_focus_y",
+                    DEFAULT_UI_SETTINGS["background_image_focus_y"],
+                )
+            )
+        except (TypeError, ValueError):
+            background_image_focus_y = DEFAULT_UI_SETTINGS["background_image_focus_y"]
+        background_image_focus_y = max(0.0, min(1.0, background_image_focus_y))
         background_image_fill_mode = str(
             payload.get(
                 "background_image_fill_mode",
@@ -180,6 +246,9 @@ class UISettingsStore:
             "background_image": background_image,
             "background_image_opacity": background_image_opacity,
             "background_image_blur": background_image_blur,
+            "background_image_scale": background_image_scale,
+            "background_image_focus_x": background_image_focus_x,
+            "background_image_focus_y": background_image_focus_y,
             "background_image_fill_mode": background_image_fill_mode,
         }
 

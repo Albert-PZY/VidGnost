@@ -3,7 +3,6 @@
 import * as React from "react"
 import { toast } from "react-hot-toast"
 import {
-  ChevronDown,
   CloudDownload,
   Cpu,
   FileCode,
@@ -22,7 +21,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
@@ -46,6 +44,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { CustomSkinDialog } from "@/components/views/custom-skin-dialog"
 import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
 import {
@@ -67,7 +66,6 @@ import {
 } from "@/lib/api"
 import { formatBytes } from "@/lib/format"
 import type {
-  BackgroundImageFillMode,
   LLMConfigResponse,
   ModelDescriptor,
   PromptTemplateBundleResponse,
@@ -80,6 +78,7 @@ import type {
 interface SettingsViewProps {
   uiSettings: UISettingsResponse
   onUiSettingsChange: (patch: Partial<UISettingsResponse>) => Promise<UISettingsResponse>
+  onUiSettingsPreviewChange: (patch: Partial<UISettingsResponse> | null) => void
 }
 
 const modelTypeLabels: Record<string, string> = {
@@ -128,19 +127,7 @@ const themeHuePresets = [
   { label: "靛蓝", value: 260 },
 ] as const
 const DEFAULT_THEME_HUE = themeHuePresets[0].value
-const BACKGROUND_IMAGE_FILE_SIZE_LIMIT = 4 * 1024 * 1024
-const DEFAULT_BACKGROUND_FILL_MODE: BackgroundImageFillMode = "cover"
-
-const backgroundFillModeOptions: Array<{
-  value: BackgroundImageFillMode
-  label: string
-  hint: string
-}> = [
-  { value: "cover", label: "Cover", hint: "铺满整个界面" },
-  { value: "contain", label: "Contain", hint: "完整显示整张图片" },
-  { value: "repeat", label: "Repeat", hint: "重复平铺纹理背景" },
-  { value: "center", label: "Center", hint: "原始尺寸居中显示" },
-]
+const BACKGROUND_IMAGE_FILE_SIZE_LIMIT = 12 * 1024 * 1024
 
 const PromptMarkdownEditor = React.lazy(async () => {
   const module = await import("@/components/editors/prompt-markdown-editor")
@@ -304,45 +291,29 @@ async function readFileAsDataUrl(file: File): Promise<string> {
   })
 }
 
-function getBackgroundPreviewStyle(
-  image: string,
-  fillMode: BackgroundImageFillMode,
-  blur: number,
-): React.CSSProperties {
-  const backgroundSize =
-    fillMode === "contain" ? "contain" : fillMode === "repeat" || fillMode === "center" ? "auto" : "cover"
-
-  return {
-    backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.14), rgba(15, 23, 42, 0.14)), url(${image})`,
-    backgroundPosition: "center",
-    backgroundRepeat: fillMode === "repeat" ? "repeat" : "no-repeat",
-    backgroundSize,
-    filter: `blur(${blur}px)`,
-    transform: blur > 0 ? "scale(1.03)" : undefined,
-  }
+type PickedSkinImage = {
+  dataUrl: string
+  fileName: string
+  sizeBytes?: number
 }
 
-export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewProps) {
+export function SettingsView({
+  uiSettings,
+  onUiSettingsChange,
+  onUiSettingsPreviewChange,
+}: SettingsViewProps) {
   const { resolvedTheme } = useTheme()
   const [activeSection, setActiveSection] = React.useState("models")
   const [fontSize, setFontSize] = React.useState([uiSettings.font_size])
   const [themeHue, setThemeHue] = React.useState([uiSettings.theme_hue])
-  const [backgroundOpacity, setBackgroundOpacity] = React.useState([
-    uiSettings.background_image_opacity,
-  ])
-  const [backgroundBlur, setBackgroundBlur] = React.useState([uiSettings.background_image_blur])
-  const [backgroundFillMode, setBackgroundFillMode] = React.useState<BackgroundImageFillMode>(
-    uiSettings.background_image_fill_mode,
-  )
-  const [isBackgroundAdvancedOpen, setIsBackgroundAdvancedOpen] = React.useState(
-    uiSettings.background_image_blur > 0 || uiSettings.background_image_fill_mode !== DEFAULT_BACKGROUND_FILL_MODE,
-  )
   const [models, setModels] = React.useState<ModelDescriptor[]>([])
   const [promptBundle, setPromptBundle] = React.useState<PromptTemplateBundleResponse | null>(null)
   const [whisperConfig, setWhisperConfig] = React.useState<WhisperConfigResponse | null>(null)
   const [llmConfig, setLlmConfig] = React.useState<LLMConfigResponse | null>(null)
   const [isPromptDialogOpen, setIsPromptDialogOpen] = React.useState(false)
   const [isModelDialogOpen, setIsModelDialogOpen] = React.useState(false)
+  const [isSkinDialogOpen, setIsSkinDialogOpen] = React.useState(false)
+  const [pendingSkinImage, setPendingSkinImage] = React.useState<PickedSkinImage | null>(null)
   const [editingPrompt, setEditingPrompt] = React.useState<PromptTemplateItem | null>(null)
   const [editingModel, setEditingModel] = React.useState<ModelDescriptor | null>(null)
   const [promptForm, setPromptForm] = React.useState(EMPTY_PROMPT_FORM)
@@ -358,6 +329,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
   const [isDeletingPrompt, setIsDeletingPrompt] = React.useState(false)
   const markdownColorMode = resolvedTheme === "dark" ? "dark" : "light"
   const backgroundFileInputRef = React.useRef<HTMLInputElement | null>(null)
+  const backgroundFileResolverRef = React.useRef<((image: PickedSkinImage | null) => void) | null>(null)
 
   React.useEffect(() => {
     setFontSize([uiSettings.font_size])
@@ -368,39 +340,18 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
   }, [uiSettings.theme_hue])
 
   React.useEffect(() => {
-    setBackgroundOpacity([uiSettings.background_image_opacity])
-  }, [uiSettings.background_image_opacity])
-
-  React.useEffect(() => {
-    setBackgroundBlur([uiSettings.background_image_blur])
-  }, [uiSettings.background_image_blur])
-
-  React.useEffect(() => {
-    setBackgroundFillMode(uiSettings.background_image_fill_mode)
-  }, [uiSettings.background_image_fill_mode])
-
-  React.useEffect(() => {
-    if (uiSettings.background_image_blur > 0 || uiSettings.background_image_fill_mode !== DEFAULT_BACKGROUND_FILL_MODE) {
-      setIsBackgroundAdvancedOpen(true)
-    }
-  }, [uiSettings.background_image_blur, uiSettings.background_image_fill_mode])
-
-  const hasBackgroundImage = Boolean(uiSettings.background_image)
-  const backgroundPreviewStyle = uiSettings.background_image
-    ? getBackgroundPreviewStyle(
-        uiSettings.background_image,
-        backgroundFillMode,
-        backgroundBlur[0] ?? uiSettings.background_image_blur,
-      )
-    : undefined
-
-  React.useEffect(() => {
     const activeHue = themeHue[0] ?? uiSettings.theme_hue
     document.documentElement.style.setProperty("--theme-hue", String(activeHue))
     return () => {
       document.documentElement.style.setProperty("--theme-hue", String(uiSettings.theme_hue))
     }
   }, [themeHue, uiSettings.theme_hue])
+
+  React.useEffect(() => {
+    return () => {
+      onUiSettingsPreviewChange(null)
+    }
+  }, [onUiSettingsPreviewChange])
 
   const loadSettings = React.useCallback(async () => {
     setIsLoading(true)
@@ -797,9 +748,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
       toast.error(getApiErrorMessage(error, "保存界面设置失败"))
       setFontSize([uiSettings.font_size])
       setThemeHue([uiSettings.theme_hue])
-      setBackgroundOpacity([uiSettings.background_image_opacity])
-      setBackgroundBlur([uiSettings.background_image_blur])
-      setBackgroundFillMode(uiSettings.background_image_fill_mode)
+      onUiSettingsPreviewChange(null)
     } finally {
       setIsSavingUi(false)
     }
@@ -814,71 +763,104 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
     void handleUiSettingChange({ theme_hue: DEFAULT_THEME_HUE }, "主题色调已重置")
   }
 
-  const handleBackgroundOpacityCommit = (nextOpacity: number) => {
-    setBackgroundOpacity([nextOpacity])
-    void handleUiSettingChange(
-      { background_image_opacity: nextOpacity },
-      "背景不透明度已更新",
-    )
-  }
-
-  const handleBackgroundBlurCommit = (nextBlur: number) => {
-    setBackgroundBlur([nextBlur])
-    void handleUiSettingChange(
-      { background_image_blur: nextBlur },
-      "背景模糊度已更新",
-    )
-  }
-
-  const handleBackgroundFillModeChange = (nextFillMode: BackgroundImageFillMode) => {
-    setBackgroundFillMode(nextFillMode)
-    void handleUiSettingChange(
-      { background_image_fill_mode: nextFillMode },
-      "背景填充模式已更新",
-    )
-  }
-
-  const handleBackgroundFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    event.target.value = ""
-    if (!file) {
-      return
-    }
-
+  const resolvePickedSkinImage = React.useCallback(async (file: File): Promise<PickedSkinImage | null> => {
     if (!file.type.startsWith("image/")) {
       toast.error("仅支持上传图片文件")
-      return
+      return null
     }
 
     if (file.size > BACKGROUND_IMAGE_FILE_SIZE_LIMIT) {
-      toast.error("背景图片不能超过 4 MB")
-      return
+      toast.error("换肤图片不能超过 12 MB")
+      return null
     }
 
     try {
-      const backgroundImage = await readFileAsDataUrl(file)
-      const nextOpacity = backgroundOpacity[0] ?? uiSettings.background_image_opacity
-      await handleUiSettingChange(
-        {
-          background_image: backgroundImage,
-          background_image_opacity: nextOpacity,
-          background_image_blur: backgroundBlur[0] ?? uiSettings.background_image_blur,
-          background_image_fill_mode: backgroundFillMode,
-        },
-        "自定义背景已更新",
-      )
+      return {
+        dataUrl: await readFileAsDataUrl(file),
+        fileName: file.name,
+        sizeBytes: file.size,
+      }
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "读取背景图片失败"))
+      toast.error(getApiErrorMessage(error, "读取换肤图片失败"))
+      return null
     }
+  }, [])
+
+  const handleBackgroundFileChange = React.useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+    const resolver = backgroundFileResolverRef.current
+    backgroundFileResolverRef.current = null
+    const pickedImage = file ? await resolvePickedSkinImage(file) : null
+    resolver?.(pickedImage)
+  }, [resolvePickedSkinImage])
+
+  const requestSkinImage = React.useCallback(async (): Promise<PickedSkinImage | null> => {
+    if (window.vidGnostDesktop?.pickImageFile) {
+      const picked = await window.vidGnostDesktop.pickImageFile()
+      if (picked.canceled) {
+        return null
+      }
+      if (!picked.dataUrl) {
+        toast.error(picked.message || "读取换肤图片失败")
+        return null
+      }
+      if ((picked.sizeBytes || 0) > BACKGROUND_IMAGE_FILE_SIZE_LIMIT) {
+        toast.error("换肤图片不能超过 12 MB")
+        return null
+      }
+      return {
+        dataUrl: picked.dataUrl,
+        fileName: picked.fileName || "已选择图片",
+        sizeBytes: picked.sizeBytes,
+      }
+    }
+
+    return new Promise<PickedSkinImage | null>((resolve) => {
+      backgroundFileResolverRef.current = resolve
+      backgroundFileInputRef.current?.click()
+    })
+  }, [])
+
+  const handleOpenSkinPicker = async () => {
+    const pickedImage = await requestSkinImage()
+    if (!pickedImage) {
+      return
+    }
+    setPendingSkinImage(pickedImage)
+    onUiSettingsPreviewChange({
+      background_image: pickedImage.dataUrl,
+      background_image_opacity: uiSettings.background_image_opacity,
+      background_image_blur: uiSettings.background_image_blur,
+      background_image_scale: 1,
+      background_image_focus_x: 0.5,
+      background_image_focus_y: 0.5,
+      background_image_fill_mode: "cover",
+    })
+    setIsSkinDialogOpen(true)
   }
 
   const handleClearBackgroundImage = () => {
+    setPendingSkinImage(null)
+    onUiSettingsPreviewChange(null)
     void handleUiSettingChange(
       {
         background_image: null,
+        background_image_scale: 1,
+        background_image_focus_x: 0.5,
+        background_image_focus_y: 0.5,
+        background_image_fill_mode: "cover",
       },
-      "自定义背景已清除",
+      "自定义换肤已清除",
     )
+  }
+
+  const handleSkinDialogChange = (open: boolean) => {
+    setIsSkinDialogOpen(open)
+    if (!open) {
+      setPendingSkinImage(null)
+      onUiSettingsPreviewChange(null)
+    }
   }
 
   const handleGpuToggle = async (checked: boolean) => {
@@ -918,9 +900,19 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
   const modelDialogHasBatchSize = Boolean(activeModelPreset?.fields.includes("max_batch_size"))
   const showOnlineLlmFields = Boolean(editingModel?.provider === "openai_compatible")
   const isWhisperDialog = editingModel?.component === "whisper"
+  const hasSkinImage = Boolean(uiSettings.background_image)
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden">
+      <input
+        ref={backgroundFileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(event) => {
+          void handleBackgroundFileChange(event)
+        }}
+      />
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
         <div className="mx-auto w-full max-w-5xl px-6 py-6">
           <div className="space-y-6">
@@ -1742,9 +1734,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg">外观设置</CardTitle>
-                  <CardDescription>
-                    自定义应用的视觉外观
-                  </CardDescription>
+                  <CardDescription>自定义应用的视觉外观</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-4">
@@ -1819,39 +1809,42 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                   <Separator />
 
                   <div className="space-y-4">
-                    <input
-                      ref={backgroundFileInputRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(event) => {
-                        void handleBackgroundFileChange(event)
-                      }}
-                    />
                     <div className="flex items-start justify-between gap-4">
                       <div className="space-y-1.5">
                         <div className="flex items-center gap-2.5">
                           <Sparkles className="h-4 w-4 text-primary drop-shadow-[0_0_10px_color-mix(in_oklch,var(--primary)_48%,transparent)]" />
-                          <h3 className="text-base font-medium">自定义背景</h3>
-                          <span className="text-sm font-medium text-muted-foreground">Beta功能</span>
+                          <h3 className="text-base font-medium">自定义换肤</h3>
                         </div>
                         <p className="pl-6 text-sm text-muted-foreground">
-                          上传图片后直接铺到整个桌面壳层，主题色和交互高亮会继续保留。
+                          通过 Electron 直接选择图片，并在换肤弹窗里拖动展示框、滚轮缩放、实时预览整个桌面壳层效果。
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
                         <Button
-                          variant="outline"
+                          variant="default"
                           size="sm"
                           disabled={isSavingUi}
-                          onClick={() => backgroundFileInputRef.current?.click()}
+                          onClick={() => {
+                            void handleOpenSkinPicker()
+                          }}
                         >
-                          上传图片
+                          选择换肤图片
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
-                          disabled={isSavingUi || !uiSettings.background_image}
+                          disabled={isSavingUi || !hasSkinImage}
+                          onClick={() => {
+                            setPendingSkinImage(null)
+                            setIsSkinDialogOpen(true)
+                          }}
+                        >
+                          调整当前换肤
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={isSavingUi || !hasSkinImage}
                           onClick={handleClearBackgroundImage}
                         >
                           清除
@@ -1859,114 +1852,79 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                       </div>
                     </div>
 
-                    <div className="rounded-xl border bg-card p-4">
-                      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(21rem,0.85fr)]">
-                        <div className="overflow-hidden rounded-xl border border-border/70 bg-muted/25">
-                          {backgroundPreviewStyle ? (
-                            <div className="relative h-48">
-                              <div className="absolute inset-0" style={backgroundPreviewStyle} />
-                              <div className="absolute inset-0 bg-gradient-to-br from-background/12 via-transparent to-background/22" />
-                              <div className="absolute inset-x-0 bottom-0 flex items-center justify-between border-t border-white/10 bg-background/35 px-4 py-2.5 backdrop-blur-sm">
-                                <div>
-                                  <p className="text-sm font-medium">界面实时预览</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {backgroundFillModeOptions.find((option) => option.value === backgroundFillMode)?.hint}
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                  <span>{backgroundOpacity[0]}%</span>
-                                  <span>{backgroundBlur[0]}px</span>
-                                </div>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex h-48 flex-col items-center justify-center gap-2 px-6 text-center">
-                              <Sparkles className="h-5 w-5 text-primary/70" />
-                              <p className="text-sm font-medium">当前未设置自定义背景</p>
-                              <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
-                                上传图片后会直接应用到整个 UI 壳层，侧边栏、顶部栏和主内容区域会自动切到半透明承载层。
-                              </p>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="space-y-4">
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <Label>不透明度</Label>
-                              <span className="text-sm text-muted-foreground">{backgroundOpacity[0]}%</span>
-                            </div>
-                            <Slider
-                              value={backgroundOpacity}
-                              onValueChange={setBackgroundOpacity}
-                              onValueCommit={(value) => {
-                                handleBackgroundOpacityCommit(value[0])
+                    <div className="grid gap-4 rounded-xl border bg-card p-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(18rem,0.75fr)]">
+                      <div className="overflow-hidden rounded-xl border border-border/70 bg-muted/20">
+                        {hasSkinImage ? (
+                          <div className="relative h-52">
+                            <div
+                              className="absolute inset-0"
+                              style={{
+                                backgroundImage: `url(${uiSettings.background_image})`,
+                                backgroundPosition: "center",
+                                backgroundRepeat: "no-repeat",
+                                backgroundSize: "cover",
+                                filter: `blur(${Math.max(0, uiSettings.background_image_blur / 2)}px)`,
+                                opacity: uiSettings.background_image_opacity / 100,
+                                transform: uiSettings.background_image_blur > 0 ? "scale(1.02)" : undefined,
                               }}
-                              min={0}
-                              max={100}
-                              step={1}
-                              disabled={isSavingUi || !hasBackgroundImage}
                             />
+                            <div className="absolute inset-0 bg-background/28" />
+                            <div className="absolute inset-x-0 bottom-0 flex items-center justify-between border-t border-white/10 bg-background/48 px-4 py-2.5 backdrop-blur-sm">
+                              <div>
+                                <p className="text-sm font-medium">当前换肤已启用</p>
+                                <p className="text-xs text-muted-foreground">
+                                  全局背景、侧栏和顶部栏正在使用同一套换肤图层。
+                                </p>
+                              </div>
+                              <div className="text-right text-xs text-muted-foreground">
+                                <p>{uiSettings.background_image_opacity}% 透明度</p>
+                                <p>{uiSettings.background_image_blur}px 模糊度</p>
+                              </div>
+                            </div>
                           </div>
+                        ) : (
+                          <div className="flex h-52 flex-col items-center justify-center gap-2 px-6 text-center">
+                            <Sparkles className="h-5 w-5 text-primary/70" />
+                            <p className="text-sm font-medium">当前未设置换肤图片</p>
+                            <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
+                              选择图片后会直接进入换肤裁剪弹窗，并实时联动整个 Electron 窗口背景。
+                            </p>
+                          </div>
+                        )}
+                      </div>
 
-                          <Collapsible open={isBackgroundAdvancedOpen} onOpenChange={setIsBackgroundAdvancedOpen}>
-                            <CollapsibleTrigger
-                              className={cn(
-                                "flex w-full items-center justify-between rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5 text-sm font-medium transition-colors hover:bg-muted/35",
-                                !hasBackgroundImage && "cursor-default opacity-70",
-                              )}
-                            >
-                              <span>更多选项</span>
-                              <ChevronDown
-                                className={cn(
-                                  "h-4 w-4 text-muted-foreground transition-transform",
-                                  isBackgroundAdvancedOpen && "rotate-180",
-                                )}
-                              />
-                            </CollapsibleTrigger>
-                            <CollapsibleContent className="space-y-4 pt-4">
-                              <div className="space-y-3">
-                                <div className="flex items-center justify-between">
-                                  <Label>模糊度</Label>
-                                  <span className="text-sm text-muted-foreground">{backgroundBlur[0]}px</span>
-                                </div>
-                                <Slider
-                                  value={backgroundBlur}
-                                  onValueChange={setBackgroundBlur}
-                                  onValueCommit={(value) => {
-                                    handleBackgroundBlurCommit(value[0])
-                                  }}
-                                  min={0}
-                                  max={24}
-                                  step={1}
-                                  disabled={isSavingUi || !hasBackgroundImage}
-                                />
-                              </div>
-
-                              <div className="space-y-2">
-                                <Label>填充模式</Label>
-                                <Select
-                                  value={backgroundFillMode}
-                                  onValueChange={(value) => {
-                                    handleBackgroundFillModeChange(value as BackgroundImageFillMode)
-                                  }}
-                                  disabled={isSavingUi || !hasBackgroundImage}
-                                >
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {backgroundFillModeOptions.map((option) => (
-                                      <SelectItem key={option.value} value={option.value}>
-                                        {option.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            </CollapsibleContent>
-                          </Collapsible>
+                      <div className="space-y-4 rounded-xl border border-border/70 bg-muted/10 p-4">
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium">换肤状态</p>
+                          <p className="text-xs text-muted-foreground">
+                            当前保存的是最终生效的桌面壳层换肤配置。
+                          </p>
                         </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="rounded-lg border bg-card px-3 py-3">
+                            <p className="text-xs text-muted-foreground">状态</p>
+                            <p className="mt-1 text-sm font-medium">{hasSkinImage ? "已启用" : "未设置"}</p>
+                          </div>
+                          <div className="rounded-lg border bg-card px-3 py-3">
+                            <p className="text-xs text-muted-foreground">缩放倍率</p>
+                            <p className="mt-1 text-sm font-medium">{Math.round(uiSettings.background_image_scale * 100)}%</p>
+                          </div>
+                          <div className="rounded-lg border bg-card px-3 py-3">
+                            <p className="text-xs text-muted-foreground">焦点位置</p>
+                            <p className="mt-1 text-sm font-medium">
+                              {Math.round(uiSettings.background_image_focus_x * 100)}% / {Math.round(uiSettings.background_image_focus_y * 100)}%
+                            </p>
+                          </div>
+                          <div className="rounded-lg border bg-card px-3 py-3">
+                            <p className="text-xs text-muted-foreground">模糊 / 透明</p>
+                            <p className="mt-1 text-sm font-medium">
+                              {uiSettings.background_image_blur}px / {uiSettings.background_image_opacity}%
+                            </p>
+                          </div>
+                        </div>
+                        <p className="text-xs leading-relaxed text-muted-foreground">
+                          换肤裁剪框会按当前桌面壳层比例工作，保存后会直接恢复到同样的构图和缩放状态。
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -2069,6 +2027,18 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
           </div>
         </div>
       </div>
+      <CustomSkinDialog
+        open={isSkinDialogOpen}
+        uiSettings={uiSettings}
+        pickedImage={pendingSkinImage}
+        isSaving={isSavingUi}
+        onOpenChange={handleSkinDialogChange}
+        onPreviewChange={onUiSettingsPreviewChange}
+        onRequestPickImage={requestSkinImage}
+        onSave={async (patch) => {
+          await handleUiSettingChange(patch, patch.background_image ? "自定义换肤已更新" : "自定义换肤已清除")
+        }}
+      />
       <ConfirmDialog
         open={Boolean(pendingDeletePrompt)}
         onOpenChange={(open) => {

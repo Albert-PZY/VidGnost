@@ -315,6 +315,9 @@ class UISettingsResponse(BaseModel):
     background_image: str | None = None
     background_image_opacity: int = Field(default=28, ge=0, le=100)
     background_image_blur: int = Field(default=0, ge=0, le=40)
+    background_image_scale: float = Field(default=1.0, ge=1.0, le=4.0)
+    background_image_focus_x: float = Field(default=0.5, ge=0.0, le=1.0)
+    background_image_focus_y: float = Field(default=0.5, ge=0.0, le=1.0)
     background_image_fill_mode: BackgroundImageFillMode = "cover"
 
 
@@ -326,6 +329,9 @@ class UISettingsUpdateRequest(BaseModel):
     background_image: str | None = None
     background_image_opacity: int | None = Field(default=None, ge=0, le=100)
     background_image_blur: int | None = Field(default=None, ge=0, le=40)
+    background_image_scale: float | None = Field(default=None, ge=1.0, le=4.0)
+    background_image_focus_x: float | None = Field(default=None, ge=0.0, le=1.0)
+    background_image_focus_y: float | None = Field(default=None, ge=0.0, le=1.0)
     background_image_fill_mode: BackgroundImageFillMode | None = None
 
 

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, nativeImage, shell } = require("electron")
+const { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } = require("electron")
 const fs = require("node:fs")
 const path = require("node:path")
 
@@ -8,6 +8,15 @@ const APP_ICON_SVG_PATH = path.join(__dirname, "..", "public", "icon.svg")
 const FALLBACK_ICON_PATH = path.join(__dirname, "..", "public", "icon-light-32x32.png")
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(["http:", "https:"])
 const allowedToClose = new WeakSet()
+const IMAGE_MIME_TYPES = {
+  ".avif": "image/avif",
+  ".gif": "image/gif",
+  ".jpeg": "image/jpeg",
+  ".jpg": "image/jpeg",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".webp": "image/webp",
+}
 
 function loadAppIcon() {
   try {
@@ -33,6 +42,46 @@ function loadAppIcon() {
 }
 
 const APP_ICON = loadAppIcon()
+
+function getImageMimeType(filePath) {
+  const extension = path.extname(filePath || "").toLowerCase()
+  return IMAGE_MIME_TYPES[extension] || "image/png"
+}
+
+ipcMain.handle("dialog:pick-image-file", async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  const { canceled, filePaths } = await dialog.showOpenDialog(win || undefined, {
+    title: "选择换肤图片",
+    properties: ["openFile"],
+    filters: [
+      {
+        name: "图片文件",
+        extensions: ["png", "jpg", "jpeg", "webp", "avif", "gif", "svg"],
+      },
+    ],
+  })
+
+  if (canceled || filePaths.length === 0) {
+    return { canceled: true }
+  }
+
+  const selectedPath = filePaths[0]
+  try {
+    const fileBuffer = fs.readFileSync(selectedPath)
+    const mimeType = getImageMimeType(selectedPath)
+    return {
+      canceled: false,
+      fileName: path.basename(selectedPath),
+      sizeBytes: fileBuffer.byteLength,
+      dataUrl: `data:${mimeType};base64,${fileBuffer.toString("base64")}`,
+    }
+  } catch (error) {
+    return {
+      canceled: false,
+      message: error instanceof Error ? error.message : "读取图片失败。",
+    }
+  }
+})
 
 ipcMain.handle("shell:open-path", async (_event, targetPath) => {
   if (typeof targetPath !== "string" || !targetPath.trim()) {

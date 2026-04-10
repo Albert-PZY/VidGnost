@@ -341,6 +341,9 @@ async def update_ui_settings(
         "background_image": payload.background_image,
         "background_image_opacity": payload.background_image_opacity,
         "background_image_blur": payload.background_image_blur,
+        "background_image_scale": payload.background_image_scale,
+        "background_image_focus_x": payload.background_image_focus_x,
+        "background_image_focus_y": payload.background_image_focus_y,
         "background_image_fill_mode": payload.background_image_fill_mode,
     }
     return UISettingsResponse.model_validate(await store.update(updates))

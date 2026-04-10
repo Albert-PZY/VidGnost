@@ -52,6 +52,9 @@ def test_ui_settings_store_persists_background_image_and_rendering_controls(tmp_
                 "background_image": "data:image/png;base64,ZmFrZQ==",
                 "background_image_opacity": 64,
                 "background_image_blur": 12,
+                "background_image_scale": 1.86,
+                "background_image_focus_x": 0.32,
+                "background_image_focus_y": 0.68,
                 "background_image_fill_mode": "contain",
             }
         )
@@ -62,8 +65,33 @@ def test_ui_settings_store_persists_background_image_and_rendering_controls(tmp_
     assert saved["background_image"] == "data:image/png;base64,ZmFrZQ=="
     assert saved["background_image_opacity"] == 64
     assert saved["background_image_blur"] == 12
+    assert saved["background_image_scale"] == 1.86
+    assert saved["background_image_focus_x"] == 0.32
+    assert saved["background_image_focus_y"] == 0.68
     assert saved["background_image_fill_mode"] == "contain"
     assert current["background_image"] == "data:image/png;base64,ZmFrZQ=="
     assert current["background_image_opacity"] == 64
     assert current["background_image_blur"] == 12
+    assert current["background_image_scale"] == 1.86
+    assert current["background_image_focus_x"] == 0.32
+    assert current["background_image_focus_y"] == 0.68
     assert current["background_image_fill_mode"] == "contain"
+
+
+def test_ui_settings_store_clamps_background_focus_and_scale(tmp_path: Path) -> None:
+    settings = _build_settings(tmp_path)
+    store = UISettingsStore(settings)
+
+    saved = asyncio.run(
+        store.update(
+            {
+                "background_image_scale": 9,
+                "background_image_focus_x": -1,
+                "background_image_focus_y": 3,
+            }
+        )
+    )
+
+    assert saved["background_image_scale"] == 4.0
+    assert saved["background_image_focus_x"] == 0.0
+    assert saved["background_image_focus_y"] == 1.0

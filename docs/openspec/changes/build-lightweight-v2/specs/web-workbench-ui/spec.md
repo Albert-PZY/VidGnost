@@ -58,8 +58,8 @@ Heavy renderer modules such as settings subviews and embedded markdown editors S
 - **AND** the placeholder uses neutral, low-contrast loading tones with a restrained shimmer effect
 - **AND** the final surface replaces the skeleton once the async chunk and styles are ready
 
-### Requirement: Appearance settings SHALL persist theme hue, font size, and autosave
-UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_image`, `background_image_opacity`, `background_image_blur`, and `background_image_fill_mode`, and the renderer SHALL apply them immediately to the active shell.
+### Requirement: Appearance settings SHALL persist theme hue, font size, autosave, and custom skin state
+UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_image`, `background_image_opacity`, `background_image_blur`, `background_image_scale`, `background_image_focus_x`, `background_image_focus_y`, and `background_image_fill_mode`, and the renderer SHALL apply them immediately to the active shell through a dedicated fixed background layer.
 
 #### Scenario: Adjust theme hue
 - **WHEN** user changes theme hue from the appearance section and saves it
@@ -70,11 +70,16 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **WHEN** user changes interface font size and saves it
 - **THEN** renderer applies the new root font size immediately and restores it on next launch
 
-#### Scenario: Upload a custom background image
-- **WHEN** user uploads a background image in appearance settings and adjusts opacity, blur, or fill mode
-- **THEN** the renderer applies the image as a full-shell cover background
+#### Scenario: Configure a custom skin image
+- **WHEN** user chooses a skin image from the Electron shell and opens the skin dialog
+- **THEN** the renderer shows a crop-oriented skin dialog with a draggable selection frame and wheel-driven zoom
+- **AND** the current shell background updates in real time while the dialog is open
+- **AND** saving the dialog persists opacity, blur, scale, and focus coordinates for the selected image
+
+#### Scenario: Restore a saved custom skin
+- **WHEN** renderer loads with persisted skin settings
+- **THEN** the fixed shell background layer restores the saved image using the stored opacity, blur, scale, and focus coordinates
 - **AND** the title bar, sidebar, and main content shell render above the same background layer
-- **AND** the chosen opacity, blur, and fill mode are persisted and restored after application restart
 
 ### Requirement: Shell controls SHALL expose explicit language selection state
 Header language controls SHALL show the current selected language with explicit selected-state feedback and persist the language choice through UI settings.
@@ -93,12 +98,17 @@ Renderer branding surfaces and favicon SHALL use `frontend/public/icon.svg` as t
 - **AND** browser/electron renderer favicon resolves to the same logo asset
 
 ### Requirement: Renderer SHALL consume backend data through plain HTTP APIs
-Frontend SHALL only render backend-provided data and call the Python backend over HTTP APIs. Electron bridge SHALL be limited to shell/window integrations such as open path, open external link, and window controls.
+Frontend SHALL only render backend-provided data and call the Python backend over HTTP APIs. Electron bridge SHALL be limited to desktop shell integrations such as open path, open external link, image-file selection, and window controls.
 
 #### Scenario: Load the workbench in Electron
 - **WHEN** renderer starts inside Electron
 - **THEN** data requests go through the backend HTTP API
 - **AND** Electron preload APIs are used only for desktop shell interactions
+
+#### Scenario: Pick a skin image from Electron
+- **WHEN** user clicks the skin selection button in appearance settings inside Electron
+- **THEN** Electron opens the native file picker for image files
+- **AND** the renderer receives the selected image payload through the preload bridge without changing the backend transport model
 
 ### Requirement: Diagnostics view SHALL present runtime metrics as a compact live strip
 Diagnostics view SHALL render runtime metrics in a single compact strip that exposes `uptime_seconds`, `cpu_percent`, `memory_used_bytes`, `memory_total_bytes`, `gpu_percent`, `gpu_memory_used_bytes`, `gpu_memory_total_bytes`, and `sampled_at` from the backend runtime metrics API without nested metric cards.
