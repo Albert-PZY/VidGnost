@@ -100,18 +100,18 @@ const promptDescriptions: Record<PromptTemplateChannel, string> = {
 }
 
 const modelTypeTagClassNames: Record<string, string> = {
-  whisper: "border-sky-800/60 text-sky-700 dark:border-sky-400/35 dark:text-sky-300",
-  llm: "border-cyan-800/60 text-cyan-700 dark:border-cyan-400/35 dark:text-cyan-300",
-  embedding: "border-emerald-800/60 text-emerald-700 dark:border-emerald-400/35 dark:text-emerald-300",
-  vlm: "border-fuchsia-800/55 text-fuchsia-700 dark:border-fuchsia-400/35 dark:text-fuchsia-300",
-  rerank: "border-amber-800/60 text-amber-700 dark:border-amber-400/35 dark:text-amber-300",
+  whisper: "border-indigo-800/75 text-indigo-700 dark:border-indigo-400/55 dark:text-indigo-300",
+  llm: "border-cyan-800/75 text-cyan-700 dark:border-cyan-400/55 dark:text-cyan-300",
+  embedding: "border-emerald-800/75 text-emerald-700 dark:border-emerald-400/55 dark:text-emerald-300",
+  vlm: "border-rose-800/75 text-rose-700 dark:border-rose-400/55 dark:text-rose-300",
+  rerank: "border-amber-800/75 text-amber-700 dark:border-amber-400/55 dark:text-amber-300",
 }
 
 const promptTagClassNames: Record<PromptTemplateChannel, string> = {
-  correction: "border-sky-800/60 text-sky-700 dark:border-sky-400/35 dark:text-sky-300",
-  notes: "border-amber-800/60 text-amber-700 dark:border-amber-400/35 dark:text-amber-300",
-  mindmap: "border-fuchsia-800/55 text-fuchsia-700 dark:border-fuchsia-400/35 dark:text-fuchsia-300",
-  vqa: "border-emerald-800/60 text-emerald-700 dark:border-emerald-400/35 dark:text-emerald-300",
+  correction: "border-rose-800/75 text-rose-700 dark:border-rose-400/55 dark:text-rose-300",
+  notes: "border-amber-800/75 text-amber-700 dark:border-amber-400/55 dark:text-amber-300",
+  mindmap: "border-violet-800/75 text-violet-700 dark:border-violet-400/55 dark:text-violet-300",
+  vqa: "border-teal-800/75 text-teal-700 dark:border-teal-400/55 dark:text-teal-300",
 }
 
 const themeHuePresets = [
