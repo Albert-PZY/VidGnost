@@ -107,6 +107,21 @@ type ModelConfigFormState = {
   enabled: boolean
 }
 
+type ModelConfigField = keyof ModelConfigFormState
+
+type ModelConfigPreset = {
+  title: string
+  description: string
+  note?: string
+  pathLabel?: string
+  pathPlaceholder?: string
+  quantizationLabel?: string
+  quantizationPlaceholder?: string
+  batchLabel?: string
+  batchDescription?: string
+  fields: ModelConfigField[]
+}
+
 const EMPTY_MODEL_FORM: ModelConfigFormState = {
   path: "",
   load_profile: "balanced",
@@ -148,6 +163,18 @@ const modelVisuals: Record<
     iconClassName: "text-amber-500",
     surfaceClassName: "bg-amber-500/10",
   },
+}
+
+const localLlmPreset: ModelConfigPreset = {
+  title: "本地大模型配置",
+  description: "管理本地 LLM 的缓存目录、加载策略和吞吐参数。",
+  fields: ["path", "load_profile", "quantization", "max_batch_size", "enabled"],
+  pathLabel: "模型目录",
+  pathPlaceholder: "可选：指定本地 LLM 权重目录",
+  quantizationLabel: "量化格式",
+  quantizationPlaceholder: "如 4bit / 8bit / fp16",
+  batchLabel: "最大并发批大小",
+  batchDescription: "影响本地推理吞吐，数值越高占用越大。",
 }
 
 export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewProps) {
@@ -220,6 +247,95 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
     return modelVisuals[component] || modelVisuals.llm
   }
 
+  const getModelConfigPreset = (model: ModelDescriptor): ModelConfigPreset => {
+    if (model.component === "whisper") {
+      return {
+        title: "语音转写模型配置",
+        description: "调整 Faster-Whisper 模型目录与加载策略。GPU 开关在页面上方单独控制。",
+        note: "建议优先保持量化格式与 GPU 设备策略一致，减少首次加载抖动。",
+        fields: ["path", "load_profile", "quantization", "enabled"],
+        pathLabel: "模型目录",
+        pathPlaceholder: "可选：指定 Faster-Whisper 模型目录",
+        quantizationLabel: "推理精度",
+        quantizationPlaceholder: "如 int8 / float16 / float32",
+      }
+    }
+
+    if (model.component === "llm") {
+      if (model.provider === "openai_compatible") {
+        return {
+          title: "在线 LLM 调度配置",
+          description: "当前 LLM 由兼容 OpenAI 的接口提供，这里只控制调度与启用状态。",
+          note: "接口地址、模型名与 API Key 在后端 LLM 配置中维护，这里不重复编辑。",
+          fields: ["load_profile", "max_batch_size", "enabled"],
+          batchLabel: "请求批大小",
+          batchDescription: "用于限制同一批次的请求规模，避免接口抖动。",
+        }
+      }
+      return localLlmPreset
+    }
+
+    if (model.component === "embedding") {
+      return {
+        title: "向量嵌入模型配置",
+        description: "控制向量化模型的缓存目录和批处理吞吐。",
+        note: "嵌入模型更适合通过批大小调优吞吐，不建议频繁切换加载策略。",
+        fields: ["path", "max_batch_size", "enabled"],
+        pathLabel: "模型目录",
+        pathPlaceholder: "可选：指定嵌入模型本地目录",
+        batchLabel: "向量化批大小",
+        batchDescription: "批大小越大，向量化吞吐越高，但会增加内存压力。",
+      }
+    }
+
+    if (model.component === "vlm") {
+      return {
+        title: "视觉语言模型配置",
+        description: "控制关键帧语义识别模型的本地目录、量化方式和加载策略。",
+        note: "VLM 通常对显存最敏感，建议优先调低量化精度而不是提高并发。",
+        fields: ["path", "load_profile", "quantization", "enabled"],
+        pathLabel: "模型目录",
+        pathPlaceholder: "可选：指定 VLM 模型目录",
+        quantizationLabel: "权重量化",
+        quantizationPlaceholder: "如 4bit / 8bit / fp16",
+      }
+    }
+
+    return {
+      title: "重排序模型配置",
+      description: "控制 rerank 模型的本地目录和批处理规模。",
+      note: "重排序阶段主要受批大小影响，适合按吞吐逐步调高。",
+      fields: ["path", "max_batch_size", "enabled"],
+      pathLabel: "模型目录",
+      pathPlaceholder: "可选：指定 rerank 模型目录",
+      batchLabel: "重排序批大小",
+      batchDescription: "提升批大小可以提高吞吐，但会增加 CPU/GPU 占用。",
+    }
+  }
+
+  const buildModelUpdatePayload = (model: ModelDescriptor, form: ModelConfigFormState) => {
+    const preset = getModelConfigPreset(model)
+    const payload: Parameters<typeof updateModel>[1] = {}
+
+    if (preset.fields.includes("path")) {
+      payload.path = form.path.trim()
+    }
+    if (preset.fields.includes("load_profile")) {
+      payload.load_profile = form.load_profile.trim() || "balanced"
+    }
+    if (preset.fields.includes("quantization")) {
+      payload.quantization = form.quantization.trim()
+    }
+    if (preset.fields.includes("max_batch_size")) {
+      payload.max_batch_size = Number.parseInt(form.max_batch_size, 10) || 1
+    }
+    if (preset.fields.includes("enabled")) {
+      payload.enabled = form.enabled
+    }
+
+    return payload
+  }
+
   const handleReloadModel = async (modelId?: string) => {
     setBusyModelId(modelId || "__all__")
     try {
@@ -261,13 +377,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
     setIsSavingModel(true)
     setBusyModelId(editingModel.id)
     try {
-      const response = await updateModel(editingModel.id, {
-        path: modelForm.path.trim(),
-        load_profile: modelForm.load_profile.trim() || "balanced",
-        quantization: modelForm.quantization.trim(),
-        max_batch_size: Number.parseInt(modelForm.max_batch_size, 10) || 1,
-        enabled: modelForm.enabled,
-      })
+      const response = await updateModel(editingModel.id, buildModelUpdatePayload(editingModel, modelForm))
       setModels(response.items)
       handleModelDialogChange(false)
       toast.success("模型配置已更新")
@@ -411,6 +521,10 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
   }
 
   const gpuAcceleration = whisperConfig ? whisperConfig.device !== "cpu" : false
+  const activeModelPreset = editingModel ? getModelConfigPreset(editingModel) : null
+  const modelDialogHasQuantization = Boolean(activeModelPreset?.fields.includes("quantization"))
+  const modelDialogHasBatchSize = Boolean(activeModelPreset?.fields.includes("max_batch_size"))
+  const modelDialogFieldPairCount = [modelDialogHasQuantization, modelDialogHasBatchSize].filter(Boolean).length
 
   return (
     <div className="flex-1 overflow-auto">
@@ -559,9 +673,9 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                   <Dialog open={isModelDialogOpen} onOpenChange={handleModelDialogChange}>
                     <DialogContent className="max-w-xl">
                       <DialogHeader>
-                        <DialogTitle>模型常用配置</DialogTitle>
+                        <DialogTitle>{activeModelPreset?.title || "模型常用配置"}</DialogTitle>
                         <DialogDescription>
-                          {editingModel ? `更新 ${editingModel.name} 的常用运行参数。` : "更新模型配置。"}
+                          {activeModelPreset?.description || "更新模型配置。"}
                         </DialogDescription>
                       </DialogHeader>
                       <div className="space-y-4 py-4">
@@ -583,22 +697,40 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                                 <div className="truncate text-xs text-muted-foreground">{editingModel.model_id}</div>
                               </div>
                             </div>
+                            <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+                              <div className="rounded-lg border bg-background/80 px-3 py-2">
+                                <div className="mb-1 text-[11px] uppercase tracking-[0.18em]">Provider</div>
+                                <div className="text-sm text-foreground">{editingModel.provider.replaceAll("_", " ")}</div>
+                              </div>
+                              <div className="rounded-lg border bg-background/80 px-3 py-2">
+                                <div className="mb-1 text-[11px] uppercase tracking-[0.18em]">Component</div>
+                                <div className="text-sm text-foreground">{modelTypeLabels[editingModel.component]}</div>
+                              </div>
+                            </div>
                           </div>
                         ) : null}
 
-                        <div className="space-y-2">
-                          <Label htmlFor="model-path">本地路径</Label>
-                          <Input
-                            id="model-path"
-                            placeholder="可选：指定模型缓存目录或本地模型目录"
-                            value={modelForm.path}
-                            onChange={(event) =>
-                              setModelForm((current) => ({ ...current, path: event.target.value }))
-                            }
-                          />
-                        </div>
+                        {activeModelPreset?.note ? (
+                          <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-muted-foreground">
+                            {activeModelPreset.note}
+                          </div>
+                        ) : null}
 
-                        <div className="grid grid-cols-2 gap-4">
+                        {activeModelPreset?.fields.includes("path") ? (
+                          <div className="space-y-2">
+                            <Label htmlFor="model-path">{activeModelPreset.pathLabel || "本地路径"}</Label>
+                            <Input
+                              id="model-path"
+                              placeholder={activeModelPreset.pathPlaceholder || "可选：指定模型缓存目录或本地模型目录"}
+                              value={modelForm.path}
+                              onChange={(event) =>
+                                setModelForm((current) => ({ ...current, path: event.target.value }))
+                              }
+                            />
+                          </div>
+                        ) : null}
+
+                        {activeModelPreset?.fields.includes("load_profile") ? (
                           <div className="space-y-2">
                             <Label>加载策略</Label>
                             <Select
@@ -616,39 +748,55 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                               </SelectContent>
                             </Select>
                           </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="model-quantization">量化格式</Label>
-                            <Input
-                              id="model-quantization"
-                              placeholder="如 int8 / 4bit / fp16"
-                              value={modelForm.quantization}
-                              onChange={(event) =>
-                                setModelForm((current) => ({
-                                  ...current,
-                                  quantization: event.target.value,
-                                }))
-                              }
-                            />
-                          </div>
-                        </div>
+                        ) : null}
 
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="model-max-batch">最大批大小</Label>
-                            <Input
-                              id="model-max-batch"
-                              type="number"
-                              min={1}
-                              max={64}
-                              value={modelForm.max_batch_size}
-                              onChange={(event) =>
-                                setModelForm((current) => ({
-                                  ...current,
-                                  max_batch_size: event.target.value,
-                                }))
-                              }
-                            />
+                        {modelDialogFieldPairCount > 0 ? (
+                          <div className={cn("grid gap-4", modelDialogFieldPairCount > 1 ? "grid-cols-2" : "grid-cols-1")}>
+                            {modelDialogHasQuantization ? (
+                              <div className="space-y-2">
+                                <Label htmlFor="model-quantization">
+                                  {activeModelPreset?.quantizationLabel || "量化格式"}
+                                </Label>
+                                <Input
+                                  id="model-quantization"
+                                  placeholder={activeModelPreset?.quantizationPlaceholder || "如 int8 / 4bit / fp16"}
+                                  value={modelForm.quantization}
+                                  onChange={(event) =>
+                                    setModelForm((current) => ({
+                                      ...current,
+                                      quantization: event.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                            ) : null}
+                            {modelDialogHasBatchSize ? (
+                              <div className="space-y-2">
+                                <Label htmlFor="model-max-batch">
+                                  {activeModelPreset?.batchLabel || "最大批大小"}
+                                </Label>
+                                <Input
+                                  id="model-max-batch"
+                                  type="number"
+                                  min={1}
+                                  max={64}
+                                  value={modelForm.max_batch_size}
+                                  onChange={(event) =>
+                                    setModelForm((current) => ({
+                                      ...current,
+                                      max_batch_size: event.target.value,
+                                    }))
+                                  }
+                                />
+                                {activeModelPreset?.batchDescription ? (
+                                  <p className="text-xs text-muted-foreground">{activeModelPreset.batchDescription}</p>
+                                ) : null}
+                              </div>
+                            ) : null}
                           </div>
+                        ) : null}
+
+                        {activeModelPreset?.fields.includes("enabled") ? (
                           <div className="flex items-end justify-between rounded-lg border px-4 py-3">
                             <div>
                               <Label>启用状态</Label>
@@ -661,7 +809,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                               }
                             />
                           </div>
-                        </div>
+                        ) : null}
                       </div>
                       <DialogFooter>
                         <Button variant="outline" onClick={() => handleModelDialogChange(false)}>
