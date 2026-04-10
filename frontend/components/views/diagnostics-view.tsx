@@ -22,7 +22,7 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -88,6 +88,28 @@ const EMPTY_METRICS: RuntimeMetricsResponse = {
   gpu_memory_used_bytes: 0,
   gpu_memory_total_bytes: 0,
   sampled_at: "",
+}
+
+function formatSampledAt(value: string): string {
+  if (!value) {
+    return "等待首次采样"
+  }
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    return "等待首次采样"
+  }
+  return parsed.toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  })
+}
+
+function formatUsagePercent(usedBytes: number, totalBytes: number): string {
+  if (usedBytes <= 0 || totalBytes <= 0) {
+    return "等待数据"
+  }
+  return `${Math.round((usedBytes / totalBytes) * 100)}% 已用`
 }
 
 function mapStepStatus(status: string): CheckStatus {
@@ -229,6 +251,45 @@ export function DiagnosticsView() {
     return { success, warning, error }
   }, [checks])
 
+  const runtimeMetricItems = React.useMemo(
+    () => [
+      {
+        key: "uptime",
+        label: "运行时间",
+        icon: Clock,
+        value: formatDurationSeconds(runtimeMetrics.uptime_seconds),
+        detail: `采样 ${formatSampledAt(runtimeMetrics.sampled_at)}`,
+      },
+      {
+        key: "cpu",
+        label: "CPU 使用率",
+        icon: Cpu,
+        value: `${runtimeMetrics.cpu_percent.toFixed(0)}%`,
+        detail: "后端进程实时负载",
+      },
+      {
+        key: "memory",
+        label: "内存使用",
+        icon: MemoryStick,
+        value:
+          `${formatBytes(runtimeMetrics.memory_used_bytes)}` +
+          (runtimeMetrics.memory_total_bytes > 0 ? ` / ${formatBytes(runtimeMetrics.memory_total_bytes)}` : ""),
+        detail: formatUsagePercent(runtimeMetrics.memory_used_bytes, runtimeMetrics.memory_total_bytes),
+      },
+      {
+        key: "gpu",
+        label: "GPU 使用率",
+        icon: Zap,
+        value: `${runtimeMetrics.gpu_percent.toFixed(0)}%`,
+        detail:
+          runtimeMetrics.gpu_memory_total_bytes > 0
+            ? `${formatBytes(runtimeMetrics.gpu_memory_used_bytes)} / ${formatBytes(runtimeMetrics.gpu_memory_total_bytes)} 显存`
+            : "未检测到 GPU 遥测",
+      },
+    ],
+    [runtimeMetrics],
+  )
+
   return (
     <div className="flex-1 overflow-auto">
       <div className="container max-w-4xl mx-auto p-6 space-y-6">
@@ -352,42 +413,33 @@ export function DiagnosticsView() {
         </Card>
 
         <Card className="gap-0 rounded-md border-border/70 bg-card/75 py-0 shadow-none">
-          <CardHeader className="border-b border-border/60 px-4 py-3.5">
-            <CardTitle className="text-base">运行时信息</CardTitle>
-          </CardHeader>
-          <CardContent className="p-4">
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Clock className="h-4 w-4" />
-                  运行时间
-                </div>
-                <div className="text-lg font-semibold">{formatDurationSeconds(runtimeMetrics.uptime_seconds)}</div>
+          <CardContent className="px-4 py-3">
+            <div className="flex items-center justify-between gap-3 border-b border-border/60 pb-2.5">
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-sm font-medium">运行时信息</CardTitle>
+                <span className="text-xs text-muted-foreground">每 5 秒自动刷新</span>
               </div>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Cpu className="h-4 w-4" />
-                  CPU 使用率
+              <span className="text-xs text-muted-foreground">
+                最近采样 {formatSampledAt(runtimeMetrics.sampled_at)}
+              </span>
+            </div>
+
+            <div className="mt-1.5 flex flex-col divide-y divide-border/50 md:flex-row md:divide-x md:divide-y-0">
+              {runtimeMetricItems.map((item) => (
+                <div
+                  key={item.key}
+                  className="flex min-w-0 flex-1 items-center justify-between gap-3 py-3 md:px-3 md:first:pl-0 md:last:pr-0"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-[11px] font-medium tracking-[0.08em] text-muted-foreground">
+                      <item.icon className="h-3.5 w-3.5 shrink-0" />
+                      <span>{item.label}</span>
+                    </div>
+                    <div className="mt-1 truncate text-[11px] text-muted-foreground/90">{item.detail}</div>
+                  </div>
+                  <div className="shrink-0 text-right text-sm font-semibold tracking-tight">{item.value}</div>
                 </div>
-                <div className="text-lg font-semibold">{runtimeMetrics.cpu_percent.toFixed(0)}%</div>
-              </div>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <MemoryStick className="h-4 w-4" />
-                  内存使用
-                </div>
-                <div className="text-lg font-semibold">
-                  {formatBytes(runtimeMetrics.memory_used_bytes)}
-                  {runtimeMetrics.memory_total_bytes > 0 ? ` / ${formatBytes(runtimeMetrics.memory_total_bytes)}` : ""}
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Zap className="h-4 w-4" />
-                  GPU 使用率
-                </div>
-                <div className="text-lg font-semibold">{runtimeMetrics.gpu_percent.toFixed(0)}%</div>
-              </div>
+              ))}
             </div>
           </CardContent>
         </Card>

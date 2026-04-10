@@ -66,3 +66,12 @@ Frontend SHALL only render backend-provided data and call the Python backend ove
 - **WHEN** renderer starts inside Electron
 - **THEN** data requests go through the backend HTTP API
 - **AND** Electron preload APIs are used only for desktop shell interactions
+
+### Requirement: Diagnostics view SHALL present runtime metrics as a compact live strip
+Diagnostics view SHALL render runtime metrics in a single compact strip that exposes `uptime_seconds`, `cpu_percent`, `memory_used_bytes`, `memory_total_bytes`, `gpu_percent`, `gpu_memory_used_bytes`, `gpu_memory_total_bytes`, and `sampled_at` from the backend runtime metrics API without nested metric cards.
+
+#### Scenario: Open diagnostics view after runtime metrics load
+- **WHEN** the renderer requests `/runtime/metrics`
+- **THEN** the diagnostics page shows a compact runtime strip with uptime, CPU, memory, and GPU summaries
+- **AND** the strip shows the latest sample timestamp
+- **AND** memory and GPU rows expose usage detail without expanding into secondary cards
