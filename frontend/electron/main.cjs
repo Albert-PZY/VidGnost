@@ -4,6 +4,7 @@ const path = require("node:path")
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://127.0.0.1:5173"
 const PRELOAD_PATH = path.join(__dirname, "preload.cjs")
+const ICON_PATH = path.join(__dirname, "..", "public", "icon-light-32x32.png")
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(["http:", "https:"])
 const allowedToClose = new WeakSet()
 
@@ -95,6 +96,7 @@ function createWindow() {
     frame: false,
     autoHideMenuBar: true,
     backgroundColor: "#0d131d",
+    icon: ICON_PATH,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -123,6 +125,10 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  app.setName("VidGnost")
+  if (process.platform === "win32") {
+    app.setAppUserModelId("com.vidgnost.desktop")
+  }
   createWindow()
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

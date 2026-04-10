@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { toast } from "sonner"
+import { toast } from "react-hot-toast"
 import {
   Play,
   Pause,

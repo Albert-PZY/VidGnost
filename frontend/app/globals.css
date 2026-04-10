@@ -204,3 +204,44 @@
     50% { opacity: 0.5; }
   }
 }
+
+@keyframes download-progress-flow {
+  0% {
+    transform: translateX(-140%);
+  }
+  100% {
+    transform: translateX(220%);
+  }
+}
+
+.download-progress-indicator {
+  position: relative;
+  overflow: hidden;
+}
+
+.download-progress-indicator::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 28%,
+    rgba(255, 255, 255, 0.5) 50%,
+    rgba(255, 255, 255, 0.08) 72%,
+    transparent 100%
+  );
+  animation: download-progress-flow 1.2s linear infinite;
+  pointer-events: none;
+}
+
+.dark .download-progress-indicator::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.1) 28%,
+    rgba(255, 255, 255, 0.58) 50%,
+    rgba(255, 255, 255, 0.1) 72%,
+    transparent 100%
+  );
+}

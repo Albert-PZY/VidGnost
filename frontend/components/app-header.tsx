@@ -15,7 +15,7 @@ import {
   X,
 } from "lucide-react"
 import { useTheme } from "next-themes"
-import { toast } from "sonner"
+import { toast } from "react-hot-toast"
 
 import { Button } from "@/components/ui/button"
 import {

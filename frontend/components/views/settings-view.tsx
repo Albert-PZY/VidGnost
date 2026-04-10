@@ -1,16 +1,13 @@
 "use client"
 
 import * as React from "react"
-import { toast } from "sonner"
+import { toast } from "react-hot-toast"
 import {
   CloudDownload,
   Cpu,
   FileCode,
-  FileText,
-  GitBranch,
   Palette,
   Globe,
-  MessageSquareText,
   Plus,
   Trash2,
   Edit2,
@@ -45,7 +42,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import {
@@ -103,34 +99,19 @@ const promptDescriptions: Record<PromptTemplateChannel, string> = {
   vqa: "用于视频问答与检索回答生成。",
 }
 
-const promptVisuals: Record<
-  PromptTemplateChannel,
-  {
-    icon: React.ElementType
-    badgeClassName: string
-    surfaceClassName: string
-  }
-> = {
-  correction: {
-    icon: Edit2,
-    badgeClassName: "text-primary",
-    surfaceClassName: "bg-primary/10",
-  },
-  notes: {
-    icon: FileText,
-    badgeClassName: "text-amber-500",
-    surfaceClassName: "bg-amber-500/10",
-  },
-  mindmap: {
-    icon: GitBranch,
-    badgeClassName: "text-fuchsia-500",
-    surfaceClassName: "bg-fuchsia-500/10",
-  },
-  vqa: {
-    icon: MessageSquareText,
-    badgeClassName: "text-emerald-500",
-    surfaceClassName: "bg-emerald-500/10",
-  },
+const modelTypeTagClassNames: Record<string, string> = {
+  whisper: "border-sky-800/60 text-sky-700 dark:border-sky-400/35 dark:text-sky-300",
+  llm: "border-cyan-800/60 text-cyan-700 dark:border-cyan-400/35 dark:text-cyan-300",
+  embedding: "border-emerald-800/60 text-emerald-700 dark:border-emerald-400/35 dark:text-emerald-300",
+  vlm: "border-fuchsia-800/55 text-fuchsia-700 dark:border-fuchsia-400/35 dark:text-fuchsia-300",
+  rerank: "border-amber-800/60 text-amber-700 dark:border-amber-400/35 dark:text-amber-300",
+}
+
+const promptTagClassNames: Record<PromptTemplateChannel, string> = {
+  correction: "border-sky-800/60 text-sky-700 dark:border-sky-400/35 dark:text-sky-300",
+  notes: "border-amber-800/60 text-amber-700 dark:border-amber-400/35 dark:text-amber-300",
+  mindmap: "border-fuchsia-800/55 text-fuchsia-700 dark:border-fuchsia-400/35 dark:text-fuchsia-300",
+  vqa: "border-emerald-800/60 text-emerald-700 dark:border-emerald-400/35 dark:text-emerald-300",
 }
 
 const themeHuePresets = [
@@ -207,29 +188,29 @@ const modelVisuals: Record<
   }
 > = {
   whisper: {
-    icon: Zap,
+    icon: Cpu,
     iconClassName: "text-primary",
     surfaceClassName: "bg-primary/10",
   },
   llm: {
-    icon: FileCode,
-    iconClassName: "text-sky-500",
-    surfaceClassName: "bg-sky-500/10",
+    icon: Cpu,
+    iconClassName: "text-primary",
+    surfaceClassName: "bg-primary/10",
   },
   embedding: {
-    icon: Globe,
-    iconClassName: "text-emerald-500",
-    surfaceClassName: "bg-emerald-500/10",
+    icon: Cpu,
+    iconClassName: "text-primary",
+    surfaceClassName: "bg-primary/10",
   },
   vlm: {
-    icon: Palette,
-    iconClassName: "text-fuchsia-500",
-    surfaceClassName: "bg-fuchsia-500/10",
+    icon: Cpu,
+    iconClassName: "text-primary",
+    surfaceClassName: "bg-primary/10",
   },
   rerank: {
-    icon: RefreshCw,
-    iconClassName: "text-amber-500",
-    surfaceClassName: "bg-amber-500/10",
+    icon: Cpu,
+    iconClassName: "text-primary",
+    surfaceClassName: "bg-primary/10",
   },
 }
 
@@ -267,6 +248,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
   const [isSavingUi, setIsSavingUi] = React.useState(false)
   const [isUpdatingWhisper, setIsUpdatingWhisper] = React.useState(false)
   const [pendingDeletePrompt, setPendingDeletePrompt] = React.useState<PromptTemplateItem | null>(null)
+  const [isDeletingPrompt, setIsDeletingPrompt] = React.useState(false)
 
   React.useEffect(() => {
     setFontSize([uiSettings.font_size])
@@ -464,7 +446,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
     try {
       const response = await reloadModels(modelId)
       setModels(response.items)
-      toast.success(modelId ? "模型已重载" : "模型列表已刷新")
+      toast.success(modelId ? "模型检测状态已刷新" : "模型列表已刷新")
     } catch (error) {
       toast.error(getApiErrorMessage(error, "重载模型失败"))
     } finally {
@@ -475,15 +457,26 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
   const handleManagedModelAction = async (model: ModelDescriptor) => {
     setBusyModelId(model.id)
     try {
-      const response =
-        model.download?.state === "downloading"
-          ? await cancelModelDownload(model.id)
-          : await startModelDownload(model.id)
+      let response
+      if (model.download?.state === "downloading") {
+        response = await cancelModelDownload(model.id)
+      } else if (model.is_installed) {
+        response = await reloadModels(model.id)
+      } else {
+        response = await startModelDownload(model.id)
+      }
       setModels(response.items)
       if (model.download?.state === "downloading") {
         toast.success("模型下载已取消")
+      } else if (model.is_installed) {
+        const refreshed = response.items.find((item) => item.id === model.id)
+        if (refreshed?.is_installed) {
+          toast.success("已刷新模型检测状态，当前模型文件可直接使用")
+        } else {
+          toast("已刷新模型检测状态，当前目录未检测到完整模型文件")
+        }
       } else {
-        toast.success(model.is_installed ? "已开始重置并重新下载模型" : "已开始下载模型到默认目录")
+        toast.success("已开始下载模型到默认目录")
       }
     } catch (error) {
       toast.error(getApiErrorMessage(error, "模型操作失败"))
@@ -569,9 +562,15 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
   const handleCreatePromptClick = () => {
     setEditingPrompt(null)
     setPromptForm(EMPTY_PROMPT_FORM)
+    setIsPromptDialogOpen(true)
   }
 
   const handleEditPromptClick = (prompt: PromptTemplateItem) => {
+    if (prompt.is_default) {
+      toast("系统默认模板为只读模板，请新建副本后再编辑")
+      return
+    }
+
     setEditingPrompt(prompt)
     setPromptForm({
       channel: prompt.channel,
@@ -629,10 +628,16 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
   }
 
   const handleDeletePrompt = async () => {
-    if (!pendingDeletePrompt || pendingDeletePrompt.is_default) {
+    if (!pendingDeletePrompt) {
+      return
+    }
+    if (pendingDeletePrompt.is_default) {
+      toast("系统默认模板不可删除")
+      setPendingDeletePrompt(null)
       return
     }
 
+    setIsDeletingPrompt(true)
     try {
       const nextBundle = await deletePromptTemplate(pendingDeletePrompt.id)
       setPromptBundle(nextBundle)
@@ -640,6 +645,8 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
       toast.success("模板已删除")
     } catch (error) {
       toast.error(getApiErrorMessage(error, "删除模板失败"))
+    } finally {
+      setIsDeletingPrompt(false)
     }
   }
 
@@ -689,7 +696,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
       })
       setWhisperConfig(saved)
       if (saved.warnings.length > 0) {
-        toast.message(saved.warnings.join(" "))
+        toast(saved.warnings.join(" "))
       }
       toast.success(checked ? "已切换为自动 GPU 模式" : "已切换为 CPU 模式")
     } catch (error) {
@@ -800,7 +807,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                             {getStatusBadge(model.status)}
                           </div>
                           <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                            <Badge variant="outline">{modelTypeLabels[model.component]}</Badge>
+                            <Badge variant="outline" className={modelTypeTagClassNames[model.component]}>{modelTypeLabels[model.component]}</Badge>
                             <Badge variant="secondary" className="capitalize">
                               {model.provider.replaceAll("_", " ")}
                             </Badge>
@@ -845,7 +852,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                                 ) : (
                                   <CloudDownload className="mr-1 h-4 w-4" />
                                 )}
-                                {model.is_installed ? "重置" : "下载"}
+                                {model.is_installed ? "刷新检测" : "下载"}
                               </Button>
                             )
                           ) : (
@@ -881,7 +888,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                               </span>
                               <span className="shrink-0">{Math.round(downloadPercent)}%</span>
                             </div>
-                            <Progress value={downloadPercent} className="h-2 bg-primary/10" />
+                            <Progress value={downloadPercent} className="h-2 bg-primary/10" indicatorClassName="download-progress-indicator" />
                           </div>
                         ) : null}
                       </div>
@@ -897,7 +904,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                     variant="outline"
                     className="w-full"
                     onClick={() => {
-                      toast.message("当前后端提供模型重载与路径更新，暂不支持新增模型条目。")
+                      toast("当前后端提供模型重载与路径更新，暂不支持新增模型条目。")
                     }}
                   >
                     <Plus className="h-4 w-4 mr-2" />
@@ -1205,12 +1212,10 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                       </CardDescription>
                     </div>
                     <Dialog open={isPromptDialogOpen} onOpenChange={handlePromptDialogChange}>
-                      <DialogTrigger asChild>
-                        <Button onClick={handleCreatePromptClick}>
-                          <Plus className="h-4 w-4 mr-2" />
-                          新建模板
-                        </Button>
-                      </DialogTrigger>
+                      <Button onClick={handleCreatePromptClick}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        新建模板
+                      </Button>
                       <DialogContent className="flex w-[min(92vw,56rem)] max-h-[min(88vh,54rem)] max-w-[56rem] flex-col gap-0 overflow-hidden p-0">
                         <DialogHeader className="shrink-0 border-b px-6 py-5 pr-14">
                           <DialogTitle>
@@ -1249,51 +1254,24 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="correction">
-                                    <div className="flex items-center gap-2">
-                                      <Edit2 className="h-4 w-4 text-primary" />
-                                      <span>文本纠错</span>
-                                    </div>
-                                  </SelectItem>
-                                  <SelectItem value="notes">
-                                    <div className="flex items-center gap-2">
-                                      <FileText className="h-4 w-4 text-amber-500" />
-                                      <span>笔记生成</span>
-                                    </div>
-                                  </SelectItem>
-                                  <SelectItem value="mindmap">
-                                    <div className="flex items-center gap-2">
-                                      <GitBranch className="h-4 w-4 text-fuchsia-500" />
-                                      <span>思维导图</span>
-                                    </div>
-                                  </SelectItem>
-                                  <SelectItem value="vqa">
-                                    <div className="flex items-center gap-2">
-                                      <MessageSquareText className="h-4 w-4 text-emerald-500" />
-                                      <span>问答检索</span>
-                                    </div>
-                                  </SelectItem>
+                                  <SelectItem value="correction">文本纠错</SelectItem>
+                                  <SelectItem value="notes">笔记生成</SelectItem>
+                                  <SelectItem value="mindmap">思维导图</SelectItem>
+                                  <SelectItem value="vqa">问答检索</SelectItem>
                                 </SelectContent>
                               </Select>
                             </div>
                           </div>
-                          <div className="flex items-center gap-3 rounded-xl border bg-muted/35 px-4 py-3">
-                            <div
-                              className={cn(
-                                "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
-                                promptVisuals[promptForm.channel].surfaceClassName,
-                              )}
+                          <div className="flex items-start gap-3 rounded-xl border bg-muted/35 px-4 py-3">
+                            <Badge
+                              variant="outline"
+                              className={cn("shrink-0", promptTagClassNames[promptForm.channel])}
                             >
-                              {React.createElement(promptVisuals[promptForm.channel].icon, {
-                                className: cn("h-4 w-4", promptVisuals[promptForm.channel].badgeClassName),
-                              })}
-                            </div>
-                            <div className="min-w-0">
-                              <div className="font-medium">{promptTypeLabels[promptForm.channel]}</div>
-                              <p className="text-sm text-muted-foreground">
-                                {promptDescriptions[promptForm.channel]}
-                              </p>
-                            </div>
+                              {promptTypeLabels[promptForm.channel]}
+                            </Badge>
+                            <p className="text-sm text-muted-foreground">
+                              {promptDescriptions[promptForm.channel]}
+                            </p>
                           </div>
                           <div className="space-y-2">
                             <Label>模板说明</Label>
@@ -1334,35 +1312,24 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                     return (
                       <div key={prompt.id} className="rounded-lg border p-4">
                         <div className="flex items-start justify-between">
-                          <div className="flex min-w-0 items-start gap-3">
-                            <div
-                              className={cn(
-                                "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
-                                promptVisuals[prompt.channel].surfaceClassName,
-                              )}
-                            >
-                              {React.createElement(promptVisuals[prompt.channel].icon, {
-                                className: cn("h-4 w-4", promptVisuals[prompt.channel].badgeClassName),
-                              })}
-                            </div>
-                            <div className="min-w-0">
-                            <div className="flex items-center gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
                               <span className="font-medium">{prompt.name}</span>
-                              <Badge variant="outline">{promptTypeLabels[prompt.channel]}</Badge>
+                              <Badge variant="outline" className={promptTagClassNames[prompt.channel]}>
+                                {promptTypeLabels[prompt.channel]}
+                              </Badge>
                               {isSelected && <Badge>当前生效</Badge>}
                               {prompt.is_default && <Badge variant="secondary">默认</Badge>}
                             </div>
-                            <p className="text-sm text-muted-foreground mt-1">
+                            <p className="mt-1 text-sm text-muted-foreground">
                               {promptDescriptions[prompt.channel]}
                             </p>
-                            </div>
                           </div>
                           <div className="flex items-center gap-1">
                             <Button
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8"
-                              disabled={prompt.is_default}
                               onClick={() => handleEditPromptClick(prompt)}
                             >
                               <Edit2 className="h-4 w-4" />
@@ -1371,8 +1338,11 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 text-destructive"
-                              disabled={prompt.is_default}
                               onClick={() => {
+                                if (prompt.is_default) {
+                                  toast("系统默认模板不可删除")
+                                  return
+                                }
                                 setPendingDeletePrompt(prompt)
                               }}
                             >
@@ -1588,6 +1558,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
         }
         confirmLabel="确认删除"
         confirmVariant="destructive"
+        isPending={isDeletingPrompt}
         onConfirm={() => {
           void handleDeletePrompt()
         }}

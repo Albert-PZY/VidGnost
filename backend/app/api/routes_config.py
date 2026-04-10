@@ -303,7 +303,7 @@ async def start_model_download(
             raise ValueError("Model not found")
         await download_service.start_download(
             model_id,
-            force_redownload=bool(target.get("is_installed", False)),
+            force_redownload=False,
         )
     except ValueError as exc:
         raise AppError.bad_request(str(exc), code="MODEL_DOWNLOAD_INVALID") from exc

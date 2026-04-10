@@ -1,35 +1,46 @@
-'use client'
+"use client"
 
-import { useToast } from '@/hooks/use-toast'
-import {
-  Toast,
-  ToastClose,
-  ToastDescription,
-  ToastProvider,
-  ToastTitle,
-  ToastViewport,
-} from '@/components/ui/toast'
+import { useTheme } from "next-themes"
+import { Toaster as HotToaster } from "react-hot-toast"
 
 export function Toaster() {
-  const { toasts } = useToast()
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === "dark"
 
   return (
-    <ToastProvider>
-      {toasts.map(function ({ id, title, description, action, ...props }) {
-        return (
-          <Toast key={id} {...props}>
-            <div className="grid gap-1">
-              {title && <ToastTitle>{title}</ToastTitle>}
-              {description && (
-                <ToastDescription>{description}</ToastDescription>
-              )}
-            </div>
-            {action}
-            <ToastClose />
-          </Toast>
-        )
-      })}
-      <ToastViewport />
-    </ToastProvider>
+    <HotToaster
+      position="top-center"
+      gutter={10}
+      containerStyle={{
+        top: 18,
+        left: 0,
+        right: 0,
+      }}
+      toastOptions={{
+        duration: 1800,
+        style: {
+          background: "var(--popover)",
+          color: "var(--popover-foreground)",
+          border: "1px solid var(--border)",
+          borderRadius: "14px",
+          padding: "12px 14px",
+          boxShadow: isDark
+            ? "0 18px 48px rgba(0, 0, 0, 0.38)"
+            : "0 18px 48px rgba(15, 23, 42, 0.14)",
+        },
+        success: {
+          iconTheme: {
+            primary: "#0f9d58",
+            secondary: "#ffffff",
+          },
+        },
+        error: {
+          iconTheme: {
+            primary: "#dc2626",
+            secondary: "#ffffff",
+          },
+        },
+      }}
+    />
   )
 }
