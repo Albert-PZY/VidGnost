@@ -7,98 +7,95 @@
 /* 设计风格：深色科技感、专业工具、高效信息密度 */
 
 :root {
+  --theme-hue: 220;
   /* 亮色主题 - 简洁专业 */
-  --background: oklch(0.985 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  /* 主色调：深青色，代表技术与智能 */
-  --primary: oklch(0.45 0.12 220);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.96 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.96 0.005 260);
-  --muted-foreground: oklch(0.50 0 0);
-  /* 强调色：柔和的青蓝色 */
-  --accent: oklch(0.92 0.03 220);
-  --accent-foreground: oklch(0.25 0.08 220);
+  --background: oklch(0.985 0.008 var(--theme-hue));
+  --foreground: oklch(0.145 0.02 var(--theme-hue));
+  --card: oklch(1 0.004 var(--theme-hue));
+  --card-foreground: oklch(0.145 0.02 var(--theme-hue));
+  --popover: oklch(1 0.004 var(--theme-hue));
+  --popover-foreground: oklch(0.145 0.02 var(--theme-hue));
+  --primary: oklch(0.45 0.12 var(--theme-hue));
+  --primary-foreground: oklch(0.985 0.006 var(--theme-hue));
+  --secondary: oklch(0.96 0.01 var(--theme-hue));
+  --secondary-foreground: oklch(0.205 0.03 var(--theme-hue));
+  --muted: oklch(0.96 0.012 calc(var(--theme-hue) + 18));
+  --muted-foreground: oklch(0.5 0.02 var(--theme-hue));
+  --accent: oklch(0.92 0.03 var(--theme-hue));
+  --accent-foreground: oklch(0.25 0.08 var(--theme-hue));
   --destructive: oklch(0.55 0.22 25);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.90 0 0);
-  --input: oklch(0.90 0 0);
-  --ring: oklch(0.55 0.12 220);
+  --destructive-foreground: oklch(0.985 0.006 var(--theme-hue));
+  --border: oklch(0.9 0.01 var(--theme-hue));
+  --input: oklch(0.9 0.01 var(--theme-hue));
+  --ring: oklch(0.55 0.12 var(--theme-hue));
   /* 图表颜色 */
-  --chart-1: oklch(0.55 0.15 220);
-  --chart-2: oklch(0.60 0.15 160);
-  --chart-3: oklch(0.55 0.12 280);
-  --chart-4: oklch(0.65 0.18 80);
-  --chart-5: oklch(0.60 0.20 30);
+  --chart-1: oklch(0.55 0.15 var(--theme-hue));
+  --chart-2: oklch(0.6 0.15 calc(var(--theme-hue) - 45));
+  --chart-3: oklch(0.55 0.12 calc(var(--theme-hue) + 60));
+  --chart-4: oklch(0.65 0.18 calc(var(--theme-hue) - 140));
+  --chart-5: oklch(0.6 0.2 calc(var(--theme-hue) - 190));
   --radius: 0.5rem;
   /* 侧边栏 */
-  --sidebar: oklch(0.98 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.45 0.12 220);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.94 0.02 220);
-  --sidebar-accent-foreground: oklch(0.25 0.08 220);
-  --sidebar-border: oklch(0.92 0 0);
-  --sidebar-ring: oklch(0.55 0.12 220);
+  --sidebar: oklch(0.98 0.01 var(--theme-hue));
+  --sidebar-foreground: oklch(0.145 0.02 var(--theme-hue));
+  --sidebar-primary: oklch(0.45 0.12 var(--theme-hue));
+  --sidebar-primary-foreground: oklch(0.985 0.006 var(--theme-hue));
+  --sidebar-accent: oklch(0.94 0.02 var(--theme-hue));
+  --sidebar-accent-foreground: oklch(0.25 0.08 var(--theme-hue));
+  --sidebar-border: oklch(0.92 0.01 var(--theme-hue));
+  --sidebar-ring: oklch(0.55 0.12 var(--theme-hue));
   /* 自定义变量：流程状态颜色 */
   --status-pending: oklch(0.70 0 0);
   --status-processing: oklch(0.65 0.18 250);
   --status-success: oklch(0.60 0.18 145);
   --status-error: oklch(0.55 0.22 25);
-  --titlebar: oklch(0.94 0.025 220);
-  --titlebar-border: oklch(0.84 0.03 220);
+  --titlebar: oklch(0.94 0.025 var(--theme-hue));
+  --titlebar-border: oklch(0.84 0.03 var(--theme-hue));
 }
 
 .dark {
   /* 深色主题 - 科技专业感 */
-  --background: oklch(0.12 0.01 260);
-  --foreground: oklch(0.93 0 0);
-  --card: oklch(0.15 0.01 260);
-  --card-foreground: oklch(0.93 0 0);
-  --popover: oklch(0.15 0.01 260);
-  --popover-foreground: oklch(0.93 0 0);
-  /* 主色调：明亮的青色 */
-  --primary: oklch(0.70 0.14 200);
-  --primary-foreground: oklch(0.12 0.01 260);
-  --secondary: oklch(0.22 0.015 260);
-  --secondary-foreground: oklch(0.93 0 0);
-  --muted: oklch(0.22 0.015 260);
-  --muted-foreground: oklch(0.65 0 0);
-  /* 强调色 */
-  --accent: oklch(0.25 0.04 220);
-  --accent-foreground: oklch(0.85 0.10 200);
+  --background: oklch(0.12 0.014 calc(var(--theme-hue) + 36));
+  --foreground: oklch(0.93 0.01 var(--theme-hue));
+  --card: oklch(0.15 0.014 calc(var(--theme-hue) + 28));
+  --card-foreground: oklch(0.93 0.01 var(--theme-hue));
+  --popover: oklch(0.15 0.014 calc(var(--theme-hue) + 28));
+  --popover-foreground: oklch(0.93 0.01 var(--theme-hue));
+  --primary: oklch(0.7 0.14 calc(var(--theme-hue) - 20));
+  --primary-foreground: oklch(0.12 0.014 calc(var(--theme-hue) + 36));
+  --secondary: oklch(0.22 0.02 calc(var(--theme-hue) + 28));
+  --secondary-foreground: oklch(0.93 0.01 var(--theme-hue));
+  --muted: oklch(0.22 0.02 calc(var(--theme-hue) + 28));
+  --muted-foreground: oklch(0.65 0.015 var(--theme-hue));
+  --accent: oklch(0.25 0.04 var(--theme-hue));
+  --accent-foreground: oklch(0.85 0.1 calc(var(--theme-hue) - 20));
   --destructive: oklch(0.50 0.20 25);
-  --destructive-foreground: oklch(0.93 0 0);
-  --border: oklch(0.25 0.015 260);
-  --input: oklch(0.22 0.015 260);
-  --ring: oklch(0.60 0.14 200);
+  --destructive-foreground: oklch(0.93 0.01 var(--theme-hue));
+  --border: oklch(0.25 0.02 calc(var(--theme-hue) + 28));
+  --input: oklch(0.22 0.02 calc(var(--theme-hue) + 28));
+  --ring: oklch(0.6 0.14 calc(var(--theme-hue) - 20));
   /* 图表颜色 */
-  --chart-1: oklch(0.65 0.18 200);
-  --chart-2: oklch(0.60 0.16 160);
-  --chart-3: oklch(0.60 0.15 280);
-  --chart-4: oklch(0.70 0.18 80);
-  --chart-5: oklch(0.65 0.20 30);
+  --chart-1: oklch(0.65 0.18 calc(var(--theme-hue) - 20));
+  --chart-2: oklch(0.6 0.16 calc(var(--theme-hue) - 45));
+  --chart-3: oklch(0.6 0.15 calc(var(--theme-hue) + 60));
+  --chart-4: oklch(0.7 0.18 calc(var(--theme-hue) - 140));
+  --chart-5: oklch(0.65 0.2 calc(var(--theme-hue) - 190));
   /* 侧边栏 */
-  --sidebar: oklch(0.10 0.01 260);
-  --sidebar-foreground: oklch(0.93 0 0);
-  --sidebar-primary: oklch(0.70 0.14 200);
-  --sidebar-primary-foreground: oklch(0.12 0.01 260);
-  --sidebar-accent: oklch(0.20 0.03 220);
-  --sidebar-accent-foreground: oklch(0.85 0.10 200);
-  --sidebar-border: oklch(0.22 0.015 260);
-  --sidebar-ring: oklch(0.60 0.14 200);
+  --sidebar: oklch(0.1 0.014 calc(var(--theme-hue) + 36));
+  --sidebar-foreground: oklch(0.93 0.01 var(--theme-hue));
+  --sidebar-primary: oklch(0.7 0.14 calc(var(--theme-hue) - 20));
+  --sidebar-primary-foreground: oklch(0.12 0.014 calc(var(--theme-hue) + 36));
+  --sidebar-accent: oklch(0.2 0.03 var(--theme-hue));
+  --sidebar-accent-foreground: oklch(0.85 0.1 calc(var(--theme-hue) - 20));
+  --sidebar-border: oklch(0.22 0.02 calc(var(--theme-hue) + 28));
+  --sidebar-ring: oklch(0.6 0.14 calc(var(--theme-hue) - 20));
   /* 自定义变量：流程状态颜色 */
   --status-pending: oklch(0.55 0 0);
   --status-processing: oklch(0.70 0.18 250);
   --status-success: oklch(0.70 0.18 145);
   --status-error: oklch(0.60 0.22 25);
-  --titlebar: oklch(0.17 0.03 220);
-  --titlebar-border: oklch(0.28 0.035 220);
+  --titlebar: oklch(0.17 0.03 var(--theme-hue));
+  --titlebar-border: oklch(0.28 0.035 var(--theme-hue));
 }
 
 @theme inline {
@@ -153,6 +150,12 @@
   }
   body {
     @apply bg-background text-foreground;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  #root {
+    min-height: 100vh;
+    overflow: hidden;
   }
   /* 自定义滚动条 */
   ::-webkit-scrollbar {

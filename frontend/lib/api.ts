@@ -385,6 +385,7 @@ export function updateUiSettings(payload: {
   language?: "zh" | "en"
   font_size?: number
   auto_save?: boolean
+  theme_hue?: number
 }): Promise<UISettingsResponse> {
   return apiFetch<UISettingsResponse>("/config/ui", {
     method: "PUT",

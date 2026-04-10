@@ -205,6 +205,7 @@ export interface UISettingsResponse {
   language: "zh" | "en"
   font_size: number
   auto_save: boolean
+  theme_hue: number
 }
 
 export interface SelfCheckStepResponse {

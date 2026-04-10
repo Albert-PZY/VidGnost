@@ -13,12 +13,14 @@ class UISettings(TypedDict):
     language: str
     font_size: int
     auto_save: bool
+    theme_hue: int
 
 
 DEFAULT_UI_SETTINGS: UISettings = {
     "language": "zh",
     "font_size": 14,
     "auto_save": True,
+    "theme_hue": 220,
 }
 
 
@@ -46,10 +48,17 @@ class UISettingsStore:
                 font_size = current["font_size"]
             font_size = max(12, min(20, font_size))
             auto_save = bool(updates.get("auto_save", current["auto_save"]))
+            theme_hue_raw = updates.get("theme_hue", current["theme_hue"])
+            try:
+                theme_hue = int(theme_hue_raw)
+            except (TypeError, ValueError):
+                theme_hue = current["theme_hue"]
+            theme_hue = max(0, min(360, theme_hue))
             next_value: UISettings = {
                 "language": language,
                 "font_size": font_size,
                 "auto_save": auto_save,
+                "theme_hue": theme_hue,
             }
             self._write_sync(next_value)
             return next_value
@@ -77,7 +86,17 @@ class UISettingsStore:
             font_size = DEFAULT_UI_SETTINGS["font_size"]
         font_size = max(12, min(20, font_size))
         auto_save = bool(payload.get("auto_save", DEFAULT_UI_SETTINGS["auto_save"]))
-        return {"language": language, "font_size": font_size, "auto_save": auto_save}
+        try:
+            theme_hue = int(payload.get("theme_hue", DEFAULT_UI_SETTINGS["theme_hue"]))
+        except (TypeError, ValueError):
+            theme_hue = DEFAULT_UI_SETTINGS["theme_hue"]
+        theme_hue = max(0, min(360, theme_hue))
+        return {
+            "language": language,
+            "font_size": font_size,
+            "auto_save": auto_save,
+            "theme_hue": theme_hue,
+        }
 
     def _write_sync(self, value: UISettings) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)

@@ -1,95 +1,81 @@
 ## Context
 
-VidGnost is designed as an end-to-end video-analysis workbench with two stable runtime pillars:
-
-- Local ASR execution (`faster-whisper-small` on CPU)
-- Online LLM generation for structured notes and mindmap
-
-The architecture emphasizes deterministic phase contracts, observable runtime behavior, and replayable storage artifacts.
+VidGnost 当前以 Electron 桌面工作台形态交付：
+- 渲染层使用 React + Vite，只负责渲染 Python 后端返回的数据与状态
+- Python FastAPI 后端负责任务编排、模型管理、存储读写、实时事件与数据处理
+- 当前前端已经形成稳定的视觉语言与交互密度，后续 UI 演进必须严格沿用这套基线
 
 ## Goals / Non-Goals
 
 **Goals**
-- Keep clear ownership boundaries between frontend, backend, and storage contracts.
-- Support URL/path/upload ingestion with consistent task lifecycle behavior.
-- Provide low-friction local transcription with automatic model preparation.
-- Provide online generation with configurable prompts and runtime parameters.
-- Persist complete replay diagnostics: logs, warnings, events, metrics, artifacts.
-- Keep long-lived sessions stable under continuous SSE streams.
+- 保持前后端边界清晰：前端展示与交互，后端负责能力与数据真值
+- 以 Electron 壳层承载工作台体验，标题栏、侧栏、内容区职责明确
+- 通过设置中心统一管理模型配置、提示词模板、外观与语言
+- 通过稳定的本地存储文件维持可复现配置、任务历史、事件日志与导出产物
+- 让模型安装、运行态事件、自检与任务回放都具备明确可观测性
 
 **Non-Goals**
-- Distributed queue orchestration in current phase.
-- Multi-tenant account/permission design in current phase.
-- Playlist/batch crawl orchestration in current phase.
+- 当前阶段不引入 SSR 或服务端渲染前端框架
+- 当前阶段不引入新的前端视觉体系或重做现有布局语言
+- 当前阶段不设计多租户、远程账户系统或分布式队列
 
 ## Decisions
 
-### 1. Backend architecture: FastAPI + asyncio task orchestration
-- Async-native implementation keeps I/O pipelines responsive and simple.
-- Runtime flow is modeled with explicit phase transitions and substage telemetry.
+### 1. Host and shell
+- Electron 是当前交付宿主。
+- 渲染层使用 Vite + React，桌面壳层只暴露窗口控制、打开路径、打开外链等桌面能力。
+- 前端数据访问统一走 Python 后端 HTTP API。
 
-### 2. Frontend architecture: React + Vite workbench shell
-- Bilingual UI (`zh-CN` / `en`) with persisted locale.
-- Runtime monitoring is SSE-driven with phase-focused tabs.
+### 2. Frontend UI baseline
+- 当前前端视觉语言是硬性约束。
+- 新增控件、弹窗、页面与微交互必须延续现有颜色体系、间距密度、圆角、卡片和标题栏风格。
+- 顶部标题栏与下方页面滚动区域分离，标题栏保持吸顶可见。
 
-### 3. Data and persistence model: local file source of truth
-- Task metadata and artifacts are stored as local files.
-- Stage snapshots are stored as per-stage files: `analysis-results/<task_id>/<stage>.json`.
-- Stage artifacts are stored under `stage-artifacts/<task_id>/<stage>/`.
-- Runtime warnings and event traces are stored as JSONL streams.
+### 3. Settings architecture
+- 设置中心包含 `模型配置`、`提示词模板`、`外观设置`、`语言设置` 四个 section。
+- 配置弹窗遵循“头尾固定、内容区滚动、尺寸受视口约束”的统一模式。
+- 提示词模板使用任务通道级图标区分 `correction`、`notes`、`mindmap`、`vqa`。
 
-### 4. Runtime config model
-- `Online LLM` settings are persisted in `storage/model_config.json`.
-- `Faster-Whisper` settings are persisted in `storage/config.toml`.
-- Prompt template records are persisted in `storage/prompts/templates/*.json` with selection in `selection.json`.
+### 4. Appearance state
+- `ui_settings.json` 持久化 `language`、`font_size`、`auto_save`、`theme_hue`。
+- 前端通过 CSS 变量把 `theme_hue` 扩散到标题栏、侧栏、强调色和表面色调。
+- 语言切换与外观设置都应在当前会话立即生效，并在重启后恢复。
 
-### 5. Pipeline contract
-- Four runtime phases: `A`, `B`, `C`, `D`.
-- Stage `D` subchain: `transcript_optimize -> fusion_delivery`.
-- Stage-level metrics include substage observability for phase `D`.
+### 5. Runtime config model
+- 在线 LLM 采用 OpenAI 兼容接口模式，配置项持久化到 `backend/storage/model_config.json`。
+- 在线 LLM 有效字段包括 `base_url`、`api_key`、`model`、`load_profile`、`local_model_id`、文本纠错参数。
+- Whisper 运行时配置持久化到 `backend/storage/config.toml`，保留 `auto|cpu|cuda` 设备策略和 `int8|float32` 精度选项。
 
-### 6. ASR runtime strategy
-- Model size is fixed to `small`.
-- Effective device is CPU-only (`device=cpu`).
-- Supported compute types are `int8` and `float32`.
-- Task start performs model readiness check and downloads missing model files with progress reporting.
+### 6. Managed local model workflow
+- `/config/models` 负责向前端暴露托管模型目录、安装状态、下载状态和默认路径。
+- 本地托管模型下载统一走 `httpx + asyncio` 异步链路，并向设置页回传下载进度与取消状态。
+- 当前转写运行链路实际准备的是托管 Whisper small 本地缓存。
 
-### 7. Generation runtime strategy
-- Notes and mindmap generation uses OpenAI-compatible online API.
-- Transcript-correction mode is configurable (`off|strict|rewrite`) and applied before final delivery.
-- Prompt templates are channel-specific and selectable at runtime.
+### 7. Pipeline contract
+- 运行链路仍保持 `A -> B -> C -> D` 四阶段模型。
+- `D` 阶段固定执行 `transcript_optimize -> fusion_delivery` 子链路。
+- SSE 与任务详情共同承担运行态可观测与回放职责。
 
-### 8. Streaming and observability strategy
-- SSE stream carries stage events, logs, progress, transcript/generation deltas, warnings.
-- Every event includes `trace_id` for cross-event correlation.
-- Event persistence is non-blocking to protect online stream continuity.
-
-### 9. Export and history strategy
-- History APIs provide list/search/detail replay.
-- Terminal tasks support title edit, artifact markdown update, and deletion.
-- Export APIs provide transcript/notes/mindmap/subtitle files and bundle archives.
-
-### 10. UI interaction strategy
-- Action-first sidebar and modal workflows keep runtime area focused.
-- Quick-start documentation is built into the same shell with locale/theme consistency.
+### 8. Brand application
+- 项目品牌资源统一使用 `frontend/public/light.svg`。
+- Logo 应用到侧栏品牌位与渲染器 favicon，保持桌面工作台识别一致性。
 
 ## Risks / Trade-offs
 
-- Online generation depends on third-party API availability and quota.
-- Local disk consumption grows with long tasks and retained artifacts.
-- Long transcript sessions require careful queue and rendering governance.
-- Subtitle quality depends on transcript segment timeline quality.
+- 当前 Whisper 配置保留 `model_default` 字段，但托管本地缓存仍以 small 模型为当前实现基线。
+- 在线生成依赖外部 OpenAI 兼容服务的可用性与配额。
+- 主题色完全开放后，需要持续关注不同 hue 下的对比度与可读性。
+- 标题栏自绘逻辑需要和窗口状态同步，避免最小化、最大化、关闭行为漂移。
 
 ## Delivery Plan
 
-1. Finalize OpenSpec docs and requirement contracts.
-2. Implement backend APIs and phase pipeline services.
-3. Implement frontend workbench and SSE integration.
-4. Integrate runtime config center and prompt-template workflows.
-5. Verify end-to-end task creation, replay, and export behavior.
+1. 维护当前前端视觉基线并完善设置中心与标题栏细节。
+2. 持续补齐后端配置、模型管理与任务链路，使前端全部改为真实接口驱动。
+3. 保持 OpenSpec、AGENTS 与当前实现同步，避免文档再次失真。
+4. 对关键路径执行前端构建、后端编译与 OpenSpec 校验。
 
 ## Open Questions
 
-- Should future phases support batch task orchestration?
-- Should future phases add more UI locales?
-- Should future phases add resumable per-stage controls?
+- 未来是否需要把 `model_default=medium` 接入完整的托管下载与运行路径。
+- 未来是否需要把主题模式（浅色/深色/系统）也收口进设置中心持久化。
+- 未来是否要把更多 Electron 宿主能力收敛到统一的桌面集成层。

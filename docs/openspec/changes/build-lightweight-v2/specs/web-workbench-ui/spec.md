@@ -1,108 +1,76 @@
 ## ADDED Requirements
 
-### Requirement: UI SHALL provide bilingual workbench with persistent theme
-Frontend SHALL provide Simplified Chinese and English locales, and light/dark themes with persistent preference.
+### Requirement: UI SHALL preserve current frontend visual system as hard constraint
+All subsequent frontend work SHALL extend the current visual language, spacing rhythm, shell structure, dialog style, and interaction tone. New features SHALL not introduce a separate design system or conflicting visual direction.
 
-#### Scenario: Switch locale and reload page
-- **WHEN** user changes locale in header and refreshes
-- **THEN** UI keeps selected locale and renders translated labels consistently
+#### Scenario: Add a new UI control
+- **WHEN** frontend adds a new control, panel, or page
+- **THEN** it uses the current tokens, component density, title bar pattern, sidebar pattern, and card/dialog styling
+- **AND** it keeps the current frontend aesthetic direction as the governing baseline
 
-#### Scenario: Toggle theme
-- **WHEN** user toggles theme switch
-- **THEN** UI updates via theme tokens without readability regression
+### Requirement: Electron workbench SHALL render a fixed shell with isolated scroll regions
+The Electron renderer SHALL present a fixed top title bar, a left navigation sidebar, and a main content region. Scrollbars SHALL be confined to content regions below the title bar.
 
-### Requirement: UI SHALL provide a single workbench main view
-Application shell SHALL render a unified workbench main area for runtime operations and settings navigation.
+#### Scenario: Scroll a long settings page
+- **WHEN** content height exceeds the viewport
+- **THEN** the title bar remains sticky at the top
+- **AND** the scrollbar appears only inside the page content region beneath the title bar
 
-#### Scenario: Enter app
-- **WHEN** user opens web or desktop app
-- **THEN** main area renders workbench runtime view directly
-
-### Requirement: UI SHALL support URL/path/upload task submission workflow
-Workbench SHALL support task creation from `URL`, `local path`, and `file upload`.
-
-#### Scenario: Submit task from source modal
-- **WHEN** user submits valid source data
-- **THEN** frontend creates task and enters runtime monitoring state
-
-### Requirement: UI SHALL reflect task progress and logs in realtime via SSE
-Workbench SHALL update active task status/progress/logs continuously from task event stream.
-
-#### Scenario: Receive runtime events
-- **WHEN** backend emits `stage/progress/log/runtime_warning` events
-- **THEN** frontend updates runtime panels and warning feedback without manual refresh
-
-### Requirement: UI SHALL provide phase tabs aligned with VM phase model
-Runtime area SHALL expose phase tabs `A`, `B`, `C`, `transcript_optimize`, `D` and auto-focus based on incoming runtime events.
-
-#### Scenario: Stage-D optimization phase starts
-- **WHEN** backend enters `transcript_optimize`
-- **THEN** frontend highlights corresponding phase tab and logs
-
-### Requirement: UI SHALL render stage-D editing and preview workspace
-Stage-D workspace SHALL provide notes and mindmap source editing with preview support and terminal-state editing guard.
-
-#### Scenario: Task is still running
-- **WHEN** task status is non-terminal
-- **THEN** notes/mindmap editors are read-only
-
-#### Scenario: Task becomes terminal
-- **WHEN** task status becomes `completed|failed|cancelled`
-- **THEN** notes/mindmap editors become editable and can be persisted
-
-### Requirement: UI SHALL provide runtime config center with three tabs
-Settings page SHALL provide `在线 LLM`, `Faster-Whisper`, and `Prompt Templates` tabs.
+### Requirement: Settings center SHALL provide frontend-driven configuration sections
+Settings center SHALL provide `模型配置`, `提示词模板`, `外观设置`, and `语言设置` sections backed by persisted backend data.
 
 #### Scenario: Open settings center
-- **WHEN** user clicks the global settings icon in header
-- **THEN** settings page displays three tabs and supports in-place tab switching
+- **WHEN** user opens settings from the application shell
+- **THEN** the renderer shows the four sections with current persisted values from backend config APIs
 
-### Requirement: UI SHALL support prompt template CRUD and active selection
-Prompt template panel SHALL support create/update/delete/copy/select operations for summary and mindmap channels.
+### Requirement: Configuration dialogs SHALL stay within viewport with fixed chrome
+Model configuration and prompt-template configuration dialogs SHALL remain within the visible viewport, keep header and action area fixed, and allow inner content scrolling when fields exceed available height.
 
-#### Scenario: Create template and switch selection
-- **WHEN** user creates a template and sets it as selected
-- **THEN** frontend persists template and selected IDs through config APIs
+#### Scenario: Open a long configuration dialog
+- **WHEN** dialog content exceeds available viewport height
+- **THEN** the dialog body becomes scrollable
+- **AND** the title, close control, cancel action, and save action remain visible
 
-### Requirement: UI SHALL provide history modal operations
-History panel SHALL support search, reopen, rename, and terminal-task delete operations.
+### Requirement: Prompt template UI SHALL distinguish channels visually
+Prompt template list and editor SHALL use channel-specific icons and labels for `correction`, `notes`, `mindmap`, and `vqa`.
 
-#### Scenario: Reopen historical task
-- **WHEN** user selects a historical task
-- **THEN** frontend restores runtime artifacts/logs and updates active runtime context
+#### Scenario: Browse prompt templates
+- **WHEN** user opens the prompt template section
+- **THEN** each template card shows the channel label and a distinct icon marker
+- **AND** the editor dialog reflects the currently selected channel visually
 
-### Requirement: UI SHALL provide completion-only artifact export actions
-Workbench SHALL expose completion-only export actions for `bundle`, `notes`, `transcript`, `mindmap`, `srt`, and `vtt`.
+### Requirement: Appearance settings SHALL persist theme hue, font size, and autosave
+UI settings SHALL persist `theme_hue`, `font_size`, and `auto_save`, and the renderer SHALL apply them immediately to the active shell.
 
-#### Scenario: Completed task exports selected artifact
-- **WHEN** user clicks any export action on completed task
-- **THEN** frontend downloads the selected backend artifact kind
+#### Scenario: Adjust theme hue
+- **WHEN** user changes theme hue from the appearance section and saves it
+- **THEN** title bar, sidebar, and primary emphasis colors update from the persisted hue setting
+- **AND** the same hue is restored after application restart
 
-### Requirement: UI SHALL provide three runtime modes for VQA workflow
-Runtime workspace SHALL support `flow`, `qa`, and `debug` modes for analysis, question answering, and retrieval diagnostics.
+#### Scenario: Adjust font size
+- **WHEN** user changes interface font size and saves it
+- **THEN** renderer applies the new root font size immediately and restores it on next launch
 
-#### Scenario: Run retrieval-only action
-- **WHEN** user submits query via retrieval action
-- **THEN** UI shows retrieval hit comparisons and trace panel in `debug` mode
+### Requirement: Shell controls SHALL expose explicit language selection state
+Header language controls SHALL show the current selected language with explicit selected-state feedback and persist the language choice through UI settings.
 
-#### Scenario: Run chat action
-- **WHEN** user starts QA chat
-- **THEN** UI streams answer chunks, citations, and status updates in `qa` mode
+#### Scenario: Open header language menu
+- **WHEN** user opens the language menu in the title bar
+- **THEN** the active language option is visually highlighted
+- **AND** changing the option updates persisted UI settings
 
-#### Scenario: Run combined analyze action
-- **WHEN** user runs analyze action in QA workspace
-- **THEN** UI receives retrieval debug payload and non-stream chat answer in one request
+### Requirement: Workbench branding SHALL use the project logo asset
+Renderer branding surfaces and favicon SHALL use `frontend/public/light.svg` as the project logo asset.
 
-### Requirement: UI SHALL support VQA trace replay in runtime panel
-UI SHALL display trace identifier and fetch trace records for replay diagnostics.
+#### Scenario: Open application shell
+- **WHEN** application renderer loads
+- **THEN** sidebar branding uses the project logo
+- **AND** browser/electron renderer favicon resolves to the same logo asset
 
-#### Scenario: Refresh trace records
-- **WHEN** user triggers trace refresh with valid `trace_id`
-- **THEN** frontend requests `/traces/{trace_id}` and updates trace timeline
+### Requirement: Renderer SHALL consume backend data through plain HTTP APIs
+Frontend SHALL only render backend-provided data and call the Python backend over HTTP APIs. Electron bridge SHALL be limited to shell/window integrations such as open path, open external link, and window controls.
 
-### Requirement: Desktop host SHALL resolve API base through Electron bridge
-When running in Electron, frontend API client SHALL resolve backend API base from preload IPC bridge.
-
-#### Scenario: Desktop bootstraps backend base URL
-- **WHEN** renderer initializes in Electron context
-- **THEN** frontend resolves API base by `vidgnostBridge.getApiBase()` before API requests
+#### Scenario: Load the workbench in Electron
+- **WHEN** renderer starts inside Electron
+- **THEN** data requests go through the backend HTTP API
+- **AND** Electron preload APIs are used only for desktop shell interactions

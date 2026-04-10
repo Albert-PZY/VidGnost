@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import {
-  Video,
   FileText,
   MessageSquareText,
   History,
@@ -115,11 +114,11 @@ export function AppSidebar({
     <Sidebar collapsible="icon">
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Video className="h-5 w-5" />
+          <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
+            <img src="/light.svg" alt="VidGnost Logo" className="h-full w-full object-cover" />
           </div>
           <div className="flex flex-col group-data-[collapsible=icon]:hidden">
-            <span className="text-sm font-semibold">VideoMind</span>
+            <span className="text-sm font-semibold">VidGnost</span>
             <span className="text-xs text-muted-foreground">
               本地多模态视频分析
             </span>

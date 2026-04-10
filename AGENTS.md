@@ -9,12 +9,14 @@ Scope: this file is an internal navigation index for coding agents and maintaine
 - Python dependency management: use `uv` with project-level venv; add/remove deps via `uv add` / `uv remove`
 - GitHub operations: prefer using `gh` CLI commands when possible
 - Documentation style: write all project docs as first-release baseline statements; avoid migration/history wording such as “删除/弃用/改为/不再/removed/deprecated/replaced”
+- Frontend UI hard constraint: all future UI work MUST preserve the current frontend visual language, layout structure, density, and interaction style; extend the existing design instead of introducing a new visual system
 - After completing a requirement change, automatically determine whether a commit is needed; if needed, commit and push following `docs/git-commit-convention.md` without additional confirmation
 
 ## 2) Core Product Docs
 - Project overview (EN): `README.md`
 - Project overview (ZH): `README.zh-CN.md`
-- Electron fullstack rebuild plan: `docs/electron-fullstack-rebuild-plan.zh-CN.md`
+- Frontend-driven backend checklist: `docs/frontend-driven-backend-execution-checklist.zh-CN.md`
+- Current technical stack: `docs/current-tech-stack.zh-CN.md`
 
 ## 3) Git Workflow Doc
 - Commit convention guide (Conventional Commits aligned): `docs/git-commit-convention.md`

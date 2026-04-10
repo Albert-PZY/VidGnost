@@ -1,27 +1,27 @@
 ## ADDED Requirements
 
-### Requirement: System SHALL run asynchronous four-stage transcription pipeline
-The backend SHALL process each task asynchronously and transition status through `queued -> preparing -> transcribing -> summarizing -> completed|failed|cancelled`.
+### Requirement: System SHALL run an asynchronous four-phase video analysis pipeline
+The backend SHALL process each task asynchronously and preserve explicit phase ordering `A -> B -> C -> D`.
 
-#### Scenario: Successful asynchronous flow
-- **WHEN** a task is created
-- **THEN** worker executes phases in order and persists progress snapshots
+#### Scenario: Successful pipeline flow
+- **WHEN** a task is created from a supported source
+- **THEN** worker executes phases in order and persists progress snapshots and artifacts
 
 #### Scenario: Pipeline failure
-- **WHEN** unrecoverable exception occurs in ingestion/transcription/generation
+- **WHEN** an unrecoverable exception occurs in ingestion, transcription, or generation
 - **THEN** task status becomes `failed` with actionable error metadata
 
 #### Scenario: User cancellation
-- **WHEN** user cancels a waiting or running task
+- **WHEN** user cancels a queued or running task
 - **THEN** task status becomes `cancelled`
 - **AND** per-task temporary workspace is cleaned while reusable model cache is retained
 
-### Requirement: Pipeline SHALL keep explicit phase boundaries
-The pipeline SHALL keep these responsibilities:
+### Requirement: Pipeline SHALL keep explicit phase responsibilities
+The pipeline SHALL keep these phase boundaries:
 - `A`: source ingestion and normalization
 - `B`: audio preprocessing and chunk planning
 - `C`: Faster-Whisper transcription streaming
-- `D`: transcript optimization + notes/mindmap delivery
+- `D`: transcript optimization and fusion delivery
 
 #### Scenario: Phase ordering
 - **WHEN** task starts from any valid source
@@ -29,59 +29,52 @@ The pipeline SHALL keep these responsibilities:
 - **AND** phase `D` starts only after phase `C` output is available
 
 ### Requirement: Stage D SHALL execute ordered substage chain
-Inside phase `D`, backend SHALL execute in order:
-`transcript_optimize -> fusion_delivery`.
+Inside phase `D`, backend SHALL execute `transcript_optimize -> fusion_delivery` in order.
 
 #### Scenario: Ordered stage-D execution
 - **WHEN** phase `D` starts
 - **THEN** `transcript_optimize` runs before `fusion_delivery`
-- **AND** `fusion_delivery` starts only after `transcript_optimize` completes or is skipped
+- **AND** `fusion_delivery` starts only after transcript optimization completes or is skipped
 
-### Requirement: Stage D context SHALL be transcript-centric
-Stage `D` generation context SHALL be composed from transcript artifacts and transcript-optimization results.
+### Requirement: Phase C SHALL prepare the managed Whisper small cache before transcription
+Before runtime transcription starts, backend SHALL ensure the managed Whisper small model cache is present locally.
 
-#### Scenario: Compose stage-D prompt context
-- **WHEN** backend prepares prompt context for phase `D`
-- **THEN** backend uses transcript text and correction outputs as primary context
-- **AND** generated artifacts remain aligned with transcript timeline semantics
-
-### Requirement: Transcription runtime SHALL be CPU-only
-Faster-Whisper runtime SHALL execute with effective `device=cpu`.
-
-#### Scenario: Save whisper config with non-CPU device
-- **WHEN** client submits `device` value in whisper config update
-- **THEN** backend persists normalized effective `device=cpu`
-
-### Requirement: Transcription runtime SHALL constrain compute types
-Whisper runtime SHALL allow effective `compute_type` values: `int8` or `float32`.
-
-#### Scenario: Save unsupported compute type
-- **WHEN** client submits unsupported `compute_type`
-- **THEN** backend persists normalized default `compute_type=int8`
-
-### Requirement: Task start SHALL ensure Whisper small model readiness
-Before phase `C` transcription begins, backend SHALL ensure `small` model files are available locally.
-
-#### Scenario: Model cache exists
-- **WHEN** task starts and local `small` model cache is complete
+#### Scenario: Small model cache already exists
+- **WHEN** task starts and local Whisper small cache is complete
 - **THEN** backend enters transcription without additional download
 
-#### Scenario: Model cache missing
-- **WHEN** task starts and local `small` model cache is missing or incomplete
-- **THEN** backend downloads required model files and emits progress updates into runtime stream
+#### Scenario: Small model cache is missing
+- **WHEN** task starts and local Whisper small cache is missing or incomplete
+- **THEN** backend downloads required model files, reports progress, and continues after the cache becomes ready
 
-### Requirement: Stage D generation mode SHALL resolve to API path
-Stage `D` generation runtime SHALL use online API configuration as effective execution mode.
+### Requirement: Phase C runtime SHALL honor persisted device and compute preferences
+Transcription runtime SHALL apply persisted whisper `device` and `compute_type` preferences after normalization.
 
-#### Scenario: Run generation with saved runtime config
+#### Scenario: Run transcription with persisted runtime config
+- **WHEN** phase `C` starts
+- **THEN** backend uses effective whisper `device=auto|cpu|cuda` and `compute_type=int8|float32`
+- **AND** runtime model caching keys are derived from the effective device and compute type
+
+### Requirement: Whisper model selection SHALL preserve current effective implementation contract
+The whisper config API SHALL persist `model_default=small|medium` as a config field, while the current managed transcription implementation prepares and uses the Whisper small cache as the effective bundled runtime path.
+
+#### Scenario: Save whisper model_default
+- **WHEN** client updates whisper `model_default`
+- **THEN** backend persists the field value for runtime config continuity
+- **AND** the current managed local model preparation path remains the Whisper small cache
+
+### Requirement: Stage D SHALL use the persisted OpenAI-compatible generation config
+Phase `D` generation runtime SHALL use effective online LLM settings from the runtime config store.
+
+#### Scenario: Run generation with saved config
 - **WHEN** phase `D` starts
-- **THEN** backend uses effective online API fields from runtime config store
-- **AND** generation behavior remains deterministic across task restarts
+- **THEN** backend uses effective OpenAI-compatible provider fields from `/config/llm`
+- **AND** generation behavior remains stable across task replay and rerun-stage-d flows
 
-### Requirement: Stage metrics SHALL expose stage-D substage observability
-Task detail response SHALL include `vm_phase_metrics` entries for `transcript_optimize` and `D`.
+### Requirement: Task detail SHALL expose stage-D observability
+Task detail response SHALL expose `vm_phase_metrics` entries for `transcript_optimize` and final phase `D` delivery.
 
 #### Scenario: Query task detail after phase D
-- **WHEN** client requests task detail
-- **THEN** response includes status/timing/reason fields for `transcript_optimize`
-- **AND** final phase-`D` metric reflects `fusion_delivery` completion state
+- **WHEN** client requests task detail after phase `D`
+- **THEN** response includes timing and status fields for `transcript_optimize`
+- **AND** the final phase-`D` metric reflects fusion delivery completion state

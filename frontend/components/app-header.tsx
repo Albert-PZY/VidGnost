@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import {
+  Check,
   Github,
   Languages,
   Maximize2,
@@ -25,6 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
+import { cn } from "@/lib/utils"
 
 interface AppHeaderProps {
   title?: string
@@ -99,10 +101,10 @@ export function AppHeader({
   return (
     <header
       style={dragRegionStyle}
-      className="sticky top-0 z-40 flex h-11 shrink-0 select-none items-center gap-2 border-b border-[color:var(--titlebar-border)] bg-[color:var(--titlebar)] px-3 backdrop-blur-md"
+      className="sticky top-0 z-40 flex h-10 shrink-0 select-none items-center gap-1.5 border-b border-[color:var(--titlebar-border)] bg-[color:var(--titlebar)]/95 px-3 backdrop-blur-sm"
     >
       <div style={noDragRegionStyle}>
-        <SidebarTrigger className="-ml-1 h-7 w-7 hover:bg-background/60" />
+        <SidebarTrigger className="-ml-1 h-7 w-7 rounded-md hover:bg-background/60" />
       </div>
       <Separator orientation="vertical" className="mr-1 h-3.5 bg-foreground/10" />
 
@@ -116,24 +118,38 @@ export function AppHeader({
       <div style={noDragRegionStyle} className="flex items-center gap-1">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-background/60">
+            <Button variant="ghost" size="icon" className="h-7 w-7 rounded-md hover:bg-background/60">
               <Languages className="h-4 w-4" />
               <span className="sr-only">切换语言</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onLanguageChange("zh")}>
+            <DropdownMenuItem
+              className={cn(
+                "flex items-center justify-between gap-3 rounded-md",
+                language === "zh" && "bg-accent text-accent-foreground",
+              )}
+              onClick={() => onLanguageChange("zh")}
+            >
               <span className={language === "zh" ? "font-medium" : ""}>中文</span>
+              <Check className={cn("h-4 w-4 opacity-0", language === "zh" && "opacity-100")} />
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onLanguageChange("en")}>
+            <DropdownMenuItem
+              className={cn(
+                "flex items-center justify-between gap-3 rounded-md",
+                language === "en" && "bg-accent text-accent-foreground",
+              )}
+              onClick={() => onLanguageChange("en")}
+            >
               <span className={language === "en" ? "font-medium" : ""}>English</span>
+              <Check className={cn("h-4 w-4 opacity-0", language === "en" && "opacity-100")} />
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative h-7 w-7 hover:bg-background/60">
+            <Button variant="ghost" size="icon" className="relative h-7 w-7 rounded-md hover:bg-background/60">
               <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
               <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
               <span className="sr-only">切换主题</span>
@@ -158,7 +174,7 @@ export function AppHeader({
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 hover:bg-background/60"
+          className="h-7 w-7 rounded-md hover:bg-background/60"
           onClick={() => {
             void openProjectRepository().catch((error) => {
               toast.error(error instanceof Error ? error.message : "打开项目地址失败")
@@ -169,7 +185,12 @@ export function AppHeader({
           <span className="sr-only">打开项目地址</span>
         </Button>
 
-        <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-background/60" onClick={onOpenSettings}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 rounded-md hover:bg-background/60"
+          onClick={onOpenSettings}
+        >
           <Settings className="h-4 w-4" />
           <span className="sr-only">打开设置中心</span>
         </Button>

@@ -6,8 +6,11 @@ import {
   CloudDownload,
   Cpu,
   FileCode,
+  FileText,
+  GitBranch,
   Palette,
   Globe,
+  MessageSquareText,
   Plus,
   Trash2,
   Edit2,
@@ -99,6 +102,45 @@ const promptDescriptions: Record<PromptTemplateChannel, string> = {
   mindmap: "将内容组织为思维导图结构。",
   vqa: "用于视频问答与检索回答生成。",
 }
+
+const promptVisuals: Record<
+  PromptTemplateChannel,
+  {
+    icon: React.ElementType
+    badgeClassName: string
+    surfaceClassName: string
+  }
+> = {
+  correction: {
+    icon: Edit2,
+    badgeClassName: "text-primary",
+    surfaceClassName: "bg-primary/10",
+  },
+  notes: {
+    icon: FileText,
+    badgeClassName: "text-amber-500",
+    surfaceClassName: "bg-amber-500/10",
+  },
+  mindmap: {
+    icon: GitBranch,
+    badgeClassName: "text-fuchsia-500",
+    surfaceClassName: "bg-fuchsia-500/10",
+  },
+  vqa: {
+    icon: MessageSquareText,
+    badgeClassName: "text-emerald-500",
+    surfaceClassName: "bg-emerald-500/10",
+  },
+}
+
+const themeHuePresets = [
+  { label: "青蓝", value: 220 },
+  { label: "冰川", value: 200 },
+  { label: "青绿", value: 170 },
+  { label: "琥珀", value: 95 },
+  { label: "珊瑚", value: 30 },
+  { label: "靛蓝", value: 260 },
+] as const
 
 const EMPTY_PROMPT_FORM = {
   channel: "correction" as PromptTemplateChannel,
@@ -247,6 +289,7 @@ function ManagedDownloadButton({
 export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewProps) {
   const [activeSection, setActiveSection] = React.useState("models")
   const [fontSize, setFontSize] = React.useState([uiSettings.font_size])
+  const [themeHue, setThemeHue] = React.useState([uiSettings.theme_hue])
   const [models, setModels] = React.useState<ModelDescriptor[]>([])
   const [promptBundle, setPromptBundle] = React.useState<PromptTemplateBundleResponse | null>(null)
   const [whisperConfig, setWhisperConfig] = React.useState<WhisperConfigResponse | null>(null)
@@ -269,6 +312,18 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
   React.useEffect(() => {
     setFontSize([uiSettings.font_size])
   }, [uiSettings.font_size])
+
+  React.useEffect(() => {
+    setThemeHue([uiSettings.theme_hue])
+  }, [uiSettings.theme_hue])
+
+  React.useEffect(() => {
+    const activeHue = themeHue[0] ?? uiSettings.theme_hue
+    document.documentElement.style.setProperty("--theme-hue", String(activeHue))
+    return () => {
+      document.documentElement.style.setProperty("--theme-hue", String(uiSettings.theme_hue))
+    }
+  }, [themeHue, uiSettings.theme_hue])
 
   const loadSettings = React.useCallback(async () => {
     setIsLoading(true)
@@ -639,9 +694,14 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
     } catch (error) {
       toast.error(getApiErrorMessage(error, "保存界面设置失败"))
       setFontSize([uiSettings.font_size])
+      setThemeHue([uiSettings.theme_hue])
     } finally {
       setIsSavingUi(false)
     }
+  }
+
+  const handleThemeHueCommit = (nextHue: number) => {
+    void handleUiSettingChange({ theme_hue: nextHue }, "主题色调已保存")
   }
 
   const handleGpuToggle = async (checked: boolean) => {
@@ -684,8 +744,9 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
   const isWhisperDialog = editingModel?.component === "whisper"
 
   return (
-    <div className="flex-1 overflow-auto">
-      <div className="container max-w-5xl mx-auto p-6 space-y-6">
+    <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 overflow-y-auto px-6 py-6">
+        <div className="w-full space-y-6">
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold tracking-tight">设置中心</h1>
           <p className="text-muted-foreground">
@@ -695,7 +756,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
 
         <div className="flex gap-6">
           <div className="w-48 shrink-0">
-            <nav className="space-y-1">
+            <nav className="sticky top-6 space-y-1">
               {sections.map((section) => (
                 <button
                   key={section.id}
@@ -863,14 +924,15 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                   </Button>
 
                   <Dialog open={isModelDialogOpen} onOpenChange={handleModelDialogChange}>
-                    <DialogContent className="max-w-xl">
-                      <DialogHeader>
+                    <DialogContent className="flex w-[min(92vw,52rem)] max-h-[min(88vh,52rem)] max-w-[52rem] flex-col gap-0 overflow-hidden p-0">
+                      <DialogHeader className="shrink-0 border-b px-6 py-5 pr-14">
                         <DialogTitle>{activeModelPreset?.title || "模型常用配置"}</DialogTitle>
                         <DialogDescription>
                           {activeModelPreset?.description || "更新模型配置。"}
                         </DialogDescription>
                       </DialogHeader>
-                      <div className="space-y-4 py-4">
+                      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+                        <div className="space-y-4">
                         {editingModel ? (
                           <div className="rounded-xl border bg-muted/40 p-4">
                             <div className="flex items-center gap-3">
@@ -889,7 +951,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                                 <div className="truncate text-xs text-muted-foreground">{editingModel.model_id}</div>
                               </div>
                             </div>
-                            <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+                            <div className="mt-4 grid gap-3 text-xs text-muted-foreground md:grid-cols-2">
                               <div className="rounded-lg border bg-background/80 px-3 py-2">
                                 <div className="mb-1 text-[11px] uppercase tracking-[0.18em]">Provider</div>
                                 <div className="text-sm text-foreground">{editingModel.provider.replaceAll("_", " ")}</div>
@@ -1075,7 +1137,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                         ) : null}
 
                         {modelDialogFieldPairCount > 0 ? (
-                          <div className={cn("grid gap-4", modelDialogFieldPairCount > 1 ? "grid-cols-2" : "grid-cols-1")}>
+                          <div className={cn("grid gap-4", modelDialogFieldPairCount > 1 ? "md:grid-cols-2" : "grid-cols-1")}>
                             {modelDialogHasQuantization ? (
                               <div className="space-y-2">
                                 <Label htmlFor="model-quantization">
@@ -1134,8 +1196,9 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                             />
                           </div>
                         ) : null}
+                        </div>
                       </div>
-                      <DialogFooter>
+                      <DialogFooter className="shrink-0 border-t px-6 py-4">
                         <Button variant="outline" onClick={() => handleModelDialogChange(false)}>
                           取消
                         </Button>
@@ -1167,8 +1230,8 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                           新建模板
                         </Button>
                       </DialogTrigger>
-                      <DialogContent className="max-w-2xl">
-                        <DialogHeader>
+                      <DialogContent className="flex w-[min(92vw,56rem)] max-h-[min(88vh,54rem)] max-w-[56rem] flex-col gap-0 overflow-hidden p-0">
+                        <DialogHeader className="shrink-0 border-b px-6 py-5 pr-14">
                           <DialogTitle>
                             {editingPrompt ? "编辑提示词模板" : "新建提示词模板"}
                           </DialogTitle>
@@ -1176,8 +1239,9 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                             配置用于特定任务的提示词模板
                           </DialogDescription>
                         </DialogHeader>
-                        <div className="space-y-4 py-4">
-                          <div className="grid grid-cols-2 gap-4">
+                        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+                          <div className="space-y-4">
+                          <div className="grid gap-4 md:grid-cols-2">
                             <div className="space-y-2">
                               <Label>模板名称</Label>
                               <Input
@@ -1204,12 +1268,50 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="correction">文本纠错</SelectItem>
-                                  <SelectItem value="notes">笔记生成</SelectItem>
-                                  <SelectItem value="mindmap">思维导图</SelectItem>
-                                  <SelectItem value="vqa">问答检索</SelectItem>
+                                  <SelectItem value="correction">
+                                    <div className="flex items-center gap-2">
+                                      <Edit2 className="h-4 w-4 text-primary" />
+                                      <span>文本纠错</span>
+                                    </div>
+                                  </SelectItem>
+                                  <SelectItem value="notes">
+                                    <div className="flex items-center gap-2">
+                                      <FileText className="h-4 w-4 text-amber-500" />
+                                      <span>笔记生成</span>
+                                    </div>
+                                  </SelectItem>
+                                  <SelectItem value="mindmap">
+                                    <div className="flex items-center gap-2">
+                                      <GitBranch className="h-4 w-4 text-fuchsia-500" />
+                                      <span>思维导图</span>
+                                    </div>
+                                  </SelectItem>
+                                  <SelectItem value="vqa">
+                                    <div className="flex items-center gap-2">
+                                      <MessageSquareText className="h-4 w-4 text-emerald-500" />
+                                      <span>问答检索</span>
+                                    </div>
+                                  </SelectItem>
                                 </SelectContent>
                               </Select>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 rounded-xl border bg-muted/35 px-4 py-3">
+                            <div
+                              className={cn(
+                                "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+                                promptVisuals[promptForm.channel].surfaceClassName,
+                              )}
+                            >
+                              {React.createElement(promptVisuals[promptForm.channel].icon, {
+                                className: cn("h-4 w-4", promptVisuals[promptForm.channel].badgeClassName),
+                              })}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="font-medium">{promptTypeLabels[promptForm.channel]}</div>
+                              <p className="text-sm text-muted-foreground">
+                                {promptDescriptions[promptForm.channel]}
+                              </p>
                             </div>
                           </div>
                           <div className="space-y-2">
@@ -1230,8 +1332,9 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                               使用 {"{text}"} 表示输入文本，{"{context}"} 表示上下文信息
                             </p>
                           </div>
+                          </div>
                         </div>
-                        <DialogFooter>
+                        <DialogFooter className="shrink-0 border-t px-6 py-4">
                           <Button variant="outline" onClick={() => handlePromptDialogChange(false)}>
                             取消
                           </Button>
@@ -1250,7 +1353,18 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                     return (
                       <div key={prompt.id} className="rounded-lg border p-4">
                         <div className="flex items-start justify-between">
-                          <div>
+                          <div className="flex min-w-0 items-start gap-3">
+                            <div
+                              className={cn(
+                                "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+                                promptVisuals[prompt.channel].surfaceClassName,
+                              )}
+                            >
+                              {React.createElement(promptVisuals[prompt.channel].icon, {
+                                className: cn("h-4 w-4", promptVisuals[prompt.channel].badgeClassName),
+                              })}
+                            </div>
+                            <div className="min-w-0">
                             <div className="flex items-center gap-2">
                               <span className="font-medium">{prompt.name}</span>
                               <Badge variant="outline">{promptTypeLabels[prompt.channel]}</Badge>
@@ -1260,6 +1374,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                             <p className="text-sm text-muted-foreground mt-1">
                               {promptDescriptions[prompt.channel]}
                             </p>
+                            </div>
                           </div>
                           <div className="flex items-center gap-1">
                             <Button
@@ -1310,6 +1425,67 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label>主题色调</Label>
+                        <p className="text-sm text-muted-foreground">
+                          统一控制标题栏、侧栏与强调色的主色方向
+                        </p>
+                      </div>
+                      <span className="text-sm text-muted-foreground">{themeHue[0]}°</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-3 md:grid-cols-6">
+                      {themeHuePresets.map((preset) => {
+                        const isActive = Math.abs(themeHue[0] - preset.value) <= 2
+                        return (
+                          <button
+                            key={preset.value}
+                            type="button"
+                            className={cn(
+                              "rounded-xl border px-3 py-3 text-left transition-all",
+                              isActive
+                                ? "border-primary bg-primary/10 shadow-sm"
+                                : "hover:border-primary/40 hover:bg-muted/60",
+                            )}
+                            disabled={isSavingUi}
+                            onClick={() => {
+                              setThemeHue([preset.value])
+                              handleThemeHueCommit(preset.value)
+                            }}
+                          >
+                            <span
+                              className="mb-2 block h-8 rounded-lg border border-white/30 shadow-sm"
+                              style={{
+                                background: `linear-gradient(135deg, oklch(0.72 0.14 ${preset.value}) 0%, oklch(0.54 0.18 ${preset.value}) 100%)`,
+                              }}
+                            />
+                            <span className="text-sm font-medium">{preset.label}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <Slider
+                      value={themeHue}
+                      onValueChange={setThemeHue}
+                      onValueCommit={(value) => {
+                        handleThemeHueCommit(value[0])
+                      }}
+                      min={0}
+                      max={360}
+                      step={1}
+                      className="w-full"
+                      disabled={isSavingUi}
+                    />
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>冷色</span>
+                      <span>当前前端风格基线</span>
+                      <span>暖色</span>
+                    </div>
+                  </div>
+
+                  <Separator />
+
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <Label>界面字体大小</Label>
@@ -1403,6 +1579,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
             )}
           </div>
         </div>
+      </div>
       </div>
       <ConfirmDialog
         open={Boolean(pendingDeletePrompt)}

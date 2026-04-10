@@ -333,5 +333,10 @@ async def update_ui_settings(
     payload: UISettingsUpdateRequest,
     store: UISettingsStore = Depends(get_ui_settings_store),
 ) -> UISettingsResponse:
-    updates = {"language": payload.language, "font_size": payload.font_size, "auto_save": payload.auto_save}
+    updates = {
+        "language": payload.language,
+        "font_size": payload.font_size,
+        "auto_save": payload.auto_save,
+        "theme_hue": payload.theme_hue,
+    }
     return UISettingsResponse.model_validate(await store.update(updates))

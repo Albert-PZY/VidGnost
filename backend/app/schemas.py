@@ -310,12 +310,14 @@ class UISettingsResponse(BaseModel):
     language: Literal["zh", "en"] = "zh"
     font_size: int = Field(default=14, ge=12, le=20)
     auto_save: bool = True
+    theme_hue: int = Field(default=220, ge=0, le=360)
 
 
 class UISettingsUpdateRequest(BaseModel):
     language: Literal["zh", "en"] | None = None
     font_size: int | None = Field(default=None, ge=12, le=20)
     auto_save: bool | None = None
+    theme_hue: int | None = Field(default=None, ge=0, le=360)
 
 
 class SelfCheckStartResponse(BaseModel):

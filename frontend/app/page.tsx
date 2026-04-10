@@ -40,6 +40,7 @@ const DEFAULT_UI_SETTINGS: UISettingsResponse = {
   language: "zh",
   font_size: 14,
   auto_save: true,
+  theme_hue: 220,
 }
 
 const getPageTitle = (viewState: ViewState) => {
@@ -116,11 +117,22 @@ export default function VideoMindApp() {
   React.useEffect(() => {
     document.documentElement.lang = uiSettings.language
     document.documentElement.style.fontSize = `${uiSettings.font_size}px`
+    document.documentElement.style.setProperty("--theme-hue", String(uiSettings.theme_hue))
 
     return () => {
       document.documentElement.style.removeProperty("font-size")
+      document.documentElement.style.removeProperty("--theme-hue")
     }
-  }, [uiSettings.font_size, uiSettings.language])
+  }, [uiSettings.font_size, uiSettings.language, uiSettings.theme_hue])
+
+  React.useEffect(() => {
+    const unsubscribe = window.vidGnostDesktop?.onWindowCloseRequested?.(() => {
+      setIsCloseConfirmOpen(true)
+    })
+    return () => {
+      unsubscribe?.()
+    }
+  }, [])
 
   React.useEffect(() => {
     const unsubscribe = window.vidGnostDesktop?.onWindowCloseRequested?.(() => {
@@ -138,6 +150,7 @@ export default function VideoMindApp() {
         language: patch.language ?? current.language,
         font_size: patch.font_size ?? current.font_size,
         auto_save: patch.auto_save ?? current.auto_save,
+        theme_hue: patch.theme_hue ?? current.theme_hue,
       })
       setUiSettings(saved)
       return saved
@@ -248,7 +261,7 @@ export default function VideoMindApp() {
         recentTasks={recentTasks}
         onOpenRecentTask={handleOpenTask}
       />
-      <SidebarInset>
+      <SidebarInset className="h-svh overflow-hidden">
         <AppHeader
           title={pageInfo.title}
           subtitle={pageInfo.subtitle}
@@ -261,7 +274,7 @@ export default function VideoMindApp() {
             })
           }}
         />
-        <main className="flex-1 flex flex-col overflow-hidden">
+        <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {viewState.type === "new-task" && (
             <NewTaskView
               selectedWorkflow={selectedWorkflow}
