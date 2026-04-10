@@ -17,7 +17,6 @@ import {
   Save,
   RefreshCw,
   HardDrive,
-  LoaderCircle,
   Zap,
 } from "lucide-react"
 
@@ -30,6 +29,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
+import { Progress } from "@/components/ui/progress"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
@@ -243,48 +243,6 @@ const localLlmPreset: ModelConfigPreset = {
   quantizationPlaceholder: "如 4bit / 8bit / fp16",
   batchLabel: "最大并发批大小",
   batchDescription: "影响本地推理吞吐，数值越高占用越大。",
-}
-
-function ManagedDownloadButton({
-  progress,
-  disabled,
-  onClick,
-}: {
-  progress: number
-  disabled?: boolean
-  onClick: () => void
-}) {
-  const safeProgress = Math.max(0, Math.min(100, progress))
-  const radius = 14
-  const circumference = 2 * Math.PI * radius
-  const dashOffset = circumference - (safeProgress / 100) * circumference
-
-  return (
-    <Button
-      variant="outline"
-      size="icon"
-      className="relative h-9 w-9 rounded-full border-primary/30 p-0 text-primary hover:bg-primary/10"
-      disabled={disabled}
-      onClick={onClick}
-    >
-      <svg className="absolute inset-0 h-full w-full -rotate-90" viewBox="0 0 36 36" aria-hidden="true">
-        <circle cx="18" cy="18" r={radius} fill="none" stroke="currentColor" strokeOpacity="0.14" strokeWidth="2.5" />
-        <circle
-          cx="18"
-          cy="18"
-          r={radius}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={dashOffset}
-        />
-      </svg>
-      <LoaderCircle className="relative z-10 h-3.5 w-3.5 animate-spin" />
-      <span className="sr-only">取消当前模型下载</span>
-    </Button>
-  )
 }
 
 export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewProps) {
@@ -819,8 +777,13 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                   <Separator />
 
                   <div className="space-y-3">
-                    {models.map((model) => (
-                      <div key={model.id} className="flex items-center gap-4 rounded-lg border p-4">
+                    {models.map((model) => {
+                      const isDownloading = model.download?.state === "downloading"
+                      const downloadPercent = Math.max(0, Math.min(100, model.download?.percent ?? 0))
+
+                      return (
+                      <div key={model.id} className="rounded-lg border p-4">
+                        <div className="flex items-start gap-4">
                         <div
                           className={cn(
                             "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
@@ -849,24 +812,25 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                           <div className="text-xs text-muted-foreground mt-1 truncate">
                             {model.is_installed ? model.path || model.default_path || model.model_id : "未就绪"}
                           </div>
-                          {model.download?.message ? (
+                          {model.download?.message && !isDownloading ? (
                             <div className="mt-1 truncate text-[11px] text-muted-foreground">
-                              {model.download.state === "downloading"
-                                ? `下载中 ${Math.round(model.download.percent)}% · ${model.download.message}`
-                                : model.download.message}
+                              {model.download.message}
                             </div>
                           ) : null}
                         </div>
                         <div className="flex items-center gap-2">
                           {model.supports_managed_download ? (
-                            model.download?.state === "downloading" ? (
-                              <ManagedDownloadButton
-                                progress={model.download.percent}
+                            isDownloading ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
                                 disabled={busyModelId === model.id}
                                 onClick={() => {
                                   void handleManagedModelAction(model)
                                 }}
-                              />
+                              >
+                                取消下载
+                              </Button>
                             ) : (
                               <Button
                                 variant="outline"
@@ -900,7 +864,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                           <Button
                             variant="outline"
                             size="sm"
-                            disabled={busyModelId === model.id || model.download?.state === "downloading"}
+                            disabled={busyModelId === model.id || isDownloading}
                             onClick={() => {
                               handleConfigureModel(model)
                             }}
@@ -908,8 +872,20 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                             配置
                           </Button>
                         </div>
+                        </div>
+                        {isDownloading ? (
+                          <div className="mt-3 space-y-2">
+                            <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
+                              <span className="min-w-0 truncate">
+                                下载中 {Math.round(downloadPercent)}% · {model.download?.message || "正在下载模型文件..."}
+                              </span>
+                              <span className="shrink-0">{Math.round(downloadPercent)}%</span>
+                            </div>
+                            <Progress value={downloadPercent} className="h-2 bg-primary/10" />
+                          </div>
+                        ) : null}
                       </div>
-                    ))}
+                    )})}
                     {models.length === 0 && !isLoading && (
                       <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
                         当前没有可展示的模型配置
