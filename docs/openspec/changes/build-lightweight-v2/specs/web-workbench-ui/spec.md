@@ -24,7 +24,7 @@ Model configuration and prompt-template configuration dialogs SHALL remain withi
 - **AND** the title, close control, cancel action, and save action remain visible
 
 ### Requirement: Model configuration dialog SHALL separate overview and grouped controls
-Model configuration dialog SHALL use a responsive split layout with a left overview panel and a right grouped form panel. On desktop widths the dialog SHALL keep a wide presentation area suitable for dense professional forms, supporting a visual width up to `85rem`, and SHALL not fall back to the default small dialog width token. The overview panel SHALL keep a fixed readable width while the right-side configuration panel stays intentionally narrower than the previous ultra-wide layout. The overview panel SHALL expose model identity, component tag, provider, runtime status, install status, default path, current enabled state, and preset note. Dialog centering SHALL preserve crisp text rendering and SHALL not distort embedded fixed-position surfaces.
+Model configuration dialog SHALL use a responsive split layout with a left overview panel and a right grouped form panel. On desktop widths the dialog SHALL keep a wide presentation area suitable for dense professional forms, supporting a visual width up to `85rem`, and SHALL not fall back to the default small dialog width token. The overview panel SHALL keep a fixed readable width while the right-side configuration panel stays intentionally narrower than the previous ultra-wide layout. The overview panel SHALL expose model identity, component tag, provider, runtime status, install status, default path, current enabled state, and preset note, while keeping helper copy concise. Dialog centering SHALL preserve crisp text rendering and SHALL not distort embedded fixed-position surfaces.
 
 #### Scenario: Open a model configuration dialog
 - **WHEN** user clicks `配置` on a model item
@@ -41,7 +41,7 @@ Prompt template list and editor SHALL use channel-specific labels for `correctio
 - **AND** the editor dialog reflects the currently selected channel visually
 
 ### Requirement: Prompt template editor SHALL provide split markdown editing with live preview
-Prompt template editor SHALL use a markdown editor that keeps the source editor and rendered preview visible at the same time. The editor theme SHALL follow the application light/dark theme, and editor-side scrolling SHALL remain synchronized with the preview pane during editing.
+Prompt template editor SHALL use a markdown editor that keeps the source editor and rendered preview visible at the same time. The editor theme SHALL follow the application light/dark theme, editor-side scrolling SHALL remain synchronized with the preview pane during editing, and helper text above the editor SHALL stay concise without repeating nearby labels.
 
 #### Scenario: Edit a prompt template in the settings center
 - **WHEN** user opens the prompt template editor dialog

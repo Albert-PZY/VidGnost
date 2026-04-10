@@ -1123,7 +1123,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                                         {modelForm.enabled ? "已启用" : "已停用"}
                                       </div>
                                       <p className="mt-1 text-xs text-muted-foreground">
-                                        {modelForm.enabled ? "参与运行链路" : "不会参与任务执行"}
+                                        {modelForm.enabled ? "参与链路" : "不参与链路"}
                                       </p>
                                     </div>
                                     <div className="rounded-xl border bg-muted/30 p-4">
@@ -1134,7 +1134,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                                         {modelForm.load_profile || "balanced"}
                                       </div>
                                       <p className="mt-1 text-xs text-muted-foreground">
-                                        决定常驻内存与响应速度的取舍
+                                        平衡常驻与响应
                                       </p>
                                     </div>
                                     <div className="rounded-xl border bg-muted/30 p-4">
@@ -1145,7 +1145,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                                         {modelDialogHasQuantization ? modelForm.quantization || "未设置" : "不适用"}
                                       </div>
                                       <p className="mt-1 text-xs text-muted-foreground">
-                                        影响显存占用与推理吞吐
+                                        影响显存与吞吐
                                       </p>
                                     </div>
                                     <div className="rounded-xl border bg-muted/30 p-4">
@@ -1156,7 +1156,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                                         {modelDialogHasBatchSize ? modelForm.max_batch_size || "1" : "默认"}
                                       </div>
                                       <p className="mt-1 text-xs text-muted-foreground">
-                                        过高可能提升吞吐但增加资源占用
+                                        越高越吃资源
                                       </p>
                                     </div>
                                   </div>
@@ -1178,7 +1178,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                                     </div>
                                     <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
                                       {activeModelPreset?.note ||
-                                        "根据当前模型类型调整常用运行参数，保存后会同步到桌面端后端配置。"}
+                                        "调整常用运行参数，保存后同步后端配置。"}
                                     </p>
                                   </div>
                                 </div>
@@ -1554,16 +1554,11 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
 
                             <section className="space-y-3">
                               <div className="rounded-xl border bg-card p-4">
-                                <div className="flex flex-wrap items-center justify-between gap-3">
-                                  <div className="space-y-1">
-                                    <Label className="text-sm font-medium">提示词内容</Label>
-                                    <p className="text-xs text-muted-foreground">
-                                      左侧编辑，右侧实时预览；使用 {"{text}"} 表示输入文本，{"{context}"} 表示上下文信息。
-                                    </p>
-                                  </div>
-                                  <Badge variant="outline" className="text-xs text-muted-foreground">
-                                    Markdown 实时预览
-                                  </Badge>
+                                <div className="space-y-1">
+                                  <Label className="text-sm font-medium">提示词内容</Label>
+                                  <p className="text-xs text-muted-foreground">
+                                    左侧编辑，右侧预览；支持 {"{text}"} 和 {"{context}"} 占位符。
+                                  </p>
                                 </div>
                                 <div className="mt-4">
                                   <React.Suspense fallback={<PromptEditorSkeleton />}>
