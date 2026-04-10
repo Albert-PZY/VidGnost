@@ -141,6 +141,7 @@ const themeHuePresets = [
   { label: "珊瑚", value: 30 },
   { label: "靛蓝", value: 260 },
 ] as const
+const DEFAULT_THEME_HUE = themeHuePresets[0].value
 
 const EMPTY_PROMPT_FORM = {
   channel: "correction" as PromptTemplateChannel,
@@ -704,6 +705,11 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
     void handleUiSettingChange({ theme_hue: nextHue }, "主题色调已保存")
   }
 
+  const handleThemeHueReset = () => {
+    setThemeHue([DEFAULT_THEME_HUE])
+    void handleUiSettingChange({ theme_hue: DEFAULT_THEME_HUE }, "主题色调已重置")
+  }
+
   const handleGpuToggle = async (checked: boolean) => {
     if (!whisperConfig) {
       return
@@ -745,37 +751,36 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden">
-      <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 overflow-y-auto px-6 py-6">
-        <div className="w-full space-y-6">
-        <div className="space-y-2">
-          <h1 className="text-2xl font-semibold tracking-tight">设置中心</h1>
-          <p className="text-muted-foreground">
-            配置模型、提示词模板和应用外观
-          </p>
-        </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+        <div className="mx-auto w-full max-w-5xl px-6 py-6">
+          <div className="space-y-6">
+            <div className="space-y-2">
+              <h1 className="text-2xl font-semibold tracking-tight">设置中心</h1>
+              <p className="text-muted-foreground">配置模型、提示词模板和应用外观</p>
+            </div>
 
-        <div className="flex gap-6">
-          <div className="w-48 shrink-0">
-            <nav className="sticky top-6 space-y-1">
-              {sections.map((section) => (
-                <button
-                  key={section.id}
-                  onClick={() => setActiveSection(section.id)}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors",
-                    activeSection === section.id
-                      ? "bg-primary text-primary-foreground"
-                      : "hover:bg-muted",
-                  )}
-                >
-                  <section.icon className="h-4 w-4" />
-                  {section.label}
-                </button>
-              ))}
-            </nav>
-          </div>
+            <div className="flex gap-6">
+              <div className="w-48 shrink-0">
+                <nav className="sticky top-6 space-y-1">
+                  {sections.map((section) => (
+                    <button
+                      key={section.id}
+                      onClick={() => setActiveSection(section.id)}
+                      className={cn(
+                        "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                        activeSection === section.id
+                          ? "bg-primary text-primary-foreground"
+                          : "hover:bg-muted",
+                      )}
+                    >
+                      <section.icon className="h-4 w-4" />
+                      {section.label}
+                    </button>
+                  ))}
+                </nav>
+              </div>
 
-          <div className="flex-1 space-y-6">
+              <div className="min-w-0 flex-1 space-y-6">
             {activeSection === "models" && (
               <Card>
                 <CardHeader>
@@ -1433,7 +1438,17 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                           统一控制标题栏、侧栏与强调色的主色方向
                         </p>
                       </div>
-                      <span className="text-sm text-muted-foreground">{themeHue[0]}°</span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm text-muted-foreground">{themeHue[0]}°</span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={isSavingUi || themeHue[0] === DEFAULT_THEME_HUE}
+                          onClick={handleThemeHueReset}
+                        >
+                          重置
+                        </Button>
+                      </div>
                     </div>
                     <div className="grid grid-cols-3 gap-3 md:grid-cols-6">
                       {themeHuePresets.map((preset) => {
@@ -1577,9 +1592,10 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                 </CardContent>
               </Card>
             )}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
       </div>
       <ConfirmDialog
         open={Boolean(pendingDeletePrompt)}

@@ -228,6 +228,11 @@ export interface SelfCheckIssueResponse {
   manual_action: string
 }
 
+export interface SelfCheckStartResponse {
+  session_id: string
+  status: string
+}
+
 export interface SelfCheckReportResponse {
   session_id: string
   status: string

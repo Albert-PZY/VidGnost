@@ -108,12 +108,11 @@ export function AppHeader({
       </div>
       <Separator orientation="vertical" className="mr-1 h-3.5 bg-foreground/10" />
 
-      <div className="flex min-w-0 flex-col">
+      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
         {title ? <h1 className="truncate text-sm font-medium leading-none tracking-tight">{title}</h1> : null}
-        {subtitle ? <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{subtitle}</p> : null}
+        {title && subtitle ? <span className="shrink-0 text-[11px] text-muted-foreground/70">/</span> : null}
+        {subtitle ? <p className="truncate text-[11px] text-muted-foreground">{subtitle}</p> : null}
       </div>
-
-      <div className="flex-1" />
 
       <div style={noDragRegionStyle} className="flex items-center gap-1">
         <DropdownMenu>

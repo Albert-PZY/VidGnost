@@ -6,7 +6,7 @@ export default function App() {
   return (
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
       <VideoMindApp />
-      <Toaster richColors position="top-right" duration={2200} />
+      <Toaster richColors position="top-center" duration={2200} />
     </ThemeProvider>
   )
 }

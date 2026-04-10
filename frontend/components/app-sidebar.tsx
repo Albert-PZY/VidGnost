@@ -113,13 +113,13 @@ export function AppSidebar({
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="p-4">
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg border border-border/70 bg-card shadow-sm">
             <img src="/light.svg" alt="VidGnost Logo" className="h-full w-full object-cover" />
           </div>
-          <div className="flex flex-col group-data-[collapsible=icon]:hidden">
-            <span className="text-sm font-semibold">VidGnost</span>
-            <span className="text-xs text-muted-foreground">
+          <div className="flex min-w-0 flex-col group-data-[collapsible=icon]:hidden">
+            <span className="truncate text-sm font-semibold">VidGnost</span>
+            <span className="truncate text-xs text-muted-foreground">
               本地多模态视频分析
             </span>
           </div>
@@ -137,13 +137,13 @@ export function AppSidebar({
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="outline"
-                  className="w-full justify-between group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:justify-center"
+                  className="w-full justify-between overflow-hidden group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:justify-center"
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
                     {selectedWorkflowData && (
                       <>
                         <selectedWorkflowData.icon className="h-4 w-4 shrink-0" />
-                        <span className="group-data-[collapsible=icon]:hidden">
+                        <span className="truncate group-data-[collapsible=icon]:hidden">
                           {selectedWorkflowData.title}
                         </span>
                       </>
@@ -188,9 +188,9 @@ export function AppSidebar({
                     tooltip={item.title}
                   >
                     <item.icon className="h-4 w-4" />
-                    <span>{item.title}</span>
+                    <span className="min-w-0 flex-1 truncate">{item.title}</span>
                     {item.badge && (
-                      <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-xs font-medium">
+                      <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-muted px-1.5 text-xs font-medium">
                         {item.badge}
                       </span>
                     )}
@@ -226,7 +226,7 @@ export function AppSidebar({
                     }
                   >
                     <FolderOpen className="h-4 w-4" />
-                    <span className="truncate">{task.title}</span>
+                    <span className="min-w-0 flex-1 truncate">{task.title}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
@@ -248,7 +248,7 @@ export function AppSidebar({
                     tooltip={item.title}
                   >
                     <item.icon className="h-4 w-4" />
-                    <span>{item.title}</span>
+                    <span className="min-w-0 flex-1 truncate">{item.title}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
