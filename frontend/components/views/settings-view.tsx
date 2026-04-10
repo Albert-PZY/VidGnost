@@ -18,6 +18,7 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
@@ -98,6 +99,57 @@ const EMPTY_PROMPT_FORM = {
   content: "",
 }
 
+type ModelConfigFormState = {
+  path: string
+  load_profile: string
+  quantization: string
+  max_batch_size: string
+  enabled: boolean
+}
+
+const EMPTY_MODEL_FORM: ModelConfigFormState = {
+  path: "",
+  load_profile: "balanced",
+  quantization: "",
+  max_batch_size: "1",
+  enabled: true,
+}
+
+const modelVisuals: Record<
+  ModelDescriptor["component"],
+  {
+    icon: React.ElementType
+    iconClassName: string
+    surfaceClassName: string
+  }
+> = {
+  whisper: {
+    icon: Zap,
+    iconClassName: "text-primary",
+    surfaceClassName: "bg-primary/10",
+  },
+  llm: {
+    icon: FileCode,
+    iconClassName: "text-sky-500",
+    surfaceClassName: "bg-sky-500/10",
+  },
+  embedding: {
+    icon: Globe,
+    iconClassName: "text-emerald-500",
+    surfaceClassName: "bg-emerald-500/10",
+  },
+  vlm: {
+    icon: Palette,
+    iconClassName: "text-fuchsia-500",
+    surfaceClassName: "bg-fuchsia-500/10",
+  },
+  rerank: {
+    icon: RefreshCw,
+    iconClassName: "text-amber-500",
+    surfaceClassName: "bg-amber-500/10",
+  },
+}
+
 export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewProps) {
   const [activeSection, setActiveSection] = React.useState("models")
   const [fontSize, setFontSize] = React.useState([uiSettings.font_size])
@@ -105,13 +157,18 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
   const [promptBundle, setPromptBundle] = React.useState<PromptTemplateBundleResponse | null>(null)
   const [whisperConfig, setWhisperConfig] = React.useState<WhisperConfigResponse | null>(null)
   const [isPromptDialogOpen, setIsPromptDialogOpen] = React.useState(false)
+  const [isModelDialogOpen, setIsModelDialogOpen] = React.useState(false)
   const [editingPrompt, setEditingPrompt] = React.useState<PromptTemplateItem | null>(null)
+  const [editingModel, setEditingModel] = React.useState<ModelDescriptor | null>(null)
   const [promptForm, setPromptForm] = React.useState(EMPTY_PROMPT_FORM)
+  const [modelForm, setModelForm] = React.useState<ModelConfigFormState>(EMPTY_MODEL_FORM)
   const [isLoading, setIsLoading] = React.useState(true)
   const [busyModelId, setBusyModelId] = React.useState("")
   const [isSavingPrompt, setIsSavingPrompt] = React.useState(false)
+  const [isSavingModel, setIsSavingModel] = React.useState(false)
   const [isSavingUi, setIsSavingUi] = React.useState(false)
   const [isUpdatingWhisper, setIsUpdatingWhisper] = React.useState(false)
+  const [pendingDeletePrompt, setPendingDeletePrompt] = React.useState<PromptTemplateItem | null>(null)
 
   React.useEffect(() => {
     setFontSize([uiSettings.font_size])
@@ -159,6 +216,10 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
     }
   }
 
+  const getModelVisual = (component: ModelDescriptor["component"]) => {
+    return modelVisuals[component] || modelVisuals.llm
+  }
+
   const handleReloadModel = async (modelId?: string) => {
     setBusyModelId(modelId || "__all__")
     try {
@@ -172,20 +233,48 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
     }
   }
 
-  const handleConfigureModel = async (model: ModelDescriptor) => {
-    const nextPath = window.prompt("请输入模型本地路径：", model.path || "")
-    if (nextPath === null) {
+  const handleModelDialogChange = (open: boolean) => {
+    setIsModelDialogOpen(open)
+    if (!open) {
+      setEditingModel(null)
+      setModelForm(EMPTY_MODEL_FORM)
+    }
+  }
+
+  const handleConfigureModel = (model: ModelDescriptor) => {
+    setEditingModel(model)
+    setModelForm({
+      path: model.path || "",
+      load_profile: model.load_profile || "balanced",
+      quantization: model.quantization || "",
+      max_batch_size: String(model.max_batch_size || 1),
+      enabled: model.enabled,
+    })
+    setIsModelDialogOpen(true)
+  }
+
+  const handleSaveModelConfig = async () => {
+    if (!editingModel) {
       return
     }
 
-    setBusyModelId(model.id)
+    setIsSavingModel(true)
+    setBusyModelId(editingModel.id)
     try {
-      const response = await updateModel(model.id, { path: nextPath.trim() })
+      const response = await updateModel(editingModel.id, {
+        path: modelForm.path.trim(),
+        load_profile: modelForm.load_profile.trim() || "balanced",
+        quantization: modelForm.quantization.trim(),
+        max_batch_size: Number.parseInt(modelForm.max_batch_size, 10) || 1,
+        enabled: modelForm.enabled,
+      })
       setModels(response.items)
-      toast.success("模型路径已更新")
+      handleModelDialogChange(false)
+      toast.success("模型配置已更新")
     } catch (error) {
       toast.error(getApiErrorMessage(error, "更新模型配置失败"))
     } finally {
+      setIsSavingModel(false)
       setBusyModelId("")
     }
   }
@@ -260,14 +349,15 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
     }
   }
 
-  const handleDeletePrompt = async (prompt: PromptTemplateItem) => {
-    if (prompt.is_default) {
+  const handleDeletePrompt = async () => {
+    if (!pendingDeletePrompt || pendingDeletePrompt.is_default) {
       return
     }
 
     try {
-      const nextBundle = await deletePromptTemplate(prompt.id)
+      const nextBundle = await deletePromptTemplate(pendingDeletePrompt.id)
       setPromptBundle(nextBundle)
+      setPendingDeletePrompt(null)
       toast.success("模板已删除")
     } catch (error) {
       toast.error(getApiErrorMessage(error, "删除模板失败"))
@@ -309,6 +399,9 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
         target_channels: whisperConfig.target_channels,
       })
       setWhisperConfig(saved)
+      if (saved.warnings.length > 0) {
+        toast.message(saved.warnings.join(" "))
+      }
       toast.success(checked ? "已切换为自动 GPU 模式" : "已切换为 CPU 模式")
     } catch (error) {
       toast.error(getApiErrorMessage(error, "更新 Whisper 配置失败"))
@@ -370,6 +463,11 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                         <div className="text-sm text-muted-foreground">
                           通过 Whisper 运行设备配置控制 GPU/CPU 推理
                         </div>
+                        {whisperConfig ? (
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            当前设备策略：{whisperConfig.device === "cpu" ? "CPU" : whisperConfig.device.toUpperCase()}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                     <Switch
@@ -385,12 +483,16 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
 
                   <div className="space-y-3">
                     {models.map((model) => (
-                      <div
-                        key={model.id}
-                        className="flex items-center gap-4 rounded-lg border p-4"
-                      >
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-                          <Cpu className="h-5 w-5 text-muted-foreground" />
+                      <div key={model.id} className="flex items-center gap-4 rounded-lg border p-4">
+                        <div
+                          className={cn(
+                            "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+                            getModelVisual(model.component).surfaceClassName,
+                          )}
+                        >
+                          {React.createElement(getModelVisual(model.component).icon, {
+                            className: cn("h-5 w-5", getModelVisual(model.component).iconClassName),
+                          })}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
@@ -399,6 +501,9 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                           </div>
                           <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                             <Badge variant="outline">{modelTypeLabels[model.component]}</Badge>
+                            <Badge variant="secondary" className="capitalize">
+                              {model.provider.replaceAll("_", " ")}
+                            </Badge>
                             <span className="flex items-center gap-1">
                               <HardDrive className="h-3 w-3" />
                               {model.size_bytes > 0 ? formatBytes(model.size_bytes) : "未记录"}
@@ -425,7 +530,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                             size="sm"
                             disabled={busyModelId === model.id}
                             onClick={() => {
-                              void handleConfigureModel(model)
+                              handleConfigureModel(model)
                             }}
                           >
                             配置
@@ -450,6 +555,125 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                     <Plus className="h-4 w-4 mr-2" />
                     添加模型
                   </Button>
+
+                  <Dialog open={isModelDialogOpen} onOpenChange={handleModelDialogChange}>
+                    <DialogContent className="max-w-xl">
+                      <DialogHeader>
+                        <DialogTitle>模型常用配置</DialogTitle>
+                        <DialogDescription>
+                          {editingModel ? `更新 ${editingModel.name} 的常用运行参数。` : "更新模型配置。"}
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        {editingModel ? (
+                          <div className="rounded-xl border bg-muted/40 p-4">
+                            <div className="flex items-center gap-3">
+                              <div
+                                className={cn(
+                                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+                                  getModelVisual(editingModel.component).surfaceClassName,
+                                )}
+                              >
+                                {React.createElement(getModelVisual(editingModel.component).icon, {
+                                  className: cn("h-5 w-5", getModelVisual(editingModel.component).iconClassName),
+                                })}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="font-medium">{editingModel.name}</div>
+                                <div className="truncate text-xs text-muted-foreground">{editingModel.model_id}</div>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        <div className="space-y-2">
+                          <Label htmlFor="model-path">本地路径</Label>
+                          <Input
+                            id="model-path"
+                            placeholder="可选：指定模型缓存目录或本地模型目录"
+                            value={modelForm.path}
+                            onChange={(event) =>
+                              setModelForm((current) => ({ ...current, path: event.target.value }))
+                            }
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label>加载策略</Label>
+                            <Select
+                              value={modelForm.load_profile}
+                              onValueChange={(value) =>
+                                setModelForm((current) => ({ ...current, load_profile: value }))
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="balanced">balanced</SelectItem>
+                                <SelectItem value="memory_first">memory_first</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="model-quantization">量化格式</Label>
+                            <Input
+                              id="model-quantization"
+                              placeholder="如 int8 / 4bit / fp16"
+                              value={modelForm.quantization}
+                              onChange={(event) =>
+                                setModelForm((current) => ({
+                                  ...current,
+                                  quantization: event.target.value,
+                                }))
+                              }
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="model-max-batch">最大批大小</Label>
+                            <Input
+                              id="model-max-batch"
+                              type="number"
+                              min={1}
+                              max={64}
+                              value={modelForm.max_batch_size}
+                              onChange={(event) =>
+                                setModelForm((current) => ({
+                                  ...current,
+                                  max_batch_size: event.target.value,
+                                }))
+                              }
+                            />
+                          </div>
+                          <div className="flex items-end justify-between rounded-lg border px-4 py-3">
+                            <div>
+                              <Label>启用状态</Label>
+                              <p className="text-xs text-muted-foreground">关闭后模型不会参与运行链路。</p>
+                            </div>
+                            <Switch
+                              checked={modelForm.enabled}
+                              onCheckedChange={(checked) =>
+                                setModelForm((current) => ({ ...current, enabled: checked }))
+                              }
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => handleModelDialogChange(false)}>
+                          取消
+                        </Button>
+                        <Button disabled={isSavingModel} onClick={() => void handleSaveModelConfig()}>
+                          <Save className="mr-2 h-4 w-4" />
+                          保存配置
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
                 </CardContent>
               </Card>
             )}
@@ -581,7 +805,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                               className="h-8 w-8 text-destructive"
                               disabled={prompt.is_default}
                               onClick={() => {
-                                void handleDeletePrompt(prompt)
+                                setPendingDeletePrompt(prompt)
                               }}
                             >
                               <Trash2 className="h-4 w-4" />
@@ -708,6 +932,25 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
           </div>
         </div>
       </div>
+      <ConfirmDialog
+        open={Boolean(pendingDeletePrompt)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDeletePrompt(null)
+          }
+        }}
+        title="确认删除提示词模板？"
+        description={
+          pendingDeletePrompt
+            ? `删除后将移除模板“${pendingDeletePrompt.name}”，当前流程会改用其他可用模板。`
+            : "删除后无法恢复。"
+        }
+        confirmLabel="确认删除"
+        confirmVariant="destructive"
+        onConfirm={() => {
+          void handleDeletePrompt()
+        }}
+      />
     </div>
   )
 }

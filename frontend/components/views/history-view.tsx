@@ -18,6 +18,7 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -85,6 +86,7 @@ export function HistoryView({ onOpenTask }: HistoryViewProps) {
   const [stats, setStats] = React.useState<TaskStatsResponse>(EMPTY_STATS)
   const [isLoading, setIsLoading] = React.useState(true)
   const [busyTaskId, setBusyTaskId] = React.useState<string>("")
+  const [pendingDeleteTask, setPendingDeleteTask] = React.useState<TaskSummaryItem | null>(null)
 
   const loadHistory = React.useCallback(async () => {
     setIsLoading(true)
@@ -111,10 +113,15 @@ export function HistoryView({ onOpenTask }: HistoryViewProps) {
     void loadHistory()
   }, [loadHistory])
 
-  const handleDeleteTask = async (taskId: string) => {
-    setBusyTaskId(taskId)
+  const handleDeleteTask = async () => {
+    if (!pendingDeleteTask) {
+      return
+    }
+
+    setBusyTaskId(pendingDeleteTask.id)
     try {
-      await deleteTask(taskId)
+      await deleteTask(pendingDeleteTask.id)
+      setPendingDeleteTask(null)
       toast.success("任务已删除")
       await loadHistory()
     } catch (error) {
@@ -337,7 +344,7 @@ export function HistoryView({ onOpenTask }: HistoryViewProps) {
                         <DropdownMenuItem
                           className="text-destructive"
                           disabled={!["completed", "failed", "cancelled"].includes(task.status)}
-                          onClick={() => void handleDeleteTask(task.id)}
+                          onClick={() => setPendingDeleteTask(task)}
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
                           删除
@@ -350,6 +357,26 @@ export function HistoryView({ onOpenTask }: HistoryViewProps) {
             </div>
           </CardContent>
         </Card>
+        <ConfirmDialog
+          open={Boolean(pendingDeleteTask)}
+          onOpenChange={(open) => {
+            if (!open) {
+              setPendingDeleteTask(null)
+            }
+          }}
+          title="确认删除任务？"
+          description={
+            pendingDeleteTask
+              ? `删除后将移除任务“${pendingDeleteTask.title || pendingDeleteTask.source_input}”及其分析产物。此操作无法恢复。`
+              : "删除后无法恢复。"
+          }
+          confirmLabel="确认删除"
+          confirmVariant="destructive"
+          isPending={Boolean(busyTaskId)}
+          onConfirm={() => {
+            void handleDeleteTask()
+          }}
+        />
       </div>
     </div>
   )

@@ -3,6 +3,7 @@
 import * as React from "react"
 import { toast } from "sonner"
 
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { AppHeader } from "@/components/app-header"
@@ -68,6 +69,7 @@ export default function VideoMindApp() {
   })
   const [recentTasks, setRecentTasks] = React.useState<TaskRecentItem[]>([])
   const [uiSettings, setUiSettings] = React.useState<UISettingsResponse>(DEFAULT_UI_SETTINGS)
+  const [isCloseConfirmOpen, setIsCloseConfirmOpen] = React.useState(false)
   const uiSettingsRef = React.useRef(uiSettings)
 
   React.useEffect(() => {
@@ -119,6 +121,15 @@ export default function VideoMindApp() {
       document.documentElement.style.removeProperty("font-size")
     }
   }, [uiSettings.font_size, uiSettings.language])
+
+  React.useEffect(() => {
+    const unsubscribe = window.vidGnostDesktop?.onWindowCloseRequested?.(() => {
+      setIsCloseConfirmOpen(true)
+    })
+    return () => {
+      unsubscribe?.()
+    }
+  }, [])
 
   const persistUiSettings = React.useCallback(
     async (patch: Partial<UISettingsResponse>) => {
@@ -242,6 +253,8 @@ export default function VideoMindApp() {
           title={pageInfo.title}
           subtitle={pageInfo.subtitle}
           language={uiSettings.language}
+          onOpenSettings={() => handleNavChange("settings")}
+          onRequestClose={() => setIsCloseConfirmOpen(true)}
           onLanguageChange={(language) => {
             void persistUiSettings({ language }).catch((error) => {
               toast.error(getApiErrorMessage(error, "更新语言设置失败"))
@@ -276,6 +289,21 @@ export default function VideoMindApp() {
           )}
           {viewState.type === "diagnostics" && <DiagnosticsView />}
         </main>
+        <ConfirmDialog
+          open={isCloseConfirmOpen}
+          onOpenChange={setIsCloseConfirmOpen}
+          title="确认关闭应用？"
+          description="关闭窗口后将结束当前桌面会话。请确认当前操作已经处理完成。"
+          confirmLabel="关闭应用"
+          confirmVariant="destructive"
+          onConfirm={() => {
+            if (window.vidGnostDesktop?.closeWindow) {
+              void window.vidGnostDesktop.closeWindow()
+              return
+            }
+            window.close()
+          }}
+        />
       </SidebarInset>
     </SidebarProvider>
   )

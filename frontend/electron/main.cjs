@@ -4,6 +4,8 @@ const path = require("node:path")
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://127.0.0.1:5173"
 const PRELOAD_PATH = path.join(__dirname, "preload.cjs")
+const ALLOWED_EXTERNAL_PROTOCOLS = new Set(["http:", "https:"])
+const allowedToClose = new WeakSet()
 
 ipcMain.handle("shell:open-path", async (_event, targetPath) => {
   if (typeof targetPath !== "string" || !targetPath.trim()) {
@@ -23,13 +25,76 @@ ipcMain.handle("shell:open-path", async (_event, targetPath) => {
   return { ok: true }
 })
 
+ipcMain.handle("shell:open-external", async (_event, targetUrl) => {
+  if (typeof targetUrl !== "string" || !targetUrl.trim()) {
+    return { ok: false, message: "Invalid url." }
+  }
+
+  let parsedUrl
+  try {
+    parsedUrl = new URL(targetUrl)
+  } catch {
+    return { ok: false, message: "Malformed url." }
+  }
+
+  if (!ALLOWED_EXTERNAL_PROTOCOLS.has(parsedUrl.protocol)) {
+    return { ok: false, message: "Protocol not allowed." }
+  }
+
+  await shell.openExternal(parsedUrl.toString())
+  return { ok: true }
+})
+
+ipcMain.handle("window:minimize", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  win?.minimize()
+})
+
+ipcMain.handle("window:toggle-maximize", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (!win) {
+    return { isMaximized: false }
+  }
+  if (win.isMaximized()) {
+    win.unmaximize()
+  } else {
+    win.maximize()
+  }
+  return { isMaximized: win.isMaximized() }
+})
+
+ipcMain.handle("window:get-state", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  return { isMaximized: Boolean(win?.isMaximized()) }
+})
+
+ipcMain.handle("window:close", (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  if (!win) {
+    return
+  }
+  allowedToClose.add(win)
+  win.close()
+})
+
+function emitWindowState(win) {
+  if (win.isDestroyed()) {
+    return
+  }
+  win.webContents.send("window:state-changed", {
+    isMaximized: win.isMaximized(),
+  })
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 1200,
     minHeight: 760,
+    frame: false,
     autoHideMenuBar: true,
+    backgroundColor: "#0d131d",
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -37,6 +102,22 @@ function createWindow() {
       sandbox: true,
     },
   })
+
+  win.on("maximize", () => emitWindowState(win))
+  win.on("unmaximize", () => emitWindowState(win))
+  win.on("enter-full-screen", () => emitWindowState(win))
+  win.on("leave-full-screen", () => emitWindowState(win))
+  win.on("close", (event) => {
+    if (allowedToClose.has(win)) {
+      allowedToClose.delete(win)
+      return
+    }
+    event.preventDefault()
+    if (!win.webContents.isDestroyed()) {
+      win.webContents.send("window:close-requested")
+    }
+  })
+  win.webContents.on("did-finish-load", () => emitWindowState(win))
 
   win.loadURL(DEV_SERVER_URL)
 }

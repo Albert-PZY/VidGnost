@@ -50,6 +50,8 @@
   --status-processing: oklch(0.65 0.18 250);
   --status-success: oklch(0.60 0.18 145);
   --status-error: oklch(0.55 0.22 25);
+  --titlebar: oklch(0.94 0.025 220);
+  --titlebar-border: oklch(0.84 0.03 220);
 }
 
 .dark {
@@ -95,6 +97,8 @@
   --status-processing: oklch(0.70 0.18 250);
   --status-success: oklch(0.70 0.18 145);
   --status-error: oklch(0.60 0.22 25);
+  --titlebar: oklch(0.17 0.03 220);
+  --titlebar-border: oklch(0.28 0.035 220);
 }
 
 @theme inline {
