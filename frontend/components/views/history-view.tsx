@@ -139,8 +139,16 @@ export function HistoryView({ onOpenTask }: HistoryViewProps) {
     setBusyTaskId(taskId)
     try {
       const payload = await openTaskLocation(taskId)
-      await navigator.clipboard.writeText(payload.path)
-      toast.success("任务目录路径已复制到剪贴板")
+      if (window.vidGnostDesktop?.openPath) {
+        const result = await window.vidGnostDesktop.openPath(payload.path)
+        if (!result.ok) {
+          throw new Error(result.message || "打开目录失败")
+        }
+        toast.success("已打开任务目录")
+      } else {
+        await navigator.clipboard.writeText(payload.path)
+        toast.success("当前不在 Electron 环境，目录路径已复制到剪贴板")
+      }
     } catch (error) {
       toast.error(getApiErrorMessage(error, "获取任务目录失败"))
     } finally {
