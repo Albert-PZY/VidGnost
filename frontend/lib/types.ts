@@ -206,6 +206,8 @@ export interface UISettingsResponse {
   font_size: number
   auto_save: boolean
   theme_hue: number
+  background_image: string | null
+  background_image_opacity: number
 }
 
 export interface SelfCheckStepResponse {

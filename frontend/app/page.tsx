@@ -4,6 +4,7 @@ import * as React from "react"
 import { toast } from "react-hot-toast"
 
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { Skeleton } from "@/components/ui/skeleton"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { AppHeader } from "@/components/app-header"
@@ -37,6 +38,8 @@ const DEFAULT_UI_SETTINGS: UISettingsResponse = {
   font_size: 14,
   auto_save: true,
   theme_hue: 220,
+  background_image: null,
+  background_image_opacity: 28,
 }
 
 const TaskProcessingView = React.lazy(async () => {
@@ -76,9 +79,29 @@ const getPageTitle = (viewState: ViewState) => {
 
 function ViewLoadingFallback() {
   return (
-    <div className="flex flex-1 items-center justify-center px-6">
-      <div className="rounded-lg border border-border/70 bg-card/80 px-4 py-3 text-sm text-muted-foreground shadow-sm">
-        正在加载界面...
+    <div className="flex flex-1 flex-col gap-6 overflow-hidden px-6 py-6">
+      <div className="space-y-3">
+        <Skeleton className="h-8 w-40 rounded-md" />
+        <Skeleton className="h-4 w-72 rounded-md" />
+      </div>
+      <div className="grid gap-6 xl:grid-cols-[18rem_minmax(0,1fr)]">
+        <div className="space-y-4 rounded-xl border bg-card/70 p-4">
+          <Skeleton className="h-5 w-24 rounded-md" />
+          <Skeleton className="h-10 w-full rounded-lg" />
+          <Skeleton className="h-10 w-full rounded-lg" />
+          <Skeleton className="h-10 w-full rounded-lg" />
+          <Skeleton className="h-10 w-5/6 rounded-lg" />
+        </div>
+        <div className="space-y-4 rounded-xl border bg-card/70 p-5">
+          <Skeleton className="h-6 w-44 rounded-md" />
+          <Skeleton className="h-4 w-80 rounded-md" />
+          <div className="grid gap-4 md:grid-cols-2">
+            <Skeleton className="h-32 rounded-xl" />
+            <Skeleton className="h-32 rounded-xl" />
+            <Skeleton className="h-32 rounded-xl" />
+            <Skeleton className="h-32 rounded-xl" />
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -144,12 +167,30 @@ export default function VideoMindApp() {
     document.documentElement.lang = uiSettings.language
     document.documentElement.style.fontSize = `${uiSettings.font_size}px`
     document.documentElement.style.setProperty("--theme-hue", String(uiSettings.theme_hue))
+    document.documentElement.style.setProperty(
+      "--app-background-image",
+      uiSettings.background_image ? `url("${uiSettings.background_image}")` : "none",
+    )
+    document.documentElement.style.setProperty(
+      "--app-background-opacity",
+      String(uiSettings.background_image_opacity),
+    )
+    document.body.dataset.appBackgroundActive = uiSettings.background_image ? "true" : "false"
 
     return () => {
       document.documentElement.style.removeProperty("font-size")
       document.documentElement.style.removeProperty("--theme-hue")
+      document.documentElement.style.removeProperty("--app-background-image")
+      document.documentElement.style.removeProperty("--app-background-opacity")
+      delete document.body.dataset.appBackgroundActive
     }
-  }, [uiSettings.font_size, uiSettings.language, uiSettings.theme_hue])
+  }, [
+    uiSettings.background_image,
+    uiSettings.background_image_opacity,
+    uiSettings.font_size,
+    uiSettings.language,
+    uiSettings.theme_hue,
+  ])
 
   React.useEffect(() => {
     const unsubscribe = window.vidGnostDesktop?.onWindowCloseRequested?.(() => {
@@ -188,6 +229,10 @@ export default function VideoMindApp() {
         font_size: patch.font_size ?? current.font_size,
         auto_save: patch.auto_save ?? current.auto_save,
         theme_hue: patch.theme_hue ?? current.theme_hue,
+        background_image:
+          patch.background_image !== undefined ? patch.background_image : current.background_image,
+        background_image_opacity:
+          patch.background_image_opacity ?? current.background_image_opacity,
       })
       setUiSettings(saved)
       return saved

@@ -338,5 +338,7 @@ async def update_ui_settings(
         "font_size": payload.font_size,
         "auto_save": payload.auto_save,
         "theme_hue": payload.theme_hue,
+        "background_image": payload.background_image,
+        "background_image_opacity": payload.background_image_opacity,
     }
     return UISettingsResponse.model_validate(await store.update(updates))

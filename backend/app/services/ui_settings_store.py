@@ -14,6 +14,8 @@ class UISettings(TypedDict):
     font_size: int
     auto_save: bool
     theme_hue: int
+    background_image: str | None
+    background_image_opacity: int
 
 
 DEFAULT_UI_SETTINGS: UISettings = {
@@ -21,6 +23,8 @@ DEFAULT_UI_SETTINGS: UISettings = {
     "font_size": 14,
     "auto_save": True,
     "theme_hue": 220,
+    "background_image": None,
+    "background_image_opacity": 28,
 }
 
 
@@ -54,11 +58,31 @@ class UISettingsStore:
             except (TypeError, ValueError):
                 theme_hue = current["theme_hue"]
             theme_hue = max(0, min(360, theme_hue))
+            background_image_raw = updates.get("background_image", current["background_image"])
+            background_image = None
+            if isinstance(background_image_raw, str):
+                normalized_background = background_image_raw.strip()
+                background_image = normalized_background or None
+            elif background_image_raw is None:
+                background_image = None
+            else:
+                background_image = current["background_image"]
+            background_image_opacity_raw = updates.get(
+                "background_image_opacity",
+                current["background_image_opacity"],
+            )
+            try:
+                background_image_opacity = int(background_image_opacity_raw)
+            except (TypeError, ValueError):
+                background_image_opacity = current["background_image_opacity"]
+            background_image_opacity = max(0, min(100, background_image_opacity))
             next_value: UISettings = {
                 "language": language,
                 "font_size": font_size,
                 "auto_save": auto_save,
                 "theme_hue": theme_hue,
+                "background_image": background_image,
+                "background_image_opacity": background_image_opacity,
             }
             self._write_sync(next_value)
             return next_value
@@ -91,11 +115,30 @@ class UISettingsStore:
         except (TypeError, ValueError):
             theme_hue = DEFAULT_UI_SETTINGS["theme_hue"]
         theme_hue = max(0, min(360, theme_hue))
+        background_image_raw = payload.get("background_image", DEFAULT_UI_SETTINGS["background_image"])
+        background_image = None
+        if isinstance(background_image_raw, str):
+            normalized_background = background_image_raw.strip()
+            background_image = normalized_background or None
+        elif background_image_raw is None:
+            background_image = None
+        try:
+            background_image_opacity = int(
+                payload.get(
+                    "background_image_opacity",
+                    DEFAULT_UI_SETTINGS["background_image_opacity"],
+                )
+            )
+        except (TypeError, ValueError):
+            background_image_opacity = DEFAULT_UI_SETTINGS["background_image_opacity"]
+        background_image_opacity = max(0, min(100, background_image_opacity))
         return {
             "language": language,
             "font_size": font_size,
             "auto_save": auto_save,
             "theme_hue": theme_hue,
+            "background_image": background_image,
+            "background_image_opacity": background_image_opacity,
         }
 
     def _write_sync(self, value: UISettings) -> None:

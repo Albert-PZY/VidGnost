@@ -311,6 +311,8 @@ class UISettingsResponse(BaseModel):
     font_size: int = Field(default=14, ge=12, le=20)
     auto_save: bool = True
     theme_hue: int = Field(default=220, ge=0, le=360)
+    background_image: str | None = None
+    background_image_opacity: int = Field(default=28, ge=0, le=100)
 
 
 class UISettingsUpdateRequest(BaseModel):
@@ -318,6 +320,8 @@ class UISettingsUpdateRequest(BaseModel):
     font_size: int | None = Field(default=None, ge=12, le=20)
     auto_save: bool | None = None
     theme_hue: int | None = Field(default=None, ge=0, le=360)
+    background_image: str | None = None
+    background_image_opacity: int | None = Field(default=None, ge=0, le=100)
 
 
 class SelfCheckStartResponse(BaseModel):

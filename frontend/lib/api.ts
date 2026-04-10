@@ -386,6 +386,8 @@ export function updateUiSettings(payload: {
   font_size?: number
   auto_save?: boolean
   theme_hue?: number
+  background_image?: string | null
+  background_image_opacity?: number
 }): Promise<UISettingsResponse> {
   return apiFetch<UISettingsResponse>("/config/ui", {
     method: "PUT",

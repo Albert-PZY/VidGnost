@@ -51,6 +51,8 @@
   --status-error: oklch(0.55 0.22 25);
   --titlebar: oklch(0.985 0 0);
   --titlebar-border: oklch(0.9 0 0);
+  --app-background-image: none;
+  --app-background-opacity: 0;
 }
 
 .dark {
@@ -152,6 +154,8 @@
     @apply bg-background text-foreground;
     min-height: 100vh;
     overflow: hidden;
+    position: relative;
+    isolation: isolate;
   }
   #root {
     min-height: 100vh;
@@ -203,6 +207,49 @@
     0%, 100% { opacity: 1; }
     50% { opacity: 0.5; }
   }
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background-image: var(--app-background-image);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: calc(var(--app-background-opacity) / 100);
+  transition: opacity 180ms ease;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: color-mix(in oklch, var(--background) 72%, transparent);
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+body[data-app-background-active="true"]::after {
+  opacity: 1;
+}
+
+body[data-app-background-active="true"] [data-slot="sidebar-wrapper"] {
+  background: transparent;
+}
+
+body[data-app-background-active="true"] [data-slot="sidebar"] {
+  background: color-mix(in oklch, var(--sidebar) 78%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+body[data-app-background-active="true"] [data-slot="sidebar-inset"] {
+  background: color-mix(in oklch, var(--background) 74%, transparent);
+  backdrop-filter: blur(18px);
 }
 
 @keyframes download-progress-flow {
@@ -267,6 +314,7 @@
   color: var(--foreground);
   border: 0;
   box-shadow: none;
+  font-family: var(--font-mono);
 }
 
 .prompt-markdown-editor-shell .w-md-editor-toolbar {
@@ -295,33 +343,51 @@
   background: transparent;
 }
 
-.prompt-markdown-editor-shell .w-md-editor-text-pre,
-.prompt-markdown-editor-shell .w-md-editor-text-input,
-.prompt-markdown-editor-shell .w-md-editor-preview {
+.prompt-markdown-editor-shell .w-md-editor-text {
+  padding: 1rem 1rem 1.5rem;
   font-family: var(--font-mono);
+  font-size: 0.95rem !important;
+  line-height: 1.72 !important;
+}
+
+.prompt-markdown-editor-shell .w-md-editor-text-pre,
+.prompt-markdown-editor-shell .w-md-editor-text-input {
+  font-family: var(--font-mono) !important;
+  font-size: 0.95rem !important;
+  line-height: 1.72 !important;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in oklch, var(--primary) 52%, transparent) transparent;
 }
 
 .prompt-markdown-editor-shell .w-md-editor-text-input {
   color: var(--foreground);
-  line-height: 1.65;
-  padding: 1rem 1rem 1.5rem;
+  caret-color: var(--foreground);
+  padding: inherit;
 }
 
 .prompt-markdown-editor-shell .w-md-editor-text-pre {
-  line-height: 1.65;
-  padding: 1rem 1rem 1.5rem;
+  line-height: inherit;
+  padding: inherit;
 }
 
 .prompt-markdown-editor-shell .w-md-editor-preview {
   border-left: 1px solid color-mix(in oklch, var(--border) 82%, var(--foreground) 6%);
   padding: 1rem 1rem 1.5rem !important;
+  font-family: var(--font-sans);
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--primary) 52%, transparent) transparent;
 }
 
-.prompt-markdown-editor-shell .w-md-editor-text-pre > code,
+.prompt-markdown-editor-shell .w-md-editor-text-pre > code {
+  font-family: var(--font-mono) !important;
+  font-size: 0.95rem !important;
+  line-height: 1.72 !important;
+}
+
 .prompt-markdown-editor-shell .wmde-markdown {
-  font-size: 0.9rem;
+  font-family: var(--font-sans);
+  font-size: 0.94rem;
+  line-height: 1.75;
 }
 
 .prompt-markdown-editor-shell .w-md-editor-text-pre::-webkit-scrollbar,

@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from "react"
-import MDEditor from "@uiw/react-md-editor"
 import { toast } from "react-hot-toast"
 import {
   CloudDownload,
@@ -28,6 +27,7 @@ import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
 import { Progress } from "@/components/ui/progress"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Select,
   SelectContent,
@@ -124,6 +124,12 @@ const themeHuePresets = [
   { label: "靛蓝", value: 260 },
 ] as const
 const DEFAULT_THEME_HUE = themeHuePresets[0].value
+const BACKGROUND_IMAGE_FILE_SIZE_LIMIT = 4 * 1024 * 1024
+
+const PromptMarkdownEditor = React.lazy(async () => {
+  const module = await import("@/components/editors/prompt-markdown-editor")
+  return { default: module.PromptMarkdownEditor }
+})
 
 const EMPTY_PROMPT_FORM = {
   channel: "correction" as PromptTemplateChannel,
@@ -227,11 +233,69 @@ const localLlmPreset: ModelConfigPreset = {
   batchDescription: "影响本地推理吞吐，数值越高占用越大。",
 }
 
+function PromptEditorSkeleton() {
+  return (
+    <div className="prompt-markdown-editor-shell overflow-hidden">
+      <div className="flex items-center gap-2 border-b bg-muted/45 px-3 py-2">
+        <Skeleton className="h-8 w-8 rounded-md" />
+        <Skeleton className="h-8 w-8 rounded-md" />
+        <Skeleton className="h-8 w-8 rounded-md" />
+        <Skeleton className="h-8 w-10 rounded-md" />
+        <div className="mx-1 h-5 w-px bg-border/80" />
+        <Skeleton className="h-8 w-8 rounded-md" />
+        <Skeleton className="h-8 w-8 rounded-md" />
+        <Skeleton className="ml-auto h-8 w-20 rounded-md" />
+      </div>
+      <div className="grid min-h-[520px] grid-cols-1 divide-y border-border/70 xl:grid-cols-2 xl:divide-x xl:divide-y-0">
+        <div className="space-y-4 p-4">
+          <Skeleton className="h-5 w-24 rounded-md" />
+          <Skeleton className="h-4 w-full rounded-md" />
+          <Skeleton className="h-4 w-[92%] rounded-md" />
+          <Skeleton className="h-4 w-[88%] rounded-md" />
+          <Skeleton className="h-4 w-[72%] rounded-md" />
+          <Skeleton className="mt-6 h-4 w-[95%] rounded-md" />
+          <Skeleton className="h-4 w-[84%] rounded-md" />
+          <Skeleton className="h-4 w-[68%] rounded-md" />
+        </div>
+        <div className="space-y-4 p-4">
+          <Skeleton className="h-5 w-24 rounded-md" />
+          <Skeleton className="h-4 w-[90%] rounded-md" />
+          <Skeleton className="h-4 w-[86%] rounded-md" />
+          <Skeleton className="h-4 w-[76%] rounded-md" />
+          <Skeleton className="mt-6 h-4 w-[88%] rounded-md" />
+          <Skeleton className="h-4 w-[82%] rounded-md" />
+          <Skeleton className="h-4 w-[74%] rounded-md" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+async function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result)
+        return
+      }
+      reject(new Error("读取图片失败"))
+    }
+    reader.onerror = () => {
+      reject(reader.error || new Error("读取图片失败"))
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
 export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewProps) {
   const { resolvedTheme } = useTheme()
   const [activeSection, setActiveSection] = React.useState("models")
   const [fontSize, setFontSize] = React.useState([uiSettings.font_size])
   const [themeHue, setThemeHue] = React.useState([uiSettings.theme_hue])
+  const [backgroundOpacity, setBackgroundOpacity] = React.useState([
+    uiSettings.background_image_opacity,
+  ])
   const [models, setModels] = React.useState<ModelDescriptor[]>([])
   const [promptBundle, setPromptBundle] = React.useState<PromptTemplateBundleResponse | null>(null)
   const [whisperConfig, setWhisperConfig] = React.useState<WhisperConfigResponse | null>(null)
@@ -252,6 +316,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
   const [pendingDeletePrompt, setPendingDeletePrompt] = React.useState<PromptTemplateItem | null>(null)
   const [isDeletingPrompt, setIsDeletingPrompt] = React.useState(false)
   const markdownColorMode = resolvedTheme === "dark" ? "dark" : "light"
+  const backgroundFileInputRef = React.useRef<HTMLInputElement | null>(null)
 
   React.useEffect(() => {
     setFontSize([uiSettings.font_size])
@@ -260,6 +325,10 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
   React.useEffect(() => {
     setThemeHue([uiSettings.theme_hue])
   }, [uiSettings.theme_hue])
+
+  React.useEffect(() => {
+    setBackgroundOpacity([uiSettings.background_image_opacity])
+  }, [uiSettings.background_image_opacity])
 
   React.useEffect(() => {
     const activeHue = themeHue[0] ?? uiSettings.theme_hue
@@ -664,6 +733,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
       toast.error(getApiErrorMessage(error, "保存界面设置失败"))
       setFontSize([uiSettings.font_size])
       setThemeHue([uiSettings.theme_hue])
+      setBackgroundOpacity([uiSettings.background_image_opacity])
     } finally {
       setIsSavingUi(false)
     }
@@ -676,6 +746,55 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
   const handleThemeHueReset = () => {
     setThemeHue([DEFAULT_THEME_HUE])
     void handleUiSettingChange({ theme_hue: DEFAULT_THEME_HUE }, "主题色调已重置")
+  }
+
+  const handleBackgroundOpacityCommit = (nextOpacity: number) => {
+    setBackgroundOpacity([nextOpacity])
+    void handleUiSettingChange(
+      { background_image_opacity: nextOpacity },
+      "背景透明度已更新",
+    )
+  }
+
+  const handleBackgroundFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+    if (!file) {
+      return
+    }
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("仅支持上传图片文件")
+      return
+    }
+
+    if (file.size > BACKGROUND_IMAGE_FILE_SIZE_LIMIT) {
+      toast.error("背景图片不能超过 4 MB")
+      return
+    }
+
+    try {
+      const backgroundImage = await readFileAsDataUrl(file)
+      const nextOpacity = backgroundOpacity[0] ?? uiSettings.background_image_opacity
+      await handleUiSettingChange(
+        {
+          background_image: backgroundImage,
+          background_image_opacity: nextOpacity,
+        },
+        "背景图片已更新（Beta）",
+      )
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "读取背景图片失败"))
+    }
+  }
+
+  const handleClearBackgroundImage = () => {
+    void handleUiSettingChange(
+      {
+        background_image: null,
+      },
+      "背景图片已清除",
+    )
   }
 
   const handleGpuToggle = async (checked: boolean) => {
@@ -914,7 +1033,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                   </Button>
 
                   <Dialog open={isModelDialogOpen} onOpenChange={handleModelDialogChange}>
-                    <DialogContent className="flex w-[min(96vw,100rem)] max-h-[90vh] max-w-[100rem] flex-col gap-0 overflow-hidden p-0 sm:max-w-[100rem]">
+                    <DialogContent className="flex w-[min(96vw,85rem)] max-h-[90vh] max-w-[85rem] flex-col gap-0 overflow-hidden p-0 sm:max-w-[85rem]">
                       <DialogHeader className="shrink-0 border-b bg-card px-6 py-5 pr-14">
                         <DialogTitle className="text-lg font-medium leading-tight">
                           {activeModelPreset?.title || "模型常用配置"}
@@ -925,7 +1044,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                       </DialogHeader>
 
                       <div className="themed-thin-scrollbar min-h-0 flex-1 overflow-y-auto">
-                        <div className="grid gap-6 px-6 py-6 xl:grid-cols-[minmax(0,0.37fr)_minmax(0,0.63fr)]">
+                        <div className="grid gap-6 px-6 py-6 xl:grid-cols-[minmax(25rem,29rem)_minmax(0,1fr)]">
                           {/* 左侧概览：集中展示当前模型身份、状态与关键指标 */}
                           <div className="space-y-5">
                             {editingModel ? (
@@ -1068,7 +1187,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                           </div>
 
                           {/* 右侧配置：按运行参数与在线接口参数分组 */}
-                          <div className="space-y-6">
+                          <div className="space-y-6 xl:max-w-[46rem]">
                             <div className="rounded-xl border bg-card p-5 md:p-6">
                               <div className="space-y-1">
                                 <div className="text-base font-semibold leading-tight">常用运行参数</div>
@@ -1450,28 +1569,21 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                                     Markdown 实时预览
                                   </Badge>
                                 </div>
-                                <div
-                                  data-color-mode={markdownColorMode}
-                                  className="prompt-markdown-editor-shell wmde-markdown-var mt-4"
-                                >
-                                  <MDEditor
-                                    value={promptForm.content}
-                                    onChange={(value) =>
-                                      setPromptForm((current) => ({
-                                        ...current,
-                                        content: value ?? "",
-                                      }))
-                                    }
-                                    preview="live"
-                                    visibleDragbar={false}
-                                    enableScroll
-                                    height={520}
-                                    data-color-mode={markdownColorMode}
-                                    textareaProps={{
-                                      placeholder: "输入提示词内容，使用 {text} 作为输入文本占位符",
-                                      "aria-label": "提示词内容 Markdown 编辑器",
-                                    }}
-                                  />
+                                <div className="mt-4">
+                                  <React.Suspense fallback={<PromptEditorSkeleton />}>
+                                    <PromptMarkdownEditor
+                                      value={promptForm.content}
+                                      colorMode={markdownColorMode}
+                                      height={520}
+                                      placeholder="输入提示词内容，使用 {text} 作为输入文本占位符"
+                                      onChange={(value) =>
+                                        setPromptForm((current) => ({
+                                          ...current,
+                                          content: value,
+                                        }))
+                                      }
+                                    />
+                                  </React.Suspense>
                                 </div>
                               </div>
                             </section>
@@ -1626,6 +1738,95 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                       <span>冷色</span>
                       <span>当前前端风格基线</span>
                       <span>暖色</span>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-4">
+                    <input
+                      ref={backgroundFileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(event) => {
+                        void handleBackgroundFileChange(event)
+                      }}
+                    />
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Label>界面背景图</Label>
+                          <Badge variant="outline" className="text-[11px] uppercase tracking-[0.12em]">
+                            Beta
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          上传自定义图片并覆盖到整个 UI 背景层，建议使用低噪点横向图片。
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={isSavingUi}
+                          onClick={() => backgroundFileInputRef.current?.click()}
+                        >
+                          上传图片
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={isSavingUi || !uiSettings.background_image}
+                          onClick={handleClearBackgroundImage}
+                        >
+                          清除
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border bg-card p-4">
+                      {uiSettings.background_image ? (
+                        <div className="space-y-4">
+                          <div
+                            className="h-40 rounded-lg border border-border/70 bg-muted/30"
+                            style={{
+                              backgroundImage: `linear-gradient(rgba(15, 23, 42, 0.08), rgba(15, 23, 42, 0.08)), url(${uiSettings.background_image})`,
+                              backgroundPosition: "center",
+                              backgroundRepeat: "no-repeat",
+                              backgroundSize: "cover",
+                            }}
+                          />
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <Label>背景透明度</Label>
+                              <span className="text-sm text-muted-foreground">
+                                {backgroundOpacity[0]}%
+                              </span>
+                            </div>
+                            <Slider
+                              value={backgroundOpacity}
+                              onValueChange={setBackgroundOpacity}
+                              onValueCommit={(value) => {
+                                handleBackgroundOpacityCommit(value[0])
+                              }}
+                              min={0}
+                              max={100}
+                              step={1}
+                              disabled={isSavingUi}
+                            />
+                            <div className="flex justify-between text-xs text-muted-foreground">
+                              <span>更克制</span>
+                              <span>适度增强氛围</span>
+                              <span>更明显</span>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="rounded-lg border border-dashed border-border/80 bg-muted/20 px-4 py-6 text-sm text-muted-foreground">
+                          当前未设置自定义背景图。上传后将自动覆盖应用背景，并保留当前主题色和交互高亮。
+                        </div>
+                      )}
                     </div>
                   </div>
 

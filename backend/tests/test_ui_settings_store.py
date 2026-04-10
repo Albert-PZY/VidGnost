@@ -40,3 +40,24 @@ def test_ui_settings_store_normalizes_invalid_theme_hue(tmp_path: Path) -> None:
     saved = asyncio.run(store.update({"theme_hue": 999}))
 
     assert saved["theme_hue"] == 360
+
+
+def test_ui_settings_store_persists_background_image_and_opacity(tmp_path: Path) -> None:
+    settings = _build_settings(tmp_path)
+    store = UISettingsStore(settings)
+
+    saved = asyncio.run(
+        store.update(
+            {
+                "background_image": "data:image/png;base64,ZmFrZQ==",
+                "background_image_opacity": 64,
+            }
+        )
+    )
+
+    current = asyncio.run(store.get())
+
+    assert saved["background_image"] == "data:image/png;base64,ZmFrZQ=="
+    assert saved["background_image_opacity"] == 64
+    assert current["background_image"] == "data:image/png;base64,ZmFrZQ=="
+    assert current["background_image_opacity"] == 64
