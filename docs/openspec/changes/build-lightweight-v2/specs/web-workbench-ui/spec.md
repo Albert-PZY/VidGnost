@@ -16,7 +16,7 @@ Settings center SHALL provide `模型配置`, `提示词模板`, `外观设置`,
 - **THEN** the renderer shows the four sections with current persisted values from backend config APIs
 
 ### Requirement: Configuration dialogs SHALL stay within viewport with fixed chrome
-Model configuration and prompt-template configuration dialogs SHALL remain within the visible viewport, keep header and action area fixed, and allow inner content scrolling when fields exceed available height.
+Model configuration and prompt-template configuration dialogs SHALL remain within the visible viewport, keep header and action area fixed, and allow inner content scrolling when fields exceed available height. The header chrome SHALL stay visually compact so the main form area remains the dominant surface inside the dialog.
 
 #### Scenario: Open a long configuration dialog
 - **WHEN** dialog content exceeds available viewport height
@@ -33,7 +33,7 @@ Model configuration dialog SHALL use a responsive split layout with a left overv
 - **AND** path fields span the full row while regular scalar fields follow a responsive two-column grid
 
 ### Requirement: Prompt template UI SHALL distinguish channels visually
-Prompt template list and editor SHALL use channel-specific icons and labels for `correction`, `notes`, `mindmap`, and `vqa`.
+Prompt template list and editor SHALL use channel-specific labels for `correction`, `notes`, `mindmap`, and `vqa`, while avoiding duplicated explanatory copy inside the editor sidebar.
 
 #### Scenario: Browse prompt templates
 - **WHEN** user opens the prompt template section

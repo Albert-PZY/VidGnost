@@ -1034,11 +1034,11 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
 
                   <Dialog open={isModelDialogOpen} onOpenChange={handleModelDialogChange}>
                     <DialogContent className="flex w-[min(96vw,85rem)] max-h-[90vh] max-w-[85rem] flex-col gap-0 overflow-hidden p-0 sm:max-w-[85rem]">
-                      <DialogHeader className="shrink-0 border-b bg-card px-6 py-5 pr-14">
-                        <DialogTitle className="text-lg font-medium leading-tight">
+                      <DialogHeader className="shrink-0 border-b bg-card px-6 py-3.5 pr-12">
+                        <DialogTitle className="text-base font-semibold leading-tight">
                           {activeModelPreset?.title || "模型常用配置"}
                         </DialogTitle>
-                        <DialogDescription className="text-xs leading-relaxed text-muted-foreground">
+                        <DialogDescription className="text-[11px] leading-normal text-muted-foreground">
                           {activeModelPreset?.description || "更新模型配置。"}
                         </DialogDescription>
                       </DialogHeader>
@@ -1484,11 +1484,11 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                         新建模板
                       </Button>
                       <DialogContent className="flex w-[min(96vw,88rem)] max-h-[min(90vh,60rem)] max-w-[88rem] flex-col gap-0 overflow-hidden p-0 sm:max-w-[88rem]">
-                        <DialogHeader className="shrink-0 border-b px-6 py-5 pr-14">
-                          <DialogTitle>
+                        <DialogHeader className="shrink-0 border-b px-6 py-3.5 pr-12">
+                          <DialogTitle className="text-base font-semibold leading-tight">
                             {editingPrompt ? "编辑提示词模板" : "新建提示词模板"}
                           </DialogTitle>
-                          <DialogDescription>
+                          <DialogDescription className="text-[11px] leading-normal">
                             配置用于特定任务的提示词模板
                           </DialogDescription>
                         </DialogHeader>
@@ -1536,7 +1536,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                                     </div>
                                   </div>
                                   <div className="rounded-xl border bg-muted/35 px-4 py-3">
-                                    <div className="flex flex-wrap items-start gap-3">
+                                    <div className="flex flex-wrap items-center gap-3">
                                       <Badge
                                         variant="outline"
                                         className={cn("shrink-0", promptTagClassNames[promptForm.channel])}
@@ -1547,10 +1547,6 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                                         {promptDescriptions[promptForm.channel]}
                                       </p>
                                     </div>
-                                  </div>
-                                  <div className="space-y-2">
-                                    <Label>模板说明</Label>
-                                    <Input value={promptDescriptions[promptForm.channel]} readOnly />
                                   </div>
                                 </div>
                               </div>
