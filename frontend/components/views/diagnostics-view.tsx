@@ -246,7 +246,7 @@ export function DiagnosticsView() {
         </div>
 
         {(isRunning || report !== null) && (
-          <Card>
+          <Card className="gap-0 rounded-lg border-border/75 bg-card/80 py-0 shadow-none">
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-sm font-medium">
@@ -280,17 +280,20 @@ export function DiagnosticsView() {
           {checks.map((check, index) => (
             <Card
               key={check.id}
-              className={cn("transition-all", currentCheckIndex === index && "ring-2 ring-primary")}
+              className={cn(
+                "gap-0 rounded-lg border-border/75 bg-card/70 py-0 shadow-none transition-colors",
+                currentCheckIndex === index && "border-primary/45 bg-primary/[0.035]",
+              )}
             >
               <CardContent className="p-4">
                 <div className="flex items-start gap-4">
                   <div
                     className={cn(
-                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
-                      check.status === "success" && "bg-status-success/10",
-                      check.status === "warning" && "bg-amber-500/10",
-                      check.status === "error" && "bg-status-error/10",
-                      (check.status === "pending" || check.status === "checking") && "bg-muted",
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-md border bg-background/80",
+                      check.status === "success" && "border-status-success/20 bg-status-success/6",
+                      check.status === "warning" && "border-amber-500/20 bg-amber-500/6",
+                      check.status === "error" && "border-status-error/20 bg-status-error/6",
+                      (check.status === "pending" || check.status === "checking") && "border-border/60",
                     )}
                   >
                     <check.icon
@@ -332,7 +335,7 @@ export function DiagnosticsView() {
                     </p>
 
                     {check.details && Object.keys(check.details).length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-xs">
+                      <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 border-t border-border/60 pt-3 text-xs">
                         {Object.entries(check.details).map(([key, value]) => (
                           <div key={key} className="flex items-center gap-1.5">
                             <span className="text-muted-foreground">{key}:</span>
@@ -350,27 +353,27 @@ export function DiagnosticsView() {
           ))}
         </div>
 
-        <Card>
-          <CardHeader>
+        <Card className="gap-0 rounded-lg border-border/75 bg-card/80 py-0 shadow-none">
+          <CardHeader className="border-b border-border/60 px-4 py-4">
             <CardTitle className="text-base">运行时信息</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="space-y-1">
+          <CardContent className="p-4">
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              <div className="space-y-1.5">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Clock className="h-4 w-4" />
                   运行时间
                 </div>
                 <div className="text-lg font-semibold">{formatDurationSeconds(runtimeMetrics.uptime_seconds)}</div>
               </div>
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Cpu className="h-4 w-4" />
                   CPU 使用率
                 </div>
                 <div className="text-lg font-semibold">{runtimeMetrics.cpu_percent.toFixed(0)}%</div>
               </div>
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <MemoryStick className="h-4 w-4" />
                   内存使用
@@ -380,7 +383,7 @@ export function DiagnosticsView() {
                   {runtimeMetrics.memory_total_bytes > 0 ? ` / ${formatBytes(runtimeMetrics.memory_total_bytes)}` : ""}
                 </div>
               </div>
-              <div className="space-y-1">
+              <div className="space-y-1.5">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Zap className="h-4 w-4" />
                   GPU 使用率
