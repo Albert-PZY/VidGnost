@@ -134,15 +134,6 @@ export default function VideoMindApp() {
     }
   }, [])
 
-  React.useEffect(() => {
-    const unsubscribe = window.vidGnostDesktop?.onWindowCloseRequested?.(() => {
-      setIsCloseConfirmOpen(true)
-    })
-    return () => {
-      unsubscribe?.()
-    }
-  }, [])
-
   const persistUiSettings = React.useCallback(
     async (patch: Partial<UISettingsResponse>) => {
       const current = uiSettingsRef.current
