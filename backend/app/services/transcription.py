@@ -57,6 +57,7 @@ class WhisperService:
     async def ensure_small_model_ready(
         self,
         on_progress: ModelPrepareProgressCallback | None = None,
+        force_redownload: bool = False,
     ) -> None:
         await self._emit_prepare_progress(
             on_progress,
@@ -69,7 +70,7 @@ class WhisperService:
                 "percent": 0.0,
             },
         )
-        if self._is_small_model_ready():
+        if self.is_small_model_ready() and not force_redownload:
             await self._emit_prepare_progress(
                 on_progress,
                 {
@@ -84,7 +85,7 @@ class WhisperService:
             return
 
         async with self._prepare_lock:
-            if self._is_small_model_ready():
+            if self.is_small_model_ready() and not force_redownload:
                 await self._emit_prepare_progress(
                     on_progress,
                     {
@@ -217,8 +218,8 @@ class WhisperService:
         normalized_device: str,
         normalized_compute_type: str,
     ):
-        model_path = self._small_model_dir()
-        if not self._is_small_model_ready():
+        model_path = self.small_model_dir()
+        if not self.is_small_model_ready():
             raise RuntimeError(
                 "Whisper small model cache is missing. "
                 "Please run analysis once to auto-download model files before transcription starts."
@@ -251,7 +252,7 @@ class WhisperService:
 
         temp_root = self._download_root / ".tmp" / f"{self._MODEL_DIR_NAME}-{int(time.time() * 1000)}"
         temp_root.mkdir(parents=True, exist_ok=True)
-        target_dir = self._small_model_dir()
+        target_dir = self.small_model_dir()
 
         downloaded_bytes = 0
         last_emit_at = 0.0
@@ -343,6 +344,9 @@ class WhisperService:
                     "percent": 100.0,
                 },
             )
+        except asyncio.CancelledError:
+            shutil.rmtree(temp_root, ignore_errors=True)
+            raise
         except Exception:
             shutil.rmtree(temp_root, ignore_errors=True)
             raise
@@ -536,11 +540,11 @@ class WhisperService:
         if asyncio.iscoroutine(result):
             await result
 
-    def _small_model_dir(self) -> Path:
+    def small_model_dir(self) -> Path:
         return self._download_root / self._MODEL_DIR_NAME
 
-    def _is_small_model_ready(self) -> bool:
-        model_dir = self._small_model_dir()
+    def is_small_model_ready(self) -> bool:
+        model_dir = self.small_model_dir()
         if not model_dir.is_dir():
             return False
         marker = model_dir / self._READY_MARKER
@@ -553,6 +557,12 @@ class WhisperService:
             if target.stat().st_size <= 0:
                 return False
         return True
+
+    def _small_model_dir(self) -> Path:
+        return self.small_model_dir()
+
+    def _is_small_model_ready(self) -> bool:
+        return self.is_small_model_ready()
 
     @staticmethod
     def _candidate_model_endpoints() -> list[str]:

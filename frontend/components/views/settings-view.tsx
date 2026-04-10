@@ -3,6 +3,7 @@
 import * as React from "react"
 import { toast } from "sonner"
 import {
+  CloudDownload,
   Cpu,
   FileCode,
   Palette,
@@ -13,6 +14,7 @@ import {
   Save,
   RefreshCw,
   HardDrive,
+  LoaderCircle,
   Zap,
 } from "lucide-react"
 
@@ -44,13 +46,17 @@ import {
 } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 import {
+  cancelModelDownload,
   createPromptTemplate,
   deletePromptTemplate,
   getApiErrorMessage,
+  getLLMConfig,
   getModels,
   getPromptTemplates,
   getWhisperConfig,
   reloadModels,
+  startModelDownload,
+  updateLLMConfig,
   updateModel,
   updatePromptSelection,
   updatePromptTemplate,
@@ -58,6 +64,7 @@ import {
 } from "@/lib/api"
 import { formatBytes } from "@/lib/format"
 import type {
+  LLMConfigResponse,
   ModelDescriptor,
   PromptTemplateBundleResponse,
   PromptTemplateChannel,
@@ -130,6 +137,24 @@ const EMPTY_MODEL_FORM: ModelConfigFormState = {
   enabled: true,
 }
 
+type LLMConfigFormState = {
+  base_url: string
+  api_key: string
+  model: string
+  correction_mode: LLMConfigResponse["correction_mode"]
+  correction_batch_size: string
+  correction_overlap: string
+}
+
+const EMPTY_LLM_FORM: LLMConfigFormState = {
+  base_url: "",
+  api_key: "",
+  model: "",
+  correction_mode: "strict",
+  correction_batch_size: "24",
+  correction_overlap: "3",
+}
+
 const modelVisuals: Record<
   ModelDescriptor["component"],
   {
@@ -177,18 +202,62 @@ const localLlmPreset: ModelConfigPreset = {
   batchDescription: "影响本地推理吞吐，数值越高占用越大。",
 }
 
+function ManagedDownloadButton({
+  progress,
+  disabled,
+  onClick,
+}: {
+  progress: number
+  disabled?: boolean
+  onClick: () => void
+}) {
+  const safeProgress = Math.max(0, Math.min(100, progress))
+  const radius = 14
+  const circumference = 2 * Math.PI * radius
+  const dashOffset = circumference - (safeProgress / 100) * circumference
+
+  return (
+    <Button
+      variant="outline"
+      size="icon"
+      className="relative h-9 w-9 rounded-full border-primary/30 p-0 text-primary hover:bg-primary/10"
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <svg className="absolute inset-0 h-full w-full -rotate-90" viewBox="0 0 36 36" aria-hidden="true">
+        <circle cx="18" cy="18" r={radius} fill="none" stroke="currentColor" strokeOpacity="0.14" strokeWidth="2.5" />
+        <circle
+          cx="18"
+          cy="18"
+          r={radius}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={dashOffset}
+        />
+      </svg>
+      <LoaderCircle className="relative z-10 h-3.5 w-3.5 animate-spin" />
+      <span className="sr-only">取消当前模型下载</span>
+    </Button>
+  )
+}
+
 export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewProps) {
   const [activeSection, setActiveSection] = React.useState("models")
   const [fontSize, setFontSize] = React.useState([uiSettings.font_size])
   const [models, setModels] = React.useState<ModelDescriptor[]>([])
   const [promptBundle, setPromptBundle] = React.useState<PromptTemplateBundleResponse | null>(null)
   const [whisperConfig, setWhisperConfig] = React.useState<WhisperConfigResponse | null>(null)
+  const [llmConfig, setLlmConfig] = React.useState<LLMConfigResponse | null>(null)
   const [isPromptDialogOpen, setIsPromptDialogOpen] = React.useState(false)
   const [isModelDialogOpen, setIsModelDialogOpen] = React.useState(false)
   const [editingPrompt, setEditingPrompt] = React.useState<PromptTemplateItem | null>(null)
   const [editingModel, setEditingModel] = React.useState<ModelDescriptor | null>(null)
   const [promptForm, setPromptForm] = React.useState(EMPTY_PROMPT_FORM)
   const [modelForm, setModelForm] = React.useState<ModelConfigFormState>(EMPTY_MODEL_FORM)
+  const [llmForm, setLlmForm] = React.useState<LLMConfigFormState>(EMPTY_LLM_FORM)
   const [isLoading, setIsLoading] = React.useState(true)
   const [busyModelId, setBusyModelId] = React.useState("")
   const [isSavingPrompt, setIsSavingPrompt] = React.useState(false)
@@ -204,14 +273,16 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
   const loadSettings = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      const [modelsResponse, promptResponse, whisperResponse] = await Promise.all([
+      const [modelsResponse, promptResponse, whisperResponse, llmResponse] = await Promise.all([
         getModels(),
         getPromptTemplates(),
         getWhisperConfig(),
+        getLLMConfig(),
       ])
       setModels(modelsResponse.items)
       setPromptBundle(promptResponse)
       setWhisperConfig(whisperResponse)
+      setLlmConfig(llmResponse)
     } catch (error) {
       toast.error(getApiErrorMessage(error, "加载设置数据失败"))
     } finally {
@@ -222,6 +293,24 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
   React.useEffect(() => {
     void loadSettings()
   }, [loadSettings])
+
+  React.useEffect(() => {
+    if (!models.some((model) => model.download?.state === "downloading")) {
+      return
+    }
+    const timer = window.setInterval(() => {
+      void getModels()
+        .then((response) => {
+          setModels(response.items)
+        })
+        .catch(() => {
+          // Download polling is best-effort; surface errors through explicit user actions instead.
+        })
+    }, 1200)
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [models])
 
   const sections = [
     { id: "models", label: "模型配置", icon: Cpu },
@@ -236,6 +325,8 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
         return <Badge variant="default" className="bg-status-success text-white">就绪</Badge>
       case "loading":
         return <Badge variant="secondary" className="bg-status-processing text-white">加载中</Badge>
+      case "not_ready":
+        return <Badge variant="outline">未就绪</Badge>
       case "error":
         return <Badge variant="destructive">错误</Badge>
       default:
@@ -265,8 +356,8 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
       if (model.provider === "openai_compatible") {
         return {
           title: "在线 LLM 调度配置",
-          description: "当前 LLM 由兼容 OpenAI 的接口提供，这里只控制调度与启用状态。",
-          note: "接口地址、模型名与 API Key 在后端 LLM 配置中维护，这里不重复编辑。",
+          description: "在线模型通过兼容 OpenAI 的接口调用，这里可同时维护接口参数与运行调度。",
+          note: "保存时会同时更新在线接口配置与该模型条目的启用状态、调度策略。",
           fields: ["load_profile", "max_batch_size", "enabled"],
           batchLabel: "请求批大小",
           batchDescription: "用于限制同一批次的请求规模，避免接口抖动。",
@@ -336,6 +427,24 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
     return payload
   }
 
+  const buildLlmUpdatePayload = (): LLMConfigResponse | null => {
+    if (!llmConfig) {
+      return null
+    }
+    const parsedBatchSize = Number.parseInt(llmForm.correction_batch_size, 10)
+    const parsedOverlap = Number.parseInt(llmForm.correction_overlap, 10)
+    return {
+      ...llmConfig,
+      base_url: llmForm.base_url.trim(),
+      api_key: llmForm.api_key.trim(),
+      model: llmForm.model.trim(),
+      correction_mode: llmForm.correction_mode,
+      correction_batch_size: Number.isFinite(parsedBatchSize) ? parsedBatchSize : llmConfig.correction_batch_size,
+      correction_overlap: Number.isFinite(parsedOverlap) ? parsedOverlap : llmConfig.correction_overlap,
+      load_profile: modelForm.load_profile === "memory_first" ? "memory_first" : "balanced",
+    }
+  }
+
   const handleReloadModel = async (modelId?: string) => {
     setBusyModelId(modelId || "__all__")
     try {
@@ -349,23 +458,56 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
     }
   }
 
+  const handleManagedModelAction = async (model: ModelDescriptor) => {
+    setBusyModelId(model.id)
+    try {
+      const response =
+        model.download?.state === "downloading"
+          ? await cancelModelDownload(model.id)
+          : await startModelDownload(model.id)
+      setModels(response.items)
+      if (model.download?.state === "downloading") {
+        toast.success("模型下载已取消")
+      } else {
+        toast.success(model.is_installed ? "已开始重置并重新下载模型" : "已开始下载模型到默认目录")
+      }
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "模型操作失败"))
+    } finally {
+      setBusyModelId("")
+    }
+  }
+
   const handleModelDialogChange = (open: boolean) => {
     setIsModelDialogOpen(open)
     if (!open) {
       setEditingModel(null)
       setModelForm(EMPTY_MODEL_FORM)
+      setLlmForm(EMPTY_LLM_FORM)
     }
   }
 
   const handleConfigureModel = (model: ModelDescriptor) => {
     setEditingModel(model)
     setModelForm({
-      path: model.path || "",
+      path: model.default_path || model.path || "",
       load_profile: model.load_profile || "balanced",
       quantization: model.quantization || "",
       max_batch_size: String(model.max_batch_size || 1),
       enabled: model.enabled,
     })
+    if (model.provider === "openai_compatible" && llmConfig) {
+      setLlmForm({
+        base_url: llmConfig.base_url,
+        api_key: llmConfig.api_key,
+        model: llmConfig.model,
+        correction_mode: llmConfig.correction_mode,
+        correction_batch_size: String(llmConfig.correction_batch_size),
+        correction_overlap: String(llmConfig.correction_overlap),
+      })
+    } else {
+      setLlmForm(EMPTY_LLM_FORM)
+    }
     setIsModelDialogOpen(true)
   }
 
@@ -377,8 +519,21 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
     setIsSavingModel(true)
     setBusyModelId(editingModel.id)
     try {
-      const response = await updateModel(editingModel.id, buildModelUpdatePayload(editingModel, modelForm))
-      setModels(response.items)
+      if (editingModel.provider === "openai_compatible") {
+        const nextLlmPayload = buildLlmUpdatePayload()
+        if (!nextLlmPayload) {
+          throw new Error("在线 LLM 配置尚未加载完成")
+        }
+        const [modelsResponse, llmResponse] = await Promise.all([
+          updateModel(editingModel.id, buildModelUpdatePayload(editingModel, modelForm)),
+          updateLLMConfig(nextLlmPayload),
+        ])
+        setModels(modelsResponse.items)
+        setLlmConfig(llmResponse)
+      } else {
+        const response = await updateModel(editingModel.id, buildModelUpdatePayload(editingModel, modelForm))
+        setModels(response.items)
+      }
       handleModelDialogChange(false)
       toast.success("模型配置已更新")
     } catch (error) {
@@ -525,6 +680,8 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
   const modelDialogHasQuantization = Boolean(activeModelPreset?.fields.includes("quantization"))
   const modelDialogHasBatchSize = Boolean(activeModelPreset?.fields.includes("max_batch_size"))
   const modelDialogFieldPairCount = [modelDialogHasQuantization, modelDialogHasBatchSize].filter(Boolean).length
+  const showOnlineLlmFields = Boolean(editingModel?.provider === "openai_compatible")
+  const isWhisperDialog = editingModel?.component === "whisper"
 
   return (
     <div className="flex-1 overflow-auto">
@@ -561,9 +718,9 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
             {activeSection === "models" && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">本地模型配置</CardTitle>
+                  <CardTitle className="text-lg">模型配置</CardTitle>
                   <CardDescription>
-                    管理用于视频分析的各类本地 AI 模型
+                    管理默认模型目录、在线 LLM 接口与各类运行参数
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -624,25 +781,60 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                             </span>
                           </div>
                           <div className="text-xs text-muted-foreground mt-1 truncate">
-                            {model.path || model.model_id}
+                            {model.is_installed ? model.path || model.default_path || model.model_id : "未就绪"}
                           </div>
+                          {model.download?.message ? (
+                            <div className="mt-1 truncate text-[11px] text-muted-foreground">
+                              {model.download.state === "downloading"
+                                ? `下载中 ${Math.round(model.download.percent)}% · ${model.download.message}`
+                                : model.download.message}
+                            </div>
+                          ) : null}
                         </div>
                         <div className="flex items-center gap-2">
+                          {model.supports_managed_download ? (
+                            model.download?.state === "downloading" ? (
+                              <ManagedDownloadButton
+                                progress={model.download.percent}
+                                disabled={busyModelId === model.id}
+                                onClick={() => {
+                                  void handleManagedModelAction(model)
+                                }}
+                              />
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={busyModelId === model.id}
+                                onClick={() => {
+                                  void handleManagedModelAction(model)
+                                }}
+                              >
+                                {model.is_installed ? (
+                                  <RefreshCw className="mr-1 h-4 w-4" />
+                                ) : (
+                                  <CloudDownload className="mr-1 h-4 w-4" />
+                                )}
+                                {model.is_installed ? "重置" : "下载"}
+                              </Button>
+                            )
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={busyModelId === model.id}
+                              onClick={() => {
+                                void handleReloadModel(model.id)
+                              }}
+                            >
+                              <RefreshCw className="mr-1 h-4 w-4" />
+                              重载
+                            </Button>
+                          )}
                           <Button
                             variant="outline"
                             size="sm"
-                            disabled={busyModelId === model.id}
-                            onClick={() => {
-                              void handleReloadModel(model.id)
-                            }}
-                          >
-                            <RefreshCw className="h-4 w-4 mr-1" />
-                            重载
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={busyModelId === model.id}
+                            disabled={busyModelId === model.id || model.download?.state === "downloading"}
                             onClick={() => {
                               handleConfigureModel(model)
                             }}
@@ -716,17 +908,47 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                           </div>
                         ) : null}
 
+                        {editingModel ? (
+                          <div className="grid gap-3 rounded-lg border bg-muted/20 p-4 text-sm md:grid-cols-2">
+                            <div>
+                              <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">默认目录</div>
+                              <div className="mt-1 break-all font-medium text-foreground">
+                                {editingModel.default_path || "未就绪"}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">当前状态</div>
+                              <div className="mt-1 flex items-center gap-2">
+                                {getStatusBadge(editingModel.status)}
+                                <span className="text-xs text-muted-foreground">
+                                  {editingModel.is_installed ? "已落盘" : "尚未安装到默认目录"}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+
                         {activeModelPreset?.fields.includes("path") ? (
                           <div className="space-y-2">
                             <Label htmlFor="model-path">{activeModelPreset.pathLabel || "本地路径"}</Label>
                             <Input
                               id="model-path"
-                              placeholder={activeModelPreset.pathPlaceholder || "可选：指定模型缓存目录或本地模型目录"}
+                              placeholder={
+                                isWhisperDialog
+                                  ? "未就绪"
+                                  : activeModelPreset.pathPlaceholder || "可选：指定模型缓存目录或本地模型目录"
+                              }
                               value={modelForm.path}
+                              readOnly={isWhisperDialog}
                               onChange={(event) =>
                                 setModelForm((current) => ({ ...current, path: event.target.value }))
                               }
                             />
+                            {isWhisperDialog ? (
+                              <p className="text-xs text-muted-foreground">
+                                Whisper 模型目录由桌面端托管，点击上方“下载 / 重置”会自动写入默认目录。
+                              </p>
+                            ) : null}
                           </div>
                         ) : null}
 
@@ -747,6 +969,108 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                                 <SelectItem value="memory_first">memory_first</SelectItem>
                               </SelectContent>
                             </Select>
+                          </div>
+                        ) : null}
+
+                        {showOnlineLlmFields ? (
+                          <div className="space-y-4 rounded-xl border bg-muted/20 p-4">
+                            <div className="space-y-1">
+                              <div className="text-sm font-medium">OpenAI 兼容接口配置</div>
+                              <p className="text-xs text-muted-foreground">
+                                保存后会同步写入后端在线 LLM 配置，用于实际请求 Base URL、模型名与 API Key。
+                              </p>
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="llm-base-url">Base URL</Label>
+                              <Input
+                                id="llm-base-url"
+                                placeholder="https://provider.example.com/v1"
+                                value={llmForm.base_url}
+                                onChange={(event) =>
+                                  setLlmForm((current) => ({ ...current, base_url: event.target.value }))
+                                }
+                              />
+                            </div>
+                            <div className="grid gap-4 md:grid-cols-2">
+                              <div className="space-y-2">
+                                <Label htmlFor="llm-model">模型名称</Label>
+                                <Input
+                                  id="llm-model"
+                                  placeholder="如 qwen3.5-flash / gpt-4.1-mini"
+                                  value={llmForm.model}
+                                  onChange={(event) =>
+                                    setLlmForm((current) => ({ ...current, model: event.target.value }))
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="llm-api-key">API Key</Label>
+                                <Input
+                                  id="llm-api-key"
+                                  type="password"
+                                  placeholder="输入模型提供商的 API Key"
+                                  value={llmForm.api_key}
+                                  onChange={(event) =>
+                                    setLlmForm((current) => ({ ...current, api_key: event.target.value }))
+                                  }
+                                />
+                              </div>
+                            </div>
+                            <div className="grid gap-4 md:grid-cols-3">
+                              <div className="space-y-2">
+                                <Label>文本纠错模式</Label>
+                                <Select
+                                  value={llmForm.correction_mode}
+                                  onValueChange={(value) =>
+                                    setLlmForm((current) => ({
+                                      ...current,
+                                      correction_mode: value as LLMConfigResponse["correction_mode"],
+                                    }))
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="off">off</SelectItem>
+                                    <SelectItem value="strict">strict</SelectItem>
+                                    <SelectItem value="rewrite">rewrite</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="llm-correction-batch">纠错批大小</Label>
+                                <Input
+                                  id="llm-correction-batch"
+                                  type="number"
+                                  min={6}
+                                  max={80}
+                                  value={llmForm.correction_batch_size}
+                                  onChange={(event) =>
+                                    setLlmForm((current) => ({
+                                      ...current,
+                                      correction_batch_size: event.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label htmlFor="llm-correction-overlap">纠错重叠</Label>
+                                <Input
+                                  id="llm-correction-overlap"
+                                  type="number"
+                                  min={0}
+                                  max={20}
+                                  value={llmForm.correction_overlap}
+                                  onChange={(event) =>
+                                    setLlmForm((current) => ({
+                                      ...current,
+                                      correction_overlap: event.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                            </div>
                           </div>
                         ) : null}
 

@@ -22,6 +22,7 @@ from app.config import get_settings
 from app.services.events import EventBus
 from app.services.llm_config_store import LLMConfigStore
 from app.services.model_catalog_store import ModelCatalogStore
+from app.services.model_download_service import ModelDownloadService
 from app.services.model_runtime_manager import ModelRuntimeManager
 from app.services.prompt_template_store import PromptTemplateStore
 from app.services.resource_guard import ResourceGuard
@@ -79,6 +80,7 @@ async def lifespan(app: FastAPI):
     await prompt_template_store.get_bundle()
     model_catalog_store = ModelCatalogStore(settings=settings)
     await model_catalog_store.list_models()
+    model_download_service = ModelDownloadService(settings=settings)
     ui_settings_store = UISettingsStore(settings=settings)
     await ui_settings_store.get()
     runtime_config_store = RuntimeConfigStore(settings)
@@ -116,6 +118,7 @@ async def lifespan(app: FastAPI):
     app.state.llm_config_store = llm_config_store
     app.state.prompt_template_store = prompt_template_store
     app.state.model_catalog_store = model_catalog_store
+    app.state.model_download_service = model_download_service
     app.state.ui_settings_store = ui_settings_store
     app.state.runtime_config_store = runtime_config_store
     app.state.resource_guard = resource_guard
@@ -126,6 +129,7 @@ async def lifespan(app: FastAPI):
     app.state.task_runner = runner
     yield
     await runner.shutdown()
+    await model_download_service.shutdown()
 
 
 app = FastAPI(

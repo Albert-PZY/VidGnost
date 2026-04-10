@@ -12,7 +12,8 @@ TaskStatusPublic = Literal["queued", "running", "completed", "failed", "cancelle
 SourceType = Literal["bilibili", "local_file", "local_path"]
 PromptTemplateChannel = Literal["correction", "notes", "mindmap", "vqa"]
 ModelComponentType = Literal["whisper", "llm", "embedding", "vlm", "rerank"]
-ModelRuntimeStatus = Literal["ready", "loading", "error"]
+ModelRuntimeStatus = Literal["ready", "loading", "not_ready", "error"]
+ModelDownloadState = Literal["idle", "downloading", "completed", "cancelled", "failed"]
 
 
 class TranscriptSegment(BaseModel):
@@ -257,6 +258,17 @@ class WhisperConfigUpdateRequest(BaseModel):
     target_channels: int = Field(default=1, ge=1, le=2)
 
 
+class ModelDownloadStatus(BaseModel):
+    state: ModelDownloadState = "idle"
+    message: str = ""
+    current_file: str = ""
+    downloaded_bytes: int = 0
+    total_bytes: int = 0
+    percent: float = Field(default=0.0, ge=0.0, le=100.0)
+    speed_bps: float = Field(default=0.0, ge=0.0)
+    updated_at: str = ""
+
+
 class ModelDescriptor(BaseModel):
     id: str
     component: ModelComponentType
@@ -264,12 +276,16 @@ class ModelDescriptor(BaseModel):
     provider: str = "local"
     model_id: str
     path: str = ""
+    default_path: str = ""
     status: ModelRuntimeStatus = "ready"
     quantization: str = ""
     load_profile: str = "balanced"
     max_batch_size: int = 1
     enabled: bool = True
     size_bytes: int = 0
+    is_installed: bool = False
+    supports_managed_download: bool = False
+    download: ModelDownloadStatus | None = None
     last_check_at: str = ""
 
 

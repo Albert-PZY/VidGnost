@@ -10,7 +10,9 @@ export type PromptTemplateChannel = "correction" | "notes" | "mindmap" | "vqa"
 
 export type ModelComponentType = "whisper" | "llm" | "embedding" | "vlm" | "rerank"
 
-export type ModelRuntimeStatus = "ready" | "loading" | "error"
+export type ModelRuntimeStatus = "ready" | "loading" | "not_ready" | "error"
+
+export type ModelDownloadState = "idle" | "downloading" | "completed" | "cancelled" | "failed"
 
 export interface ApiErrorPayload {
   code: string
@@ -124,17 +126,32 @@ export interface ModelDescriptor {
   provider: string
   model_id: string
   path: string
+  default_path: string
   status: ModelRuntimeStatus
   quantization: string
   load_profile: string
   max_batch_size: number
   enabled: boolean
   size_bytes: number
+  is_installed: boolean
+  supports_managed_download: boolean
+  download?: ModelDownloadStatus | null
   last_check_at: string
 }
 
 export interface ModelListResponse {
   items: ModelDescriptor[]
+}
+
+export interface ModelDownloadStatus {
+  state: ModelDownloadState
+  message: string
+  current_file: string
+  downloaded_bytes: number
+  total_bytes: number
+  percent: number
+  speed_bps: number
+  updated_at: string
 }
 
 export interface PromptTemplateItem {
@@ -169,6 +186,19 @@ export interface WhisperConfigResponse {
   target_channels: number
   warnings: string[]
   rollback_applied: boolean
+}
+
+export interface LLMConfigResponse {
+  mode: "api"
+  load_profile: "balanced" | "memory_first"
+  local_model_id: string
+  api_key: string
+  api_key_configured: boolean
+  base_url: string
+  model: string
+  correction_mode: "off" | "strict" | "rewrite"
+  correction_batch_size: number
+  correction_overlap: number
 }
 
 export interface UISettingsResponse {

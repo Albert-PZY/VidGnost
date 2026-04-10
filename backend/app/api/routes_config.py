@@ -20,6 +20,7 @@ from app.schemas import (
 )
 from app.services.llm_config_store import LLMConfigStore
 from app.services.model_catalog_store import ModelCatalogStore
+from app.services.model_download_service import ModelDownloadService
 from app.services.prompt_template_store import PromptTemplateStore
 from app.services.resource_guard import ResourceGuard
 from app.services.runtime_config_store import RuntimeConfigStore
@@ -48,8 +49,32 @@ def get_model_catalog(request: Request) -> ModelCatalogStore:
     return request.app.state.model_catalog_store
 
 
+def get_model_download_service(request: Request) -> ModelDownloadService:
+    return request.app.state.model_download_service
+
+
 def get_ui_settings_store(request: Request) -> UISettingsStore:
     return request.app.state.ui_settings_store
+
+
+async def _build_model_list_response(
+    catalog: ModelCatalogStore,
+    download_service: ModelDownloadService,
+) -> ModelListResponse:
+    items = await catalog.list_models()
+    snapshots = await download_service.list_snapshots()
+    merged: list[dict[str, object]] = []
+    for item in items:
+        snapshot = snapshots.get(item["id"])
+        merged_item = dict(item)
+        if snapshot is not None:
+            merged_item["download"] = dict(snapshot)
+            if snapshot["state"] == "downloading":
+                merged_item["status"] = "loading"
+            elif snapshot["state"] == "failed" and merged_item.get("status") != "ready":
+                merged_item["status"] = "error"
+        merged.append(merged_item)
+    return ModelListResponse(items=merged)
 
 
 @router.get("/llm", response_model=LLMConfigResponse)
@@ -224,16 +249,21 @@ async def delete_prompt_template(
 
 
 @router.get("/models", response_model=ModelListResponse)
-async def list_models(catalog: ModelCatalogStore = Depends(get_model_catalog)) -> ModelListResponse:
-    return ModelListResponse(items=await catalog.list_models())
+async def list_models(
+    catalog: ModelCatalogStore = Depends(get_model_catalog),
+    download_service: ModelDownloadService = Depends(get_model_download_service),
+) -> ModelListResponse:
+    return await _build_model_list_response(catalog, download_service)
 
 
 @router.post("/models/reload", response_model=ModelListResponse)
 async def reload_models(
     payload: ModelReloadRequest,
     catalog: ModelCatalogStore = Depends(get_model_catalog),
+    download_service: ModelDownloadService = Depends(get_model_download_service),
 ) -> ModelListResponse:
-    return ModelListResponse(items=await catalog.reload_models(model_id=payload.model_id))
+    await catalog.reload_models(model_id=payload.model_id)
+    return await _build_model_list_response(catalog, download_service)
 
 
 @router.patch("/models/{model_id}", response_model=ModelListResponse)
@@ -241,9 +271,10 @@ async def update_model_config(
     model_id: str,
     payload: ModelUpdateRequest,
     catalog: ModelCatalogStore = Depends(get_model_catalog),
+    download_service: ModelDownloadService = Depends(get_model_download_service),
 ) -> ModelListResponse:
     try:
-        rows = await catalog.update_model(
+        await catalog.update_model(
             model_id,
             {
                 "path": payload.path,
@@ -256,7 +287,40 @@ async def update_model_config(
         )
     except ValueError as exc:
         raise AppError.bad_request(str(exc), code="MODEL_UPDATE_INVALID") from exc
-    return ModelListResponse(items=rows)
+    return await _build_model_list_response(catalog, download_service)
+
+
+@router.post("/models/{model_id}/download", response_model=ModelListResponse)
+async def start_model_download(
+    model_id: str,
+    catalog: ModelCatalogStore = Depends(get_model_catalog),
+    download_service: ModelDownloadService = Depends(get_model_download_service),
+) -> ModelListResponse:
+    try:
+        models = await catalog.list_models()
+        target = next((item for item in models if item["id"] == model_id), None)
+        if target is None:
+            raise ValueError("Model not found")
+        await download_service.start_download(
+            model_id,
+            force_redownload=bool(target.get("is_installed", False)),
+        )
+    except ValueError as exc:
+        raise AppError.bad_request(str(exc), code="MODEL_DOWNLOAD_INVALID") from exc
+    return await _build_model_list_response(catalog, download_service)
+
+
+@router.delete("/models/{model_id}/download", response_model=ModelListResponse)
+async def cancel_model_download(
+    model_id: str,
+    catalog: ModelCatalogStore = Depends(get_model_catalog),
+    download_service: ModelDownloadService = Depends(get_model_download_service),
+) -> ModelListResponse:
+    try:
+        await download_service.cancel_download(model_id)
+    except ValueError as exc:
+        raise AppError.bad_request(str(exc), code="MODEL_DOWNLOAD_CANCEL_INVALID") from exc
+    return await _build_model_list_response(catalog, download_service)
 
 
 @router.get("/ui", response_model=UISettingsResponse)

@@ -23,6 +23,9 @@ class ModelEntry(TypedDict):
     max_batch_size: int
     enabled: bool
     size_bytes: int
+    default_path: str
+    is_installed: bool
+    supports_managed_download: bool
     last_check_at: str
 
 
@@ -40,6 +43,9 @@ DEFAULT_MODELS: list[ModelEntry] = [
         "max_batch_size": 1,
         "enabled": True,
         "size_bytes": 0,
+        "default_path": "",
+        "is_installed": False,
+        "supports_managed_download": True,
         "last_check_at": "",
     },
     {
@@ -55,6 +61,9 @@ DEFAULT_MODELS: list[ModelEntry] = [
         "max_batch_size": 1,
         "enabled": True,
         "size_bytes": 0,
+        "default_path": "",
+        "is_installed": False,
+        "supports_managed_download": False,
         "last_check_at": "",
     },
     {
@@ -70,6 +79,9 @@ DEFAULT_MODELS: list[ModelEntry] = [
         "max_batch_size": 16,
         "enabled": True,
         "size_bytes": 0,
+        "default_path": "",
+        "is_installed": False,
+        "supports_managed_download": False,
         "last_check_at": "",
     },
     {
@@ -85,6 +97,9 @@ DEFAULT_MODELS: list[ModelEntry] = [
         "max_batch_size": 1,
         "enabled": True,
         "size_bytes": 0,
+        "default_path": "",
+        "is_installed": False,
+        "supports_managed_download": False,
         "last_check_at": "",
     },
     {
@@ -100,6 +115,9 @@ DEFAULT_MODELS: list[ModelEntry] = [
         "max_batch_size": 8,
         "enabled": True,
         "size_bytes": 0,
+        "default_path": "",
+        "is_installed": False,
+        "supports_managed_download": False,
         "last_check_at": "",
     },
 ]
@@ -107,14 +125,16 @@ DEFAULT_MODELS: list[ModelEntry] = [
 
 class ModelCatalogStore:
     def __init__(self, settings: Settings) -> None:
+        self._settings = settings
         self._path = Path(settings.storage_dir) / "models" / "catalog.json"
+        self._whisper_model_dir = Path(settings.storage_dir) / "model-hub" / "faster-whisper-small"
         self._lock = asyncio.Lock()
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._ensure_file()
 
     async def list_models(self) -> list[ModelEntry]:
         async with self._lock:
-            return self._read_sync()
+            return self._hydrate_models(self._read_sync())
 
     async def update_model(self, model_id: str, updates: dict[str, Any]) -> list[ModelEntry]:
         async with self._lock:
@@ -134,7 +154,7 @@ class ModelCatalogStore:
                     target[key] = str(value).strip()
             target["last_check_at"] = datetime.now(timezone.utc).isoformat()
             self._write_sync(models)
-            return models
+            return self._hydrate_models(models)
 
     async def reload_models(self, model_id: str | None = None) -> list[ModelEntry]:
         async with self._lock:
@@ -143,10 +163,9 @@ class ModelCatalogStore:
             for item in models:
                 if model_id and item["id"] != model_id:
                     continue
-                item["status"] = "ready" if item.get("enabled", True) else "error"
                 item["last_check_at"] = now
             self._write_sync(models)
-            return models
+            return self._hydrate_models(models)
 
     def _ensure_file(self) -> None:
         if self._path.exists():
@@ -184,6 +203,9 @@ class ModelCatalogStore:
                     "max_batch_size": max(1, min(64, int(item.get("max_batch_size", 1) or 1))),
                     "enabled": bool(item.get("enabled", True)),
                     "size_bytes": max(0, int(item.get("size_bytes", 0) or 0)),
+                    "default_path": str(item.get("default_path", "")),
+                    "is_installed": bool(item.get("is_installed", False)),
+                    "supports_managed_download": bool(item.get("supports_managed_download", False)),
                     "last_check_at": str(item.get("last_check_at", "")),
                 }
             )
@@ -197,3 +219,82 @@ class ModelCatalogStore:
         tmp_path = self._path.with_suffix(".json.tmp")
         tmp_path.write_bytes(orjson.dumps(models, option=orjson.OPT_INDENT_2))
         tmp_path.replace(self._path)
+
+    def _hydrate_models(self, models: list[ModelEntry]) -> list[ModelEntry]:
+        return [self._hydrate_single_model(item) for item in models]
+
+    def _hydrate_single_model(self, item: ModelEntry) -> ModelEntry:
+        hydrated = dict(item)
+        component = str(item.get("component", "")).strip()
+        provider = str(item.get("provider", "")).strip()
+        raw_path = str(item.get("path", "")).strip()
+        default_path = self._resolve_default_path(item)
+
+        if component == "whisper":
+            is_installed = self._is_whisper_ready()
+            hydrated["path"] = default_path if is_installed else ""
+            hydrated["default_path"] = default_path
+            hydrated["is_installed"] = is_installed
+            hydrated["supports_managed_download"] = True
+            hydrated["size_bytes"] = self._measure_path_size(Path(default_path)) if is_installed else 0
+            hydrated["status"] = "ready" if is_installed else "not_ready"
+            return hydrated
+
+        if provider == "openai_compatible":
+            hydrated["path"] = ""
+            hydrated["default_path"] = ""
+            hydrated["is_installed"] = bool(item.get("enabled", True))
+            hydrated["supports_managed_download"] = False
+            hydrated["size_bytes"] = 0
+            hydrated["status"] = "ready" if item.get("enabled", True) else "not_ready"
+            return hydrated
+
+        resolved_path = self._resolve_local_model_path(raw_path) if raw_path else None
+        is_installed = bool(resolved_path and resolved_path.exists())
+        hydrated["path"] = str(resolved_path) if is_installed and resolved_path is not None else raw_path
+        hydrated["default_path"] = default_path
+        hydrated["is_installed"] = is_installed
+        hydrated["supports_managed_download"] = False
+        hydrated["size_bytes"] = self._measure_path_size(resolved_path) if is_installed and resolved_path is not None else 0
+        hydrated["status"] = "ready" if is_installed else "not_ready"
+        return hydrated
+
+    def _resolve_default_path(self, item: ModelEntry) -> str:
+        if item.get("component") == "whisper":
+            return str(self._whisper_model_dir)
+        raw_path = str(item.get("path", "")).strip()
+        if not raw_path:
+            return ""
+        resolved_path = self._resolve_local_model_path(raw_path)
+        return str(resolved_path) if resolved_path is not None else raw_path
+
+    def _resolve_local_model_path(self, raw_path: str) -> Path | None:
+        candidate = Path(raw_path).expanduser()
+        if not candidate.is_absolute():
+            candidate = (Path(self._settings.storage_dir) / candidate).resolve()
+        else:
+            candidate = candidate.resolve()
+        return candidate
+
+    def _is_whisper_ready(self) -> bool:
+        if not self._whisper_model_dir.is_dir():
+            return False
+        marker = self._whisper_model_dir / ".ready.json"
+        if not marker.exists():
+            return False
+        for file_name in ("config.json", "model.bin", "tokenizer.json", "vocabulary.txt"):
+            target = self._whisper_model_dir / file_name
+            if not target.is_file() or target.stat().st_size <= 0:
+                return False
+        return True
+
+    def _measure_path_size(self, target: Path) -> int:
+        if target.is_file():
+            return max(0, int(target.stat().st_size))
+        if not target.is_dir():
+            return 0
+        total = 0
+        for file_path in target.rglob("*"):
+            if file_path.is_file():
+                total += max(0, int(file_path.stat().st_size))
+        return total

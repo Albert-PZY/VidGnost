@@ -1,5 +1,6 @@
 import type {
   ApiErrorPayload,
+  LLMConfigResponse,
   ModelListResponse,
   PromptTemplateBundleResponse,
   RuntimeMetricsResponse,
@@ -296,6 +297,19 @@ export function getModels(): Promise<ModelListResponse> {
   return apiFetch<ModelListResponse>("/config/models", { method: "GET" })
 }
 
+export function startModelDownload(modelId: string): Promise<ModelListResponse> {
+  return apiFetch<ModelListResponse>(`/config/models/${modelId}/download`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  })
+}
+
+export function cancelModelDownload(modelId: string): Promise<ModelListResponse> {
+  return apiFetch<ModelListResponse>(`/config/models/${modelId}/download`, {
+    method: "DELETE",
+  })
+}
+
 export function reloadModels(modelId?: string): Promise<ModelListResponse> {
   return apiFetch<ModelListResponse>("/config/models/reload", {
     method: "POST",
@@ -380,6 +394,17 @@ export function updateUiSettings(payload: {
 
 export function getWhisperConfig(): Promise<WhisperConfigResponse> {
   return apiFetch<WhisperConfigResponse>("/config/whisper", { method: "GET" })
+}
+
+export function getLLMConfig(): Promise<LLMConfigResponse> {
+  return apiFetch<LLMConfigResponse>("/config/llm", { method: "GET" })
+}
+
+export function updateLLMConfig(payload: LLMConfigResponse): Promise<LLMConfigResponse> {
+  return apiFetch<LLMConfigResponse>("/config/llm", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
 }
 
 export function updateWhisperConfig(
