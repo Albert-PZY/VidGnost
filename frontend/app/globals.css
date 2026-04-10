@@ -242,6 +242,83 @@
   background: color-mix(in oklch, var(--primary) 68%, var(--foreground) 8%);
 }
 
+.app-toast-shell {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.75rem;
+  min-width: min(calc(100vw - 1.5rem), 27rem);
+  max-width: min(calc(100vw - 1.5rem), 27rem);
+  border: 1px solid color-mix(in oklch, var(--border) 82%, var(--foreground) 8%);
+  border-radius: calc(var(--radius) + 0.375rem);
+  background: color-mix(in oklch, var(--card) 94%, var(--accent) 6%);
+  box-shadow:
+    0 18px 40px rgba(15, 23, 42, 0.14),
+    0 0 0 1px rgba(255, 255, 255, 0.22);
+  padding: 0.875rem 1rem;
+}
+
+.dark .app-toast-shell {
+  border-color: color-mix(in oklch, var(--border) 86%, var(--foreground) 6%);
+  background: color-mix(in oklch, var(--card) 96%, black 4%);
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.42),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.app-toast-shell[data-tone="success"] {
+  border-color: color-mix(in oklch, var(--status-success) 32%, var(--border) 68%);
+}
+
+.app-toast-shell[data-tone="error"] {
+  border-color: color-mix(in oklch, var(--status-error) 34%, var(--border) 66%);
+}
+
+.app-toast-shell[data-tone="loading"] {
+  border-color: color-mix(in oklch, var(--status-processing) 30%, var(--border) 70%);
+}
+
+.app-toast-icon-shell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: calc(var(--radius) + 0.125rem);
+  border: 1px solid color-mix(in oklch, var(--border) 82%, transparent);
+  background: color-mix(in oklch, var(--accent) 80%, transparent);
+  margin-top: 0.05rem;
+}
+
+.app-toast-icon-shell[data-tone="success"] {
+  border-color: color-mix(in oklch, var(--status-success) 24%, transparent);
+  background: color-mix(in oklch, var(--status-success) 10%, transparent);
+}
+
+.app-toast-icon-shell[data-tone="error"] {
+  border-color: color-mix(in oklch, var(--status-error) 24%, transparent);
+  background: color-mix(in oklch, var(--status-error) 10%, transparent);
+}
+
+.app-toast-icon-shell[data-tone="loading"] {
+  border-color: color-mix(in oklch, var(--status-processing) 24%, transparent);
+  background: color-mix(in oklch, var(--status-processing) 10%, transparent);
+}
+
+.app-toast-copy {
+  min-width: 0;
+  padding-top: 0.05rem;
+}
+
+.app-toast-message {
+  color: var(--foreground);
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.45;
+  letter-spacing: 0.01em;
+  word-break: break-word;
+}
+
 .download-progress-indicator::after {
   content: "";
   position: absolute;

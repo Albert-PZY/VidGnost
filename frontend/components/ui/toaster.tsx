@@ -1,32 +1,54 @@
 "use client"
 
-import { useTheme } from "next-themes"
-import { Toaster as HotToaster } from "react-hot-toast"
+import * as React from "react"
+import { ToastBar, Toaster as HotToaster, toast, useToasterStore } from "react-hot-toast"
+
+const MAX_VISIBLE_TOASTS = 3
+
+function getToastTone(type: string) {
+  switch (type) {
+    case "success":
+      return "success"
+    case "error":
+      return "error"
+    case "loading":
+      return "loading"
+    default:
+      return "default"
+  }
+}
 
 export function Toaster() {
-  const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === "dark"
+  const { toasts } = useToasterStore()
+
+  React.useEffect(() => {
+    const visibleToasts = toasts
+      .filter((item) => item.visible)
+      .sort((first, second) => second.createdAt - first.createdAt)
+
+    visibleToasts.slice(MAX_VISIBLE_TOASTS).forEach((overflowToast) => {
+      toast.remove(overflowToast.id)
+    })
+  }, [toasts])
 
   return (
     <HotToaster
       position="top-center"
-      gutter={10}
+      reverseOrder
+      gutter={8}
       containerStyle={{
-        top: 18,
+        top: 16,
         left: 0,
         right: 0,
       }}
       toastOptions={{
-        duration: 1800,
+        duration: 1700,
+        removeDelay: 180,
         style: {
-          background: "var(--popover)",
-          color: "var(--popover-foreground)",
-          border: "1px solid var(--border)",
-          borderRadius: "14px",
-          padding: "12px 14px",
-          boxShadow: isDark
-            ? "0 18px 48px rgba(0, 0, 0, 0.38)"
-            : "0 18px 48px rgba(15, 23, 42, 0.14)",
+          background: "transparent",
+          boxShadow: "none",
+          padding: 0,
+          maxWidth: "unset",
         },
         success: {
           iconTheme: {
@@ -41,6 +63,35 @@ export function Toaster() {
           },
         },
       }}
-    />
+    >
+      {(toastInstance) => {
+        const tone = getToastTone(toastInstance.type)
+
+        return (
+          <ToastBar
+            toast={toastInstance}
+            style={{
+              ...toastInstance.style,
+              background: "transparent",
+              boxShadow: "none",
+              padding: 0,
+              minWidth: "auto",
+              maxWidth: "none",
+            }}
+          >
+            {({ icon, message }) => (
+              <div className="app-toast-shell" data-tone={tone}>
+                <div className="app-toast-icon-shell" data-tone={tone}>
+                  {icon ?? <span className="h-2.5 w-2.5 rounded-full bg-muted-foreground/55" />}
+                </div>
+                <div className="app-toast-copy">
+                  <div className="app-toast-message">{message}</div>
+                </div>
+              </div>
+            )}
+          </ToastBar>
+        )
+      }}
+    </HotToaster>
   )
 }
