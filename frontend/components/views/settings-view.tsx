@@ -911,7 +911,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                   </Button>
 
                   <Dialog open={isModelDialogOpen} onOpenChange={handleModelDialogChange}>
-                    <DialogContent className="flex w-[min(96vw,100rem)] max-h-[90vh] max-w-[100rem] flex-col gap-0 overflow-hidden p-0">
+                    <DialogContent className="flex w-[min(96vw,100rem)] max-h-[90vh] max-w-[100rem] flex-col gap-0 overflow-hidden p-0 sm:max-w-[100rem]">
                       <DialogHeader className="shrink-0 border-b bg-card px-6 py-5 pr-14">
                         <DialogTitle className="text-lg font-medium leading-tight">
                           {activeModelPreset?.title || "模型常用配置"}

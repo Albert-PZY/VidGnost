@@ -24,7 +24,7 @@ Model configuration and prompt-template configuration dialogs SHALL remain withi
 - **AND** the title, close control, cancel action, and save action remain visible
 
 ### Requirement: Model configuration dialog SHALL separate overview and grouped controls
-Model configuration dialog SHALL use a responsive split layout with a left overview panel and a right grouped form panel. On desktop widths the dialog SHALL keep an extra-wide presentation area suitable for dense professional forms, supporting a visual width up to `100rem`, with the right-side configuration panel receiving the larger share of horizontal space. The overview panel SHALL expose model identity, component tag, provider, runtime status, install status, default path, current enabled state, and preset note. The form panel SHALL group common runtime parameters and, for `openai_compatible` providers, a separate OpenAI-compatible interface configuration card.
+Model configuration dialog SHALL use a responsive split layout with a left overview panel and a right grouped form panel. On desktop widths the dialog SHALL keep an extra-wide presentation area suitable for dense professional forms, supporting a visual width up to `100rem`, and SHALL not fall back to the default small dialog width token. The right-side configuration panel SHALL receive the larger share of horizontal space. The overview panel SHALL expose model identity, component tag, provider, runtime status, install status, default path, current enabled state, and preset note. The form panel SHALL group common runtime parameters and, for `openai_compatible` providers, a separate OpenAI-compatible interface configuration card.
 
 #### Scenario: Open a model configuration dialog
 - **WHEN** user clicks `配置` on a model item
