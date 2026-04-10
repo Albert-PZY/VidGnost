@@ -911,7 +911,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                   </Button>
 
                   <Dialog open={isModelDialogOpen} onOpenChange={handleModelDialogChange}>
-                    <DialogContent className="flex w-[min(96vw,72rem)] max-h-[90vh] max-w-[72rem] flex-col gap-0 overflow-hidden p-0">
+                    <DialogContent className="flex w-[min(96vw,80rem)] max-h-[90vh] max-w-[80rem] flex-col gap-0 overflow-hidden p-0">
                       <DialogHeader className="shrink-0 border-b bg-card px-6 py-5 pr-14">
                         <DialogTitle className="text-lg font-medium leading-tight">
                           {activeModelPreset?.title || "模型常用配置"}
@@ -922,7 +922,7 @@ export function SettingsView({ uiSettings, onUiSettingsChange }: SettingsViewPro
                       </DialogHeader>
 
                       <div className="themed-thin-scrollbar min-h-0 flex-1 overflow-y-auto">
-                        <div className="grid gap-6 px-6 py-6 xl:grid-cols-[minmax(0,0.4fr)_minmax(0,0.6fr)]">
+                        <div className="grid gap-6 px-6 py-6 xl:grid-cols-[minmax(0,0.37fr)_minmax(0,0.63fr)]">
                           {/* 左侧概览：集中展示当前模型身份、状态与关键指标 */}
                           <div className="space-y-5">
                             {editingModel ? (
