@@ -563,7 +563,7 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
             </div>
 
             <p className="mt-6 text-[13px] text-white/38">
-              在取景框内拖动图片即可调整展示区域，鼠标滚轮可以快速缩放，主界面会实时同步预览。
+              *鼠标放置在图片上可拖拽移动图片位置
             </p>
 
             <div className="mt-6 flex items-center gap-3.5">
