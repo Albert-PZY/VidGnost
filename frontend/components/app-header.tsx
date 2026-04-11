@@ -127,10 +127,7 @@ export function AppHeader({
           <DropdownMenuContent align="end" className="app-header-menu">
             <DropdownMenuItem
               data-selected={language === "zh"}
-              className={cn(
-                "app-header-menu-item flex items-center justify-between gap-3 rounded-md",
-                language === "zh" && "bg-accent text-accent-foreground",
-              )}
+              className="app-header-menu-item flex items-center justify-between gap-3 rounded-md"
               onClick={() => onLanguageChange("zh")}
             >
               <span className={language === "zh" ? "font-medium" : ""}>中文</span>
@@ -138,10 +135,7 @@ export function AppHeader({
             </DropdownMenuItem>
             <DropdownMenuItem
               data-selected={language === "en"}
-              className={cn(
-                "app-header-menu-item flex items-center justify-between gap-3 rounded-md",
-                language === "en" && "bg-accent text-accent-foreground",
-              )}
+              className="app-header-menu-item flex items-center justify-between gap-3 rounded-md"
               onClick={() => onLanguageChange("en")}
             >
               <span className={language === "en" ? "font-medium" : ""}>English</span>
@@ -161,10 +155,7 @@ export function AppHeader({
           <DropdownMenuContent align="end" className="app-header-menu">
             <DropdownMenuItem
               data-selected={theme === "light"}
-              className={cn(
-                "app-header-menu-item flex items-center justify-between gap-3 rounded-md",
-                theme === "light" && "bg-accent text-accent-foreground",
-              )}
+              className="app-header-menu-item flex items-center justify-between gap-3 rounded-md"
               onClick={() => setTheme("light")}
             >
               <div className="flex items-center gap-2">
@@ -175,10 +166,7 @@ export function AppHeader({
             </DropdownMenuItem>
             <DropdownMenuItem
               data-selected={theme === "dark"}
-              className={cn(
-                "app-header-menu-item flex items-center justify-between gap-3 rounded-md",
-                theme === "dark" && "bg-accent text-accent-foreground",
-              )}
+              className="app-header-menu-item flex items-center justify-between gap-3 rounded-md"
               onClick={() => setTheme("dark")}
             >
               <div className="flex items-center gap-2">
@@ -189,10 +177,7 @@ export function AppHeader({
             </DropdownMenuItem>
             <DropdownMenuItem
               data-selected={theme === "system"}
-              className={cn(
-                "app-header-menu-item flex items-center justify-between gap-3 rounded-md",
-                theme === "system" && "bg-accent text-accent-foreground",
-              )}
+              className="app-header-menu-item flex items-center justify-between gap-3 rounded-md"
               onClick={() => setTheme("system")}
             >
               <div className="flex items-center gap-2">

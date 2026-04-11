@@ -300,26 +300,25 @@ html:not(.dark) body[data-app-background-active="true"] .custom-skin-dialog-surf
 }
 
 html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) {
-  background:
-    linear-gradient(180deg, rgba(236, 241, 248, 0.4) 0%, rgba(205, 214, 226, 0.3) 100%) !important;
+  background: linear-gradient(180deg, rgba(72, 78, 96, 0.96) 0%, rgba(56, 61, 77, 0.94) 100%) !important;
   border-color: transparent !important;
   color: var(--wallpaper-shell-text) !important;
   backdrop-filter: blur(28px) saturate(1.18);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
     0 26px 72px rgba(6, 10, 18, 0.22) !important;
 }
 
 html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog-header, .model-config-dialog-footer, .prompt-config-dialog-header, .prompt-config-dialog-footer) {
-  background: color-mix(in oklch, white 16%, transparent) !important;
+  background: color-mix(in oklch, white 4%, transparent) !important;
   border-color: transparent !important;
 }
 
 html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog-panel, .prompt-config-dialog-panel) {
   border-color: transparent !important;
-  background: color-mix(in oklch, white 11%, transparent) !important;
+  background: color-mix(in oklch, white 6%, transparent) !important;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
     0 12px 28px rgba(6, 10, 18, 0.1);
 }
 
@@ -328,7 +327,7 @@ html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog
 }
 
 html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) :is(.bg-muted\/30, .bg-muted\/35, .bg-background\/80) {
-  background: color-mix(in oklch, white 10%, transparent) !important;
+  background: color-mix(in oklch, white 5%, transparent) !important;
 }
 
 html:not(.dark) body[data-app-background-active="true"] .model-config-dialog :is(h1, h2, h3, h4, h5, h6, p, span, small, strong, label, li, dt, dd, div) {
@@ -345,11 +344,11 @@ html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog
 }
 
 html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) :is([data-slot="input"], [data-slot="textarea"], [data-slot="select-trigger"]) {
-  background: color-mix(in oklch, white 12%, transparent) !important;
+  background: color-mix(in oklch, white 7%, transparent) !important;
   border-color: transparent !important;
   color: var(--wallpaper-shell-text) !important;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
     0 8px 18px rgba(6, 10, 18, 0.08);
 }
 
@@ -363,9 +362,9 @@ html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog
 }
 
 html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) [data-slot="button"][class*="border"] {
-  background: color-mix(in oklch, white 10%, transparent) !important;
+  background: color-mix(in oklch, white 6%, transparent) !important;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
     0 8px 18px rgba(6, 10, 18, 0.08);
 }
 
@@ -376,19 +375,18 @@ html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog
 }
 
 html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) [data-slot="badge"] {
-  background: color-mix(in oklch, white 9%, transparent) !important;
+  background: color-mix(in oklch, white 5%, transparent) !important;
   color: var(--wallpaper-shell-text) !important;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 html:not(.dark) body[data-app-background-active="true"] :is(.model-config-select-content, .prompt-config-select-content) {
-  background:
-    linear-gradient(180deg, rgba(232, 239, 247, 0.4) 0%, rgba(200, 211, 224, 0.32) 100%) !important;
+  background: linear-gradient(180deg, rgba(72, 78, 96, 0.96) 0%, rgba(56, 61, 77, 0.94) 100%) !important;
   border-color: transparent !important;
   color: var(--wallpaper-shell-text) !important;
   backdrop-filter: blur(28px) saturate(1.16);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
     0 18px 40px rgba(6, 10, 18, 0.16) !important;
 }
 
@@ -397,7 +395,7 @@ html:not(.dark) body[data-app-background-active="true"] :is(.model-config-select
 }
 
 html:not(.dark) body[data-app-background-active="true"] :is(.model-config-select-content, .prompt-config-select-content) [data-slot="select-item"][data-state="checked"]:not(:hover):not([data-highlighted]) {
-  background: transparent !important;
+  background: color-mix(in oklch, white 7%, transparent) !important;
   color: var(--wallpaper-shell-text) !important;
   font-weight: 600;
 }
@@ -710,8 +708,27 @@ html:not(.dark) body[data-app-background-active="true"] .app-header-control:not(
   box-shadow: none !important;
 }
 
+html:not(.dark) body[data-app-background-active="true"] .app-header-menu,
+html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-menu {
+  background: linear-gradient(180deg, rgba(72, 78, 96, 0.96) 0%, rgba(56, 61, 77, 0.94) 100%) !important;
+  border-color: transparent !important;
+  color: var(--wallpaper-shell-text) !important;
+  backdrop-filter: blur(28px) saturate(1.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 18px 40px rgba(6, 10, 18, 0.16) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .app-header-menu-item {
+  color: var(--wallpaper-shell-text) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .app-header-menu-item svg {
+  color: white !important;
+}
+
 html:not(.dark) body[data-app-background-active="true"] .app-header-menu-item[data-selected="true"]:not(:hover):not([data-highlighted]):not(:focus-visible) {
-  background: transparent !important;
+  background: color-mix(in oklch, white 7%, transparent) !important;
   color: var(--wallpaper-shell-text) !important;
 }
 
@@ -722,29 +739,42 @@ html:not(.dark) body[data-app-background-active="true"] .app-header-menu-item:is
 
 html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-trigger {
   border-color: transparent !important;
+  background: linear-gradient(180deg, rgba(72, 78, 96, 0.82) 0%, rgba(56, 61, 77, 0.8) 100%) !important;
+  color: var(--wallpaper-shell-text) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 10px 24px rgba(6, 10, 18, 0.12);
 }
 
 html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-trigger:not(:hover):not(:focus-visible):not([data-state="open"]) {
-  background: color-mix(in oklch, var(--background) 8%, transparent) !important;
   color: var(--wallpaper-shell-text) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-trigger:is(:hover, :focus-visible, [data-state="open"]) {
-  background: var(--wallpaper-tint-fill-soft) !important;
-  color: var(--primary-foreground) !important;
+  background:
+    linear-gradient(180deg, rgba(86, 94, 114, 0.9) 0%, rgba(66, 72, 89, 0.88) 100%) !important;
+  color: white !important;
 }
 
 html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option {
-  color: var(--wallpaper-shell-text) !important;
+  color: white !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option svg {
+  color: white !important;
 }
 
 html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option .text-muted-foreground {
-  color: var(--wallpaper-shell-text-muted) !important;
+  color: color-mix(in oklch, white 84%, transparent) !important;
 }
 
-html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option:not([data-highlighted]):not(:hover) {
+html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option:not([data-selected="true"]):not([data-highlighted]):not(:hover) {
   background: transparent !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option[data-selected="true"]:not(:hover):not([data-highlighted]) {
+  background: color-mix(in oklch, white 7%, transparent) !important;
+  color: white !important;
 }
 
 html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option:is([data-highlighted], :hover, :focus-visible) {

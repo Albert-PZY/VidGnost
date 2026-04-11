@@ -163,6 +163,7 @@ export function AppSidebar({
                 {workflowOptions.map((workflow) => (
                   <DropdownMenuItem
                     key={workflow.id}
+                    data-selected={workflow.id === selectedWorkflow}
                     onClick={() => onWorkflowChange(workflow.id)}
                     className="sidebar-workflow-option flex flex-col items-start gap-1 p-3"
                   >
