@@ -72,7 +72,7 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 
 #### Scenario: Configure a custom skin image
 - **WHEN** user chooses a skin image from the Electron shell and opens the skin dialog
-- **THEN** the renderer shows a crop-oriented skin dialog with a fixed selection frame and wheel-driven zoom
+- **THEN** the renderer shows a compact single-column skin dialog with a fixed selection frame and wheel-driven zoom
 - **AND** dragging inside the selection frame moves the image behind the frame instead of moving or resizing the frame itself
 - **AND** the selection frame stays fully inside the currently rendered image bounds, including at the minimum persisted `100%` scale
 - **AND** the current shell background updates in real time while the dialog is open

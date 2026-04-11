@@ -14,11 +14,9 @@ import {
 import { Slider } from "@/components/ui/slider"
 import type { UISettingsResponse } from "@/lib/types"
 import {
-  MAX_BACKGROUND_PREVIEW_SCALE,
-  MIN_BACKGROUND_PREVIEW_SCALE,
+  MAX_BACKGROUND_SCALE,
+  MIN_BACKGROUND_SCALE,
   clamp,
-  getPreviewScaleFromSavedScale,
-  getSavedScaleFromPreviewScale,
   getSelectionFrameSize,
 } from "@/lib/ui-skin"
 
@@ -77,9 +75,7 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
   )
   const [opacity, setOpacity] = React.useState([uiSettings.background_image_opacity])
   const [blur, setBlur] = React.useState([uiSettings.background_image_blur])
-  const [previewScale, setPreviewScale] = React.useState([
-    getPreviewScaleFromSavedScale(uiSettings.background_image_scale),
-  ])
+  const [scale, setScale] = React.useState([uiSettings.background_image_scale])
   const [focus, setFocus] = React.useState({
     x: uiSettings.background_image_focus_x,
     y: uiSettings.background_image_focus_y,
@@ -93,7 +89,7 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
     geometry: SurfaceGeometry
   } | null>(null)
 
-  const currentScalePercent = Math.round(getSavedScaleFromPreviewScale(previewScale[0]) * 100)
+  const currentScalePercent = Math.round(scale[0] * 100)
 
   const measureSurfaceSize = React.useCallback(() => {
     if (!surfaceRef.current) {
@@ -116,9 +112,7 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
     setDraftFileName(pickedImage?.fileName ?? (uiSettings.background_image ? "已保存换肤" : ""))
     setOpacity([uiSettings.background_image_opacity])
     setBlur([uiSettings.background_image_blur])
-    setPreviewScale([
-      getPreviewScaleFromSavedScale(pickedImage ? 1 : uiSettings.background_image_scale),
-    ])
+    setScale([pickedImage ? 1 : uiSettings.background_image_scale])
     setFocus(
       pickedImage
         ? { x: 0.5, y: 0.5 }
@@ -202,8 +196,8 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
     const frameCenterY = frameTop + frameHeight / 2
 
     const coverScale = Math.max(frameWidth / naturalSize.width, frameHeight / naturalSize.height)
-    const imageWidth = naturalSize.width * coverScale * previewScale[0]
-    const imageHeight = naturalSize.height * coverScale * previewScale[0]
+    const imageWidth = naturalSize.width * coverScale * scale[0]
+    const imageHeight = naturalSize.height * coverScale * scale[0]
 
     const minImageLeft = frameLeft + frameWidth - imageWidth
     const maxImageLeft = frameLeft
@@ -242,7 +236,7 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
     focus.y,
     naturalSize.height,
     naturalSize.width,
-    previewScale,
+    scale,
     surfaceSize.height,
     surfaceSize.width,
   ])
@@ -252,12 +246,12 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
       background_image: draftImage,
       background_image_opacity: opacity[0],
       background_image_blur: blur[0],
-      background_image_scale: getSavedScaleFromPreviewScale(previewScale[0]),
+      background_image_scale: scale[0],
       background_image_focus_x: focus.x,
       background_image_focus_y: focus.y,
       background_image_fill_mode: "cover",
     }),
-    [blur, draftImage, focus.x, focus.y, opacity, previewScale],
+    [blur, draftImage, focus.x, focus.y, opacity, scale],
   )
 
   React.useEffect(() => {
@@ -333,17 +327,17 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
     }
 
     event.preventDefault()
-    setPreviewScale((current) => [
+    setScale((current) => [
       clamp(
         current[0] + (event.deltaY < 0 ? 0.08 : -0.08),
-        MIN_BACKGROUND_PREVIEW_SCALE,
-        MAX_BACKGROUND_PREVIEW_SCALE,
+        MIN_BACKGROUND_SCALE,
+        MAX_BACKGROUND_SCALE,
       ),
     ])
   }
 
   const handleResetView = () => {
-    setPreviewScale([getPreviewScaleFromSavedScale(1)])
+    setScale([1])
     setFocus({ x: 0.5, y: 0.5 })
     setBlur([uiSettings.background_image_blur])
     setOpacity([uiSettings.background_image_opacity])
@@ -357,14 +351,14 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
 
     setDraftImage(picked.dataUrl)
     setDraftFileName(picked.fileName)
-    setPreviewScale([getPreviewScaleFromSavedScale(1)])
+    setScale([1])
     setFocus({ x: 0.5, y: 0.5 })
   }
 
   const handleClearImage = () => {
     setDraftImage(null)
     setDraftFileName("")
-    setPreviewScale([getPreviewScaleFromSavedScale(1)])
+    setScale([1])
     setFocus({ x: 0.5, y: 0.5 })
     setNaturalSize({ width: 0, height: 0 })
   }
@@ -404,20 +398,20 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
     <Dialog open={open} onOpenChange={handleDialogChange}>
       <DialogContent
         showCloseButton={false}
-        className="max-w-[34rem] border-none bg-transparent p-0 shadow-none sm:max-w-[34rem]"
+        className="max-w-[29rem] border-none bg-transparent p-0 shadow-none sm:max-w-[29rem]"
       >
-        <div className="overflow-hidden rounded-[2rem] bg-[linear-gradient(180deg,#323443_0%,#2d2f3d_100%)] text-white shadow-[0_32px_100px_rgba(9,10,18,0.58)] ring-1 ring-white/6">
-          <DialogHeader className="relative px-6 pb-2 pt-5 text-center">
+        <div className="overflow-hidden rounded-[1.65rem] bg-[linear-gradient(180deg,#323443_0%,#2d2f3d_100%)] text-white shadow-[0_24px_72px_rgba(9,10,18,0.54)] ring-1 ring-white/6">
+          <DialogHeader className="relative px-5 pb-1 pt-4 text-center">
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              className="absolute right-4 top-3.5 size-9 rounded-full text-white/56 hover:bg-white/8 hover:text-white"
+              className="absolute right-3 top-2.5 size-8 rounded-full text-white/56 hover:bg-white/8 hover:text-white"
               onClick={() => handleDialogChange(false)}
             >
-              <X className="size-5" />
+              <X className="size-[18px]" />
             </Button>
-            <DialogTitle className="text-[1.85rem] font-semibold tracking-tight text-white">
+            <DialogTitle className="text-[1.35rem] font-semibold tracking-tight text-white">
               自定义换肤
             </DialogTitle>
             <DialogDescription className="sr-only">
@@ -425,10 +419,10 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="px-6 pb-6 pt-4">
+          <div className="px-5 pb-5 pt-3.5">
             <div
               ref={surfaceRef}
-              className="relative aspect-[1.18/1] w-full overflow-hidden rounded-[1.35rem] bg-[#242632] touch-none"
+              className="relative aspect-[1.14/1] w-full overflow-hidden rounded-[1rem] bg-[#242632] touch-none"
               onWheel={handleWheel}
             >
               {draftImage ? (
@@ -451,10 +445,10 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
                   <div className="absolute inset-0 bg-black/16" />
                   {surfacePreviewLayout && cropGeometry ? (
                     <button
-                      type="button"
-                      className="absolute rounded-[1rem] border border-white/32 bg-transparent shadow-[0_0_0_9999px_rgba(8,10,18,0.42)] transition-colors hover:border-white/48 active:cursor-grabbing"
-                      style={surfacePreviewLayout.frameStyle}
-                      onPointerDown={(event) => {
+                    type="button"
+                    className="absolute rounded-[0.8rem] border border-white/32 bg-transparent shadow-[0_0_0_9999px_rgba(8,10,18,0.42)] transition-colors hover:border-white/48 active:cursor-grabbing"
+                    style={surfacePreviewLayout.frameStyle}
+                    onPointerDown={(event) => {
                         event.preventDefault()
                         setDragState({
                           pointerId: event.pointerId,
@@ -513,14 +507,14 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
               </div>
             </div>
 
-            <div className="mt-7 space-y-5">
-              <div className="grid grid-cols-[4.75rem_minmax(0,1fr)_auto] items-center gap-3">
+            <div className="mt-6 space-y-[1.125rem]">
+              <div className="grid grid-cols-[4.3rem_minmax(0,1fr)_auto] items-center gap-3">
                 <span className="text-sm text-white/56">图片缩放</span>
                 <Slider
-                  value={previewScale}
-                  onValueChange={setPreviewScale}
-                  min={MIN_BACKGROUND_PREVIEW_SCALE}
-                  max={MAX_BACKGROUND_PREVIEW_SCALE}
+                  value={scale}
+                  onValueChange={setScale}
+                  min={MIN_BACKGROUND_SCALE}
+                  max={MAX_BACKGROUND_SCALE}
                   step={0.01}
                   disabled={isSaving || !draftImage}
                   className={sliderClassName}
@@ -539,7 +533,7 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-[4.75rem_minmax(0,1fr)_auto] items-center gap-3">
+              <div className="grid grid-cols-[4.3rem_minmax(0,1fr)_auto] items-center gap-3">
                 <span className="text-sm text-white/56">透明度</span>
                 <Slider
                   value={opacity}
@@ -553,7 +547,7 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
                 <span className="w-11 text-right text-sm font-medium text-white/82">{opacity[0]}%</span>
               </div>
 
-              <div className="grid grid-cols-[4.75rem_minmax(0,1fr)_auto] items-center gap-3">
+              <div className="grid grid-cols-[4.3rem_minmax(0,1fr)_auto] items-center gap-3">
                 <span className="text-sm text-white/56">模糊度</span>
                 <Slider
                   value={blur}
@@ -568,15 +562,15 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
               </div>
             </div>
 
-            <p className="mt-8 text-sm text-white/38">
+            <p className="mt-6 text-[13px] text-white/38">
               在取景框内拖动图片即可调整展示区域，鼠标滚轮可以快速缩放，主界面会实时同步预览。
             </p>
 
-            <div className="mt-8 flex items-center gap-4">
+            <div className="mt-6 flex items-center gap-3.5">
               <Button
                 type="button"
                 variant="ghost"
-                className="h-12 flex-1 rounded-full border border-white/10 bg-transparent text-base font-medium text-white/88 hover:bg-white/6"
+                className="h-11 flex-1 rounded-full border border-white/10 bg-transparent text-[15px] font-medium text-white/88 hover:bg-white/6"
                 onClick={() => handleDialogChange(false)}
                 disabled={isSaving}
               >
@@ -584,7 +578,7 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
               </Button>
               <Button
                 type="button"
-                className="h-12 flex-1 rounded-full border border-[#eec0b1]/70 bg-[#efb9a9] text-base font-medium text-[#fff8f5] shadow-[0_14px_28px_rgba(239,185,169,0.18)] hover:bg-[#f2c2b4]"
+                className="h-11 flex-1 rounded-full border border-[#eec0b1]/70 bg-[#efb9a9] text-[15px] font-medium text-[#fff8f5] shadow-[0_14px_28px_rgba(239,185,169,0.18)] hover:bg-[#f2c2b4]"
                 onClick={() => void handleSave()}
                 disabled={isSaving}
               >
