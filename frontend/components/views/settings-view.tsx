@@ -1815,9 +1815,6 @@ export function SettingsView({
                           <Sparkles className="h-4 w-4 text-primary drop-shadow-[0_0_10px_color-mix(in_oklch,var(--primary)_48%,transparent)]" />
                           <h3 className="text-base font-medium">自定义换肤</h3>
                         </div>
-                        <p className="pl-6 text-sm text-muted-foreground">
-                          通过 Electron 直接选择图片，并在换肤弹窗里拖动展示框、滚轮缩放、实时预览整个桌面壳层效果。
-                        </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
                         <Button
@@ -1886,9 +1883,6 @@ export function SettingsView({
                           <div className="flex h-52 flex-col items-center justify-center gap-2 px-6 text-center">
                             <Sparkles className="h-5 w-5 text-primary/70" />
                             <p className="text-sm font-medium">当前未设置换肤图片</p>
-                            <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
-                              选择图片后会直接进入换肤裁剪弹窗，并实时联动整个 Electron 窗口背景。
-                            </p>
                           </div>
                         )}
                       </div>
@@ -1896,9 +1890,6 @@ export function SettingsView({
                       <div className="space-y-4 rounded-xl border border-border/70 bg-muted/10 p-4">
                         <div className="space-y-1">
                           <p className="text-sm font-medium">换肤状态</p>
-                          <p className="text-xs text-muted-foreground">
-                            当前保存的是最终生效的桌面壳层换肤配置。
-                          </p>
                         </div>
                         <div className="grid gap-3 sm:grid-cols-2">
                           <div className="rounded-lg border bg-card px-3 py-3">
@@ -1922,9 +1913,6 @@ export function SettingsView({
                             </p>
                           </div>
                         </div>
-                        <p className="text-xs leading-relaxed text-muted-foreground">
-                          换肤裁剪框会按当前桌面壳层比例工作，保存后会直接恢复到同样的构图和缩放状态。
-                        </p>
                       </div>
                     </div>
                   </div>

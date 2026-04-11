@@ -75,6 +75,7 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **THEN** the renderer shows a compact single-column skin dialog with a fixed selection frame and wheel-driven zoom
 - **AND** dragging inside the selection frame moves the image behind the frame instead of moving or resizing the frame itself
 - **AND** the helper copy tells the user to place the pointer on the image to drag the image position
+- **AND** surrounding appearance cards keep helper copy minimal and avoid repeating nearby controls or status labels
 - **AND** the selection frame stays fully inside the currently rendered image bounds, including at the minimum persisted `100%` scale
 - **AND** the current shell background updates in real time while the dialog is open
 - **AND** the primary save action follows the active UI theme hue instead of using a fixed accent color
