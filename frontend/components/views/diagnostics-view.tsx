@@ -27,6 +27,7 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import {
+  autoFixSelfCheck,
   getApiErrorMessage,
   getRuntimeMetrics,
   getSelfCheckReport,
@@ -178,13 +179,19 @@ export function DiagnosticsView() {
   const [runtimeMetrics, setRuntimeMetrics] = React.useState<RuntimeMetricsResponse>(EMPTY_METRICS)
   const [activeSessionId, setActiveSessionId] = React.useState("")
   const [isStarting, setIsStarting] = React.useState(false)
+  const [isFixing, setIsFixing] = React.useState(false)
+  const runtimeMetricsToastShownRef = React.useRef(false)
 
   const loadRuntimeMetrics = React.useCallback(async () => {
     try {
       const payload = await getRuntimeMetrics()
       setRuntimeMetrics(payload)
+      runtimeMetricsToastShownRef.current = false
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "获取运行时信息失败"))
+      if (!runtimeMetricsToastShownRef.current) {
+        runtimeMetricsToastShownRef.current = true
+        toast.error(getApiErrorMessage(error, "获取运行时信息失败"))
+      }
     }
   }, [])
 
@@ -233,6 +240,22 @@ export function DiagnosticsView() {
       toast.error(getApiErrorMessage(error, "启动系统自检失败"))
     } finally {
       setIsStarting(false)
+    }
+  }
+
+  const handleAutoFix = async () => {
+    if (!report?.session_id || !report.auto_fix_available) {
+      return
+    }
+    setIsFixing(true)
+    try {
+      await autoFixSelfCheck(report.session_id)
+      toast.success("已触发自动修复")
+      await refreshReport(report.session_id)
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "自动修复失败"))
+    } finally {
+      setIsFixing(false)
     }
   }
 
@@ -300,10 +323,22 @@ export function DiagnosticsView() {
               检查系统环境和模型状态，确保所有组件正常运行
             </p>
           </div>
-          <Button onClick={() => void runDiagnostics()} disabled={isRunning}>
-            <RefreshCw className={cn("h-4 w-4 mr-2", isRunning && "animate-spin")} />
-            {isRunning ? "检查中..." : "开始检查"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                void handleAutoFix()
+              }}
+              disabled={!report?.auto_fix_available || isFixing || isRunning}
+            >
+              <RefreshCw className={cn("mr-2 h-4 w-4", isFixing && "animate-spin")} />
+              {isFixing ? "修复中..." : "自动修复"}
+            </Button>
+            <Button onClick={() => void runDiagnostics()} disabled={isRunning || isFixing}>
+              <RefreshCw className={cn("h-4 w-4 mr-2", isRunning && "animate-spin")} />
+              {isRunning ? "检查中..." : "开始检查"}
+            </Button>
+          </div>
         </div>
 
         {(isRunning || report !== null) && (
@@ -443,6 +478,39 @@ export function DiagnosticsView() {
             </div>
           </CardContent>
         </Card>
+
+        {report?.issues.length ? (
+          <Card className="gap-0 rounded-md border-border/70 bg-card/75 py-0 shadow-none">
+            <CardContent className="space-y-3 px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="text-sm font-medium">待处理问题</CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    这里会集中列出异常、警告以及对应的人工处理建议。
+                  </p>
+                </div>
+                {report.auto_fix_available ? <Badge variant="secondary">支持自动修复</Badge> : null}
+              </div>
+              <div className="space-y-3">
+                {report.issues.map((issue) => (
+                  <div key={issue.id} className="rounded-xl border border-border/60 bg-muted/20 p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium">{issue.title}</span>
+                      <Badge variant={issue.status === "failed" ? "destructive" : "secondary"}>{issue.status}</Badge>
+                      {issue.auto_fixable ? <Badge variant="outline">auto-fixable</Badge> : null}
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">{issue.message}</p>
+                    {issue.manual_action ? (
+                      <p className="mt-2 text-xs leading-6 text-muted-foreground">
+                        建议操作：{issue.manual_action}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
       </div>
     </div>
   )

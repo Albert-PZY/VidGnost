@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import mimetypes
 import tarfile
 import zipfile
 from datetime import datetime, timezone
@@ -12,7 +13,7 @@ from urllib.parse import quote
 import aiofiles
 import orjson
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response
 from starlette.responses import StreamingResponse
 
 from app.errors import AppError
@@ -284,6 +285,22 @@ def list_tasks(
 def get_task(task_id: str, task_store: TaskStore = Depends(get_task_store)) -> TaskDetailResponse:
     record = _require_task(task_store, task_id)
     return _to_detail(record)
+
+
+@router.get("/{task_id}/artifacts/file")
+def get_task_artifact_file(
+    task_id: str,
+    request: Request,
+    path: str = Query(..., min_length=1),
+    task_store: TaskStore = Depends(get_task_store),
+):
+    _require_task(task_store, task_id)
+    storage_dir = str(request.app.state.settings.storage_dir)
+    target_path = _resolve_task_artifact_path(storage_dir=storage_dir, task_id=task_id, relative_path=path)
+    if not target_path.exists() or not target_path.is_file():
+        raise AppError.not_found("Task artifact not found", code="TASK_ARTIFACT_NOT_FOUND")
+    media_type = mimetypes.guess_type(str(target_path))[0] or "application/octet-stream"
+    return FileResponse(target_path, media_type=media_type)
 
 
 @router.get("/{task_id}/open-location")
@@ -670,6 +687,17 @@ def _build_content_disposition(filename: str) -> str:
     ascii_fallback = ascii_fallback or "download.bin"
     encoded_filename = quote(filename, safe="")
     return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded_filename}"
+
+
+def _resolve_task_artifact_path(*, storage_dir: str, task_id: str, relative_path: str) -> Path:
+    normalized = relative_path.replace("\\", "/").strip().lstrip("/")
+    if not normalized or ".." in Path(normalized).parts:
+        raise AppError.bad_request("Invalid artifact path", code="TASK_ARTIFACT_PATH_INVALID")
+    artifact_root = Path(storage_dir) / "tasks" / "stage-artifacts" / task_id / "D" / "fusion"
+    target_path = (artifact_root / normalized).resolve()
+    if artifact_root.resolve() not in target_path.parents and target_path != artifact_root.resolve():
+        raise AppError.bad_request("Artifact path escaped task root", code="TASK_ARTIFACT_PATH_INVALID")
+    return target_path
 
 
 def _to_summary_item(record: TaskRecord) -> TaskSummaryItem:

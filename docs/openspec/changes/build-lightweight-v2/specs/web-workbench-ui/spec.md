@@ -172,3 +172,54 @@ Diagnostics view SHALL render runtime metrics in a single compact strip that exp
 - **THEN** the diagnostics page shows a compact runtime strip with uptime, CPU, memory, and GPU summaries
 - **AND** the strip shows the latest sample timestamp
 - **AND** memory and GPU rows expose usage detail without expanding into secondary cards
+
+### Requirement: New-task view SHALL expose multi-source intake with value preview
+New-task view SHALL expose `Upload`, `URL`, and `Path` intake modes inside the same workbench surface and SHALL show workflow-specific value preview blocks before the user starts analysis.
+
+#### Scenario: Open new-task view for notes workflow
+- **WHEN** user enters the new-task view with workflow `notes`
+- **THEN** the renderer shows workflow step chips, a value-preview summary, and the three intake modes
+- **AND** the upload mode supports drag-and-drop plus batch file selection
+- **AND** the user can switch to URL or absolute local-path input without leaving the page
+
+### Requirement: Bootstrap overlay SHALL provide backend recovery actions
+Workbench bootstrap SHALL expose an overlay state machine for `initializing`, `connecting`, `degraded`, and `ready`, and degraded states SHALL provide direct recovery actions.
+
+#### Scenario: Backend is unavailable during bootstrap
+- **WHEN** renderer cannot complete initial health/config synchronization
+- **THEN** a blocking overlay explains that the backend is unavailable
+- **AND** the overlay provides `重试连接`, `查看诊断`, and `打开日志目录` actions
+- **AND** the overlay is dismissed automatically once bootstrap reaches `ready`
+
+### Requirement: Task processing workbench SHALL provide a resizable evidence-driven workspace
+Task processing workbench SHALL use a horizontal resizable split layout. The left workspace SHALL provide `转写片段`, `证据时间轴`, and `阶段输出` tabs. The right workspace SHALL switch between `Markdown 工作区 / 思维导图 / 研究板` for notes tasks and `流式问答 / Trace Theater / 研究板` for VQA tasks.
+
+#### Scenario: Open a completed notes task
+- **WHEN** user opens a notes task in the processing workbench
+- **THEN** the renderer shows the resizable video-and-artifact layout
+- **AND** summary and notes results render as Markdown instead of plain preformatted text
+- **AND** Markdown timestamps can seek the video
+- **AND** transcript cards support quick actions such as `加入笔记` and `加入研究板`
+
+#### Scenario: Open a VQA task and ask a question
+- **WHEN** user submits a question from the VQA workbench
+- **THEN** the renderer streams incremental answer chunks into the chat surface
+- **AND** each answer may expose `trace_id`, citations, and citation jump actions
+- **AND** opening Trace Theater reveals retrieval-stage panels such as Dense, Sparse, RRF, and rerank results
+
+### Requirement: Prompt settings SHALL include an experiment surface
+Prompt-template settings SHALL include a `Prompt Lab` surface that compares two templates under the same channel against the same sample title and transcript.
+
+#### Scenario: Open prompt settings after templates load
+- **WHEN** user enters the prompt-template section
+- **THEN** the renderer shows the template list and the Prompt Lab surface in the same section
+- **AND** Prompt Lab allows selecting a channel plus template `A/B`
+- **AND** Prompt Lab shows both the original template text and a generated sample prompt draft for comparison
+
+### Requirement: Diagnostics view SHALL expose autofix and issue summary
+Diagnostics view SHALL provide a direct autofix action when the backend marks issues as auto-fixable, and SHALL summarize actionable issues below the live runtime strip.
+
+#### Scenario: Self-check report contains auto-fixable issues
+- **WHEN** diagnostics report indicates `auto_fix_available`
+- **THEN** the renderer shows an `自动修复` action
+- **AND** the issue summary lists each problem, its status, message, and optional manual action guidance

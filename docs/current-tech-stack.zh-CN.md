@@ -1,6 +1,6 @@
 # VidGnost 当前完整技术栈（前后端）
 
-更新时间：2026-04-10
+更新时间：2026-04-11
 
 ## 1. 架构边界（已收敛）
 
@@ -27,8 +27,9 @@
 - Radix UI（Accordion/Dialog/Select/Tabs 等）
 - Lucide React（图标）
 - next-themes（主题切换，仅前端主题管理，不依赖 Next SSR）
-- sonner（通知）
-- recharts（图表）
+- react-hot-toast（通知）
+- react-resizable-panels（可拖拽工作区分栏）
+- @uiw/react-md-editor + @uiw/react-markdown-preview（提示词编辑与 Markdown 结果渲染）
 - react-hook-form + zod（表单与校验）
 
 ## 2.3 前端工程事实

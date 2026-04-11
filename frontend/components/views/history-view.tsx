@@ -52,6 +52,9 @@ interface HistoryViewProps {
 }
 
 type HistoryWorkflowFilter = WorkflowType | "all"
+type HistoryStatusFilter = "all" | "queued" | "running" | "completed" | "failed" | "cancelled"
+
+const PAGE_SIZE = 24
 
 const EMPTY_STATS: TaskStatsResponse = {
   total: 0,
@@ -81,8 +84,11 @@ export function HistoryView({ onOpenTask }: HistoryViewProps) {
   const [searchQuery, setSearchQuery] = React.useState("")
   const deferredSearchQuery = React.useDeferredValue(searchQuery)
   const [workflowFilter, setWorkflowFilter] = React.useState<HistoryWorkflowFilter>("all")
+  const [statusFilter, setStatusFilter] = React.useState<HistoryStatusFilter>("all")
   const [sortBy, setSortBy] = React.useState<"date" | "name" | "size">("date")
+  const [page, setPage] = React.useState(1)
   const [tasks, setTasks] = React.useState<TaskSummaryItem[]>([])
+  const [total, setTotal] = React.useState(0)
   const [stats, setStats] = React.useState<TaskStatsResponse>(EMPTY_STATS)
   const [isLoading, setIsLoading] = React.useState(true)
   const [busyTaskId, setBusyTaskId] = React.useState<string>("")
@@ -95,23 +101,32 @@ export function HistoryView({ onOpenTask }: HistoryViewProps) {
         listTasksWithQuery({
           q: deferredSearchQuery || undefined,
           workflow: workflowFilter,
+          status: statusFilter === "all" ? undefined : statusFilter,
           sort_by: sortBy,
-          limit: 100,
+          limit: PAGE_SIZE,
+          offset: (page - 1) * PAGE_SIZE,
         }),
         getTaskStats(),
       ])
       setTasks(listResponse.items)
+      setTotal(listResponse.total)
       setStats(statsResponse)
     } catch (error) {
       toast.error(getApiErrorMessage(error, "获取历史任务失败"))
     } finally {
       setIsLoading(false)
     }
-  }, [deferredSearchQuery, sortBy, workflowFilter])
+  }, [deferredSearchQuery, page, sortBy, statusFilter, workflowFilter])
 
   React.useEffect(() => {
     void loadHistory()
   }, [loadHistory])
+
+  React.useEffect(() => {
+    setPage(1)
+  }, [deferredSearchQuery, sortBy, statusFilter, workflowFilter])
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   const handleDeleteTask = async () => {
     if (!pendingDeleteTask) {
@@ -252,6 +267,19 @@ export function HistoryView({ onOpenTask }: HistoryViewProps) {
               <SelectItem value="vqa">视频问答</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as HistoryStatusFilter)}>
+            <SelectTrigger className="w-36">
+              <SelectValue placeholder="状态" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部状态</SelectItem>
+              <SelectItem value="queued">排队中</SelectItem>
+              <SelectItem value="running">处理中</SelectItem>
+              <SelectItem value="completed">已完成</SelectItem>
+              <SelectItem value="failed">失败</SelectItem>
+              <SelectItem value="cancelled">已取消</SelectItem>
+            </SelectContent>
+          </Select>
           <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
             <SelectTrigger className="w-32">
               <SelectValue placeholder="排序" />
@@ -355,8 +383,26 @@ export function HistoryView({ onOpenTask }: HistoryViewProps) {
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
+            <div className="flex items-center justify-between border-t px-4 py-3 text-sm">
+              <span className="text-muted-foreground">
+                共 {total} 条结果，当前第 {page} / {totalPages} 页
+              </span>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" disabled={page <= 1 || isLoading} onClick={() => setPage((current) => Math.max(1, current - 1))}>
+                  上一页
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= totalPages || isLoading}
+                  onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                >
+                  下一页
+                </Button>
+              </div>
+            </div>
+        </CardContent>
+      </Card>
         <ConfirmDialog
           open={Boolean(pendingDeleteTask)}
           onOpenChange={(open) => {

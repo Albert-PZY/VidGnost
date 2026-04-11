@@ -70,3 +70,27 @@ Mindmap HTML export SHALL use a white default canvas background for consistent r
 #### Scenario: Export mindmap html
 - **WHEN** client requests mindmap HTML export or bundle
 - **THEN** generated HTML uses readable default text/background contrast in common desktop browsers
+
+### Requirement: History list SHALL support composable filters and pagination
+History view SHALL support `workflow`, `status`, `query`, and `sort` filters together with paginated list retrieval so long-lived desktop sessions can locate tasks without rendering the entire archive at once.
+
+#### Scenario: Filter failed VQA tasks
+- **WHEN** client requests task list with `workflow=vqa`, `status=failed`, and a search query
+- **THEN** backend returns only matching tasks together with `total`
+- **AND** frontend can page through the result set using `limit` and `offset`
+
+#### Scenario: Navigate history pages
+- **WHEN** user moves between history pages in the renderer
+- **THEN** the renderer requests the next page from the backend instead of keeping an unbounded in-memory task list
+
+### Requirement: History actions SHALL expose bundle export and task directory access
+History view SHALL expose direct task bundle export and task-directory access for each listed task.
+
+#### Scenario: Open task directory from history view
+- **WHEN** user invokes the open-location action for a task
+- **THEN** backend returns the persisted task directory path
+- **AND** Electron MAY open that path directly through the preload bridge
+
+#### Scenario: Export completed task from history view
+- **WHEN** user invokes bundle export for a completed task
+- **THEN** frontend downloads the deterministic artifact bundle using the same export endpoint family as the processing workbench

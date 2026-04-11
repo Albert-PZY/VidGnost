@@ -1163,6 +1163,172 @@ body[data-app-background-active="true"] .custom-skin-dialog-surface * {
   background: var(--prompt-editor-scrollbar-thumb-hover);
 }
 
+.artifact-markdown-viewer-shell {
+  border: 1px solid color-mix(in oklch, var(--border) 78%, var(--foreground) 6%);
+  border-radius: calc(var(--radius) + 0.125rem);
+  background: color-mix(in oklch, var(--background) 94%, var(--muted) 6%);
+  overflow: hidden;
+}
+
+.artifact-markdown-viewer {
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 1.1rem 1.2rem 1.35rem !important;
+  background: transparent !important;
+  color: var(--foreground) !important;
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  line-height: 1.78;
+  --color-canvas-default: transparent !important;
+  --color-canvas-subtle: color-mix(in oklch, var(--muted) 78%, transparent) !important;
+  --color-border-default: color-mix(in oklch, var(--border) 80%, var(--foreground) 6%) !important;
+  --color-border-muted: color-mix(in oklch, var(--border) 72%, transparent) !important;
+  --color-fg-default: var(--foreground) !important;
+  --color-fg-muted: var(--muted-foreground) !important;
+  --color-accent-fg: var(--primary) !important;
+}
+
+.artifact-markdown-viewer :is(h1, h2, h3, h4) {
+  color: var(--foreground) !important;
+  letter-spacing: -0.02em;
+}
+
+.artifact-markdown-viewer h1 {
+  margin-top: 0 !important;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid color-mix(in oklch, var(--border) 82%, transparent);
+  font-size: 1.45rem;
+}
+
+.artifact-markdown-viewer h2 {
+  margin-top: 1.8rem !important;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid color-mix(in oklch, var(--border) 72%, transparent);
+  font-size: 1.16rem;
+}
+
+.artifact-markdown-viewer h3 {
+  margin-top: 1.45rem !important;
+  font-size: 1.02rem;
+}
+
+.artifact-markdown-viewer :is(p, li, blockquote, code, strong, em, td, th, a) {
+  color: inherit !important;
+}
+
+.artifact-markdown-viewer p,
+.artifact-markdown-viewer ul,
+.artifact-markdown-viewer ol,
+.artifact-markdown-viewer blockquote,
+.artifact-markdown-viewer pre,
+.artifact-markdown-viewer table {
+  margin-top: 0.85rem !important;
+  margin-bottom: 0 !important;
+}
+
+.artifact-markdown-viewer ul,
+.artifact-markdown-viewer ol {
+  padding-left: 1.35rem !important;
+}
+
+.artifact-markdown-viewer li + li {
+  margin-top: 0.35rem;
+}
+
+.artifact-markdown-viewer blockquote {
+  border-left: 3px solid color-mix(in oklch, var(--primary) 42%, transparent) !important;
+  background: color-mix(in oklch, var(--accent) 34%, transparent) !important;
+  border-radius: 0 calc(var(--radius) + 0.1rem) calc(var(--radius) + 0.1rem) 0;
+  padding: 0.85rem 1rem !important;
+  color: var(--muted-foreground) !important;
+}
+
+.artifact-markdown-viewer :is(pre, code) {
+  font-family: var(--font-mono) !important;
+}
+
+.artifact-markdown-viewer pre {
+  overflow-x: auto;
+  padding: 0.95rem 1rem !important;
+  border: 1px solid color-mix(in oklch, var(--border) 76%, transparent);
+  border-radius: calc(var(--radius) + 0.125rem);
+  background: color-mix(in oklch, var(--muted) 72%, transparent) !important;
+}
+
+.artifact-markdown-viewer code {
+  border-radius: calc(var(--radius) - 2px);
+  background: color-mix(in oklch, var(--muted) 68%, transparent) !important;
+}
+
+.artifact-markdown-viewer a {
+  color: color-mix(in oklch, var(--primary) 86%, var(--foreground) 14%) !important;
+  text-decoration: none;
+  border-bottom: 1px dashed color-mix(in oklch, var(--primary) 42%, transparent);
+}
+
+.artifact-markdown-viewer a:hover {
+  color: var(--primary) !important;
+  border-bottom-style: solid;
+}
+
+.artifact-markdown-viewer img {
+  display: block;
+  max-width: 100%;
+  margin-top: 1rem;
+  border: 1px solid color-mix(in oklch, var(--border) 72%, transparent);
+  border-radius: calc(var(--radius) + 0.125rem);
+  overflow: hidden;
+}
+
+.artifact-markdown-viewer table {
+  display: block;
+  overflow-x: auto;
+  border-spacing: 0;
+}
+
+.artifact-markdown-viewer th,
+.artifact-markdown-viewer td {
+  border: 1px solid color-mix(in oklch, var(--border) 72%, transparent) !important;
+  padding: 0.65rem 0.8rem !important;
+}
+
+.artifact-markdown-viewer th {
+  background: color-mix(in oklch, var(--muted) 72%, transparent) !important;
+}
+
+.artifact-markdown-viewer,
+.artifact-markdown-viewer pre,
+.artifact-markdown-viewer table {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--primary) 54%, transparent) transparent;
+}
+
+.artifact-markdown-viewer::-webkit-scrollbar,
+.artifact-markdown-viewer pre::-webkit-scrollbar,
+.artifact-markdown-viewer table::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.artifact-markdown-viewer::-webkit-scrollbar-track,
+.artifact-markdown-viewer pre::-webkit-scrollbar-track,
+.artifact-markdown-viewer table::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.artifact-markdown-viewer::-webkit-scrollbar-thumb,
+.artifact-markdown-viewer pre::-webkit-scrollbar-thumb,
+.artifact-markdown-viewer table::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--primary) 52%, transparent);
+  border-radius: 999px;
+}
+
+.artifact-markdown-viewer::-webkit-scrollbar-thumb:hover,
+.artifact-markdown-viewer pre::-webkit-scrollbar-thumb:hover,
+.artifact-markdown-viewer table::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--primary) 68%, var(--foreground) 8%);
+}
+
 .app-toast-shell {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);

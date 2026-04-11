@@ -10,9 +10,14 @@ import { AppBackgroundLayer } from "@/components/app-background-layer"
 import { AppSidebar } from "@/components/app-sidebar"
 import { AppHeader } from "@/components/app-header"
 import { NewTaskView } from "@/components/views/new-task-view"
+import { BootstrapStatusOverlay, type BootstrapStatus } from "@/components/views/bootstrap-status-overlay"
 import {
+  createTaskFromPath,
+  createTaskFromUrl,
   getApiErrorMessage,
+  getHealth,
   getRecentTasks,
+  getRuntimePaths,
   getTaskStats,
   getUiSettings,
   updateUiSettings,
@@ -21,6 +26,7 @@ import {
 import type {
   TaskDetailResponse,
   TaskRecentItem,
+  RuntimePathsResponse,
   TaskStatsResponse,
   UISettingsResponse,
   WorkflowType,
@@ -127,6 +133,9 @@ export default function VideoMindApp() {
   const [uiSettings, setUiSettings] = React.useState<UISettingsResponse>(DEFAULT_UI_SETTINGS)
   const [uiSettingsPreviewPatch, setUiSettingsPreviewPatch] = React.useState<Partial<UISettingsResponse> | null>(null)
   const [isCloseConfirmOpen, setIsCloseConfirmOpen] = React.useState(false)
+  const [bootstrapStatus, setBootstrapStatus] = React.useState<BootstrapStatus>("initializing")
+  const [bootstrapMessage, setBootstrapMessage] = React.useState("正在装载最近任务与界面配置。")
+  const [runtimePaths, setRuntimePaths] = React.useState<RuntimePathsResponse | null>(null)
   const uiSettingsRef = React.useRef(uiSettings)
   const effectiveUiSettings = React.useMemo(
     () => ({
@@ -146,36 +155,44 @@ export default function VideoMindApp() {
     setRecentTasks(recentResponse.items)
   }, [])
 
-  React.useEffect(() => {
-    let mounted = true
+  const runBootstrap = React.useCallback(
+    async (showToastOnError = false) => {
+      setBootstrapStatus((current) => (current === "ready" ? "connecting" : "initializing"))
+      setBootstrapMessage("正在连接后端并同步任务、设置与运行时目录。")
 
-    const bootstrap = async () => {
       try {
-        const [statsResponse, recentResponse, uiResponse] = await Promise.all([
+        await getHealth()
+        setBootstrapStatus("connecting")
+        setBootstrapMessage("后端已连接，正在同步任务、设置和运行时路径。")
+
+        const [statsResponse, recentResponse, uiResponse, pathsResponse] = await Promise.all([
           getTaskStats(),
           getRecentTasks(3),
           getUiSettings(),
+          getRuntimePaths(),
         ])
-        if (!mounted) {
-          return
-        }
+
         setTaskStats(statsResponse)
         setRecentTasks(recentResponse.items)
         setUiSettings(uiResponse)
+        setRuntimePaths(pathsResponse)
+        setBootstrapStatus("ready")
+        setBootstrapMessage("系统运行正常。")
       } catch (error) {
-        if (!mounted) {
-          return
+        const message = getApiErrorMessage(error, "后端当前不可用，请稍后重试。")
+        setBootstrapStatus("degraded")
+        setBootstrapMessage(message)
+        if (showToastOnError) {
+          toast.error(message)
         }
-        toast.error(getApiErrorMessage(error, "初始化应用数据失败"))
       }
-    }
+    },
+    [],
+  )
 
-    void bootstrap()
-
-    return () => {
-      mounted = false
-    }
-  }, [])
+  React.useEffect(() => {
+    void runBootstrap(false)
+  }, [runBootstrap])
 
   React.useEffect(() => {
     document.documentElement.lang = effectiveUiSettings.language
@@ -285,14 +302,64 @@ export default function VideoMindApp() {
   }
 
   const handleStartTask = React.useCallback(
-    async (input: {
-      files: File[]
-      workflow: WorkflowType
-      onProgress: (progress: number) => void
-    }) => {
-      const { files, workflow, onProgress } = input
-      const response = await uploadTaskFiles({ files, workflow, onProgress })
-      const firstTask = response.tasks[0]
+    async (
+      input:
+        | {
+            source: "upload"
+            files: File[]
+            workflow: WorkflowType
+            onProgress: (progress: number) => void
+          }
+        | {
+            source: "url"
+            url: string
+            workflow: WorkflowType
+          }
+        | {
+            source: "path"
+            localPath: string
+            workflow: WorkflowType
+          },
+    ) => {
+      let firstTask:
+        | {
+            task_id: string
+            workflow: WorkflowType
+          }
+        | undefined
+      let displayTitle = ""
+
+      if (input.source === "upload") {
+        const response = await uploadTaskFiles({
+          files: input.files,
+          workflow: input.workflow,
+          onProgress: input.onProgress,
+        })
+        firstTask = response.tasks[0]
+        displayTitle = input.files[0]?.name || firstTask?.task_id || ""
+        toast.success(
+          response.tasks.length > 1
+            ? `已创建 ${response.tasks.length} 个任务，当前打开第一个任务。`
+            : "任务已提交，正在进入处理页。",
+        )
+      } else if (input.source === "url") {
+        const response = await createTaskFromUrl({
+          url: input.url,
+          workflow: input.workflow,
+        })
+        firstTask = response
+        displayTitle = input.url
+        toast.success("已根据网络链接创建任务。")
+      } else {
+        const response = await createTaskFromPath({
+          local_path: input.localPath,
+          workflow: input.workflow,
+        })
+        firstTask = response
+        displayTitle = input.localPath
+        toast.success("已根据本地路径创建任务。")
+      }
+
       if (!firstTask) {
         throw new Error("后端未返回任务信息。")
       }
@@ -302,14 +369,9 @@ export default function VideoMindApp() {
         type: "processing",
         taskId: firstTask.task_id,
         workflow: firstTask.workflow,
-        taskTitle: files[0]?.name || firstTask.task_id,
+        taskTitle: displayTitle || firstTask.task_id,
       })
       await refreshOverview()
-      toast.success(
-        response.tasks.length > 1
-          ? `已创建 ${response.tasks.length} 个任务，当前打开第一个任务。`
-          : "任务已提交，正在进入处理页。",
-      )
     },
     [refreshOverview],
   )
@@ -416,6 +478,33 @@ export default function VideoMindApp() {
                 {viewState.type === "diagnostics" && <DiagnosticsView />}
               </React.Suspense>
             </main>
+            <BootstrapStatusOverlay
+              status={bootstrapStatus}
+              message={bootstrapMessage}
+              canOpenLogs={Boolean(runtimePaths?.event_log_dir)}
+              onRetry={() => {
+                void runBootstrap(true)
+              }}
+              onOpenDiagnostics={() => handleNavChange("diagnostics")}
+              onOpenLogs={() => {
+                const targetPath = runtimePaths?.event_log_dir || runtimePaths?.trace_log_dir || ""
+                if (!targetPath) {
+                  toast.error("当前还没有可用的日志目录。")
+                  return
+                }
+                if (window.vidGnostDesktop?.openPath) {
+                  void window.vidGnostDesktop.openPath(targetPath).then((result) => {
+                    if (!result.ok) {
+                      toast.error(result.message || "打开日志目录失败")
+                    }
+                  })
+                  return
+                }
+                void navigator.clipboard.writeText(targetPath).then(() => {
+                  toast.success("当前不在 Electron 环境，日志目录已复制到剪贴板。")
+                })
+              }}
+            />
             <ConfirmDialog
               open={isCloseConfirmOpen}
               onOpenChange={setIsCloseConfirmOpen}
