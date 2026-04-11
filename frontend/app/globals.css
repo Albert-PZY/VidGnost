@@ -535,8 +535,6 @@ html:not(.dark) body[data-app-background-active="true"] :is(
     [data-slot="input"][class*="bg-muted/"],
     [data-slot="textarea"][class*="bg-background/"],
     [data-slot="textarea"][class*="bg-muted/"],
-    [data-slot="dropdown-menu-item"][class*="bg-accent"],
-    [data-slot="dropdown-menu-sub-trigger"][class*="bg-accent"],
     [data-slot="sidebar-menu-button"] .bg-muted
   ) {
   background: var(--wallpaper-tint-fill-soft) !important;
@@ -747,7 +745,7 @@ html:not(.dark) body[data-app-background-active="true"] .app-header-menu-item[da
   color: var(--wallpaper-shell-text) !important;
 }
 
-html:not(.dark) body[data-app-background-active="true"] .app-header-menu-item:is(:hover, [data-highlighted], :focus-visible) {
+html:not(.dark) body[data-app-background-active="true"] .app-header-menu-item:is(:hover, :focus, [data-highlighted], :focus-visible) {
   background: color-mix(in oklch, white 10%, transparent) !important;
   color: white !important;
 }
@@ -792,12 +790,12 @@ html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option
   color: white !important;
 }
 
-html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option:is([data-highlighted], :hover, :focus-visible) {
+html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option:is([data-highlighted], :hover, :focus, :focus-visible) {
   background: color-mix(in oklch, white 10%, transparent) !important;
   color: white !important;
 }
 
-html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option:is([data-highlighted], :hover, :focus-visible) .text-muted-foreground {
+html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option:is([data-highlighted], :hover, :focus, :focus-visible) .text-muted-foreground {
   color: color-mix(in oklch, white 84%, transparent) !important;
 }
 
