@@ -452,6 +452,17 @@ html:not(.dark) body[data-app-background-active="true"] :is(
   color: var(--primary-foreground) !important;
 }
 
+html:not(.dark) body[data-app-background-active="true"] .workflow-step-chip,
+html:not(.dark) body[data-app-background-active="true"] .upload-dropzone-icon-shell {
+  background: var(--wallpaper-tint-fill-soft) !important;
+  color: var(--primary-foreground) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .upload-dropzone-icon-shell svg {
+  color: var(--primary-foreground) !important;
+  opacity: 0.92;
+}
+
 html:not(.dark) body[data-app-background-active="true"] [data-slot="card"] :is(
     h1,
     h2,

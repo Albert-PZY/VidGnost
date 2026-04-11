@@ -91,6 +91,7 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **AND** in light theme with a custom skin active, visible white borders on glass cards and shell surfaces are suppressed in favor of transparent edges and shadow separation
 - **AND** in light theme with a custom skin active, card content text renders in high-contrast light text instead of default dark foreground tokens
 - **AND** in light theme with a custom skin active, white or near-white interactive fills used by buttons, hover states, and label chips shift to theme-hue fills when they render light text
+- **AND** in light theme with a custom skin active, workflow step markers and upload placeholder icon shells avoid white fills and use the active theme hue family instead
 - **AND** the workspace shell does not add extra renderer-side blur or tint beyond the persisted skin blur and opacity values
 
 ### Requirement: Shell controls SHALL expose explicit language selection state

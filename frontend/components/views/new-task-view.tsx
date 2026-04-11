@@ -178,7 +178,7 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
               {steps.map((step, index) => (
                 <React.Fragment key={step.id}>
                   <div className="flex items-center gap-2 shrink-0">
-                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-xs font-medium">
+                    <div className="workflow-step-chip flex h-7 w-7 items-center justify-center rounded-full bg-muted text-xs font-medium">
                       {step.id}
                     </div>
                     <div className="text-sm">
@@ -227,7 +227,7 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
                 onChange={handleFileSelect}
               />
               
-              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+              <div className="upload-dropzone-icon-shell flex h-14 w-14 items-center justify-center rounded-full bg-muted">
                 <Upload className="h-6 w-6 text-muted-foreground" />
               </div>
               <div className="mt-4 text-center">
