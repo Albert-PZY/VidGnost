@@ -5,6 +5,7 @@ import { ToastBar, Toaster as HotToaster, toast, useToasterStore } from "react-h
 
 const MAX_VISIBLE_TOASTS = 3
 const TOAST_SOUND_SRC = "/toast.mp3"
+const TOAST_AUDIO_POOL_SIZE = 3
 
 function getToastTone(type: string) {
   switch (type) {
@@ -21,17 +22,41 @@ function getToastTone(type: string) {
 
 export function Toaster() {
   const { toasts } = useToasterStore()
-  const toastSoundRef = React.useRef<HTMLAudioElement | null>(null)
+  const toastAudioPoolRef = React.useRef<HTMLAudioElement[]>([])
+  const nextAudioIndexRef = React.useRef(0)
   const playedToastIdsRef = React.useRef<Set<string>>(new Set())
 
   React.useEffect(() => {
-    const audio = new Audio(TOAST_SOUND_SRC)
-    audio.preload = "auto"
-    toastSoundRef.current = audio
+    toastAudioPoolRef.current = Array.from({ length: TOAST_AUDIO_POOL_SIZE }, () => {
+      const audio = new Audio(TOAST_SOUND_SRC)
+      audio.preload = "auto"
+      return audio
+    })
 
     return () => {
-      toastSoundRef.current = null
+      toastAudioPoolRef.current.forEach((audio) => {
+        audio.pause()
+        audio.removeAttribute("src")
+        audio.load()
+      })
+      toastAudioPoolRef.current = []
     }
+  }, [])
+
+  const playToastSound = React.useCallback(() => {
+    const pool = toastAudioPoolRef.current
+    if (pool.length === 0) {
+      return
+    }
+
+    const audio =
+      pool.find((item) => item.paused || item.ended) ??
+      pool[nextAudioIndexRef.current % pool.length]
+
+    nextAudioIndexRef.current = (nextAudioIndexRef.current + 1) % pool.length
+    audio.pause()
+    audio.currentTime = 0
+    void audio.play().catch(() => {})
   }, [])
 
   React.useEffect(() => {
@@ -58,14 +83,9 @@ export function Toaster() {
       }
 
       playedToastIdsRef.current.add(toastItem.id)
-      const audio = toastSoundRef.current?.cloneNode() as HTMLAudioElement | undefined
-      if (!audio) {
-        return
-      }
-      audio.currentTime = 0
-      void audio.play().catch(() => {})
+      playToastSound()
     })
-  }, [toasts])
+  }, [playToastSound, toasts])
 
   return (
     <HotToaster

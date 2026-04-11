@@ -416,6 +416,33 @@ html:not(.dark) body[data-app-background-active="true"] :is(.model-config-select
   color: var(--primary-foreground) !important;
 }
 
+html:not(.dark) body[data-app-background-active="true"] :is(
+    [data-slot="select-trigger"],
+    [data-slot="select-trigger"] [data-slot="select-value"],
+    [data-slot="select-content"],
+    [data-slot="select-item"],
+    [data-slot="select-label"],
+    [data-slot="select-scroll-up-button"],
+    [data-slot="select-scroll-down-button"],
+    [data-slot="dropdown-menu-content"],
+    [data-slot="dropdown-menu-sub-content"],
+    [data-slot="dropdown-menu-item"],
+    [data-slot="dropdown-menu-sub-trigger"],
+    [data-slot="dropdown-menu-label"],
+    [data-slot="dropdown-menu-shortcut"]
+  ) {
+  color: var(--wallpaper-shell-text) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(
+    [data-slot="select-trigger"],
+    [data-slot="select-item"],
+    [data-slot="dropdown-menu-item"],
+    [data-slot="dropdown-menu-sub-trigger"]
+  ) svg:not([class*="text-"]) {
+  color: currentColor !important;
+}
+
 body[data-app-background-active="true"] [data-slot="input"],
 body[data-app-background-active="true"] [data-slot="textarea"],
 body[data-app-background-active="true"] [data-slot="select-trigger"],

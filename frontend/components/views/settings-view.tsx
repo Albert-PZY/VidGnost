@@ -368,9 +368,14 @@ export function SettingsView({
       if (!rect) {
         return
       }
-      setSkinPreviewSize({
-        width: rect.width,
-        height: rect.height,
+      setSkinPreviewSize((current) => {
+        if (current.width === rect.width && current.height === rect.height) {
+          return current
+        }
+        return {
+          width: rect.width,
+          height: rect.height,
+        }
       })
     }
 
@@ -406,9 +411,14 @@ export function SettingsView({
       if (cancelled) {
         return
       }
-      setSkinPreviewImageSize({
-        width: image.naturalWidth,
-        height: image.naturalHeight,
+      setSkinPreviewImageSize((current) => {
+        if (current.width === image.naturalWidth && current.height === image.naturalHeight) {
+          return current
+        }
+        return {
+          width: image.naturalWidth,
+          height: image.naturalHeight,
+        }
       })
     }
 
@@ -422,6 +432,8 @@ export function SettingsView({
     image.onload = updateSize
     return () => {
       cancelled = true
+      image.onload = null
+      image.onerror = null
     }
   }, [uiSettings.background_image])
 

@@ -68,6 +68,7 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
   } = props
 
   const surfaceRef = React.useRef<HTMLDivElement | null>(null)
+  const previewFrameRef = React.useRef<number | null>(null)
   const [surfaceSize, setSurfaceSize] = React.useState({ width: 0, height: 0 })
   const [naturalSize, setNaturalSize] = React.useState({ width: 0, height: 0 })
   const [draftImage, setDraftImage] = React.useState<string | null>(uiSettings.background_image)
@@ -98,9 +99,14 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
     }
 
     const rect = surfaceRef.current.getBoundingClientRect()
-    setSurfaceSize({
-      width: rect.width,
-      height: rect.height,
+    setSurfaceSize((current) => {
+      if (current.width === rect.width && current.height === rect.height) {
+        return current
+      }
+      return {
+        width: rect.width,
+        height: rect.height,
+      }
     })
   }, [])
 
@@ -148,9 +154,14 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
       if (cancelled) {
         return
       }
-      setNaturalSize({
-        width: image.naturalWidth,
-        height: image.naturalHeight,
+      setNaturalSize((current) => {
+        if (current.width === image.naturalWidth && current.height === image.naturalHeight) {
+          return current
+        }
+        return {
+          width: image.naturalWidth,
+          height: image.naturalHeight,
+        }
       })
       measureSurfaceSize()
     }
@@ -165,6 +176,8 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
     image.onload = updateSize
     return () => {
       cancelled = true
+      image.onload = null
+      image.onerror = null
     }
   }, [draftImage, measureSurfaceSize])
 
@@ -191,9 +204,14 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
         return
       }
 
-      setSurfaceSize({
-        width: nextRect.width,
-        height: nextRect.height,
+      setSurfaceSize((current) => {
+        if (current.width === nextRect.width && current.height === nextRect.height) {
+          return current
+        }
+        return {
+          width: nextRect.width,
+          height: nextRect.height,
+        }
       })
     })
 
@@ -289,7 +307,23 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
       return
     }
 
-    onPreviewChange(previewPatch)
+    if (previewFrameRef.current !== null) {
+      window.cancelAnimationFrame(previewFrameRef.current)
+    }
+
+    previewFrameRef.current = window.requestAnimationFrame(() => {
+      previewFrameRef.current = null
+      React.startTransition(() => {
+        onPreviewChange(previewPatch)
+      })
+    })
+
+    return () => {
+      if (previewFrameRef.current !== null) {
+        window.cancelAnimationFrame(previewFrameRef.current)
+        previewFrameRef.current = null
+      }
+    }
   }, [onPreviewChange, open, previewPatch])
 
   React.useEffect(() => {
@@ -345,7 +379,13 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
 
   const handleDialogChange = (nextOpen: boolean) => {
     if (!nextOpen) {
-      onPreviewChange(null)
+      if (previewFrameRef.current !== null) {
+        window.cancelAnimationFrame(previewFrameRef.current)
+        previewFrameRef.current = null
+      }
+      React.startTransition(() => {
+        onPreviewChange(null)
+      })
       setDragState(null)
     }
     onOpenChange(nextOpen)

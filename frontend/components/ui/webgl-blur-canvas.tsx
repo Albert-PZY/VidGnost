@@ -54,6 +54,7 @@ type GLResources = {
   copyProgram: ProgramInfo
   renderTargets: [RenderTarget | null, RenderTarget | null]
   uploadedSourceKey: string | null
+  loseContextExtension: WEBGL_lose_context | null
 }
 
 const VERTEX_SHADER_SOURCE = `
@@ -357,6 +358,15 @@ function getBlurPassPlan(blurInPixels: number) {
   return { iterations: 3, radius: Math.max(1.15, blurInPixels * 0.22) }
 }
 
+function resetCanvasBackbuffer(canvas: HTMLCanvasElement | null) {
+  if (!canvas || (canvas.width === 0 && canvas.height === 0)) {
+    return
+  }
+
+  canvas.width = 0
+  canvas.height = 0
+}
+
 function createResources(gl: WebGLRenderingContext): GLResources {
   const quadBuffer = createQuadBuffer(gl)
   return {
@@ -368,10 +378,11 @@ function createResources(gl: WebGLRenderingContext): GLResources {
     copyProgram: createProgramInfo(gl, VERTEX_SHADER_SOURCE, COPY_FRAGMENT_SHADER_SOURCE),
     renderTargets: [null, null],
     uploadedSourceKey: null,
+    loseContextExtension: gl.getExtension("WEBGL_lose_context"),
   }
 }
 
-function destroyResources(resources: GLResources) {
+function destroyResources(resources: GLResources, options?: { loseContext?: boolean }) {
   const { gl } = resources
   gl.deleteBuffer(resources.quadBuffer)
   gl.deleteTexture(resources.sourceTexture)
@@ -385,6 +396,10 @@ function destroyResources(resources: GLResources) {
   gl.deleteProgram(resources.sceneProgram.program)
   gl.deleteProgram(resources.blurProgram.program)
   gl.deleteProgram(resources.copyProgram.program)
+
+  if (options?.loseContext) {
+    resources.loseContextExtension?.loseContext()
+  }
 }
 
 export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
@@ -408,6 +423,17 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
   const frameRef = React.useRef<number | null>(null)
   const [imageReadyKey, setImageReadyKey] = React.useState<string | null>(null)
   const [fallbackMode, setFallbackMode] = React.useState(false)
+  const releaseResources = React.useCallback((options?: { loseContext?: boolean }) => {
+    if (frameRef.current !== null) {
+      window.cancelAnimationFrame(frameRef.current)
+      frameRef.current = null
+    }
+    if (resourcesRef.current) {
+      destroyResources(resourcesRef.current, options)
+      resourcesRef.current = null
+    }
+    resetCanvasBackbuffer(canvasRef.current)
+  }, [])
 
   React.useEffect(() => {
     if (!src) {
@@ -449,22 +475,24 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
 
     return () => {
       cancelled = true
+      image.onload = null
+      image.onerror = null
     }
   }, [src])
 
   React.useEffect(() => {
     return () => {
-      if (frameRef.current !== null) {
-        window.cancelAnimationFrame(frameRef.current)
-      }
-      if (resourcesRef.current) {
-        destroyResources(resourcesRef.current)
-        resourcesRef.current = null
-      }
+      imageRef.current = null
+      releaseResources({ loseContext: true })
     }
-  }, [])
+  }, [releaseResources])
 
   React.useEffect(() => {
+    if (blur <= 0) {
+      releaseResources()
+      return
+    }
+
     if (!src || !imageRect || width <= 0 || height <= 0 || !imageReadyKey) {
       return
     }
@@ -612,10 +640,7 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
         gl.uniform1f(resources.copyProgram.cropToImageRectLocation, cropToImageRect ? 1 : 0)
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
       } catch {
-        if (resourcesRef.current) {
-          destroyResources(resourcesRef.current)
-          resourcesRef.current = null
-        }
+        releaseResources({ loseContext: true })
         setFallbackMode(true)
       }
     }
@@ -639,6 +664,7 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
     pixelRatioCap,
     quality,
     cropToImageRect,
+    releaseResources,
     src,
     width,
   ])
@@ -647,7 +673,7 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
     return null
   }
 
-  if (fallbackMode) {
+  if (fallbackMode || blur <= 0) {
     return (
       <img
         alt=""
@@ -661,7 +687,7 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
           width: `${imageRect.width}px`,
           height: `${imageRect.height}px`,
           opacity,
-          filter: `blur(${blur}px)`,
+          filter: blur > 0 ? `blur(${blur}px)` : undefined,
         }}
       />
     )

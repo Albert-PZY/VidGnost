@@ -22,17 +22,37 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
   const [naturalSize, setNaturalSize] = React.useState({ width: 0, height: 0 })
 
   React.useEffect(() => {
-    const updateViewport = () => {
-      setViewportSize({
-        width: window.innerWidth,
-        height: window.innerHeight,
+    let frameId: number | null = null
+
+    const commitViewport = () => {
+      frameId = null
+      const nextWidth = window.innerWidth
+      const nextHeight = window.innerHeight
+      setViewportSize((current) => {
+        if (current.width === nextWidth && current.height === nextHeight) {
+          return current
+        }
+        return {
+          width: nextWidth,
+          height: nextHeight,
+        }
       })
     }
 
-    updateViewport()
-    window.addEventListener("resize", updateViewport)
+    const scheduleViewportUpdate = () => {
+      if (frameId !== null) {
+        return
+      }
+      frameId = window.requestAnimationFrame(commitViewport)
+    }
+
+    commitViewport()
+    window.addEventListener("resize", scheduleViewportUpdate, { passive: true })
     return () => {
-      window.removeEventListener("resize", updateViewport)
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId)
+      }
+      window.removeEventListener("resize", scheduleViewportUpdate)
     }
   }, [])
 
@@ -51,9 +71,14 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
       if (cancelled) {
         return
       }
-      setNaturalSize({
-        width: image.naturalWidth,
-        height: image.naturalHeight,
+      setNaturalSize((current) => {
+        if (current.width === image.naturalWidth && current.height === image.naturalHeight) {
+          return current
+        }
+        return {
+          width: image.naturalWidth,
+          height: image.naturalHeight,
+        }
       })
     }
 
@@ -67,6 +92,8 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
     image.onload = updateSize
     return () => {
       cancelled = true
+      image.onload = null
+      image.onerror = null
     }
   }, [normalizedSkin.background_image])
 
