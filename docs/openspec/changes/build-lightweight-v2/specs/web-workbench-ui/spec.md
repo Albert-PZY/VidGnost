@@ -77,6 +77,7 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **AND** the helper copy tells the user to place the pointer on the image to drag the image position
 - **AND** the selection frame stays fully inside the currently rendered image bounds, including at the minimum persisted `100%` scale
 - **AND** the current shell background updates in real time while the dialog is open
+- **AND** the primary save action follows the active UI theme hue instead of using a fixed accent color
 - **AND** saving the dialog persists opacity, blur, scale, and focus coordinates for the selected image
 
 #### Scenario: Restore a saved custom skin

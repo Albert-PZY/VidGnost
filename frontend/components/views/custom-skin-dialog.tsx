@@ -578,7 +578,7 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
               </Button>
               <Button
                 type="button"
-                className="h-11 flex-1 rounded-full border border-[#eec0b1]/70 bg-[#efb9a9] text-[15px] font-medium text-[#fff8f5] shadow-[0_14px_28px_rgba(239,185,169,0.18)] hover:bg-[#f2c2b4]"
+                className="h-11 flex-1 rounded-full border border-primary/70 bg-primary text-[15px] font-medium text-primary-foreground shadow-[0_14px_28px_color-mix(in_oklch,var(--primary)_28%,transparent)] hover:bg-primary/90"
                 onClick={() => void handleSave()}
                 disabled={isSaving}
               >
