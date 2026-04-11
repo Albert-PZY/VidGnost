@@ -85,6 +85,7 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **THEN** the renderer shows a compact single-column skin dialog with a fixed selection frame and wheel-driven zoom
 - **AND** dragging inside the selection frame moves the image behind the frame instead of moving or resizing the frame itself
 - **AND** adjusting blur only changes blur intensity and SHALL NOT alter the saved image scale or focus position
+- **AND** blur rendering uses an edge-duplicated SVG Gaussian blur so visible edges remain filled without geometric scale compensation
 - **AND** the helper copy tells the user to place the pointer on the image to drag the image position
 - **AND** surrounding appearance cards keep helper copy minimal and avoid repeating nearby controls or status labels
 - **AND** the selection frame stays fully inside the currently rendered image bounds, including at the minimum persisted `100%` scale
