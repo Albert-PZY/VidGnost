@@ -380,6 +380,17 @@ html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
+html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell .w-md-editor-toolbar ul > li > button {
+  color: var(--wallpaper-shell-text-muted) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell .w-md-editor-toolbar ul > li > button:hover,
+html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell .w-md-editor-toolbar ul > li > button:focus,
+html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell .w-md-editor-toolbar ul > li.active > button {
+  color: white !important;
+  background: color-mix(in oklch, white 8%, transparent) !important;
+}
+
 html:not(.dark) body[data-app-background-active="true"] :is(.model-config-select-content, .prompt-config-select-content) {
   background: linear-gradient(180deg, rgba(72, 78, 96, 0.96) 0%, rgba(56, 61, 77, 0.94) 100%) !important;
   border-color: transparent !important;
@@ -702,6 +713,10 @@ html:not(.dark) body[data-app-background-active="true"] .history-stat-icon-shell
   color: white !important;
 }
 
+html:not(.dark) body[data-app-background-active="true"] .settings-model-icon-shell svg {
+  color: white !important;
+}
+
 html:not(.dark) body[data-app-background-active="true"] .app-header-control:not(:hover):not(:focus-visible):not([data-active="true"]) {
   background: transparent !important;
   color: var(--wallpaper-shell-text) !important;
@@ -733,8 +748,8 @@ html:not(.dark) body[data-app-background-active="true"] .app-header-menu-item[da
 }
 
 html:not(.dark) body[data-app-background-active="true"] .app-header-menu-item:is(:hover, [data-highlighted], :focus-visible) {
-  background: var(--wallpaper-tint-fill-soft) !important;
-  color: var(--primary-foreground) !important;
+  background: color-mix(in oklch, white 10%, transparent) !important;
+  color: white !important;
 }
 
 html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-trigger {
@@ -778,12 +793,12 @@ html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option
 }
 
 html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option:is([data-highlighted], :hover, :focus-visible) {
-  background: var(--wallpaper-tint-fill-soft) !important;
-  color: var(--primary-foreground) !important;
+  background: color-mix(in oklch, white 10%, transparent) !important;
+  color: white !important;
 }
 
 html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option:is([data-highlighted], :hover, :focus-visible) .text-muted-foreground {
-  color: color-mix(in oklch, var(--primary-foreground) 80%, transparent) !important;
+  color: color-mix(in oklch, white 84%, transparent) !important;
 }
 
 html:not(.dark) body[data-app-background-active="true"] [data-slot="card"] :is(

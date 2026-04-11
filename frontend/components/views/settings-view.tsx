@@ -955,7 +955,7 @@ export function SettingsView({
                 <CardContent className="settings-models-shell space-y-4">
                   <div className="settings-models-panel settings-models-gpu-panel flex items-center justify-between rounded-lg border p-4">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                      <div className="settings-model-icon-shell flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
                         <Zap className="h-5 w-5 text-primary" />
                       </div>
                       <div>
@@ -991,7 +991,7 @@ export function SettingsView({
                         <div className="flex items-start gap-4">
                         <div
                           className={cn(
-                            "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+                            "settings-model-icon-shell flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
                             getModelVisual(model.component).surfaceClassName,
                           )}
                         >
@@ -1111,7 +1111,7 @@ export function SettingsView({
 
                   <Dialog open={isModelDialogOpen} onOpenChange={handleModelDialogChange}>
                     <DialogContent className="model-config-dialog flex w-[min(96vw,85rem)] max-h-[90vh] max-w-[85rem] flex-col gap-0 overflow-hidden p-0 sm:max-w-[85rem]">
-                      <DialogHeader className="model-config-dialog-header shrink-0 border-b bg-card px-6 py-3.5 pr-12">
+                      <DialogHeader className="model-config-dialog-header shrink-0 border-b bg-card px-6 py-2.5 pr-10">
                         <DialogTitle className="text-base font-semibold leading-tight">
                           {activeModelPreset?.title || "模型常用配置"}
                         </DialogTitle>
@@ -1128,12 +1128,12 @@ export function SettingsView({
                               <div className="model-config-dialog-panel rounded-xl border bg-card p-6">
                                 <div className="space-y-5">
                                   <div className="flex items-start gap-4">
-                                    <div
-                                      className={cn(
-                                        "flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40",
-                                        getModelVisual(editingModel.component).surfaceClassName,
-                                      )}
-                                    >
+                                      <div
+                                        className={cn(
+                                          "settings-model-icon-shell flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40",
+                                          getModelVisual(editingModel.component).surfaceClassName,
+                                        )}
+                                      >
                                       {React.createElement(getModelVisual(editingModel.component).icon, {
                                         className: cn("h-5 w-5", getModelVisual(editingModel.component).iconClassName),
                                       })}
@@ -1530,7 +1530,7 @@ export function SettingsView({
                         </div>
                       </div>
 
-                      <DialogFooter className="model-config-dialog-footer shrink-0 border-t bg-card px-6 py-4">
+                      <DialogFooter className="model-config-dialog-footer shrink-0 border-t bg-card px-6 py-3">
                         <Button variant="outline" onClick={() => handleModelDialogChange(false)}>
                           取消
                         </Button>
@@ -1561,7 +1561,7 @@ export function SettingsView({
                         新建模板
                       </Button>
                       <DialogContent className="prompt-config-dialog flex w-[min(96vw,88rem)] max-h-[min(90vh,60rem)] max-w-[88rem] flex-col gap-0 overflow-hidden p-0 sm:max-w-[88rem]">
-                        <DialogHeader className="prompt-config-dialog-header shrink-0 border-b px-6 py-3.5 pr-12">
+                        <DialogHeader className="prompt-config-dialog-header shrink-0 border-b px-6 py-2.5 pr-10">
                           <DialogTitle className="text-base font-semibold leading-tight">
                             {editingPrompt ? "编辑提示词模板" : "新建提示词模板"}
                           </DialogTitle>
@@ -1657,7 +1657,7 @@ export function SettingsView({
                             </section>
                           </div>
                         </div>
-                        <DialogFooter className="prompt-config-dialog-footer shrink-0 border-t px-6 py-4">
+                        <DialogFooter className="prompt-config-dialog-footer shrink-0 border-t px-6 py-3">
                           <Button variant="outline" onClick={() => handlePromptDialogChange(false)}>
                             取消
                           </Button>
