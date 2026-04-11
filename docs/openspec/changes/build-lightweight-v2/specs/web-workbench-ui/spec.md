@@ -145,12 +145,13 @@ Header theme controls SHALL show the current selected theme mode with explicit s
 - **AND** only the selected theme option shows the explicit selection indicator
 
 ### Requirement: Workbench branding SHALL use the project logo asset
-Renderer branding surfaces, desktop splash branding, and favicon SHALL use `frontend/public/icon.svg` as the project logo asset.
+Renderer branding surfaces, desktop splash branding, and favicon SHALL use `frontend/public/icon.svg` as the canonical project logo asset. The desktop package MAY include a synchronized raster companion asset at `frontend/public/icon.png` for runtime or distribution compatibility, and branding assets SHALL NOT depend on a separate legacy light-icon file.
 
 #### Scenario: Open application shell
 - **WHEN** application renderer loads
 - **THEN** the desktop splash surface and sidebar branding use the project logo
 - **AND** browser/electron renderer favicon resolves to the same logo asset
+- **AND** any packaged raster companion icon stays visually aligned with the canonical SVG branding
 
 ### Requirement: Renderer SHALL consume backend data through plain HTTP APIs
 Frontend SHALL only render backend-provided data and call the Python backend over HTTP APIs. Electron bridge SHALL be limited to desktop shell integrations such as open path, open external link, image-file selection, and window controls.
