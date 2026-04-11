@@ -44,6 +44,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { WebGLBlurCanvas } from "@/components/ui/webgl-blur-canvas"
 import { CustomSkinDialog } from "@/components/views/custom-skin-dialog"
 import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
@@ -65,6 +66,7 @@ import {
   updateWhisperConfig,
 } from "@/lib/api"
 import { formatBytes } from "@/lib/format"
+import { getImageLayout } from "@/lib/ui-skin"
 import type {
   LLMConfigResponse,
   ModelDescriptor,
@@ -330,6 +332,9 @@ export function SettingsView({
   const markdownColorMode = resolvedTheme === "dark" ? "dark" : "light"
   const backgroundFileInputRef = React.useRef<HTMLInputElement | null>(null)
   const backgroundFileResolverRef = React.useRef<((image: PickedSkinImage | null) => void) | null>(null)
+  const skinPreviewRef = React.useRef<HTMLDivElement | null>(null)
+  const [skinPreviewSize, setSkinPreviewSize] = React.useState({ width: 0, height: 0 })
+  const [skinPreviewImageSize, setSkinPreviewImageSize] = React.useState({ width: 0, height: 0 })
 
   React.useEffect(() => {
     setFontSize([uiSettings.font_size])
@@ -352,6 +357,64 @@ export function SettingsView({
       onUiSettingsPreviewChange(null)
     }
   }, [onUiSettingsPreviewChange])
+
+  React.useEffect(() => {
+    if (!skinPreviewRef.current || typeof ResizeObserver === "undefined") {
+      return
+    }
+
+    const updateSize = () => {
+      const rect = skinPreviewRef.current?.getBoundingClientRect()
+      if (!rect) {
+        return
+      }
+      setSkinPreviewSize({
+        width: rect.width,
+        height: rect.height,
+      })
+    }
+
+    const observer = new ResizeObserver(updateSize)
+    updateSize()
+    observer.observe(skinPreviewRef.current)
+    return () => {
+      observer.disconnect()
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (!uiSettings.background_image) {
+      setSkinPreviewImageSize({ width: 0, height: 0 })
+      return
+    }
+
+    let cancelled = false
+    const image = new Image()
+    image.decoding = "async"
+    image.src = uiSettings.background_image
+
+    const updateSize = () => {
+      if (cancelled) {
+        return
+      }
+      setSkinPreviewImageSize({
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+      })
+    }
+
+    if (image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
+      updateSize()
+      return () => {
+        cancelled = true
+      }
+    }
+
+    image.onload = updateSize
+    return () => {
+      cancelled = true
+    }
+  }, [uiSettings.background_image])
 
   const loadSettings = React.useCallback(async () => {
     setIsLoading(true)
@@ -901,6 +964,37 @@ export function SettingsView({
   const showOnlineLlmFields = Boolean(editingModel?.provider === "openai_compatible")
   const isWhisperDialog = editingModel?.component === "whisper"
   const hasSkinImage = Boolean(uiSettings.background_image)
+  const skinPreviewBlur = Math.max(0, uiSettings.background_image_blur / 2)
+  const skinPreviewLayout = React.useMemo(() => {
+    if (
+      !hasSkinImage ||
+      skinPreviewSize.width <= 0 ||
+      skinPreviewSize.height <= 0 ||
+      skinPreviewImageSize.width <= 0 ||
+      skinPreviewImageSize.height <= 0
+    ) {
+      return null
+    }
+
+    return getImageLayout({
+      viewportWidth: skinPreviewSize.width,
+      viewportHeight: skinPreviewSize.height,
+      imageWidth: skinPreviewImageSize.width,
+      imageHeight: skinPreviewImageSize.height,
+      scale: uiSettings.background_image_scale,
+      focusX: uiSettings.background_image_focus_x,
+      focusY: uiSettings.background_image_focus_y,
+    })
+  }, [
+    hasSkinImage,
+    uiSettings.background_image_focus_x,
+    uiSettings.background_image_focus_y,
+    uiSettings.background_image_scale,
+    skinPreviewImageSize.height,
+    skinPreviewImageSize.width,
+    skinPreviewSize.height,
+    skinPreviewSize.width,
+  ])
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -1852,19 +1946,22 @@ export function SettingsView({
                     </div>
 
                     <div className="grid gap-4 rounded-xl border bg-card p-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(18rem,0.75fr)]">
-                      <div className="overflow-hidden rounded-xl border border-border/70 bg-muted/20">
+                      <div
+                        ref={skinPreviewRef}
+                        className="overflow-hidden rounded-xl border border-border/70 bg-muted/20"
+                      >
                         {hasSkinImage ? (
                           <div className="relative h-52">
-                            <div
-                              className="absolute inset-0"
-                              style={{
-                                backgroundImage: `url(${uiSettings.background_image})`,
-                                backgroundPosition: "center",
-                                backgroundRepeat: "no-repeat",
-                                backgroundSize: "cover",
-                                filter: `blur(${Math.max(0, uiSettings.background_image_blur / 2)}px)`,
-                                opacity: uiSettings.background_image_opacity / 100,
-                              }}
+                            <WebGLBlurCanvas
+                              src={uiSettings.background_image}
+                              width={skinPreviewSize.width}
+                              height={skinPreviewSize.height}
+                              imageRect={skinPreviewLayout}
+                              blur={skinPreviewBlur}
+                              opacity={uiSettings.background_image_opacity / 100}
+                              className="pointer-events-none absolute inset-0 h-full w-full"
+                              pixelRatioCap={1.5}
+                              quality="performance"
                             />
                             <div className="absolute inset-0 bg-background/28" />
                             <div className="absolute inset-x-0 bottom-0 flex items-center justify-between border-t border-white/10 bg-background/48 px-4 py-2.5 backdrop-blur-sm">

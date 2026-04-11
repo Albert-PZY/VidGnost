@@ -2,6 +2,7 @@
 
 import * as React from "react"
 
+import { WebGLBlurCanvas } from "@/components/ui/webgl-blur-canvas"
 import type { UISettingsResponse } from "@/lib/types"
 import { getImageLayout, normalizeSkinSettings } from "@/lib/ui-skin"
 
@@ -38,6 +39,34 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
   React.useEffect(() => {
     if (!normalizedSkin.background_image) {
       setNaturalSize({ width: 0, height: 0 })
+      return
+    }
+
+    let cancelled = false
+    const image = new Image()
+    image.decoding = "async"
+    image.src = normalizedSkin.background_image
+
+    const updateSize = () => {
+      if (cancelled) {
+        return
+      }
+      setNaturalSize({
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+      })
+    }
+
+    if (image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
+      updateSize()
+      return () => {
+        cancelled = true
+      }
+    }
+
+    image.onload = updateSize
+    return () => {
+      cancelled = true
     }
   }, [normalizedSkin.background_image])
 
@@ -72,31 +101,16 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
 
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-      <img
-        alt=""
+      <WebGLBlurCanvas
         src={normalizedSkin.background_image}
-        decoding="async"
-        draggable={false}
-        className="absolute max-w-none select-none"
-        onLoad={(event) => {
-          const target = event.currentTarget
-          setNaturalSize({
-            width: target.naturalWidth,
-            height: target.naturalHeight,
-          })
-        }}
-        style={
-          imageLayout
-            ? {
-                left: `${imageLayout.left}px`,
-                top: `${imageLayout.top}px`,
-                width: `${imageLayout.width}px`,
-                height: `${imageLayout.height}px`,
-                opacity: normalizedSkin.background_image_opacity / 100,
-                filter: `blur(${normalizedSkin.background_image_blur}px)`,
-              }
-            : { opacity: 0 }
-        }
+        width={viewportSize.width}
+        height={viewportSize.height}
+        imageRect={imageLayout}
+        blur={normalizedSkin.background_image_blur}
+        opacity={normalizedSkin.background_image_opacity / 100}
+        className="absolute inset-0 h-full w-full select-none"
+        pixelRatioCap={1.35}
+        quality="performance"
       />
     </div>
   )

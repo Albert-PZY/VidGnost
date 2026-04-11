@@ -85,16 +85,21 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **THEN** the renderer shows a compact single-column skin dialog with a fixed selection frame and wheel-driven zoom
 - **AND** dragging inside the selection frame moves the image behind the frame instead of moving or resizing the frame itself
 - **AND** adjusting blur only changes blur intensity and SHALL NOT alter the saved image scale or focus position
+- **AND** blur rendering in the dialog preview uses an offscreen WebGL pipeline that keeps the image layout fixed instead of inflating the image bounds to hide blur edges
+- **AND** the blur pipeline duplicates edge samples at the image boundary so higher blur values do not reveal transparent or empty borders
 - **AND** the helper copy tells the user to place the pointer on the image to drag the image position
 - **AND** surrounding appearance cards keep helper copy minimal and avoid repeating nearby controls or status labels
 - **AND** the selection frame stays fully inside the currently rendered image bounds, including at the minimum persisted `100%` scale
 - **AND** the current shell background updates in real time while the dialog is open
+- **AND** higher blur values MAY reduce the internal offscreen blur resolution to preserve interactive smoothness while keeping the saved scale, focus, and output frame unchanged
 - **AND** the primary save action follows the active UI theme hue instead of using a fixed accent color
 - **AND** saving the dialog persists opacity, blur, scale, and focus coordinates for the selected image
 
 #### Scenario: Restore a saved custom skin
 - **WHEN** renderer loads with persisted skin settings
 - **THEN** the fixed shell background layer restores the saved image using the stored opacity, blur, scale, and focus coordinates
+- **AND** the fixed shell background layer applies skin blur through the same offscreen WebGL pipeline used by the skin dialog preview
+- **AND** the appearance settings skin status preview reuses the stored scale and focus coordinates when rendering its blurred preview surface
 - **AND** the title bar, sidebar, and main content shell render above the same background layer
 - **AND** cards, dialogs, popovers, and the left sidebar switch to translucent glass surfaces while the custom skin is active
 - **AND** shell text outside card surfaces uses high-contrast light text with a soft shadow while the custom skin is active

@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Slider } from "@/components/ui/slider"
+import { WebGLBlurCanvas } from "@/components/ui/webgl-blur-canvas"
 import type { UISettingsResponse } from "@/lib/types"
 import {
   MAX_BACKGROUND_SCALE,
@@ -135,8 +136,37 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
   React.useEffect(() => {
     if (!draftImage) {
       setNaturalSize({ width: 0, height: 0 })
+      return
     }
-  }, [draftImage])
+
+    let cancelled = false
+    const image = new Image()
+    image.decoding = "async"
+    image.src = draftImage
+
+    const updateSize = () => {
+      if (cancelled) {
+        return
+      }
+      setNaturalSize({
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+      })
+      measureSurfaceSize()
+    }
+
+    if (image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
+      updateSize()
+      return () => {
+        cancelled = true
+      }
+    }
+
+    image.onload = updateSize
+    return () => {
+      cancelled = true
+    }
+  }, [draftImage, measureSurfaceSize])
 
   React.useLayoutEffect(() => {
     if (!open) {
@@ -376,13 +406,11 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
 
     return {
       imageStyle: {
-        left: `${cropGeometry.imageLeft}px`,
-        top: `${cropGeometry.imageTop}px`,
-        width: `${cropGeometry.imageWidth}px`,
-        height: `${cropGeometry.imageHeight}px`,
-        filter: `blur(${blur[0]}px)`,
-        opacity: opacity[0] / 100,
-      } as React.CSSProperties,
+        left: cropGeometry.imageLeft,
+        top: cropGeometry.imageTop,
+        width: cropGeometry.imageWidth,
+        height: cropGeometry.imageHeight,
+      },
       frameStyle: {
         left: `${cropGeometry.frameLeft}px`,
         top: `${cropGeometry.frameTop}px`,
@@ -390,7 +418,7 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
         height: `${cropGeometry.frameHeight}px`,
       } as React.CSSProperties,
     }
-  }, [blur, cropGeometry, draftImage, opacity])
+  }, [cropGeometry, draftImage])
 
   const sliderClassName = "[&_[data-slot=slider-track]]:h-2 [&_[data-slot=slider-track]]:bg-white/10 [&_[data-slot=slider-range]]:bg-white/18 [&_[data-slot=slider-thumb]]:size-5 [&_[data-slot=slider-thumb]]:border-white/70 [&_[data-slot=slider-thumb]]:bg-white [&_[data-slot=slider-thumb]]:shadow-[0_10px_24px_rgba(0,0,0,0.28)] [&_[data-slot=slider-thumb]]:transition-transform [&_[data-slot=slider-thumb]:hover]:scale-105 [&_[data-slot=slider-thumb]:focus-visible]:ring-4 [&_[data-slot=slider-thumb]:focus-visible]:ring-white/18"
 
@@ -427,28 +455,24 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
             >
               {draftImage ? (
                 <>
-                  <img
-                    alt=""
+                  <WebGLBlurCanvas
                     src={draftImage}
-                    draggable={false}
-                    decoding="async"
-                    className="absolute max-w-none select-none"
-                    style={surfacePreviewLayout?.imageStyle}
-                    onLoad={(event) => {
-                      setNaturalSize({
-                        width: event.currentTarget.naturalWidth,
-                        height: event.currentTarget.naturalHeight,
-                      })
-                      measureSurfaceSize()
-                    }}
+                    width={surfaceSize.width}
+                    height={surfaceSize.height}
+                    imageRect={surfacePreviewLayout?.imageStyle ?? null}
+                    blur={blur[0]}
+                    opacity={opacity[0] / 100}
+                    className="pointer-events-none absolute inset-0 h-full w-full"
+                    pixelRatioCap={1.6}
+                    quality="balanced"
                   />
                   <div className="absolute inset-0 bg-black/16" />
                   {surfacePreviewLayout && cropGeometry ? (
                     <button
-                    type="button"
-                    className="absolute rounded-[0.8rem] border border-white/32 bg-transparent shadow-[0_0_0_9999px_rgba(8,10,18,0.42)] transition-colors hover:border-white/48 active:cursor-grabbing"
-                    style={surfacePreviewLayout.frameStyle}
-                    onPointerDown={(event) => {
+                      type="button"
+                      className="absolute rounded-[0.8rem] border border-white/32 bg-transparent shadow-[0_0_0_9999px_rgba(8,10,18,0.42)] transition-colors hover:border-white/48 active:cursor-grabbing"
+                      style={surfacePreviewLayout.frameStyle}
+                      onPointerDown={(event) => {
                         event.preventDefault()
                         setDragState({
                           pointerId: event.pointerId,
