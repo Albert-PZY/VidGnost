@@ -238,6 +238,9 @@ html:not(.dark) body[data-app-background-active="true"] {
   --wallpaper-shell-text-muted: color-mix(in oklch, white 84%, var(--muted-foreground) 16%);
   --wallpaper-glass-edge: 0 16px 40px rgba(6, 10, 18, 0.14);
   --wallpaper-glass-edge-strong: 0 20px 52px rgba(6, 10, 18, 0.18);
+  --wallpaper-tint-fill-soft: color-mix(in oklch, var(--primary) 24%, transparent);
+  --wallpaper-tint-fill: color-mix(in oklch, var(--primary) 34%, transparent);
+  --wallpaper-tint-fill-strong: color-mix(in oklch, var(--primary) 46%, transparent);
 }
 
 body[data-app-background-active="true"] [data-slot="card"] {
@@ -344,8 +347,10 @@ body[data-app-background-active="true"] [data-slot="sidebar-inset"] > main .text
 }
 
 html:not(.dark) body[data-app-background-active="true"] :is(
+    [data-slot="sidebar-container"],
     [data-slot="sidebar"],
     [data-slot="sidebar-inner"],
+    [data-slot="sidebar-inner"] [data-slot="dropdown-menu-trigger"],
     [data-slot="input"],
     [data-slot="textarea"],
     [data-slot="select-trigger"],
@@ -355,6 +360,96 @@ html:not(.dark) body[data-app-background-active="true"] :is(
     .app-header-shell
   ) {
   border-color: transparent;
+}
+
+html:not(.dark) body[data-app-background-active="true"] [data-slot="sidebar-container"] {
+  box-shadow: none;
+}
+
+html:not(.dark) body[data-app-background-active="true"] [data-slot="sidebar-inner"] [data-slot="button"],
+html:not(.dark) body[data-app-background-active="true"] [data-slot="sidebar-inner"] [data-slot="dropdown-menu-trigger"][class*="bg-background"],
+html:not(.dark) body[data-app-background-active="true"] [data-slot="sidebar-inner"] [data-slot="dropdown-menu-trigger"][class*="bg-muted"],
+html:not(.dark) body[data-app-background-active="true"] [data-slot="badge"].bg-secondary,
+html:not(.dark) body[data-app-background-active="true"] [data-slot="badge"].bg-muted,
+html:not(.dark) body[data-app-background-active="true"] [data-slot="badge"].bg-background,
+html:not(.dark) body[data-app-background-active="true"] [data-slot="badge"].bg-accent {
+  background: var(--wallpaper-tint-fill-soft) !important;
+  color: var(--primary-foreground) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(
+    [data-slot="sidebar-menu-button"],
+    [data-slot="sidebar-inner"] [data-slot="button"],
+    [data-slot="sidebar-inner"] [data-slot="dropdown-menu-trigger"],
+    .app-header-shell [data-slot="button"],
+    [data-slot="dropdown-menu-item"],
+    [data-slot="dropdown-menu-sub-trigger"],
+    [data-slot="select-item"],
+    [data-slot="badge"].bg-secondary,
+    [data-slot="badge"].bg-muted,
+    [data-slot="badge"].bg-background,
+    [data-slot="badge"].bg-accent
+  ):is(:hover, :focus-visible, [data-active="true"], [data-state="open"], [data-highlighted]) {
+  background: var(--wallpaper-tint-fill) !important;
+  color: var(--primary-foreground) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(
+    [data-slot="sidebar-menu-button"][data-active="true"],
+    [data-slot="dropdown-menu-item"].bg-accent,
+    [data-slot="select-item"][data-state="checked"]
+  ) {
+  background: var(--wallpaper-tint-fill-strong) !important;
+  color: var(--primary-foreground) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(
+    [data-slot="button"][class*="bg-background/"],
+    [data-slot="button"][class*="bg-muted/"],
+    [data-slot="button"][class*="bg-secondary"],
+    [data-slot="button"][class*="bg-accent"],
+    [data-slot="dropdown-menu-trigger"][class*="bg-background"],
+    [data-slot="dropdown-menu-trigger"][class*="bg-muted"],
+    [data-slot="dropdown-menu-trigger"][class*="bg-secondary"],
+    [data-slot="dropdown-menu-trigger"][class*="bg-accent"],
+    [data-slot="badge"][class*="bg-background/"],
+    [data-slot="badge"][class*="bg-muted/"],
+    [data-slot="badge"][class*="bg-secondary"],
+    [data-slot="badge"][class*="bg-accent"],
+    [data-slot="select-trigger"][class*="bg-background/"],
+    [data-slot="select-trigger"][class*="bg-muted/"],
+    [data-slot="select-trigger"][class*="bg-secondary"],
+    [data-slot="select-trigger"][class*="bg-accent"],
+    [data-slot="input"][class*="bg-background/"],
+    [data-slot="input"][class*="bg-muted/"],
+    [data-slot="textarea"][class*="bg-background/"],
+    [data-slot="textarea"][class*="bg-muted/"],
+    [data-slot="dropdown-menu-item"][class*="bg-accent"],
+    [data-slot="dropdown-menu-sub-trigger"][class*="bg-accent"],
+    [data-slot="sidebar-menu-button"] .bg-muted
+  ) {
+  background: var(--wallpaper-tint-fill-soft) !important;
+  color: var(--primary-foreground) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(
+    [data-slot="button"][class*="hover:bg-background"],
+    [data-slot="button"][class*="hover:bg-muted"],
+    [data-slot="button"][class*="hover:bg-secondary"],
+    [data-slot="button"][class*="hover:bg-accent"],
+    [data-slot="dropdown-menu-trigger"][class*="hover:bg-background"],
+    [data-slot="dropdown-menu-trigger"][class*="hover:bg-muted"],
+    [data-slot="dropdown-menu-trigger"][class*="hover:bg-secondary"],
+    [data-slot="dropdown-menu-trigger"][class*="hover:bg-accent"],
+    [data-slot="badge"][class*="hover:bg-background"],
+    [data-slot="badge"][class*="hover:bg-muted"],
+    [data-slot="badge"][class*="hover:bg-secondary"],
+    [data-slot="badge"][class*="hover:bg-accent"],
+    [data-slot="sidebar-menu-button"][class*="hover:bg-muted"],
+    [data-slot="sidebar-menu-button"][class*="hover:bg-accent"]
+  ):hover {
+  background: var(--wallpaper-tint-fill) !important;
+  color: var(--primary-foreground) !important;
 }
 
 html:not(.dark) body[data-app-background-active="true"] [data-slot="card"] :is(

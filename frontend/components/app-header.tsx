@@ -51,7 +51,7 @@ export function AppHeader({
   onOpenSettings,
   onRequestClose,
 }: AppHeaderProps) {
-  const { setTheme } = useTheme()
+  const { theme, setTheme } = useTheme()
   const [isDesktopShell, setIsDesktopShell] = React.useState(false)
   const [isMaximized, setIsMaximized] = React.useState(false)
 
@@ -157,17 +157,44 @@ export function AppHeader({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setTheme("light")}>
+            <DropdownMenuItem
+              className={cn(
+                "flex items-center justify-between gap-3 rounded-md",
+                theme === "light" && "bg-accent text-accent-foreground",
+              )}
+              onClick={() => setTheme("light")}
+            >
+              <div className="flex items-center gap-2">
               <Sun className="mr-2 h-4 w-4" />
               浅色
+              </div>
+              <Check className={cn("h-4 w-4 opacity-0", theme === "light" && "opacity-100")} />
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setTheme("dark")}>
+            <DropdownMenuItem
+              className={cn(
+                "flex items-center justify-between gap-3 rounded-md",
+                theme === "dark" && "bg-accent text-accent-foreground",
+              )}
+              onClick={() => setTheme("dark")}
+            >
+              <div className="flex items-center gap-2">
               <Moon className="mr-2 h-4 w-4" />
               深色
+              </div>
+              <Check className={cn("h-4 w-4 opacity-0", theme === "dark" && "opacity-100")} />
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setTheme("system")}>
+            <DropdownMenuItem
+              className={cn(
+                "flex items-center justify-between gap-3 rounded-md",
+                theme === "system" && "bg-accent text-accent-foreground",
+              )}
+              onClick={() => setTheme("system")}
+            >
+              <div className="flex items-center gap-2">
               <Monitor className="mr-2 h-4 w-4" />
               跟随系统
+              </div>
+              <Check className={cn("h-4 w-4 opacity-0", theme === "system" && "opacity-100")} />
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

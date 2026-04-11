@@ -90,6 +90,7 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **AND** shell text outside card surfaces uses high-contrast light text with a soft shadow while the custom skin is active
 - **AND** in light theme with a custom skin active, visible white borders on glass cards and shell surfaces are suppressed in favor of transparent edges and shadow separation
 - **AND** in light theme with a custom skin active, card content text renders in high-contrast light text instead of default dark foreground tokens
+- **AND** in light theme with a custom skin active, white or near-white interactive fills used by buttons, hover states, and label chips shift to theme-hue fills when they render light text
 - **AND** the workspace shell does not add extra renderer-side blur or tint beyond the persisted skin blur and opacity values
 
 ### Requirement: Shell controls SHALL expose explicit language selection state
@@ -99,6 +100,14 @@ Header language controls SHALL show the current selected language with explicit 
 - **WHEN** user opens the language menu in the title bar
 - **THEN** the active language option is visually highlighted
 - **AND** changing the option updates persisted UI settings
+
+### Requirement: Shell controls SHALL expose explicit theme selection state
+Header theme controls SHALL show the current selected theme mode with explicit selected-state feedback for `light`, `dark`, and `system`.
+
+#### Scenario: Open header theme menu
+- **WHEN** user opens the theme menu in the title bar
+- **THEN** the active theme option is visually highlighted
+- **AND** only the selected theme option shows the explicit selection indicator
 
 ### Requirement: Workbench branding SHALL use the project logo asset
 Renderer branding surfaces and favicon SHALL use `frontend/public/icon.svg` as the project logo asset.
