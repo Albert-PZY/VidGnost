@@ -299,6 +299,114 @@ html:not(.dark) body[data-app-background-active="true"] .custom-skin-dialog-surf
   box-shadow: var(--wallpaper-glass-edge-strong);
 }
 
+html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) {
+  background:
+    linear-gradient(180deg, rgba(236, 241, 248, 0.4) 0%, rgba(205, 214, 226, 0.3) 100%) !important;
+  border-color: transparent !important;
+  color: var(--wallpaper-shell-text) !important;
+  backdrop-filter: blur(28px) saturate(1.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    0 26px 72px rgba(6, 10, 18, 0.22) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog-header, .model-config-dialog-footer, .prompt-config-dialog-header, .prompt-config-dialog-footer) {
+  background: color-mix(in oklch, white 16%, transparent) !important;
+  border-color: transparent !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog-panel, .prompt-config-dialog-panel) {
+  border-color: transparent !important;
+  background: color-mix(in oklch, white 11%, transparent) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 12px 28px rgba(6, 10, 18, 0.1);
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) :is(.rounded-xl.border, .rounded-lg.border, .border-dashed) {
+  border-color: transparent !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) :is(.bg-muted\/30, .bg-muted\/35, .bg-background\/80) {
+  background: color-mix(in oklch, white 10%, transparent) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .model-config-dialog :is(h1, h2, h3, h4, h5, h6, p, span, small, strong, label, li, dt, dd, div) {
+  color: inherit;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog :is(.prompt-config-dialog-header, .prompt-config-dialog-footer, .prompt-config-dialog-panel) :is(h1, h2, h3, h4, h5, h6, p, span, small, strong, label, li, dt, dd, div) {
+  color: inherit;
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) .text-muted-foreground,
+html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) [data-slot="dialog-description"] {
+  color: var(--wallpaper-shell-text-muted) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) :is([data-slot="input"], [data-slot="textarea"], [data-slot="select-trigger"]) {
+  background: color-mix(in oklch, white 12%, transparent) !important;
+  border-color: transparent !important;
+  color: var(--wallpaper-shell-text) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 8px 18px rgba(6, 10, 18, 0.08);
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) :is([data-slot="input"], [data-slot="textarea"])::placeholder {
+  color: var(--wallpaper-shell-text-muted) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) [data-slot="button"],
+html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) [data-slot="badge"] {
+  border-color: transparent !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) [data-slot="button"][class*="border"] {
+  background: color-mix(in oklch, white 10%, transparent) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 8px 18px rgba(6, 10, 18, 0.08);
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) [data-slot="button"][class*="border"]:hover,
+html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) [data-slot="button"][class*="border"]:focus-visible {
+  background: var(--wallpaper-tint-fill-soft) !important;
+  color: var(--primary-foreground) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) [data-slot="badge"] {
+  background: color-mix(in oklch, white 9%, transparent) !important;
+  color: var(--wallpaper-shell-text) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(.model-config-select-content, .prompt-config-select-content) {
+  background:
+    linear-gradient(180deg, rgba(232, 239, 247, 0.4) 0%, rgba(200, 211, 224, 0.32) 100%) !important;
+  border-color: transparent !important;
+  color: var(--wallpaper-shell-text) !important;
+  backdrop-filter: blur(28px) saturate(1.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 18px 40px rgba(6, 10, 18, 0.16) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(.model-config-select-content, .prompt-config-select-content) [data-slot="select-item"] {
+  color: var(--wallpaper-shell-text) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(.model-config-select-content, .prompt-config-select-content) [data-slot="select-item"][data-state="checked"]:not(:hover):not([data-highlighted]) {
+  background: transparent !important;
+  color: var(--wallpaper-shell-text) !important;
+  font-weight: 600;
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(.model-config-select-content, .prompt-config-select-content) [data-slot="select-item"]:is(:hover, [data-highlighted], :focus-visible) {
+  background: var(--wallpaper-tint-fill-soft) !important;
+  color: var(--primary-foreground) !important;
+}
+
 body[data-app-background-active="true"] [data-slot="input"],
 body[data-app-background-active="true"] [data-slot="textarea"],
 body[data-app-background-active="true"] [data-slot="select-trigger"],
@@ -561,15 +669,55 @@ html:not(.dark) body[data-app-background-active="true"] .prompt-template-preview
   color: var(--wallpaper-shell-text-muted) !important;
 }
 
+html:not(.dark) body[data-app-background-active="true"] .prompt-template-card,
+html:not(.dark) body[data-app-background-active="true"] .prompt-template-empty {
+  border-color: transparent !important;
+  background: color-mix(in oklch, var(--background) 10%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 12px 28px rgba(6, 10, 18, 0.08);
+}
+
+html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell {
+  border-color: transparent !important;
+  background: color-mix(in oklch, white 10%, transparent) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 10px 24px rgba(6, 10, 18, 0.08);
+}
+
+html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell .w-md-editor-toolbar {
+  background: color-mix(in oklch, white 8%, transparent) !important;
+  border-bottom-color: transparent !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell .w-md-editor-preview {
+  border-left-color: transparent !important;
+}
+
 html:not(.dark) body[data-app-background-active="true"] .history-stat-icon-shell {
   background: var(--wallpaper-tint-fill-soft) !important;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
-html:not(.dark) body[data-app-background-active="true"] .app-header-control:not(:hover):not(:focus-visible):not([data-state="open"]):not([data-active="true"]) {
+html:not(.dark) body[data-app-background-active="true"] .history-stat-icon-shell svg {
+  color: white !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .app-header-control:not(:hover):not(:focus-visible):not([data-active="true"]) {
   background: transparent !important;
   color: var(--wallpaper-shell-text) !important;
   box-shadow: none !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .app-header-menu-item[data-selected="true"]:not(:hover):not([data-highlighted]):not(:focus-visible) {
+  background: transparent !important;
+  color: var(--wallpaper-shell-text) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .app-header-menu-item:is(:hover, [data-highlighted], :focus-visible) {
+  background: var(--wallpaper-tint-fill-soft) !important;
+  color: var(--primary-foreground) !important;
 }
 
 html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-trigger {
@@ -719,6 +867,29 @@ body[data-app-background-active="true"] .custom-skin-dialog-surface * {
 
 .themed-thin-scrollbar::-webkit-scrollbar-thumb:hover {
   background: color-mix(in oklch, var(--primary) 68%, var(--foreground) 8%);
+}
+
+.dialog-ultra-thin-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--primary) 50%, transparent) transparent;
+}
+
+.dialog-ultra-thin-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.dialog-ultra-thin-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dialog-ultra-thin-scrollbar::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--primary) 48%, transparent);
+  border-radius: 999px;
+}
+
+.dialog-ultra-thin-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--primary) 62%, var(--foreground) 8%);
 }
 
 .prompt-markdown-editor-shell {

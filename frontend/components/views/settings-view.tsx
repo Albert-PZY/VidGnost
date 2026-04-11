@@ -1110,8 +1110,8 @@ export function SettingsView({
                   </Button>
 
                   <Dialog open={isModelDialogOpen} onOpenChange={handleModelDialogChange}>
-                    <DialogContent className="flex w-[min(96vw,85rem)] max-h-[90vh] max-w-[85rem] flex-col gap-0 overflow-hidden p-0 sm:max-w-[85rem]">
-                      <DialogHeader className="shrink-0 border-b bg-card px-6 py-3.5 pr-12">
+                    <DialogContent className="model-config-dialog flex w-[min(96vw,85rem)] max-h-[90vh] max-w-[85rem] flex-col gap-0 overflow-hidden p-0 sm:max-w-[85rem]">
+                      <DialogHeader className="model-config-dialog-header shrink-0 border-b bg-card px-6 py-3.5 pr-12">
                         <DialogTitle className="text-base font-semibold leading-tight">
                           {activeModelPreset?.title || "模型常用配置"}
                         </DialogTitle>
@@ -1120,12 +1120,12 @@ export function SettingsView({
                         </DialogDescription>
                       </DialogHeader>
 
-                      <div className="themed-thin-scrollbar min-h-0 flex-1 overflow-y-auto">
+                      <div className="model-config-dialog-scroll themed-thin-scrollbar dialog-ultra-thin-scrollbar min-h-0 flex-1 overflow-y-auto">
                         <div className="grid gap-6 px-6 py-6 xl:grid-cols-[minmax(25rem,29rem)_minmax(0,1fr)]">
                           {/* 左侧概览：集中展示当前模型身份、状态与关键指标 */}
                           <div className="space-y-5">
                             {editingModel ? (
-                              <div className="rounded-xl border bg-card p-6">
+                              <div className="model-config-dialog-panel rounded-xl border bg-card p-6">
                                 <div className="space-y-5">
                                   <div className="flex items-start gap-4">
                                     <div
@@ -1265,7 +1265,7 @@ export function SettingsView({
 
                           {/* 右侧配置：按运行参数与在线接口参数分组 */}
                           <div className="space-y-6 xl:max-w-[46rem]">
-                            <div className="rounded-xl border bg-card p-5 md:p-6">
+                            <div className="model-config-dialog-panel rounded-xl border bg-card p-5 md:p-6">
                               <div className="space-y-1">
                                 <div className="text-base font-semibold leading-tight">常用运行参数</div>
                                 <p className="text-xs leading-relaxed text-muted-foreground">
@@ -1308,10 +1308,10 @@ export function SettingsView({
                                         setModelForm((current) => ({ ...current, load_profile: value }))
                                       }
                                     >
-                                      <SelectTrigger className="bg-background/80">
+                                      <SelectTrigger className="model-config-dialog-select-trigger bg-background/80">
                                         <SelectValue />
                                       </SelectTrigger>
-                                      <SelectContent>
+                                      <SelectContent className="model-config-select-content">
                                         <SelectItem value="balanced">balanced</SelectItem>
                                         <SelectItem value="memory_first">memory_first</SelectItem>
                                       </SelectContent>
@@ -1399,7 +1399,7 @@ export function SettingsView({
                             </div>
 
                             {showOnlineLlmFields ? (
-                              <div className="rounded-xl border bg-card p-5 md:p-6">
+                              <div className="model-config-dialog-panel rounded-xl border bg-card p-5 md:p-6">
                                 <div className="space-y-1">
                                   <div className="text-base font-semibold leading-tight">OpenAI 兼容接口配置</div>
                                   <p className="text-xs leading-relaxed text-muted-foreground">
@@ -1468,10 +1468,10 @@ export function SettingsView({
                                         }))
                                       }
                                     >
-                                      <SelectTrigger className="bg-background/80">
+                                      <SelectTrigger className="model-config-dialog-select-trigger bg-background/80">
                                         <SelectValue />
                                       </SelectTrigger>
-                                      <SelectContent>
+                                      <SelectContent className="model-config-select-content">
                                         <SelectItem value="off">off</SelectItem>
                                         <SelectItem value="strict">strict</SelectItem>
                                         <SelectItem value="rewrite">rewrite</SelectItem>
@@ -1530,7 +1530,7 @@ export function SettingsView({
                         </div>
                       </div>
 
-                      <DialogFooter className="shrink-0 border-t bg-card px-6 py-4">
+                      <DialogFooter className="model-config-dialog-footer shrink-0 border-t bg-card px-6 py-4">
                         <Button variant="outline" onClick={() => handleModelDialogChange(false)}>
                           取消
                         </Button>
@@ -1560,8 +1560,8 @@ export function SettingsView({
                         <Plus className="h-4 w-4 mr-2" />
                         新建模板
                       </Button>
-                      <DialogContent className="flex w-[min(96vw,88rem)] max-h-[min(90vh,60rem)] max-w-[88rem] flex-col gap-0 overflow-hidden p-0 sm:max-w-[88rem]">
-                        <DialogHeader className="shrink-0 border-b px-6 py-3.5 pr-12">
+                      <DialogContent className="prompt-config-dialog flex w-[min(96vw,88rem)] max-h-[min(90vh,60rem)] max-w-[88rem] flex-col gap-0 overflow-hidden p-0 sm:max-w-[88rem]">
+                        <DialogHeader className="prompt-config-dialog-header shrink-0 border-b px-6 py-3.5 pr-12">
                           <DialogTitle className="text-base font-semibold leading-tight">
                             {editingPrompt ? "编辑提示词模板" : "新建提示词模板"}
                           </DialogTitle>
@@ -1569,10 +1569,10 @@ export function SettingsView({
                             配置用于特定任务的提示词模板
                           </DialogDescription>
                         </DialogHeader>
-                        <div className="themed-thin-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-5">
+                        <div className="prompt-config-dialog-scroll themed-thin-scrollbar dialog-ultra-thin-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-5">
                           <div className="grid gap-5 xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
                             <section className="space-y-4">
-                              <div className="rounded-xl border bg-card p-4">
+                              <div className="prompt-config-dialog-panel rounded-xl border bg-card p-4">
                                 <div className="space-y-4">
                                   <div className="grid gap-4">
                                     <div className="space-y-2">
@@ -1600,10 +1600,10 @@ export function SettingsView({
                                         }
                                         disabled={Boolean(editingPrompt)}
                                       >
-                                        <SelectTrigger>
+                                        <SelectTrigger className="prompt-config-dialog-select-trigger">
                                           <SelectValue />
                                         </SelectTrigger>
-                                        <SelectContent>
+                                        <SelectContent className="prompt-config-select-content">
                                           <SelectItem value="correction">文本纠错</SelectItem>
                                           <SelectItem value="notes">笔记生成</SelectItem>
                                           <SelectItem value="mindmap">思维导图</SelectItem>
@@ -1630,7 +1630,7 @@ export function SettingsView({
                             </section>
 
                             <section className="space-y-3">
-                              <div className="rounded-xl border bg-card p-4">
+                              <div className="prompt-config-dialog-panel rounded-xl border bg-card p-4">
                                 <div className="space-y-1">
                                   <Label className="text-sm font-medium">提示词内容</Label>
                                   <p className="text-xs text-muted-foreground">
@@ -1657,7 +1657,7 @@ export function SettingsView({
                             </section>
                           </div>
                         </div>
-                        <DialogFooter className="shrink-0 border-t px-6 py-4">
+                        <DialogFooter className="prompt-config-dialog-footer shrink-0 border-t px-6 py-4">
                           <Button variant="outline" onClick={() => handlePromptDialogChange(false)}>
                             取消
                           </Button>
@@ -1674,7 +1674,7 @@ export function SettingsView({
                   {promptBundle?.templates.map((prompt) => {
                     const isSelected = promptBundle.selection[prompt.channel] === prompt.id
                     return (
-                      <div key={prompt.id} className="rounded-lg border p-4">
+                      <div key={prompt.id} className="prompt-template-card rounded-lg border p-4">
                         <div className="flex items-start justify-between">
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
@@ -1723,7 +1723,7 @@ export function SettingsView({
                     )
                   })}
                   {promptBundle?.templates.length === 0 && !isLoading && (
-                    <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+                    <div className="prompt-template-empty rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
                       当前没有模板数据
                     </div>
                   )}
