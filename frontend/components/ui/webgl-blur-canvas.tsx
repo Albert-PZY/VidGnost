@@ -22,6 +22,7 @@ interface WebGLBlurCanvasProps {
   style?: React.CSSProperties
   pixelRatioCap?: number
   quality?: "balanced" | "performance"
+  cropToImageRect?: boolean
 }
 
 type RenderTarget = {
@@ -41,6 +42,7 @@ type ProgramInfo = {
   texelSizeLocation: WebGLUniformLocation | null
   directionLocation: WebGLUniformLocation | null
   radiusLocation: WebGLUniformLocation | null
+  cropToImageRectLocation: WebGLUniformLocation | null
 }
 
 type GLResources = {
@@ -110,9 +112,24 @@ precision mediump float;
 varying vec2 v_uv;
 
 uniform sampler2D u_texture;
+uniform vec2 u_canvasSize;
+uniform vec4 u_imageRect;
+uniform float u_cropToImageRect;
 
 void main() {
-  gl_FragColor = texture2D(u_texture, v_uv);
+  vec4 color = texture2D(u_texture, v_uv);
+
+  if (u_cropToImageRect > 0.5) {
+    vec2 fragPx = v_uv * u_canvasSize;
+    bool insideX = fragPx.x >= u_imageRect.x && fragPx.x <= u_imageRect.x + u_imageRect.z;
+    bool insideY = fragPx.y >= u_imageRect.y && fragPx.y <= u_imageRect.y + u_imageRect.w;
+
+    if (!(insideX && insideY)) {
+      color = vec4(0.0);
+    }
+  }
+
+  gl_FragColor = color;
 }
 `
 
@@ -179,6 +196,7 @@ function createProgramInfo(
     texelSizeLocation: gl.getUniformLocation(program, "u_texelSize"),
     directionLocation: gl.getUniformLocation(program, "u_direction"),
     radiusLocation: gl.getUniformLocation(program, "u_radius"),
+    cropToImageRectLocation: gl.getUniformLocation(program, "u_cropToImageRect"),
   }
 }
 
@@ -381,6 +399,7 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
     style,
     pixelRatioCap = 1.5,
     quality = "balanced",
+    cropToImageRect = false,
   } = props
 
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
@@ -582,6 +601,15 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
         gl.activeTexture(gl.TEXTURE0)
         gl.bindTexture(gl.TEXTURE_2D, sceneTarget.texture)
         gl.uniform1i(resources.copyProgram.textureSamplerLocation, 0)
+        gl.uniform2f(resources.copyProgram.canvasSizeLocation, outputWidth, outputHeight)
+        gl.uniform4f(
+          resources.copyProgram.imageRectLocation,
+          imageRect.left * pixelRatio,
+          imageRect.top * pixelRatio,
+          imageRect.width * pixelRatio,
+          imageRect.height * pixelRatio,
+        )
+        gl.uniform1f(resources.copyProgram.cropToImageRectLocation, cropToImageRect ? 1 : 0)
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
       } catch {
         if (resourcesRef.current) {
@@ -610,6 +638,7 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
     imageRect,
     pixelRatioCap,
     quality,
+    cropToImageRect,
     src,
     width,
   ])

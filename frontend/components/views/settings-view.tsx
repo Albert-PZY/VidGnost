@@ -359,7 +359,7 @@ export function SettingsView({
   }, [onUiSettingsPreviewChange])
 
   React.useEffect(() => {
-    if (!skinPreviewRef.current || typeof ResizeObserver === "undefined") {
+    if (activeSection !== "appearance" || !skinPreviewRef.current) {
       return
     }
 
@@ -374,13 +374,22 @@ export function SettingsView({
       })
     }
 
-    const observer = new ResizeObserver(updateSize)
     updateSize()
+    const frameId = window.requestAnimationFrame(updateSize)
+
+    if (typeof ResizeObserver === "undefined") {
+      return () => {
+        window.cancelAnimationFrame(frameId)
+      }
+    }
+
+    const observer = new ResizeObserver(updateSize)
     observer.observe(skinPreviewRef.current)
     return () => {
+      window.cancelAnimationFrame(frameId)
       observer.disconnect()
     }
-  }, [])
+  }, [activeSection])
 
   React.useEffect(() => {
     if (!uiSettings.background_image) {

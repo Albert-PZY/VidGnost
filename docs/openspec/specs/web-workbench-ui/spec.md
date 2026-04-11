@@ -87,6 +87,7 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **AND** adjusting blur only changes blur intensity and SHALL NOT alter the saved image scale or focus position
 - **AND** blur rendering in the dialog preview uses an offscreen WebGL pipeline that keeps the image layout fixed instead of inflating the image bounds to hide blur edges
 - **AND** the blur pipeline duplicates edge samples at the image boundary so higher blur values do not reveal transparent or empty borders
+- **AND** the dialog preview only displays the original image rect and SHALL NOT expose duplicated edge-fill strips outside that rect
 - **AND** the helper copy tells the user to place the pointer on the image to drag the image position
 - **AND** surrounding appearance cards keep helper copy minimal and avoid repeating nearby controls or status labels
 - **AND** the selection frame stays fully inside the currently rendered image bounds, including at the minimum persisted `100%` scale
@@ -100,6 +101,7 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **THEN** the fixed shell background layer restores the saved image using the stored opacity, blur, scale, and focus coordinates
 - **AND** the fixed shell background layer applies skin blur through the same offscreen WebGL pipeline used by the skin dialog preview
 - **AND** the appearance settings skin status preview reuses the stored scale and focus coordinates when rendering its blurred preview surface
+- **AND** the appearance settings skin status preview becomes visible as soon as the appearance section enters view and has a measurable preview surface
 - **AND** the title bar, sidebar, and main content shell render above the same background layer
 - **AND** cards, dialogs, popovers, and the left sidebar switch to translucent glass surfaces while the custom skin is active
 - **AND** shell text outside card surfaces uses high-contrast light text with a soft shadow while the custom skin is active

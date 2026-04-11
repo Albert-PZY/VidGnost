@@ -465,6 +465,7 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
                     className="pointer-events-none absolute inset-0 h-full w-full"
                     pixelRatioCap={1.6}
                     quality="balanced"
+                    cropToImageRect
                   />
                   <div className="absolute inset-0 bg-black/16" />
                   {surfacePreviewLayout && cropGeometry ? (
