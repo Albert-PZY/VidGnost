@@ -1,27 +1,22 @@
 "use client"
 
 import * as React from "react"
-import { ImagePlus, RotateCcw, Sparkles, Trash2 } from "lucide-react"
+import { RotateCcw, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { Separator } from "@/components/ui/separator"
 import { Slider } from "@/components/ui/slider"
 import type { UISettingsResponse } from "@/lib/types"
-import { formatBytes } from "@/lib/format"
 import {
   MAX_BACKGROUND_PREVIEW_SCALE,
   MIN_BACKGROUND_PREVIEW_SCALE,
   clamp,
-  getImageLayout,
   getPreviewScaleFromSavedScale,
   getSavedScaleFromPreviewScale,
   getSelectionFrameSize,
@@ -49,12 +44,14 @@ type SurfaceGeometry = {
   imageHeight: number
   imageLeft: number
   imageTop: number
+  minImageLeft: number
+  maxImageLeft: number
+  minImageTop: number
+  maxImageTop: number
   frameWidth: number
   frameHeight: number
-  frameMinCenterX: number
-  frameMaxCenterX: number
-  frameMinCenterY: number
-  frameMaxCenterY: number
+  frameLeft: number
+  frameTop: number
   frameCenterX: number
   frameCenterY: number
 }
@@ -70,6 +67,7 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
     onRequestPickImage,
     onSave,
   } = props
+
   const surfaceRef = React.useRef<HTMLDivElement | null>(null)
   const [surfaceSize, setSurfaceSize] = React.useState({ width: 0, height: 0 })
   const [naturalSize, setNaturalSize] = React.useState({ width: 0, height: 0 })
@@ -77,7 +75,6 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
   const [draftFileName, setDraftFileName] = React.useState<string>(
     uiSettings.background_image ? "已保存换肤" : "",
   )
-  const [draftSizeBytes, setDraftSizeBytes] = React.useState<number | undefined>(undefined)
   const [opacity, setOpacity] = React.useState([uiSettings.background_image_opacity])
   const [blur, setBlur] = React.useState([uiSettings.background_image_blur])
   const [previewScale, setPreviewScale] = React.useState([
@@ -91,15 +88,18 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
     pointerId: number
     startX: number
     startY: number
-    startCenterX: number
-      startCenterY: number
-      geometry: SurfaceGeometry
+    startImageLeft: number
+    startImageTop: number
+    geometry: SurfaceGeometry
   } | null>(null)
+
+  const currentScalePercent = Math.round(getSavedScaleFromPreviewScale(previewScale[0]) * 100)
 
   const measureSurfaceSize = React.useCallback(() => {
     if (!surfaceRef.current) {
       return
     }
+
     const rect = surfaceRef.current.getBoundingClientRect()
     setSurfaceSize({
       width: rect.width,
@@ -113,10 +113,7 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
     }
 
     setDraftImage(pickedImage?.dataUrl ?? uiSettings.background_image)
-    setDraftFileName(
-      pickedImage?.fileName ?? (uiSettings.background_image ? "已保存换肤" : ""),
-    )
-    setDraftSizeBytes(pickedImage?.sizeBytes)
+    setDraftFileName(pickedImage?.fileName ?? (uiSettings.background_image ? "已保存换肤" : ""))
     setOpacity([uiSettings.background_image_opacity])
     setBlur([uiSettings.background_image_blur])
     setPreviewScale([
@@ -132,14 +129,20 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
     )
   }, [
     open,
+    pickedImage,
     uiSettings.background_image,
     uiSettings.background_image_blur,
     uiSettings.background_image_focus_x,
     uiSettings.background_image_focus_y,
     uiSettings.background_image_opacity,
     uiSettings.background_image_scale,
-    pickedImage,
   ])
+
+  React.useEffect(() => {
+    if (!draftImage) {
+      setNaturalSize({ width: 0, height: 0 })
+    }
+  }, [draftImage])
 
   React.useLayoutEffect(() => {
     if (!open) {
@@ -163,6 +166,7 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
       if (!nextRect) {
         return
       }
+
       setSurfaceSize({
         width: nextRect.width,
         height: nextRect.height,
@@ -179,43 +183,42 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
   }, [measureSurfaceSize, open])
 
   const cropGeometry = React.useMemo<SurfaceGeometry | null>(() => {
-    if (surfaceSize.width <= 0 || surfaceSize.height <= 0 || naturalSize.width <= 0 || naturalSize.height <= 0) {
+    if (
+      surfaceSize.width <= 0 ||
+      surfaceSize.height <= 0 ||
+      naturalSize.width <= 0 ||
+      naturalSize.height <= 0
+    ) {
       return null
     }
 
-    const coverScale = Math.max(
-      surfaceSize.width / naturalSize.width,
-      surfaceSize.height / naturalSize.height,
-    )
-    const imageWidth = naturalSize.width * coverScale * previewScale[0]
-    const imageHeight = naturalSize.height * coverScale * previewScale[0]
-    const imageLeft = (surfaceSize.width - imageWidth) / 2
-    const imageTop = (surfaceSize.height - imageHeight) / 2
     const { width: frameWidth, height: frameHeight } = getSelectionFrameSize(
       surfaceSize.width,
       surfaceSize.height,
     )
-    const frameMinCenterX = imageWidth <= frameWidth
-      ? imageLeft + imageWidth / 2
-      : imageLeft + frameWidth / 2
-    const frameMaxCenterX = imageWidth <= frameWidth
-      ? imageLeft + imageWidth / 2
-      : imageLeft + imageWidth - frameWidth / 2
-    const frameMinCenterY = imageHeight <= frameHeight
-      ? imageTop + imageHeight / 2
-      : imageTop + frameHeight / 2
-    const frameMaxCenterY = imageHeight <= frameHeight
-      ? imageTop + imageHeight / 2
-      : imageTop + imageHeight - frameHeight / 2
-    const frameCenterX = clamp(
-      imageLeft + imageWidth * focus.x,
-      frameMinCenterX,
-      frameMaxCenterX,
+    const frameLeft = (surfaceSize.width - frameWidth) / 2
+    const frameTop = (surfaceSize.height - frameHeight) / 2
+    const frameCenterX = frameLeft + frameWidth / 2
+    const frameCenterY = frameTop + frameHeight / 2
+
+    const coverScale = Math.max(frameWidth / naturalSize.width, frameHeight / naturalSize.height)
+    const imageWidth = naturalSize.width * coverScale * previewScale[0]
+    const imageHeight = naturalSize.height * coverScale * previewScale[0]
+
+    const minImageLeft = frameLeft + frameWidth - imageWidth
+    const maxImageLeft = frameLeft
+    const minImageTop = frameTop + frameHeight - imageHeight
+    const maxImageTop = frameTop
+
+    const imageLeft = clamp(
+      frameCenterX - imageWidth * focus.x,
+      minImageLeft,
+      maxImageLeft,
     )
-    const frameCenterY = clamp(
-      imageTop + imageHeight * focus.y,
-      frameMinCenterY,
-      frameMaxCenterY,
+    const imageTop = clamp(
+      frameCenterY - imageHeight * focus.y,
+      minImageTop,
+      maxImageTop,
     )
 
     return {
@@ -223,12 +226,14 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
       imageHeight,
       imageLeft,
       imageTop,
+      minImageLeft,
+      maxImageLeft,
+      minImageTop,
+      maxImageTop,
       frameWidth,
       frameHeight,
-      frameMinCenterX,
-      frameMaxCenterX,
-      frameMinCenterY,
-      frameMaxCenterY,
+      frameLeft,
+      frameTop,
       frameCenterX,
       frameCenterY,
     }
@@ -259,11 +264,12 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
     if (!open) {
       return
     }
+
     onPreviewChange(previewPatch)
   }, [onPreviewChange, open, previewPatch])
 
   React.useEffect(() => {
-    if (!dragState || !cropGeometry) {
+    if (!dragState) {
       return
     }
 
@@ -272,25 +278,25 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
         return
       }
 
-      const nextCenterX = clamp(
-        dragState.startCenterX + (event.clientX - dragState.startX),
-        dragState.geometry.frameMinCenterX,
-        dragState.geometry.frameMaxCenterX,
+      const nextImageLeft = clamp(
+        dragState.startImageLeft + (event.clientX - dragState.startX),
+        dragState.geometry.minImageLeft,
+        dragState.geometry.maxImageLeft,
       )
-      const nextCenterY = clamp(
-        dragState.startCenterY + (event.clientY - dragState.startY),
-        dragState.geometry.frameMinCenterY,
-        dragState.geometry.frameMaxCenterY,
+      const nextImageTop = clamp(
+        dragState.startImageTop + (event.clientY - dragState.startY),
+        dragState.geometry.minImageTop,
+        dragState.geometry.maxImageTop,
       )
 
       setFocus({
         x: clamp(
-          (nextCenterX - dragState.geometry.imageLeft) / dragState.geometry.imageWidth,
+          (dragState.geometry.frameCenterX - nextImageLeft) / dragState.geometry.imageWidth,
           0,
           1,
         ),
         y: clamp(
-          (nextCenterY - dragState.geometry.imageTop) / dragState.geometry.imageHeight,
+          (dragState.geometry.frameCenterY - nextImageTop) / dragState.geometry.imageHeight,
           0,
           1,
         ),
@@ -311,7 +317,7 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
       window.removeEventListener("pointerup", handlePointerUp)
       window.removeEventListener("pointercancel", handlePointerUp)
     }
-  }, [cropGeometry, dragState, surfaceSize.height, surfaceSize.width])
+  }, [dragState])
 
   const handleDialogChange = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -322,41 +328,24 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
   }
 
   const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    if (!cropGeometry) {
+    if (!draftImage) {
       return
     }
 
     event.preventDefault()
-    const nextPreviewScale = clamp(
-      previewScale[0] + (event.deltaY < 0 ? 0.08 : -0.08),
-      MIN_BACKGROUND_PREVIEW_SCALE,
-      MAX_BACKGROUND_PREVIEW_SCALE,
-    )
-
-    if (nextPreviewScale === previewScale[0]) {
-      return
-    }
-
-    const coverScale = Math.max(
-      surfaceSize.width / naturalSize.width,
-      surfaceSize.height / naturalSize.height,
-    )
-    const nextImageWidth = naturalSize.width * coverScale * nextPreviewScale
-    const nextImageHeight = naturalSize.height * coverScale * nextPreviewScale
-    const nextImageLeft = (surfaceSize.width - nextImageWidth) / 2
-    const nextImageTop = (surfaceSize.height - nextImageHeight) / 2
-
-    setPreviewScale([nextPreviewScale])
-    setFocus({
-      x: clamp((cropGeometry.frameCenterX - nextImageLeft) / nextImageWidth, 0, 1),
-      y: clamp((cropGeometry.frameCenterY - nextImageTop) / nextImageHeight, 0, 1),
-    })
+    setPreviewScale((current) => [
+      clamp(
+        current[0] + (event.deltaY < 0 ? 0.08 : -0.08),
+        MIN_BACKGROUND_PREVIEW_SCALE,
+        MAX_BACKGROUND_PREVIEW_SCALE,
+      ),
+    ])
   }
 
   const handleResetView = () => {
     setPreviewScale([getPreviewScaleFromSavedScale(1)])
     setFocus({ x: 0.5, y: 0.5 })
-    setBlur([0])
+    setBlur([uiSettings.background_image_blur])
     setOpacity([uiSettings.background_image_opacity])
   }
 
@@ -365,11 +354,19 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
     if (!picked) {
       return
     }
+
     setDraftImage(picked.dataUrl)
     setDraftFileName(picked.fileName)
-    setDraftSizeBytes(picked.sizeBytes)
     setPreviewScale([getPreviewScaleFromSavedScale(1)])
     setFocus({ x: 0.5, y: 0.5 })
+  }
+
+  const handleClearImage = () => {
+    setDraftImage(null)
+    setDraftFileName("")
+    setPreviewScale([getPreviewScaleFromSavedScale(1)])
+    setFocus({ x: 0.5, y: 0.5 })
+    setNaturalSize({ width: 0, height: 0 })
   }
 
   const handleSave = async () => {
@@ -393,275 +390,208 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
         opacity: opacity[0] / 100,
       } as React.CSSProperties,
       frameStyle: {
-        left: `${cropGeometry.frameCenterX - cropGeometry.frameWidth / 2}px`,
-        top: `${cropGeometry.frameCenterY - cropGeometry.frameHeight / 2}px`,
+        left: `${cropGeometry.frameLeft}px`,
+        top: `${cropGeometry.frameTop}px`,
         width: `${cropGeometry.frameWidth}px`,
         height: `${cropGeometry.frameHeight}px`,
       } as React.CSSProperties,
     }
   }, [blur, cropGeometry, draftImage, opacity])
 
-  const miniPreviewLayout = React.useMemo(() => {
-    if (!draftImage || naturalSize.width <= 0 || naturalSize.height <= 0) {
-      return null
-    }
-
-    return getImageLayout({
-      viewportWidth: 288,
-      viewportHeight: 180,
-      imageWidth: naturalSize.width,
-      imageHeight: naturalSize.height,
-      scale: getSavedScaleFromPreviewScale(previewScale[0]),
-      focusX: focus.x,
-      focusY: focus.y,
-    })
-  }, [draftImage, focus.x, focus.y, naturalSize.height, naturalSize.width, previewScale])
+  const sliderClassName = "[&_[data-slot=slider-track]]:h-2 [&_[data-slot=slider-track]]:bg-white/10 [&_[data-slot=slider-range]]:bg-white/18 [&_[data-slot=slider-thumb]]:size-5 [&_[data-slot=slider-thumb]]:border-white/70 [&_[data-slot=slider-thumb]]:bg-white [&_[data-slot=slider-thumb]]:shadow-[0_10px_24px_rgba(0,0,0,0.28)] [&_[data-slot=slider-thumb]]:transition-transform [&_[data-slot=slider-thumb]:hover]:scale-105 [&_[data-slot=slider-thumb]:focus-visible]:ring-4 [&_[data-slot=slider-thumb]:focus-visible]:ring-white/18"
 
   return (
     <Dialog open={open} onOpenChange={handleDialogChange}>
-      <DialogContent className="max-w-[76rem] gap-0 overflow-hidden p-0 sm:max-w-[76rem]">
-        <div className="flex max-h-[88vh] flex-col">
-          <DialogHeader className="shrink-0 border-b px-5 py-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-1">
-                <DialogTitle className="text-base font-semibold leading-tight">自定义换肤</DialogTitle>
-                <DialogDescription className="text-xs leading-relaxed">
-                  直接从系统资源管理器选择图片，拖动展示框确定显示区域，滚轮缩放画面，主界面会实时同步预览。
-                </DialogDescription>
-              </div>
-              <div className="rounded-lg border border-primary/25 bg-primary/8 px-2.5 py-1 text-xs font-medium text-primary">
-                当前 UI 已实时预览
-              </div>
-            </div>
+      <DialogContent
+        showCloseButton={false}
+        className="max-w-[34rem] border-none bg-transparent p-0 shadow-none sm:max-w-[34rem]"
+      >
+        <div className="overflow-hidden rounded-[2rem] bg-[linear-gradient(180deg,#323443_0%,#2d2f3d_100%)] text-white shadow-[0_32px_100px_rgba(9,10,18,0.58)] ring-1 ring-white/6">
+          <DialogHeader className="relative px-6 pb-2 pt-5 text-center">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute right-4 top-3.5 size-9 rounded-full text-white/56 hover:bg-white/8 hover:text-white"
+              onClick={() => handleDialogChange(false)}
+            >
+              <X className="size-5" />
+            </Button>
+            <DialogTitle className="text-[1.85rem] font-semibold tracking-tight text-white">
+              自定义换肤
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              固定取景框，拖动图片和缩放图片，并实时预览换肤效果。
+            </DialogDescription>
           </DialogHeader>
 
-          <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[minmax(0,1.2fr)_22rem]">
-            <div className="min-h-0 p-5">
-              <div className="space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium leading-tight">换肤取景区</p>
-                    <p className="text-xs text-muted-foreground">
-                      拖动方框选择展示区域，滚轮快速缩放画面。
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => void handlePickImage()} disabled={isSaving}>
-                      <ImagePlus className="mr-2 h-4 w-4" />
-                      重新选择
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={isSaving || !draftImage}
-                      onClick={() => {
-                        setDraftImage(null)
-                        setDraftFileName("")
-                        setDraftSizeBytes(undefined)
+          <div className="px-6 pb-6 pt-4">
+            <div
+              ref={surfaceRef}
+              className="relative aspect-[1.18/1] w-full overflow-hidden rounded-[1.35rem] bg-[#242632] touch-none"
+              onWheel={handleWheel}
+            >
+              {draftImage ? (
+                <>
+                  <img
+                    alt=""
+                    src={draftImage}
+                    draggable={false}
+                    decoding="async"
+                    className="absolute max-w-none select-none"
+                    style={surfacePreviewLayout?.imageStyle}
+                    onLoad={(event) => {
+                      setNaturalSize({
+                        width: event.currentTarget.naturalWidth,
+                        height: event.currentTarget.naturalHeight,
+                      })
+                      measureSurfaceSize()
+                    }}
+                  />
+                  <div className="absolute inset-0 bg-black/16" />
+                  {surfacePreviewLayout && cropGeometry ? (
+                    <button
+                      type="button"
+                      className="absolute rounded-[1rem] border border-white/32 bg-transparent shadow-[0_0_0_9999px_rgba(8,10,18,0.42)] transition-colors hover:border-white/48 active:cursor-grabbing"
+                      style={surfacePreviewLayout.frameStyle}
+                      onPointerDown={(event) => {
+                        event.preventDefault()
+                        setDragState({
+                          pointerId: event.pointerId,
+                          startX: event.clientX,
+                          startY: event.clientY,
+                          startImageLeft: cropGeometry.imageLeft,
+                          startImageTop: cropGeometry.imageTop,
+                          geometry: cropGeometry,
+                        })
                       }}
                     >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      移除换肤
-                    </Button>
-                  </div>
+                      <span className="sr-only">拖动图片位置</span>
+                    </button>
+                  ) : null}
+                </>
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
+                  <p className="text-base font-medium text-white/88">当前未选择换肤图片</p>
+                  <p className="max-w-xs text-sm leading-relaxed text-white/44">
+                    选择图片后即可在固定取景框内拖动图片，并直接预览最终展示区域。
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="h-10 rounded-full border border-white/10 bg-white/4 px-5 text-sm text-white/88 hover:bg-white/8"
+                    onClick={() => void handlePickImage()}
+                    disabled={isSaving}
+                  >
+                    选择图片
+                  </Button>
                 </div>
+              )}
+            </div>
 
-                <div
-                  ref={surfaceRef}
-                  className="relative aspect-[16/10] w-full overflow-hidden rounded-xl border bg-muted/20"
-                  onWheel={handleWheel}
+            <div className="mt-3 flex items-center justify-between gap-4 text-[11px] text-white/40">
+              <div className="min-w-0 truncate">
+                {draftFileName || "未选择图片"}
+              </div>
+              <div className="flex shrink-0 items-center gap-3">
+                <button
+                  type="button"
+                  className="transition-colors hover:text-white/84"
+                  onClick={() => void handlePickImage()}
+                  disabled={isSaving}
                 >
-                  {draftImage ? (
-                    <>
-                      <img
-                        alt=""
-                        src={draftImage}
-                        draggable={false}
-                        decoding="async"
-                        className="absolute max-w-none select-none"
-                        style={surfacePreviewLayout?.imageStyle}
-                        onLoad={(event) => {
-                          setNaturalSize({
-                            width: event.currentTarget.naturalWidth,
-                            height: event.currentTarget.naturalHeight,
-                          })
-                          measureSurfaceSize()
-                        }}
-                      />
-                      <div className="absolute inset-0 bg-black/18" />
-                      {surfacePreviewLayout && cropGeometry ? (
-                        <button
-                          type="button"
-                          className="absolute rounded-xl border border-white/80 bg-transparent shadow-[0_0_0_9999px_rgba(8,13,20,0.46)] ring-1 ring-white/20 backdrop-blur-[1px] transition-[border-color,box-shadow] hover:border-primary/85 active:cursor-grabbing"
-                          style={surfacePreviewLayout.frameStyle}
-                          onPointerDown={(event) => {
-                            if (!cropGeometry) {
-                              return
-                            }
-                            event.preventDefault()
-                            setDragState({
-                              pointerId: event.pointerId,
-                              startX: event.clientX,
-                              startY: event.clientY,
-                              startCenterX: cropGeometry.frameCenterX,
-                              startCenterY: cropGeometry.frameCenterY,
-                              geometry: cropGeometry,
-                            })
-                          }}
-                        >
-                          <div className="absolute inset-x-3 top-3 flex items-center justify-between text-[11px] font-medium tracking-[0.08em] text-white/92">
-                            <span>展示区域</span>
-                            <span>{Math.round(getSavedScaleFromPreviewScale(previewScale[0]) * 100)}%</span>
-                          </div>
-                          <div className="absolute inset-x-0 bottom-0 flex items-center justify-between border-t border-white/16 bg-black/16 px-3 py-2 text-[11px] text-white/84">
-                            <span>拖动调整构图</span>
-                            <span>滚轮缩放</span>
-                          </div>
-                        </button>
-                      ) : null}
-                    </>
-                  ) : (
-                    <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center">
-                      <Sparkles className="h-5 w-5 text-primary" />
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium">当前未设置换肤</p>
-                        <p className="text-xs leading-relaxed text-muted-foreground">
-                          选择一张图片后，这里会直接进入裁剪和缩放预览。
-                        </p>
-                      </div>
-                      <Button variant="outline" size="sm" onClick={() => void handlePickImage()} disabled={isSaving}>
-                        <ImagePlus className="mr-2 h-4 w-4" />
-                        选择图片
-                      </Button>
-                    </div>
-                  )}
-                </div>
+                  更换图片
+                </button>
+                <button
+                  type="button"
+                  className="transition-colors hover:text-white/84 disabled:cursor-not-allowed disabled:opacity-35"
+                  onClick={handleClearImage}
+                  disabled={isSaving || !draftImage}
+                >
+                  清除
+                </button>
               </div>
             </div>
 
-            <div className="themed-thin-scrollbar min-h-0 overflow-y-auto border-t bg-muted/12 p-5 lg:border-t-0 lg:border-l">
-              <div className="space-y-5">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">当前资源</p>
-                  <div className="rounded-xl border bg-card px-4 py-3">
-                    <p className="truncate text-sm font-medium">{draftFileName || "未选择图片"}</p>
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                      {draftSizeBytes ? <span>{formatBytes(draftSizeBytes)}</span> : null}
-                      {naturalSize.width > 0 && naturalSize.height > 0 ? (
-                        <span>{naturalSize.width} × {naturalSize.height}</span>
-                      ) : null}
-                      {draftImage ? (
-                        <span>缩放 {Math.round(getSavedScaleFromPreviewScale(previewScale[0]) * 100)}%</span>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label>透明度</Label>
-                    <span className="text-xs text-muted-foreground">{opacity[0]}%</span>
-                  </div>
-                  <Slider
-                    value={opacity}
-                    onValueChange={setOpacity}
-                    min={0}
-                    max={100}
-                    step={1}
+            <div className="mt-7 space-y-5">
+              <div className="grid grid-cols-[4.75rem_minmax(0,1fr)_auto] items-center gap-3">
+                <span className="text-sm text-white/56">图片缩放</span>
+                <Slider
+                  value={previewScale}
+                  onValueChange={setPreviewScale}
+                  min={MIN_BACKGROUND_PREVIEW_SCALE}
+                  max={MAX_BACKGROUND_PREVIEW_SCALE}
+                  step={0.01}
+                  disabled={isSaving || !draftImage}
+                  className={sliderClassName}
+                />
+                <div className="flex items-center gap-2">
+                  <span className="w-11 text-right text-sm font-medium text-white/82">{currentScalePercent}%</span>
+                  <button
+                    type="button"
+                    className="text-white/42 transition-colors hover:text-white/84 disabled:opacity-30"
+                    onClick={handleResetView}
                     disabled={isSaving || !draftImage}
-                  />
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label>模糊度</Label>
-                    <span className="text-xs text-muted-foreground">{blur[0]}px</span>
-                  </div>
-                  <Slider
-                    value={blur}
-                    onValueChange={setBlur}
-                    min={0}
-                    max={24}
-                    step={1}
-                    disabled={isSaving || !draftImage}
-                  />
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <Label>缩放</Label>
-                    <span className="text-xs text-muted-foreground">{Math.round(getSavedScaleFromPreviewScale(previewScale[0]) * 100)}%</span>
-                  </div>
-                  <Slider
-                    value={previewScale}
-                    onValueChange={(value) => {
-                      setPreviewScale(value)
-                    }}
-                    min={MIN_BACKGROUND_PREVIEW_SCALE}
-                    max={MAX_BACKGROUND_PREVIEW_SCALE}
-                    step={0.01}
-                    disabled={isSaving || !draftImage}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    鼠标滚轮也可以直接调整缩放。
-                  </p>
-                </div>
-
-                <Separator />
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium">界面预览</p>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 px-2.5 text-xs"
-                      onClick={handleResetView}
-                      disabled={isSaving || !draftImage}
-                    >
-                      <RotateCcw className="mr-2 h-3.5 w-3.5" />
-                      重置视角
-                    </Button>
-                  </div>
-                  <div className="relative h-[180px] overflow-hidden rounded-xl border bg-background/80">
-                    {draftImage && miniPreviewLayout ? (
-                      <>
-                        <img
-                          alt=""
-                          src={draftImage}
-                          className="absolute max-w-none"
-                          style={{
-                            left: `${miniPreviewLayout.left}px`,
-                            top: `${miniPreviewLayout.top}px`,
-                            width: `${miniPreviewLayout.width}px`,
-                            height: `${miniPreviewLayout.height}px`,
-                            opacity: opacity[0] / 100,
-                            filter: `blur(${blur[0]}px)`,
-                          }}
-                        />
-                        <div className="absolute inset-0 border-y border-white/14 bg-background/42" />
-                        <div className="absolute inset-x-4 top-4 h-9 rounded-md border border-white/14 bg-card/72" />
-                        <div className="absolute inset-y-[4.25rem] left-4 w-[4.6rem] rounded-lg border border-white/12 bg-sidebar/78" />
-                      </>
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-                        选择图片后显示界面预览
-                      </div>
-                    )}
-                  </div>
+                    aria-label="重置换肤视角"
+                  >
+                    <RotateCcw className="size-4" />
+                  </button>
                 </div>
               </div>
+
+              <div className="grid grid-cols-[4.75rem_minmax(0,1fr)_auto] items-center gap-3">
+                <span className="text-sm text-white/56">透明度</span>
+                <Slider
+                  value={opacity}
+                  onValueChange={setOpacity}
+                  min={0}
+                  max={100}
+                  step={1}
+                  disabled={isSaving || !draftImage}
+                  className={sliderClassName}
+                />
+                <span className="w-11 text-right text-sm font-medium text-white/82">{opacity[0]}%</span>
+              </div>
+
+              <div className="grid grid-cols-[4.75rem_minmax(0,1fr)_auto] items-center gap-3">
+                <span className="text-sm text-white/56">模糊度</span>
+                <Slider
+                  value={blur}
+                  onValueChange={setBlur}
+                  min={0}
+                  max={24}
+                  step={1}
+                  disabled={isSaving || !draftImage}
+                  className={sliderClassName}
+                />
+                <span className="w-11 text-right text-sm font-medium text-white/82">{blur[0]}px</span>
+              </div>
+            </div>
+
+            <p className="mt-8 text-sm text-white/38">
+              在取景框内拖动图片即可调整展示区域，鼠标滚轮可以快速缩放，主界面会实时同步预览。
+            </p>
+
+            <div className="mt-8 flex items-center gap-4">
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-12 flex-1 rounded-full border border-white/10 bg-transparent text-base font-medium text-white/88 hover:bg-white/6"
+                onClick={() => handleDialogChange(false)}
+                disabled={isSaving}
+              >
+                取消
+              </Button>
+              <Button
+                type="button"
+                className="h-12 flex-1 rounded-full border border-[#eec0b1]/70 bg-[#efb9a9] text-base font-medium text-[#fff8f5] shadow-[0_14px_28px_rgba(239,185,169,0.18)] hover:bg-[#f2c2b4]"
+                onClick={() => void handleSave()}
+                disabled={isSaving}
+              >
+                保存
+              </Button>
             </div>
           </div>
-
-          <DialogFooter className="shrink-0 border-t px-5 py-4">
-            <Button variant="outline" onClick={() => handleDialogChange(false)} disabled={isSaving}>
-              取消
-            </Button>
-            <Button onClick={() => void handleSave()} disabled={isSaving}>
-              保存换肤
-            </Button>
-          </DialogFooter>
         </div>
       </DialogContent>
     </Dialog>
