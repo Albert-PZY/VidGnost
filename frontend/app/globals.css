@@ -698,8 +698,53 @@ html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .p
   border-bottom-color: transparent !important;
 }
 
+html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell {
+  --prompt-editor-pane-fill: linear-gradient(180deg, rgba(10, 14, 22, 0.76) 0%, rgba(13, 18, 27, 0.7) 100%);
+  --prompt-editor-preview-fill: linear-gradient(180deg, rgba(12, 17, 25, 0.82) 0%, rgba(15, 21, 31, 0.76) 100%);
+  --prompt-editor-scrollbar-thumb: color-mix(in oklch, var(--primary) 72%, transparent);
+  --prompt-editor-scrollbar-thumb-hover: color-mix(in oklch, var(--primary) 84%, white 8%);
+  --prompt-editor-scrollbar-track: color-mix(in oklch, black 12%, transparent);
+}
+
+html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell .w-md-editor-input {
+  background: var(--prompt-editor-pane-fill) !important;
+}
+
 html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell .w-md-editor-preview {
-  border-left-color: transparent !important;
+  background: var(--prompt-editor-preview-fill) !important;
+  border-left-color: color-mix(in oklch, white 10%, transparent) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell .w-md-editor-text-input {
+  color: var(--wallpaper-shell-text) !important;
+  caret-color: var(--wallpaper-shell-text) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell :is(.wmde-markdown, .wmde-markdown-var) {
+  background: transparent !important;
+  color: var(--wallpaper-shell-text) !important;
+  --color-fg-default: var(--wallpaper-shell-text) !important;
+  --color-fg-muted: var(--wallpaper-shell-text-muted) !important;
+  --color-canvas-default: transparent !important;
+  --color-canvas-subtle: color-mix(in oklch, white 6%, transparent) !important;
+  --color-border-default: color-mix(in oklch, white 10%, transparent) !important;
+  --color-border-muted: color-mix(in oklch, white 8%, transparent) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell .wmde-markdown :is(h1, h2, h3, h4, h5, h6, p, li, blockquote, td, th, strong, em, code, a) {
+  color: inherit !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell .wmde-markdown :is(pre, code) {
+  background: color-mix(in oklch, black 18%, transparent) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell :is(.w-md-editor-text-pre, .w-md-editor-text-input, .w-md-editor-preview)::-webkit-scrollbar-thumb {
+  background: var(--prompt-editor-scrollbar-thumb) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell :is(.w-md-editor-text-pre, .w-md-editor-text-input, .w-md-editor-preview)::-webkit-scrollbar-thumb:hover {
+  background: var(--prompt-editor-scrollbar-thumb-hover) !important;
 }
 
 html:not(.dark) body[data-app-background-active="true"] .history-stat-icon-shell {
@@ -949,6 +994,12 @@ body[data-app-background-active="true"] .custom-skin-dialog-surface * {
   --color-accent-fg: var(--primary);
   --color-accent-emphasis: var(--primary);
   --color-accent-subtle: color-mix(in oklch, var(--accent) 80%, transparent);
+  --prompt-editor-pane-fill: transparent;
+  --prompt-editor-preview-fill: transparent;
+  --prompt-editor-scrollbar-size: 5px;
+  --prompt-editor-scrollbar-track: transparent;
+  --prompt-editor-scrollbar-thumb: color-mix(in oklch, var(--primary) 52%, transparent);
+  --prompt-editor-scrollbar-thumb-hover: color-mix(in oklch, var(--primary) 68%, var(--foreground) 8%);
 }
 
 .dark .prompt-markdown-editor-shell {
@@ -1002,7 +1053,7 @@ body[data-app-background-active="true"] .custom-skin-dialog-surface * {
   font-size: 0.95rem !important;
   line-height: 1.72 !important;
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklch, var(--primary) 52%, transparent) transparent;
+  scrollbar-color: var(--prompt-editor-scrollbar-thumb) var(--prompt-editor-scrollbar-track);
 }
 
 .prompt-markdown-editor-shell .w-md-editor-text-input {
@@ -1011,17 +1062,22 @@ body[data-app-background-active="true"] .custom-skin-dialog-surface * {
   padding: inherit;
 }
 
+.prompt-markdown-editor-shell .w-md-editor-input {
+  background: var(--prompt-editor-pane-fill);
+}
+
 .prompt-markdown-editor-shell .w-md-editor-text-pre {
   line-height: inherit;
   padding: inherit;
 }
 
 .prompt-markdown-editor-shell .w-md-editor-preview {
+  background: var(--prompt-editor-preview-fill);
   border-left: 1px solid color-mix(in oklch, var(--border) 82%, var(--foreground) 6%);
   padding: 1rem 1rem 1.5rem !important;
   font-family: var(--font-sans);
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklch, var(--primary) 52%, transparent) transparent;
+  scrollbar-color: var(--prompt-editor-scrollbar-thumb) var(--prompt-editor-scrollbar-track);
 }
 
 .prompt-markdown-editor-shell .w-md-editor-text-pre > code {
@@ -1036,30 +1092,35 @@ body[data-app-background-active="true"] .custom-skin-dialog-surface * {
   line-height: 1.75;
 }
 
+.prompt-markdown-editor-shell :is(.wmde-markdown, .wmde-markdown-var) {
+  background: transparent !important;
+  color: var(--color-fg-default) !important;
+}
+
 .prompt-markdown-editor-shell .w-md-editor-text-pre::-webkit-scrollbar,
 .prompt-markdown-editor-shell .w-md-editor-text-input::-webkit-scrollbar,
 .prompt-markdown-editor-shell .w-md-editor-preview::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: var(--prompt-editor-scrollbar-size);
+  height: var(--prompt-editor-scrollbar-size);
 }
 
 .prompt-markdown-editor-shell .w-md-editor-text-pre::-webkit-scrollbar-track,
 .prompt-markdown-editor-shell .w-md-editor-text-input::-webkit-scrollbar-track,
 .prompt-markdown-editor-shell .w-md-editor-preview::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--prompt-editor-scrollbar-track);
 }
 
 .prompt-markdown-editor-shell .w-md-editor-text-pre::-webkit-scrollbar-thumb,
 .prompt-markdown-editor-shell .w-md-editor-text-input::-webkit-scrollbar-thumb,
 .prompt-markdown-editor-shell .w-md-editor-preview::-webkit-scrollbar-thumb {
-  background: color-mix(in oklch, var(--primary) 52%, transparent);
+  background: var(--prompt-editor-scrollbar-thumb);
   border-radius: 999px;
 }
 
 .prompt-markdown-editor-shell .w-md-editor-text-pre::-webkit-scrollbar-thumb:hover,
 .prompt-markdown-editor-shell .w-md-editor-text-input::-webkit-scrollbar-thumb:hover,
 .prompt-markdown-editor-shell .w-md-editor-preview::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in oklch, var(--primary) 68%, var(--foreground) 8%);
+  background: var(--prompt-editor-scrollbar-thumb-hover);
 }
 
 .app-toast-shell {
