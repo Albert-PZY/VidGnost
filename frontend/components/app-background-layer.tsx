@@ -2,16 +2,10 @@
 
 import * as React from "react"
 
-import {
-  EdgeDuplicateBlurFilter,
-  getEdgeDuplicateBlurFilterValue,
-  useEdgeDuplicateBlurFilterId,
-} from "@/components/ui/edge-duplicate-blur-filter"
 import type { UISettingsResponse } from "@/lib/types"
 import { getImageLayout, normalizeSkinSettings } from "@/lib/ui-skin"
 
 export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsResponse }) {
-  const blurFilterId = useEdgeDuplicateBlurFilterId("app-background-blur")
   const normalizedSkin = React.useMemo(
     () => normalizeSkinSettings(uiSettings),
     [
@@ -78,7 +72,6 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
 
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-      <EdgeDuplicateBlurFilter id={blurFilterId} blur={normalizedSkin.background_image_blur} />
       <img
         alt=""
         src={normalizedSkin.background_image}
@@ -100,10 +93,7 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
                 width: `${imageLayout.width}px`,
                 height: `${imageLayout.height}px`,
                 opacity: normalizedSkin.background_image_opacity / 100,
-                filter: getEdgeDuplicateBlurFilterValue(
-                  blurFilterId,
-                  normalizedSkin.background_image_blur,
-                ),
+                filter: `blur(${normalizedSkin.background_image_blur}px)`,
               }
             : { opacity: 0 }
         }

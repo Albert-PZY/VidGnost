@@ -25,11 +25,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import {
-  EdgeDuplicateBlurFilter,
-  getEdgeDuplicateBlurFilterValue,
-  useEdgeDuplicateBlurFilterId,
-} from "@/components/ui/edge-duplicate-blur-filter"
 import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
 import { Progress } from "@/components/ui/progress"
@@ -307,7 +302,6 @@ export function SettingsView({
   onUiSettingsChange,
   onUiSettingsPreviewChange,
 }: SettingsViewProps) {
-  const skinPreviewBlurFilterId = useEdgeDuplicateBlurFilterId("settings-skin-preview-blur")
   const { resolvedTheme } = useTheme()
   const [activeSection, setActiveSection] = React.useState("models")
   const [fontSize, setFontSize] = React.useState([uiSettings.font_size])
@@ -336,7 +330,6 @@ export function SettingsView({
   const markdownColorMode = resolvedTheme === "dark" ? "dark" : "light"
   const backgroundFileInputRef = React.useRef<HTMLInputElement | null>(null)
   const backgroundFileResolverRef = React.useRef<((image: PickedSkinImage | null) => void) | null>(null)
-  const skinPreviewBlur = Math.max(0, uiSettings.background_image_blur / 2)
 
   React.useEffect(() => {
     setFontSize([uiSettings.font_size])
@@ -1862,7 +1855,6 @@ export function SettingsView({
                       <div className="overflow-hidden rounded-xl border border-border/70 bg-muted/20">
                         {hasSkinImage ? (
                           <div className="relative h-52">
-                            <EdgeDuplicateBlurFilter id={skinPreviewBlurFilterId} blur={skinPreviewBlur} />
                             <div
                               className="absolute inset-0"
                               style={{
@@ -1870,10 +1862,7 @@ export function SettingsView({
                                 backgroundPosition: "center",
                                 backgroundRepeat: "no-repeat",
                                 backgroundSize: "cover",
-                                filter: getEdgeDuplicateBlurFilterValue(
-                                  skinPreviewBlurFilterId,
-                                  skinPreviewBlur,
-                                ),
+                                filter: `blur(${Math.max(0, uiSettings.background_image_blur / 2)}px)`,
                                 opacity: uiSettings.background_image_opacity / 100,
                               }}
                             />

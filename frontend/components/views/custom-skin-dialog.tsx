@@ -11,11 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import {
-  EdgeDuplicateBlurFilter,
-  getEdgeDuplicateBlurFilterValue,
-  useEdgeDuplicateBlurFilterId,
-} from "@/components/ui/edge-duplicate-blur-filter"
 import { Slider } from "@/components/ui/slider"
 import type { UISettingsResponse } from "@/lib/types"
 import {
@@ -71,7 +66,6 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
     onSave,
   } = props
 
-  const blurFilterId = useEdgeDuplicateBlurFilterId("custom-skin-preview-blur")
   const surfaceRef = React.useRef<HTMLDivElement | null>(null)
   const [surfaceSize, setSurfaceSize] = React.useState({ width: 0, height: 0 })
   const [naturalSize, setNaturalSize] = React.useState({ width: 0, height: 0 })
@@ -386,7 +380,7 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
         top: `${cropGeometry.imageTop}px`,
         width: `${cropGeometry.imageWidth}px`,
         height: `${cropGeometry.imageHeight}px`,
-        filter: getEdgeDuplicateBlurFilterValue(blurFilterId, blur[0]),
+        filter: `blur(${blur[0]}px)`,
         opacity: opacity[0] / 100,
       } as React.CSSProperties,
       frameStyle: {
@@ -396,7 +390,7 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
         height: `${cropGeometry.frameHeight}px`,
       } as React.CSSProperties,
     }
-  }, [blur, blurFilterId, cropGeometry, draftImage, opacity])
+  }, [blur, cropGeometry, draftImage, opacity])
 
   const sliderClassName = "[&_[data-slot=slider-track]]:h-2 [&_[data-slot=slider-track]]:bg-white/10 [&_[data-slot=slider-range]]:bg-white/18 [&_[data-slot=slider-thumb]]:size-5 [&_[data-slot=slider-thumb]]:border-white/70 [&_[data-slot=slider-thumb]]:bg-white [&_[data-slot=slider-thumb]]:shadow-[0_10px_24px_rgba(0,0,0,0.28)] [&_[data-slot=slider-thumb]]:transition-transform [&_[data-slot=slider-thumb]:hover]:scale-105 [&_[data-slot=slider-thumb]:focus-visible]:ring-4 [&_[data-slot=slider-thumb]:focus-visible]:ring-white/18"
 
@@ -431,7 +425,6 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
               className="relative aspect-[1.14/1] w-full overflow-hidden rounded-[1rem] bg-[#242632] touch-none"
               onWheel={handleWheel}
             >
-              <EdgeDuplicateBlurFilter id={blurFilterId} blur={blur[0]} />
               {draftImage ? (
                 <>
                   <img
