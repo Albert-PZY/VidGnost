@@ -1737,7 +1737,7 @@ export function SettingsView({
                   <CardTitle className="text-lg">外观设置</CardTitle>
                   <CardDescription>自定义应用的视觉外观</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-6">
+                <CardContent className="settings-appearance-shell space-y-6">
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <div>
@@ -1748,6 +1748,7 @@ export function SettingsView({
                         <Button
                           variant="outline"
                           size="sm"
+                          className="appearance-action-button"
                           disabled={isSavingUi || themeHue[0] === DEFAULT_THEME_HUE}
                           onClick={handleThemeHueReset}
                         >
@@ -1762,8 +1763,9 @@ export function SettingsView({
                           <button
                             key={preset.value}
                             type="button"
+                            data-active={isActive}
                             className={cn(
-                              "rounded-xl border px-3 py-3 text-left transition-all",
+                              "appearance-theme-chip rounded-xl border px-3 py-3 text-left transition-all",
                               isActive
                                 ? "border-primary bg-primary/10 shadow-sm"
                                 : "hover:border-primary/40 hover:bg-muted/60",
@@ -1817,6 +1819,7 @@ export function SettingsView({
                         <Button
                           variant="default"
                           size="sm"
+                          className="appearance-action-button"
                           disabled={isSavingUi}
                           onClick={() => {
                             void handleOpenSkinPicker()
@@ -1827,6 +1830,7 @@ export function SettingsView({
                         <Button
                           variant="outline"
                           size="sm"
+                          className="appearance-action-button"
                           disabled={isSavingUi || !hasSkinImage}
                           onClick={() => {
                             setPendingSkinImage(null)
@@ -1838,6 +1842,7 @@ export function SettingsView({
                         <Button
                           variant="outline"
                           size="sm"
+                          className="appearance-action-button"
                           disabled={isSavingUi || !hasSkinImage}
                           onClick={handleClearBackgroundImage}
                         >

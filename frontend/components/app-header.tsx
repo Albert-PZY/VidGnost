@@ -41,7 +41,7 @@ const PROJECT_REPOSITORY_URL = "https://github.com/Albert-PZY/VidGnost"
 const dragRegionStyle = { WebkitAppRegion: "drag" } as React.CSSProperties
 const noDragRegionStyle = { WebkitAppRegion: "no-drag" } as React.CSSProperties
 const titlebarButtonClass =
-  "h-7 w-7 rounded-md transition-colors hover:bg-accent hover:text-accent-foreground active:bg-accent/80 data-[state=open]:bg-accent data-[state=open]:text-accent-foreground"
+  "app-header-control h-7 w-7 rounded-md transition-colors hover:bg-accent hover:text-accent-foreground active:bg-accent/80 data-[state=open]:bg-accent data-[state=open]:text-accent-foreground"
 
 export function AppHeader({
   title,

@@ -144,7 +144,7 @@ export function AppSidebar({
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="outline"
-                  className="w-full justify-between overflow-hidden group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:justify-center"
+                  className="sidebar-workflow-trigger w-full justify-between overflow-hidden group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:justify-center"
                 >
                   <div className="flex min-w-0 items-center gap-2">
                     {selectedWorkflowData && (
@@ -159,12 +159,12 @@ export function AppSidebar({
                   <ChevronDown className="h-4 w-4 opacity-50 group-data-[collapsible=icon]:hidden" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-64">
+              <DropdownMenuContent align="start" className="sidebar-workflow-menu w-64">
                 {workflowOptions.map((workflow) => (
                   <DropdownMenuItem
                     key={workflow.id}
                     onClick={() => onWorkflowChange(workflow.id)}
-                    className="flex flex-col items-start gap-1 p-3"
+                    className="sidebar-workflow-option flex flex-col items-start gap-1 p-3"
                   >
                     <div className="flex items-center gap-2">
                       <workflow.icon className="h-4 w-4" />

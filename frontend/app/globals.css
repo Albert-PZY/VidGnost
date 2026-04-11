@@ -294,6 +294,7 @@ html:not(.dark) body[data-app-background-active="true"] [data-slot="menubar-sub-
 html:not(.dark) body[data-app-background-active="true"] [data-slot="select-content"],
 html:not(.dark) body[data-app-background-active="true"] [data-slot="navigation-menu-content"],
 html:not(.dark) body[data-app-background-active="true"] .custom-skin-dialog-surface {
+  background: linear-gradient(180deg, rgba(72, 78, 96, 0.96) 0%, rgba(56, 61, 77, 0.94) 100%);
   border-color: transparent;
   box-shadow: var(--wallpaper-glass-edge-strong);
 }
@@ -366,9 +367,6 @@ html:not(.dark) body[data-app-background-active="true"] [data-slot="sidebar-cont
   box-shadow: none;
 }
 
-html:not(.dark) body[data-app-background-active="true"] [data-slot="sidebar-inner"] [data-slot="button"],
-html:not(.dark) body[data-app-background-active="true"] [data-slot="sidebar-inner"] [data-slot="dropdown-menu-trigger"][class*="bg-background"],
-html:not(.dark) body[data-app-background-active="true"] [data-slot="sidebar-inner"] [data-slot="dropdown-menu-trigger"][class*="bg-muted"],
 html:not(.dark) body[data-app-background-active="true"] [data-slot="badge"].bg-secondary,
 html:not(.dark) body[data-app-background-active="true"] [data-slot="badge"].bg-muted,
 html:not(.dark) body[data-app-background-active="true"] [data-slot="badge"].bg-background,
@@ -498,6 +496,43 @@ html:not(.dark) body[data-app-background-active="true"] .settings-models-shell [
   color: var(--primary-foreground);
 }
 
+html:not(.dark) body[data-app-background-active="true"] .settings-appearance-shell [data-slot="button"] {
+  border-color: transparent !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .settings-appearance-shell .appearance-action-button[class*="border"] {
+  background: color-mix(in oklch, var(--background) 8%, transparent) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 8px 18px rgba(6, 10, 18, 0.08);
+}
+
+html:not(.dark) body[data-app-background-active="true"] .settings-appearance-shell .appearance-action-button[class*="border"]:hover,
+html:not(.dark) body[data-app-background-active="true"] .settings-appearance-shell .appearance-action-button[class*="border"]:focus-visible {
+  background: var(--wallpaper-tint-fill-soft) !important;
+  color: var(--primary-foreground) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .settings-appearance-shell .appearance-theme-chip {
+  border-color: transparent !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 10px 22px rgba(6, 10, 18, 0.08);
+}
+
+html:not(.dark) body[data-app-background-active="true"] .settings-appearance-shell .appearance-theme-chip[data-active="false"] {
+  background: color-mix(in oklch, var(--background) 10%, transparent) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .settings-appearance-shell .appearance-theme-chip[data-active="false"]:hover,
+html:not(.dark) body[data-app-background-active="true"] .settings-appearance-shell .appearance-theme-chip[data-active="false"]:focus-visible {
+  background: var(--wallpaper-tint-fill-soft) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .settings-appearance-shell .appearance-theme-chip[data-active="true"] {
+  background: var(--wallpaper-tint-fill-soft) !important;
+}
+
 html:not(.dark) body[data-app-background-active="true"] .settings-section-tab[data-active="false"] {
   background: transparent !important;
   color: var(--wallpaper-shell-text) !important;
@@ -524,6 +559,53 @@ html:not(.dark) body[data-app-background-active="true"] .prompt-template-preview
 
 html:not(.dark) body[data-app-background-active="true"] .prompt-template-preview-shell pre {
   color: var(--wallpaper-shell-text-muted) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .history-stat-icon-shell {
+  background: var(--wallpaper-tint-fill-soft) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+html:not(.dark) body[data-app-background-active="true"] .app-header-control:not(:hover):not(:focus-visible):not([data-state="open"]):not([data-active="true"]) {
+  background: transparent !important;
+  color: var(--wallpaper-shell-text) !important;
+  box-shadow: none !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-trigger {
+  border-color: transparent !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-trigger:not(:hover):not(:focus-visible):not([data-state="open"]) {
+  background: color-mix(in oklch, var(--background) 8%, transparent) !important;
+  color: var(--wallpaper-shell-text) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-trigger:is(:hover, :focus-visible, [data-state="open"]) {
+  background: var(--wallpaper-tint-fill-soft) !important;
+  color: var(--primary-foreground) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option {
+  color: var(--wallpaper-shell-text) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option .text-muted-foreground {
+  color: var(--wallpaper-shell-text-muted) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option:not([data-highlighted]):not(:hover) {
+  background: transparent !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option:is([data-highlighted], :hover, :focus-visible) {
+  background: var(--wallpaper-tint-fill-soft) !important;
+  color: var(--primary-foreground) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option:is([data-highlighted], :hover, :focus-visible) .text-muted-foreground {
+  color: color-mix(in oklch, var(--primary-foreground) 80%, transparent) !important;
 }
 
 html:not(.dark) body[data-app-background-active="true"] [data-slot="card"] :is(

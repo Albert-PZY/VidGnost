@@ -179,7 +179,7 @@ export function HistoryView({ onOpenTask }: HistoryViewProps) {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+                <div className="history-stat-icon-shell flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
                   <FolderOpen className="h-5 w-5 text-muted-foreground" />
                 </div>
                 <div>
@@ -192,7 +192,7 @@ export function HistoryView({ onOpenTask }: HistoryViewProps) {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                <div className="history-stat-icon-shell flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
                   <FileText className="h-5 w-5 text-primary" />
                 </div>
                 <div>
@@ -205,7 +205,7 @@ export function HistoryView({ onOpenTask }: HistoryViewProps) {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent">
+                <div className="history-stat-icon-shell flex h-10 w-10 items-center justify-center rounded-lg bg-accent">
                   <MessageSquareText className="h-5 w-5 text-accent-foreground" />
                 </div>
                 <div>
@@ -218,7 +218,7 @@ export function HistoryView({ onOpenTask }: HistoryViewProps) {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-status-success/10">
+                <div className="history-stat-icon-shell flex h-10 w-10 items-center justify-center rounded-lg bg-status-success/10">
                   <Clock className="h-5 w-5 text-status-success" />
                 </div>
                 <div>
