@@ -65,6 +65,7 @@ Renderer SHALL present transient `success`, `error`, and `loading` feedback thro
 - **WHEN** renderer emits more than three transient notifications before earlier ones disappear
 - **THEN** the notifications appear in a top-centered stack using the shared workbench toast surface
 - **AND** only the three newest visible notifications remain on screen
+- **AND** each newly shown visible notification triggers one playback attempt of the bundled `toast.mp3` sound effect
 
 ### Requirement: Appearance settings SHALL persist theme hue, font size, autosave, and custom skin state
 UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_image`, `background_image_opacity`, `background_image_blur`, `background_image_scale`, `background_image_focus_x`, `background_image_focus_y`, and `background_image_fill_mode`, and the renderer SHALL apply them immediately to the active shell through a dedicated fixed background layer.
