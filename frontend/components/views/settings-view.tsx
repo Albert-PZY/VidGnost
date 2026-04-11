@@ -923,13 +923,14 @@ export function SettingsView({
 
             <div className="flex gap-6">
               <div className="w-48 shrink-0">
-                <nav className="sticky top-6 space-y-1">
+                <nav className="settings-section-nav sticky top-6 space-y-1">
                   {sections.map((section) => (
                     <button
                       key={section.id}
+                      data-active={activeSection === section.id}
                       onClick={() => setActiveSection(section.id)}
                       className={cn(
-                        "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                        "settings-section-tab flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors",
                         activeSection === section.id
                           ? "bg-primary text-primary-foreground"
                           : "hover:bg-muted",
@@ -951,8 +952,8 @@ export function SettingsView({
                     管理默认模型目录、在线 LLM 接口与各类运行参数
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between rounded-lg border p-4">
+                <CardContent className="settings-models-shell space-y-4">
+                  <div className="settings-models-panel settings-models-gpu-panel flex items-center justify-between rounded-lg border p-4">
                     <div className="flex items-center gap-3">
                       <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
                         <Zap className="h-5 w-5 text-primary" />
@@ -986,7 +987,7 @@ export function SettingsView({
                       const downloadPercent = Math.max(0, Math.min(100, model.download?.percent ?? 0))
 
                       return (
-                      <div key={model.id} className="rounded-lg border p-4">
+                      <div key={model.id} className="settings-models-panel settings-model-row rounded-lg border p-4">
                         <div className="flex items-start gap-4">
                         <div
                           className={cn(
@@ -1091,7 +1092,7 @@ export function SettingsView({
                       </div>
                     )})}
                     {models.length === 0 && !isLoading && (
-                      <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+                      <div className="settings-models-panel settings-model-empty rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
                         当前没有可展示的模型配置
                       </div>
                     )}
@@ -1713,7 +1714,7 @@ export function SettingsView({
                             </Button>
                           </div>
                         </div>
-                        <div className="mt-3 rounded bg-muted p-3">
+                        <div className="prompt-template-preview-shell mt-3 rounded bg-muted p-3">
                           <pre className="text-xs text-muted-foreground whitespace-pre-wrap line-clamp-3">
                             {prompt.content}
                           </pre>
@@ -1802,7 +1803,7 @@ export function SettingsView({
                     </div>
                   </div>
 
-                  <Separator />
+                  <Separator className="settings-models-divider" />
 
                   <div className="space-y-4">
                     <div className="flex items-start justify-between gap-4">

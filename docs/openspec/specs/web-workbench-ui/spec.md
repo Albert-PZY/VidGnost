@@ -92,6 +92,9 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **AND** in light theme with a custom skin active, card content text renders in high-contrast light text instead of default dark foreground tokens
 - **AND** in light theme with a custom skin active, white or near-white interactive fills used by buttons, hover states, and label chips shift to theme-hue fills when they render light text
 - **AND** in light theme with a custom skin active, workflow step markers and upload placeholder icon shells avoid white fills and use the active theme hue family instead
+- **AND** in light theme with a custom skin active, dense model-management panels and their dividers use softened translucent separators instead of hard rectangular border strokes
+- **AND** in light theme with a custom skin active, settings-center section tabs keep a transparent resting state and only shift to the theme-hue fill on hover, focus, or active selection
+- **AND** in light theme with a custom skin active, prompt-template preview blocks avoid neutral white fills and instead use a softened theme-hue translucent preview surface
 - **AND** the workspace shell does not add extra renderer-side blur or tint beyond the persisted skin blur and opacity values
 
 ### Requirement: Shell controls SHALL expose explicit language selection state

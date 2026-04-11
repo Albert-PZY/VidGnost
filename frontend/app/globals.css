@@ -404,10 +404,6 @@ html:not(.dark) body[data-app-background-active="true"] :is(
 }
 
 html:not(.dark) body[data-app-background-active="true"] :is(
-    [data-slot="button"][class*="bg-background/"],
-    [data-slot="button"][class*="bg-muted/"],
-    [data-slot="button"][class*="bg-secondary"],
-    [data-slot="button"][class*="bg-accent"],
     [data-slot="dropdown-menu-trigger"][class*="bg-background"],
     [data-slot="dropdown-menu-trigger"][class*="bg-muted"],
     [data-slot="dropdown-menu-trigger"][class*="bg-secondary"],
@@ -461,6 +457,73 @@ html:not(.dark) body[data-app-background-active="true"] .upload-dropzone-icon-sh
 html:not(.dark) body[data-app-background-active="true"] .upload-dropzone-icon-shell svg {
   color: var(--primary-foreground) !important;
   opacity: 0.92;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .settings-models-panel {
+  border-color: transparent !important;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, white 7%, transparent) 0%,
+      transparent 18%
+    ),
+    color-mix(in oklch, var(--background) 10%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 10px 28px rgba(6, 10, 18, 0.08);
+}
+
+html:not(.dark) body[data-app-background-active="true"] .settings-models-divider {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklch, var(--primary) 18%, transparent) 18%,
+    color-mix(in oklch, var(--primary) 12%, transparent) 50%,
+    color-mix(in oklch, var(--primary) 18%, transparent) 82%,
+    transparent 100%
+  ) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .settings-models-shell [data-slot="button"][class*="border"] {
+  border-color: transparent !important;
+  background: color-mix(in oklch, var(--background) 8%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 8px 20px rgba(6, 10, 18, 0.08);
+}
+
+html:not(.dark) body[data-app-background-active="true"] .settings-models-shell [data-slot="button"][class*="border"]:hover,
+html:not(.dark) body[data-app-background-active="true"] .settings-models-shell [data-slot="button"][class*="border"]:focus-visible {
+  background: var(--wallpaper-tint-fill-soft);
+  color: var(--primary-foreground);
+}
+
+html:not(.dark) body[data-app-background-active="true"] .settings-section-tab[data-active="false"] {
+  background: transparent !important;
+  color: var(--wallpaper-shell-text) !important;
+  text-shadow: var(--wallpaper-shell-shadow);
+}
+
+html:not(.dark) body[data-app-background-active="true"] .settings-section-tab[data-active="false"]:hover,
+html:not(.dark) body[data-app-background-active="true"] .settings-section-tab[data-active="false"]:focus-visible {
+  background: var(--wallpaper-tint-fill-soft) !important;
+  color: var(--primary-foreground) !important;
+  text-shadow: none;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .settings-section-tab[data-active="true"] {
+  background: var(--wallpaper-tint-fill-strong) !important;
+  color: var(--primary-foreground) !important;
+  text-shadow: none;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .prompt-template-preview-shell {
+  background: color-mix(in oklch, var(--primary) 12%, transparent) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+html:not(.dark) body[data-app-background-active="true"] .prompt-template-preview-shell pre {
+  color: var(--wallpaper-shell-text-muted) !important;
 }
 
 html:not(.dark) body[data-app-background-active="true"] [data-slot="card"] :is(
