@@ -86,6 +86,8 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **WHEN** renderer loads with persisted skin settings
 - **THEN** the fixed shell background layer restores the saved image using the stored opacity, blur, scale, and focus coordinates
 - **AND** the title bar, sidebar, and main content shell render above the same background layer
+- **AND** cards, dialogs, popovers, and the left sidebar switch to translucent glass surfaces while the custom skin is active
+- **AND** shell text outside card surfaces uses high-contrast light text with a soft shadow while the custom skin is active
 - **AND** the workspace shell does not add extra renderer-side blur or tint beyond the persisted skin blur and opacity values
 
 ### Requirement: Shell controls SHALL expose explicit language selection state

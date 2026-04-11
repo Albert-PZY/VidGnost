@@ -400,7 +400,7 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
         showCloseButton={false}
         className="max-w-[29rem] border-none bg-transparent p-0 shadow-none sm:max-w-[29rem]"
       >
-        <div className="overflow-hidden rounded-[1.65rem] bg-[linear-gradient(180deg,#323443_0%,#2d2f3d_100%)] text-white shadow-[0_24px_72px_rgba(9,10,18,0.54)] ring-1 ring-white/6">
+        <div className="custom-skin-dialog-surface overflow-hidden rounded-[1.65rem] bg-[linear-gradient(180deg,#323443_0%,#2d2f3d_100%)] text-white shadow-[0_24px_72px_rgba(9,10,18,0.54)] ring-1 ring-white/6">
           <DialogHeader className="relative px-5 pb-1 pt-4 text-center">
             <Button
               type="button"
