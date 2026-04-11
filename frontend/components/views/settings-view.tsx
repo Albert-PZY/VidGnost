@@ -28,7 +28,6 @@ import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
 import { Progress } from "@/components/ui/progress"
-import { Skeleton } from "@/components/ui/skeleton"
 import {
   Select,
   SelectContent,
@@ -44,6 +43,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { PromptMarkdownEditor } from "@/components/editors/prompt-markdown-editor"
 import { WebGLBlurCanvas } from "@/components/ui/webgl-blur-canvas"
 import { CustomSkinDialog } from "@/components/views/custom-skin-dialog"
 import { PromptLabPanel } from "@/components/views/prompt-lab-panel"
@@ -132,11 +132,6 @@ const themeHuePresets = [
 ] as const
 const DEFAULT_THEME_HUE = themeHuePresets[0].value
 const BACKGROUND_IMAGE_FILE_SIZE_LIMIT = 12 * 1024 * 1024
-
-const PromptMarkdownEditor = React.lazy(async () => {
-  const module = await import("@/components/editors/prompt-markdown-editor")
-  return { default: module.PromptMarkdownEditor }
-})
 
 const EMPTY_PROMPT_FORM = {
   channel: "correction" as PromptTemplateChannel,
@@ -238,44 +233,6 @@ const localLlmPreset: ModelConfigPreset = {
   quantizationPlaceholder: "如 4bit / 8bit / fp16",
   batchLabel: "最大并发批大小",
   batchDescription: "影响本地推理吞吐，数值越高占用越大。",
-}
-
-function PromptEditorSkeleton() {
-  return (
-    <div className="prompt-markdown-editor-shell overflow-hidden">
-      <div className="flex items-center gap-2 border-b bg-muted/45 px-3 py-2">
-        <Skeleton className="h-8 w-8 rounded-md" />
-        <Skeleton className="h-8 w-8 rounded-md" />
-        <Skeleton className="h-8 w-8 rounded-md" />
-        <Skeleton className="h-8 w-10 rounded-md" />
-        <div className="mx-1 h-5 w-px bg-border/80" />
-        <Skeleton className="h-8 w-8 rounded-md" />
-        <Skeleton className="h-8 w-8 rounded-md" />
-        <Skeleton className="ml-auto h-8 w-20 rounded-md" />
-      </div>
-      <div className="grid min-h-[520px] grid-cols-1 divide-y border-border/70 xl:grid-cols-2 xl:divide-x xl:divide-y-0">
-        <div className="space-y-4 p-4">
-          <Skeleton className="h-5 w-24 rounded-md" />
-          <Skeleton className="h-4 w-full rounded-md" />
-          <Skeleton className="h-4 w-[92%] rounded-md" />
-          <Skeleton className="h-4 w-[88%] rounded-md" />
-          <Skeleton className="h-4 w-[72%] rounded-md" />
-          <Skeleton className="mt-6 h-4 w-[95%] rounded-md" />
-          <Skeleton className="h-4 w-[84%] rounded-md" />
-          <Skeleton className="h-4 w-[68%] rounded-md" />
-        </div>
-        <div className="space-y-4 p-4">
-          <Skeleton className="h-5 w-24 rounded-md" />
-          <Skeleton className="h-4 w-[90%] rounded-md" />
-          <Skeleton className="h-4 w-[86%] rounded-md" />
-          <Skeleton className="h-4 w-[76%] rounded-md" />
-          <Skeleton className="mt-6 h-4 w-[88%] rounded-md" />
-          <Skeleton className="h-4 w-[82%] rounded-md" />
-          <Skeleton className="h-4 w-[74%] rounded-md" />
-        </div>
-      </div>
-    </div>
-  )
 }
 
 async function readFileAsDataUrl(file: File): Promise<string> {
@@ -1761,20 +1718,18 @@ export function SettingsView({
                                     </p>
                                   </div>
                                   <div className="mt-4">
-                                    <React.Suspense fallback={<PromptEditorSkeleton />}>
-                                      <PromptMarkdownEditor
-                                        value={promptForm.content}
-                                        colorMode={markdownColorMode}
-                                        height={520}
-                                        placeholder="输入提示词内容，使用 {text} 作为输入文本占位符"
-                                        onChange={(value) =>
-                                          setPromptForm((current) => ({
-                                            ...current,
-                                            content: value,
-                                          }))
-                                        }
-                                      />
-                                    </React.Suspense>
+                                    <PromptMarkdownEditor
+                                      value={promptForm.content}
+                                      colorMode={markdownColorMode}
+                                      height={520}
+                                      placeholder="输入提示词内容，使用 {text} 作为输入文本占位符"
+                                      onChange={(value) =>
+                                        setPromptForm((current) => ({
+                                          ...current,
+                                          content: value,
+                                        }))
+                                      }
+                                    />
                                   </div>
                                 </div>
                               </section>

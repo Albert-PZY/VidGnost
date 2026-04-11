@@ -22,6 +22,12 @@ contextBridge.exposeInMainWorld("vidGnostDesktop", {
   getWindowState() {
     return ipcRenderer.invoke("window:get-state")
   },
+  reportBootstrapState(payload) {
+    ipcRenderer.send("bootstrap:state", payload)
+  },
+  completeBootstrap(payload) {
+    ipcRenderer.send("bootstrap:complete", payload)
+  },
   onWindowStateChange(listener) {
     const handler = (_event, payload) => listener(payload)
     ipcRenderer.on("window:state-changed", handler)

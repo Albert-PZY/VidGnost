@@ -49,14 +49,15 @@ Prompt template editor SHALL use a markdown editor that keeps the source editor 
 - **AND** the editor applies the same light or dark color mode as the renderer shell
 - **AND** scrolling one pane keeps the other pane aligned for long prompt content
 
-### Requirement: Heavy renderer modules SHALL lazy load with structured skeleton placeholders
-Heavy renderer modules such as settings subviews and embedded markdown editors SHALL load on demand and SHALL present structured skeleton placeholders instead of plain text loading prompts while code or CSS chunks are still resolving. Those placeholders SHALL use neutral placeholder surfaces with subtle shimmer sweeps rather than accent-colored solid blocks.
+### Requirement: Desktop startup SHALL preload core workbench views before main window reveal
+Electron desktop startup SHALL open a dedicated splash window first, keep the main window hidden while renderer assets and core workbench views initialize, and reveal the main window only after bootstrap completes or enters degraded mode. Core workbench views such as `新建任务`, `历史记录`, `设置中心`, `系统自检`, `任务处理`, and the prompt-template Markdown editor SHALL be included in the initial renderer startup path instead of route-level or dialog-level lazy loading placeholders.
 
-#### Scenario: Open a lazily loaded settings surface
-- **WHEN** user opens a lazily loaded view or prompt editor
-- **THEN** the renderer shows a layout-matched skeleton placeholder
-- **AND** the placeholder uses neutral, low-contrast loading tones with a restrained shimmer effect
-- **AND** the final surface replaces the skeleton once the async chunk and styles are ready
+#### Scenario: Launch the Electron workbench
+- **WHEN** user opens the desktop application
+- **THEN** a standalone splash surface appears immediately with the project brand image and startup progress copy
+- **AND** the hidden main window continues loading renderer assets, core workbench views, and initial UI data in the background
+- **AND** the main window is revealed only after startup bootstrap reports completion or explicitly enters degraded mode
+- **AND** no page-level or prompt-editor skeleton placeholder is shown as part of the initial desktop startup chain
 
 ### Requirement: Workbench SHALL surface transient notifications through a compact toast stack
 Renderer SHALL present transient `success`, `error`, and `loading` feedback through a single top-centered toast stack. The stack SHALL keep at most three visible notifications and SHALL retire older visible items when newer notifications overflow the cap.
@@ -144,11 +145,11 @@ Header theme controls SHALL show the current selected theme mode with explicit s
 - **AND** only the selected theme option shows the explicit selection indicator
 
 ### Requirement: Workbench branding SHALL use the project logo asset
-Renderer branding surfaces and favicon SHALL use `frontend/public/icon.svg` as the project logo asset.
+Renderer branding surfaces, desktop splash branding, and favicon SHALL use `frontend/public/icon.svg` as the project logo asset.
 
 #### Scenario: Open application shell
 - **WHEN** application renderer loads
-- **THEN** sidebar branding uses the project logo
+- **THEN** the desktop splash surface and sidebar branding use the project logo
 - **AND** browser/electron renderer favicon resolves to the same logo asset
 
 ### Requirement: Renderer SHALL consume backend data through plain HTTP APIs
@@ -182,12 +183,13 @@ New-task view SHALL expose `Upload`, `URL`, and `Path` intake modes inside the s
 - **AND** the upload mode supports drag-and-drop plus batch file selection
 - **AND** the user can switch to URL or absolute local-path input without leaving the page
 
-### Requirement: Bootstrap overlay SHALL provide backend recovery actions
-Workbench bootstrap SHALL expose an overlay state machine for `initializing`, `connecting`, `degraded`, and `ready`, and degraded states SHALL provide direct recovery actions.
+### Requirement: Bootstrap surfaces SHALL provide startup progress and backend recovery actions
+Workbench bootstrap SHALL expose a desktop splash progress state before the main window reveal and a renderer overlay state machine for `initializing`, `connecting`, `degraded`, and `ready` after the main window becomes visible. Degraded states SHALL provide direct recovery actions.
 
 #### Scenario: Backend is unavailable during bootstrap
 - **WHEN** renderer cannot complete initial health/config synchronization
-- **THEN** a blocking overlay explains that the backend is unavailable
+- **THEN** the desktop splash completes the startup handoff and the main window opens in degraded mode
+- **AND** a blocking overlay explains that the backend is unavailable
 - **AND** the overlay provides `重试连接`, `查看诊断`, and `打开日志目录` actions
 - **AND** the overlay is dismissed automatically once bootstrap reaches `ready`
 

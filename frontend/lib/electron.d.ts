@@ -5,6 +5,13 @@ declare global {
     isMaximized: boolean
   }
 
+  interface DesktopBootstrapState {
+    progress?: number
+    title?: string
+    message?: string
+    detail?: string
+  }
+
   interface Window {
     vidGnostDesktop?: {
       openPath: (targetPath: string) => Promise<{ ok: boolean; message?: string }>
@@ -20,6 +27,8 @@ declare global {
       toggleMaximizeWindow: () => Promise<DesktopWindowState>
       closeWindow: () => Promise<void>
       getWindowState: () => Promise<DesktopWindowState>
+      reportBootstrapState: (state: DesktopBootstrapState) => void
+      completeBootstrap: (state?: DesktopBootstrapState) => void
       onWindowStateChange: (listener: (state: DesktopWindowState) => void) => () => void
       onWindowCloseRequested: (listener: () => void) => () => void
     }

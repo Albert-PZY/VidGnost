@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VidGnost 启动中</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg-start: #06101d;
+        --bg-end: #0b1628;
+        --panel: rgba(10, 18, 31, 0.78);
+        --panel-border: rgba(154, 196, 255, 0.18);
+        --text: rgba(247, 250, 255, 0.96);
+        --muted: rgba(189, 206, 234, 0.74);
+        --track: rgba(144, 174, 214, 0.16);
+        --fill-start: #7dd3fc;
+        --fill-mid: #5eead4;
+        --fill-end: #c4b5fd;
+        --glow: rgba(94, 234, 212, 0.26);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+        background:
+          radial-gradient(circle at 18% 18%, rgba(125, 211, 252, 0.2), transparent 34%),
+          radial-gradient(circle at 78% 22%, rgba(94, 234, 212, 0.16), transparent 30%),
+          radial-gradient(circle at 50% 85%, rgba(196, 181, 253, 0.12), transparent 34%),
+          linear-gradient(145deg, var(--bg-start), var(--bg-end));
+        color: var(--text);
+      }
+
+      body {
+        position: relative;
+        display: grid;
+        place-items: center;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+
+      body::before,
+      body::after {
+        content: "";
+        position: absolute;
+        inset: auto;
+        border-radius: 999px;
+        pointer-events: none;
+        filter: blur(24px);
+        opacity: 0.9;
+      }
+
+      body::before {
+        width: 180px;
+        height: 180px;
+        top: 52px;
+        right: 38px;
+        background: rgba(125, 211, 252, 0.12);
+        animation: float 10s ease-in-out infinite;
+      }
+
+      body::after {
+        width: 220px;
+        height: 220px;
+        left: 32px;
+        bottom: 26px;
+        background: rgba(94, 234, 212, 0.12);
+        animation: float 13s ease-in-out infinite reverse;
+      }
+
+      .shell {
+        position: relative;
+        width: min(100vw - 36px, 560px);
+        min-height: 332px;
+        padding: 28px;
+        border-radius: 30px;
+        background:
+          linear-gradient(180deg, rgba(16, 27, 44, 0.88) 0%, rgba(10, 19, 33, 0.8) 100%);
+        border: 1px solid var(--panel-border);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.08),
+          0 26px 64px rgba(0, 0, 0, 0.42);
+        backdrop-filter: blur(22px);
+        overflow: hidden;
+      }
+
+      .shell::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(115deg, rgba(125, 211, 252, 0.08), transparent 32%),
+          linear-gradient(295deg, rgba(196, 181, 253, 0.07), transparent 34%);
+        pointer-events: none;
+      }
+
+      .scanline {
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(
+            180deg,
+            transparent 0%,
+            rgba(255, 255, 255, 0.035) 48%,
+            transparent 100%
+          );
+        transform: translateY(-120%);
+        animation: sweep 5s linear infinite;
+        pointer-events: none;
+      }
+
+      .brand {
+        position: relative;
+        display: grid;
+        grid-template-columns: 108px minmax(0, 1fr);
+        gap: 22px;
+        align-items: center;
+      }
+
+      .logo-wrap {
+        position: relative;
+        display: grid;
+        place-items: center;
+        width: 108px;
+        height: 108px;
+        border-radius: 28px;
+        background:
+          linear-gradient(160deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+        border: 1px solid rgba(167, 196, 255, 0.18);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.08),
+          0 0 0 1px rgba(125, 211, 252, 0.04),
+          0 16px 34px rgba(9, 15, 28, 0.44);
+        overflow: hidden;
+      }
+
+      .logo-wrap::before {
+        content: "";
+        position: absolute;
+        inset: 14px;
+        border-radius: 20px;
+        background: radial-gradient(circle at 30% 30%, rgba(125, 211, 252, 0.18), transparent 60%);
+        filter: blur(16px);
+      }
+
+      .logo {
+        position: relative;
+        width: 72px;
+        height: 72px;
+        object-fit: contain;
+        filter:
+          drop-shadow(0 0 22px rgba(125, 211, 252, 0.2))
+          drop-shadow(0 10px 22px rgba(0, 0, 0, 0.28));
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 28px;
+        padding: 0 12px;
+        border-radius: 999px;
+        background: rgba(125, 211, 252, 0.08);
+        border: 1px solid rgba(125, 211, 252, 0.18);
+        color: rgba(220, 235, 255, 0.86);
+        font-size: 12px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+
+      .eyebrow::before {
+        content: "";
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: linear-gradient(180deg, var(--fill-start), var(--fill-end));
+        box-shadow: 0 0 12px rgba(125, 211, 252, 0.42);
+      }
+
+      .title {
+        margin: 14px 0 0;
+        font-size: 30px;
+        font-weight: 700;
+        line-height: 1.08;
+        letter-spacing: -0.03em;
+      }
+
+      .subtitle {
+        margin: 10px 0 0;
+        max-width: 320px;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.7;
+      }
+
+      .status-card {
+        position: relative;
+        margin-top: 28px;
+        padding: 18px 18px 16px;
+        border-radius: 22px;
+        background: rgba(11, 19, 33, 0.52);
+        border: 1px solid rgba(172, 198, 236, 0.14);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      }
+
+      .status-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+      }
+
+      .status-label {
+        font-size: 13px;
+        font-weight: 600;
+        color: rgba(240, 246, 255, 0.95);
+      }
+
+      .progress-value {
+        font-variant-numeric: tabular-nums;
+        color: rgba(228, 238, 255, 0.8);
+        font-size: 12px;
+        letter-spacing: 0.08em;
+      }
+
+      .message {
+        margin-top: 12px;
+        font-size: 17px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+
+      .detail {
+        margin-top: 6px;
+        min-height: 24px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      .progress-track {
+        position: relative;
+        height: 8px;
+        margin-top: 16px;
+        border-radius: 999px;
+        background: var(--track);
+        overflow: hidden;
+      }
+
+      .progress-fill {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 6%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, var(--fill-start), var(--fill-mid), var(--fill-end));
+        box-shadow:
+          0 0 18px var(--glow),
+          0 0 0 1px rgba(255, 255, 255, 0.08);
+        transition: width 240ms ease;
+      }
+
+      .progress-fill::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.38), transparent);
+        transform: translateX(-120%);
+        animation: progress-glint 1.8s linear infinite;
+      }
+
+      .footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-top: 18px;
+        color: rgba(200, 214, 236, 0.68);
+        font-size: 12px;
+      }
+
+      .dots {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .dots span {
+        width: 6px;
+        height: 6px;
+        border-radius: 999px;
+        background: rgba(218, 232, 255, 0.28);
+        animation: pulse 1.2s ease-in-out infinite;
+      }
+
+      .dots span:nth-child(2) {
+        animation-delay: 0.16s;
+      }
+
+      .dots span:nth-child(3) {
+        animation-delay: 0.32s;
+      }
+
+      @keyframes float {
+        0%, 100% { transform: translate3d(0, 0, 0); }
+        50% { transform: translate3d(0, 14px, 0); }
+      }
+
+      @keyframes sweep {
+        0% { transform: translateY(-120%); }
+        100% { transform: translateY(120%); }
+      }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 0.32; transform: scale(0.92); }
+        50% { opacity: 1; transform: scale(1); }
+      }
+
+      @keyframes progress-glint {
+        0% { transform: translateX(-120%); }
+        100% { transform: translateX(120%); }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell" aria-live="polite">
+      <div class="scanline"></div>
+
+      <section class="brand">
+        <div class="logo-wrap">
+          <img class="logo" src="../public/icon.svg" alt="VidGnost" />
+        </div>
+        <div>
+          <div class="eyebrow">Desktop Startup</div>
+          <h1 class="title">VidGnost</h1>
+          <p class="subtitle">本地优先多模态视频分析工作台正在完成基础数据初始化与完整页面预热。</p>
+        </div>
+      </section>
+
+      <section class="status-card">
+        <div class="status-head">
+          <span class="status-label" id="status-title">正在启动 VidGnost</span>
+          <span class="progress-value" id="status-progress">06%</span>
+        </div>
+        <div class="message" id="status-message">正在创建启动上下文</div>
+        <div class="detail" id="status-detail">准备应用窗口、图标与基础运行环境。</div>
+        <div class="progress-track" aria-hidden="true">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <span>本次启动会预热全部核心页面与工作台视图</span>
+        <span class="dots" aria-hidden="true">
+          <span></span>
+          <span></span>
+          <span></span>
+        </span>
+      </footer>
+    </main>
+
+    <script>
+      const titleElement = document.getElementById("status-title")
+      const messageElement = document.getElementById("status-message")
+      const detailElement = document.getElementById("status-detail")
+      const progressTextElement = document.getElementById("status-progress")
+      const progressFillElement = document.getElementById("progress-fill")
+
+      function applyState(nextState) {
+        const progress = Math.max(0, Math.min(100, Number(nextState.progress) || 0))
+        titleElement.textContent = nextState.title || "正在启动 VidGnost"
+        messageElement.textContent = nextState.message || "正在准备工作台"
+        detailElement.textContent = nextState.detail || "请稍候，应用正在完成基础初始化。"
+        progressTextElement.textContent = `${String(progress).padStart(2, "0")}%`
+        progressFillElement.style.width = `${progress}%`
+      }
+
+      applyState({
+        progress: 6,
+        title: "正在启动 VidGnost",
+        message: "正在创建启动上下文",
+        detail: "准备应用窗口、图标与基础运行环境。",
+      })
+
+      if (window.vidGnostSplash?.onState) {
+        window.vidGnostSplash.onState((state) => {
+          applyState(state || {})
+        })
+      }
+    </script>
+  </body>
+</html>
