@@ -70,10 +70,6 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
     return null
   }
 
-  const blurCompensation = normalizedSkin.background_image_blur > 0
-    ? 1 + normalizedSkin.background_image_blur / 120
-    : 1
-
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
       <img
@@ -98,8 +94,6 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
                 height: `${imageLayout.height}px`,
                 opacity: normalizedSkin.background_image_opacity / 100,
                 filter: `blur(${normalizedSkin.background_image_blur}px)`,
-                transform: `scale(${blurCompensation})`,
-                transformOrigin: "center center",
               }
             : { opacity: 0 }
         }

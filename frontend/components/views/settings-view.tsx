@@ -1864,7 +1864,6 @@ export function SettingsView({
                                 backgroundSize: "cover",
                                 filter: `blur(${Math.max(0, uiSettings.background_image_blur / 2)}px)`,
                                 opacity: uiSettings.background_image_opacity / 100,
-                                transform: uiSettings.background_image_blur > 0 ? "scale(1.02)" : undefined,
                               }}
                             />
                             <div className="absolute inset-0 bg-background/28" />
