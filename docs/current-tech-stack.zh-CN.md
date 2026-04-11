@@ -30,7 +30,6 @@
 - react-hot-toast（通知）
 - react-resizable-panels（可拖拽工作区分栏）
 - @uiw/react-md-editor + @uiw/react-markdown-preview（提示词编辑与 Markdown 结果渲染）
-- react-hook-form + zod（表单与校验）
 
 ## 2.3 前端工程事实
 

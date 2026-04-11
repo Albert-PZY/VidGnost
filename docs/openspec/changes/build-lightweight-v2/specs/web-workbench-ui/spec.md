@@ -154,12 +154,13 @@ Renderer branding surfaces, desktop splash branding, and favicon SHALL use `fron
 - **AND** any packaged raster companion icon stays visually aligned with the canonical SVG branding
 
 ### Requirement: Renderer SHALL consume backend data through plain HTTP APIs
-Frontend SHALL only render backend-provided data and call the Python backend over HTTP APIs. Electron bridge SHALL be limited to desktop shell integrations such as open path, open external link, image-file selection, and window controls.
+Frontend SHALL only render backend-provided data and call the Python backend over HTTP APIs. Electron bridge SHALL be limited to desktop shell integrations such as open path, open external link, image-file selection, startup progress handoff between splash and main windows, and window controls.
 
 #### Scenario: Load the workbench in Electron
 - **WHEN** renderer starts inside Electron
 - **THEN** data requests go through the backend HTTP API
 - **AND** Electron preload APIs are used only for desktop shell interactions
+- **AND** startup progress and completion handoff between the hidden main window and the splash surface stays inside the Electron shell bridge instead of changing backend transport contracts
 
 #### Scenario: Pick a skin image from Electron
 - **WHEN** user clicks the skin selection button in appearance settings inside Electron

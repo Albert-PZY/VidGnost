@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import io
 import logging
-import os
-import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -19,6 +16,7 @@ from app.api.routes_self_check import router as self_check_router
 from app.api.routes_tasks import router as tasks_router
 from app.api.routes_vqa import router as vqa_router
 from app.config import get_settings
+from app.runtime_stdio import enable_windows_utf8_stdio
 from app.services.events import EventBus
 from app.services.llm_config_store import LLMConfigStore
 from app.services.model_catalog_store import ModelCatalogStore
@@ -38,20 +36,7 @@ from app.services.vqa_runtime_service import VQARuntimeService
 logger = logging.getLogger(__name__)
 
 
-def _enable_windows_utf8_stdio() -> None:
-    if sys.platform != "win32":
-        return
-    # Pytest capture replaces stdio streams; wrapping again will break teardown on Windows.
-    entry_name = Path(sys.argv[0]).name.lower() if sys.argv else ""
-    if "PYTEST_CURRENT_TEST" in os.environ or "pytest" in entry_name:
-        return
-    if hasattr(sys.stdout, "buffer"):
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-    if hasattr(sys.stderr, "buffer"):
-        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
-
-
-_enable_windows_utf8_stdio()
+enable_windows_utf8_stdio(skip_pytest_capture=True)
 
 settings = get_settings()
 
