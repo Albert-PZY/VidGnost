@@ -232,12 +232,26 @@ body[data-app-background-active="true"] {
   --wallpaper-shell-shadow: 0 1px 10px rgba(0, 0, 0, 0.35);
 }
 
+html:not(.dark) body[data-app-background-active="true"] {
+  --wallpaper-glass-border: transparent;
+  --wallpaper-shell-text: color-mix(in oklch, white 98%, var(--foreground) 2%);
+  --wallpaper-shell-text-muted: color-mix(in oklch, white 84%, var(--muted-foreground) 16%);
+  --wallpaper-glass-edge: 0 16px 40px rgba(6, 10, 18, 0.14);
+  --wallpaper-glass-edge-strong: 0 20px 52px rgba(6, 10, 18, 0.18);
+}
+
 body[data-app-background-active="true"] [data-slot="card"] {
   background: var(--wallpaper-glass-surface);
   border-color: var(--wallpaper-glass-border);
   backdrop-filter: blur(20px) saturate(1.16);
   box-shadow: 0 18px 48px rgba(6, 10, 18, 0.14);
   text-shadow: none;
+}
+
+html:not(.dark) body[data-app-background-active="true"] [data-slot="card"] {
+  color: var(--wallpaper-shell-text);
+  border-color: transparent;
+  box-shadow: var(--wallpaper-glass-edge);
 }
 
 body[data-app-background-active="true"] [data-slot="dialog-content"]:not(.bg-transparent),
@@ -260,6 +274,25 @@ body[data-app-background-active="true"] .custom-skin-dialog-surface {
   backdrop-filter: blur(24px) saturate(1.2);
   box-shadow: 0 24px 72px rgba(5, 9, 18, 0.22);
   text-shadow: none;
+}
+
+html:not(.dark) body[data-app-background-active="true"] [data-slot="dialog-content"]:not(.bg-transparent),
+html:not(.dark) body[data-app-background-active="true"] [data-slot="alert-dialog-content"],
+html:not(.dark) body[data-app-background-active="true"] [data-slot="sheet-content"],
+html:not(.dark) body[data-app-background-active="true"] [data-slot="drawer-content"],
+html:not(.dark) body[data-app-background-active="true"] [data-slot="popover-content"],
+html:not(.dark) body[data-app-background-active="true"] [data-slot="dropdown-menu-content"],
+html:not(.dark) body[data-app-background-active="true"] [data-slot="dropdown-menu-sub-content"],
+html:not(.dark) body[data-app-background-active="true"] [data-slot="context-menu-content"],
+html:not(.dark) body[data-app-background-active="true"] [data-slot="context-menu-sub-content"],
+html:not(.dark) body[data-app-background-active="true"] [data-slot="hover-card-content"],
+html:not(.dark) body[data-app-background-active="true"] [data-slot="menubar-content"],
+html:not(.dark) body[data-app-background-active="true"] [data-slot="menubar-sub-content"],
+html:not(.dark) body[data-app-background-active="true"] [data-slot="select-content"],
+html:not(.dark) body[data-app-background-active="true"] [data-slot="navigation-menu-content"],
+html:not(.dark) body[data-app-background-active="true"] .custom-skin-dialog-surface {
+  border-color: transparent;
+  box-shadow: var(--wallpaper-glass-edge-strong);
 }
 
 body[data-app-background-active="true"] [data-slot="input"],
@@ -308,6 +341,45 @@ body[data-app-background-active="true"] .app-header-shell .text-muted-foreground
 body[data-app-background-active="true"] [data-slot="sidebar-inner"] .text-muted-foreground,
 body[data-app-background-active="true"] [data-slot="sidebar-inset"] > main .text-muted-foreground {
   color: var(--wallpaper-shell-text-muted) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(
+    [data-slot="sidebar"],
+    [data-slot="sidebar-inner"],
+    [data-slot="input"],
+    [data-slot="textarea"],
+    [data-slot="select-trigger"],
+    [data-slot="sidebar-input"],
+    [data-slot="sidebar-inner"] [data-slot="button"],
+    [data-slot="tooltip-content"],
+    .app-header-shell
+  ) {
+  border-color: transparent;
+}
+
+html:not(.dark) body[data-app-background-active="true"] [data-slot="card"] :is(
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6,
+    p,
+    span,
+    small,
+    strong,
+    label,
+    li,
+    dt,
+    dd,
+    div
+  ) {
+  color: inherit;
+}
+
+html:not(.dark) body[data-app-background-active="true"] [data-slot="card"] .text-muted-foreground,
+html:not(.dark) body[data-app-background-active="true"] [data-slot="card"] .text-foreground {
+  color: var(--wallpaper-shell-text) !important;
 }
 
 body[data-app-background-active="true"] [data-slot="card"] *,
