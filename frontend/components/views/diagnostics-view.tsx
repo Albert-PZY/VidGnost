@@ -349,7 +349,7 @@ export function DiagnosticsView() {
             >
               <div
                 className={cn(
-                  "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-background/85",
+                  "diagnostics-check-icon-shell mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-background/85",
                   check.status === "success" && "border-status-success/20 bg-status-success/6",
                   check.status === "warning" && "border-amber-500/20 bg-amber-500/6",
                   check.status === "error" && "border-status-error/20 bg-status-error/6",

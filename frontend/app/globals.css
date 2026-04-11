@@ -756,6 +756,19 @@ html:not(.dark) body[data-app-background-active="true"] .history-stat-icon-shell
   color: white !important;
 }
 
+html:not(.dark) body[data-app-background-active="true"] .diagnostics-check-icon-shell {
+  background: var(--wallpaper-tint-fill) !important;
+  border-color: transparent !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 8px 18px rgba(6, 10, 18, 0.08);
+}
+
+html:not(.dark) body[data-app-background-active="true"] .diagnostics-check-icon-shell svg {
+  color: white !important;
+  opacity: 0.96;
+}
+
 html:not(.dark) body[data-app-background-active="true"] .settings-model-icon-shell svg {
   color: white !important;
 }
