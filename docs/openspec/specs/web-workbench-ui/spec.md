@@ -64,6 +64,7 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 #### Scenario: Adjust theme hue
 - **WHEN** user changes theme hue from the appearance section and saves it
 - **THEN** title bar, sidebar, and primary emphasis colors update from the persisted hue setting
+- **AND** the hue section keeps only essential directional labels without extra explanatory taglines
 - **AND** the same hue is restored after application restart
 
 #### Scenario: Adjust font size

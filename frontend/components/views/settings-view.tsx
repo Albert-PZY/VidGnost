@@ -1741,10 +1741,7 @@ export function SettingsView({
                     <div className="flex items-center justify-between">
                       <div>
                         <Label>主题色调</Label>
-                        <p className="text-sm text-muted-foreground">
-                          统一控制标题栏、侧栏与强调色的主色方向
-                        </p>
-                      </div>
+                  </div>
                       <div className="flex items-center gap-3">
                         <span className="text-sm text-muted-foreground">{themeHue[0]}°</span>
                         <Button
@@ -1801,7 +1798,6 @@ export function SettingsView({
                     />
                     <div className="flex justify-between text-xs text-muted-foreground">
                       <span>冷色</span>
-                      <span>当前前端风格基线</span>
                       <span>暖色</span>
                     </div>
                   </div>
