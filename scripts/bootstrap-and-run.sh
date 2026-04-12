@@ -55,23 +55,6 @@ test_port_bindable() {
   node -e "const net = require('node:net'); const port = Number(process.argv[1]); const host = process.argv[2]; const server = net.createServer(); server.once('error', () => process.exit(1)); server.listen({ port, host, exclusive: true }, () => server.close(() => process.exit(0)));" "${port}" "${host}" >/dev/null 2>&1
 }
 
-find_available_port() {
-  local start_port="$1"
-  local bind_host="$2"
-  local attempts="${3:-256}"
-  local candidate_port
-
-  for ((offset = 0; offset < attempts; offset++)); do
-    candidate_port=$((start_port + offset))
-    if test_port_bindable "${candidate_port}" "${bind_host}"; then
-      echo "${candidate_port}"
-      return
-    fi
-  done
-
-  node -e "const net = require('node:net'); const host = process.argv[1]; const server = net.createServer(); server.once('error', () => process.exit(1)); server.listen({ port: 0, host, exclusive: true }, () => { const address = server.address(); process.stdout.write(String(address.port)); server.close(() => process.exit(0)); });" "${bind_host}"
-}
-
 ensure_port_free() {
   local port="$1"
   local label="$2"
@@ -146,35 +129,6 @@ wait_port_ready() {
   exit 1
 }
 
-resolve_service_port() {
-  local preferred_port="$1"
-  local label="$2"
-  local bind_host="$3"
-
-  if test_port_bindable "${preferred_port}" "${bind_host}"; then
-    echo "[setup] Port ${preferred_port} (${label}) is free." >&2
-    echo "${preferred_port}"
-    return
-  fi
-
-  local owner_pids
-  owner_pids="$(port_owner_pids "${preferred_port}")"
-  if [[ -n "${owner_pids//[[:space:]]/}" ]]; then
-    if ensure_port_free "${preferred_port}" "${label}" "${bind_host}"; then
-      echo "${preferred_port}"
-      return
-    fi
-    echo "[warn] Port ${preferred_port} (${label}) could not be reclaimed. Falling back to another port." >&2
-  else
-    echo "[warn] Port ${preferred_port} (${label}) is unavailable, but no PID was resolved. Trying another ${label} port instead of waiting indefinitely." >&2
-  fi
-
-  local fallback_port
-  fallback_port="$(find_available_port "$((preferred_port + 1))" "${bind_host}")"
-  echo "[setup] ${label} will use fallback port ${fallback_port}." >&2
-  echo "${fallback_port}"
-}
-
 electron_pids_for_project() {
   if command -v pgrep >/dev/null 2>&1; then
     pgrep -f "electron.*${FRONTEND_DIR}" 2>/dev/null || true
@@ -243,8 +197,10 @@ pnpm config set registry "${PNPM_REGISTRY_MIRROR}" >/dev/null 2>&1 || true
 uv_index_display="${UV_DEFAULT_INDEX_MIRROR}"
 echo "[setup] Mirrors configured (uv index-url: ${uv_index_display}, pnpm: ${PNPM_REGISTRY_MIRROR}, electron: ${ELECTRON_MIRROR})."
 
-SELECTED_BACKEND_PORT="$(resolve_service_port "${BACKEND_PORT}" "backend" "0.0.0.0")"
-SELECTED_FRONTEND_PORT="$(resolve_service_port "${FRONTEND_PORT}" "frontend" "127.0.0.1")"
+ensure_port_free "${BACKEND_PORT}" "backend" "0.0.0.0"
+ensure_port_free "${FRONTEND_PORT}" "frontend" "127.0.0.1"
+SELECTED_BACKEND_PORT="${BACKEND_PORT}"
+SELECTED_FRONTEND_PORT="${FRONTEND_PORT}"
 
 echo "[setup] Sync backend dependencies..."
 uv_sync_args=(uv sync --python "${PINNED_PYTHON_VERSION}")

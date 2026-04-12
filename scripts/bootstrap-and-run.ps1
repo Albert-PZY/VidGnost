@@ -72,36 +72,6 @@ function Get-PortOwningPids {
     }
 }
 
-function Find-AvailablePort {
-    param(
-        [Parameter(Mandatory = $true)]
-        [int]$StartPort,
-        [int]$Attempts = 256
-    )
-
-    for ($offset = 0; $offset -lt $Attempts; $offset++) {
-        $candidatePort = $StartPort + $offset
-        if (Test-PortBindable -Port $candidatePort) {
-            return $candidatePort
-        }
-    }
-
-    $ephemeralListener = $null
-    try {
-        $ephemeralListener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, 0)
-        $ephemeralListener.Start()
-        return ([System.Net.IPEndPoint]$ephemeralListener.LocalEndpoint).Port
-    } catch {
-        throw "No available TCP port was found from $StartPort to $($StartPort + $Attempts - 1), and automatic dynamic port allocation also failed."
-    } finally {
-        if ($null -ne $ephemeralListener) {
-            try {
-                $ephemeralListener.Stop()
-            } catch {}
-        }
-    }
-}
-
 function Expand-ProcessTreePids {
     param(
         [int[]]$RootPids
@@ -231,36 +201,6 @@ function Ensure-PortFree {
     }
 }
 
-function Resolve-ServicePort {
-    param(
-        [Parameter(Mandatory = $true)]
-        [int]$PreferredPort,
-        [Parameter(Mandatory = $true)]
-        [string]$Label
-    )
-
-    if (Test-PortBindable -Port $PreferredPort) {
-        Write-Host "[setup] Port $PreferredPort ($Label) is free."
-        return $PreferredPort
-    }
-
-    $ownerPids = @((Get-PortOwningPids -Port $PreferredPort) | Where-Object { $_ -and $_ -gt 0 -and $_ -ne $PID } | Select-Object -Unique)
-    if ($ownerPids.Count -gt 0) {
-        try {
-            Ensure-PortFree -Port $PreferredPort -Label $Label
-            return $PreferredPort
-        } catch {
-            Write-Warning "[setup] Port $PreferredPort ($Label) could not be reclaimed. Falling back to another port. $($_.Exception.Message)"
-        }
-    } else {
-        Write-Warning "[setup] Port $PreferredPort ($Label) is unavailable, but no PID was resolved. Trying another $Label port instead of waiting indefinitely."
-    }
-
-    $fallbackPort = Find-AvailablePort -StartPort ($PreferredPort + 1)
-    Write-Host "[setup] $Label will use fallback port $fallbackPort."
-    return $fallbackPort
-}
-
 function Wait-PortReady {
     param(
         [Parameter(Mandatory = $true)]
@@ -375,8 +315,10 @@ $pnpmExe = Resolve-CommandPath -Name "pnpm" -Candidates @("pnpm.cmd", "pnpm.exe"
 $uvIndexDisplay = $UvDefaultIndexMirror
 Write-Host "[setup] Mirrors configured (uv index-url: $uvIndexDisplay, pnpm: $PnpmRegistryMirror, electron: $($env:ELECTRON_MIRROR))."
 
-$SelectedBackendPort = Resolve-ServicePort -PreferredPort $BackendPort -Label "backend"
-$SelectedFrontendPort = Resolve-ServicePort -PreferredPort $FrontendPort -Label "frontend"
+Ensure-PortFree -Port $BackendPort -Label "backend"
+Ensure-PortFree -Port $FrontendPort -Label "frontend"
+$SelectedBackendPort = $BackendPort
+$SelectedFrontendPort = $FrontendPort
 
 Write-Host "[setup] Sync backend dependencies..."
 Push-Location $BackendDir

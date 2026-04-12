@@ -60,10 +60,12 @@ Electron desktop startup SHALL open a dedicated splash window first, keep the ma
 - **AND** the main window is revealed only after startup bootstrap reports completion or explicitly enters degraded mode
 - **AND** no page-level or prompt-editor skeleton placeholder is shown as part of the initial desktop startup chain
 
-#### Scenario: Bootstrap script encounters a reserved preferred service port
-- **WHEN** the Windows or shell startup script finds that the preferred backend port `8000` or frontend dev port `5173` cannot be bound and no owning PID can be resolved, such as when the OS excludes that port range
-- **THEN** the script selects the next available port for the affected service automatically instead of waiting indefinitely on the preferred port
-- **AND** the spawned frontend or Electron process receives matching `VITE_API_BASE_URL` and `VITE_DEV_SERVER_URL` values so the workbench still connects to the correct backend and Vite instances
+#### Scenario: Bootstrap script enforces fixed service ports
+- **WHEN** the Windows or shell startup script launches the local desktop workbench
+- **THEN** the backend process binds only to `8000` and the frontend dev server binds only to `5173`
+- **AND** the script attempts to reclaim those fixed ports before startup
+- **AND** startup stops with a clear port-availability failure if either fixed port still cannot be bound
+- **AND** the spawned frontend or Electron process receives matching `VITE_API_BASE_URL` and `VITE_DEV_SERVER_URL` values for the fixed ports
 - **AND** the Windows launcher preserves quoted child-console bootstrap commands so frontend wait chains that contain shell operators such as `&&` stay compatible with Windows PowerShell 5.1
 
 ### Requirement: Workbench SHALL surface transient notifications through a compact toast stack
