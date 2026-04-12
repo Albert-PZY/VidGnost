@@ -26,7 +26,6 @@ import {
   Square,
   Volume2,
   VolumeX,
-  X,
 } from "lucide-react"
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"

@@ -73,6 +73,14 @@ Electron desktop startup SHALL open a dedicated splash window first, keep the ma
 - **AND** the spawned frontend or Electron process receives matching `VITE_API_BASE_URL` and `VITE_DEV_SERVER_URL` values for the fixed ports
 - **AND** the Windows launcher preserves quoted child-console bootstrap commands so frontend wait chains that contain shell operators such as `&&` stay compatible with Windows PowerShell 5.1
 
+### Requirement: Workspace maintenance scripts SHALL clear local transient artifacts safely
+Repository maintenance scripts SHALL provide Windows and shell entry points that remove local transient logs, build outputs, and cache directories without touching persisted runtime data.
+
+#### Scenario: Run workspace cleanup script
+- **WHEN** maintainer executes `scripts/clean-workspace.ps1` or `scripts/clean-workspace.sh`
+- **THEN** root-level transient `.log` files, frontend build output, and local cache directories such as `.pytest_cache`, `.ruff_cache`, `.mypy_cache`, `frontend/.vite`, and `frontend/node_modules/.vite` are removed
+- **AND** persisted runtime data under `backend/storage/` remains untouched
+
 ### Requirement: Workbench SHALL surface transient notifications through a compact toast stack
 Renderer SHALL present transient `success`, `error`, and `loading` feedback through a single top-centered toast stack. The stack SHALL keep at most three visible notifications and SHALL retire older visible items when newer notifications overflow the cap.
 

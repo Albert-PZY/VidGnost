@@ -68,6 +68,9 @@ Scope: this file is an internal navigation index for coding agents and maintaine
 - Script wrappers:
   - `scripts/bootstrap-and-run.ps1`
   - `scripts/bootstrap-and-run.sh`
+- Workspace cleanup:
+  - `scripts/clean-workspace.ps1`
+  - `scripts/clean-workspace.sh`
 
 ## 10) OpenSpec Checker Scripts
 - Python checker: `scripts/check-openspec.py`
