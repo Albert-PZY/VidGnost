@@ -296,6 +296,12 @@ Task processing workbench SHALL use a horizontal resizable split layout. The lef
 - **AND** recent stage activity omits repetitive raw progress spam and keeps milestone-focused readable updates
 - **AND** terminal task events immediately retire the cancel action and trigger a background task-detail sync so the workbench does not remain visually stuck on an earlier phase after backend completion
 
+#### Scenario: Keep playback interactions smooth during task inspection
+- **WHEN** user plays, drags, or seeks the task video inside the left preview pane
+- **THEN** high-frequency playback state such as current time, duration, mute state, and play state stays isolated to the preview surface instead of invalidating the entire task workbench tree
+- **AND** unrelated surfaces such as the right-side Markdown workspace, VQA panes, and top summary header do not rerender on every video `timeupdate`
+- **AND** transcript-row highlighting updates with the active segment while unchanged transcript rows remain stable
+
 #### Scenario: Open a VQA task and ask a question
 - **WHEN** user submits a question from the VQA workbench
 - **THEN** the renderer streams incremental answer chunks into the chat surface

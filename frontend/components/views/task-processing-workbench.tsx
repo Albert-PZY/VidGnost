@@ -143,11 +143,11 @@ function buildFallbackSteps(workflow: WorkflowType): TaskStepItem[] {
   }))
 }
 
-function findActiveTranscriptId(task: TaskDetailResponse | null, currentTime: number): string {
-  if (!task) {
+function findActiveTranscriptId(segments: TranscriptSegment[], currentTime: number): string {
+  if (segments.length === 0) {
     return ""
   }
-  const active = task.transcript_segments.find(
+  const active = segments.find(
     (segment) => currentTime >= segment.start && currentTime < segment.end,
   )
   return active ? `${active.start}-${active.end}` : ""
@@ -753,10 +753,6 @@ export function TaskProcessingWorkbench({
   const [isInitialLoading, setIsInitialLoading] = React.useState(true)
   const [isRefreshing, setIsRefreshing] = React.useState(false)
   const [errorMessage, setErrorMessage] = React.useState("")
-  const [currentTime, setCurrentTime] = React.useState(0)
-  const [totalDuration, setTotalDuration] = React.useState(0)
-  const [isPlaying, setIsPlaying] = React.useState(false)
-  const [isMuted, setIsMuted] = React.useState(false)
   const [activeTranscriptId, setActiveTranscriptId] = React.useState("")
   const [leftTab, setLeftTab] = React.useState<LeftTab>("transcript")
   const [notesTab, setNotesTab] = React.useState<NotesTab>("notes")
@@ -803,10 +799,6 @@ export function TaskProcessingWorkbench({
     setVqaTab("chat")
     setMindmapHtml("")
     setMindmapKey("")
-    setCurrentTime(0)
-    setTotalDuration(0)
-    setIsPlaying(false)
-    setIsMuted(false)
   }, [taskId, workflow])
 
   React.useEffect(() => {
@@ -858,13 +850,6 @@ export function TaskProcessingWorkbench({
   React.useEffect(() => {
     void loadTask()
   }, [loadTask])
-
-  React.useEffect(() => {
-    if (!task) {
-      return
-    }
-    setActiveTranscriptId(findActiveTranscriptId(task, currentTime))
-  }, [currentTime, task])
 
   React.useEffect(() => {
     if (!task) {
@@ -955,24 +940,6 @@ export function TaskProcessingWorkbench({
   const videoUrl = effectiveTask?.source_local_path ? buildTaskSourceMediaUrl(effectiveTask.id) : ""
   const canEditArtifacts = isTerminalTask(effectiveTask?.status)
 
-  React.useEffect(() => {
-    setVideoLoadError("")
-    setCurrentTime(0)
-    setTotalDuration(0)
-    setIsPlaying(false)
-    const node = videoRef.current
-    if (!node) {
-      return
-    }
-    node.pause()
-    if (videoUrl) {
-      node.load()
-      return
-    }
-    node.removeAttribute("src")
-    node.load()
-  }, [videoUrl])
-
   const updateAssistantMessage = React.useCallback(
     (messageId: string, updater: (current: ChatMessage) => ChatMessage) => {
       setChatHistory((current) => current.map((item) => (item.id === messageId ? updater(item) : item)))
@@ -983,13 +950,15 @@ export function TaskProcessingWorkbench({
   const jumpToTime = React.useCallback(
     (time: number) => {
       const nextTime = Math.max(0, time)
-      setCurrentTime(nextTime)
       if (videoRef.current) {
         videoRef.current.currentTime = nextTime
       }
-      setActiveTranscriptId(findActiveTranscriptId(effectiveTask, nextTime))
+      setActiveTranscriptId((current) => {
+        const nextActiveId = findActiveTranscriptId(transcriptSegments, nextTime)
+        return current === nextActiveId ? current : nextActiveId
+      })
     },
-    [effectiveTask],
+    [transcriptSegments],
   )
 
   const addItemToResearchBoard = React.useCallback(
@@ -1111,27 +1080,6 @@ export function TaskProcessingWorkbench({
     [traceCache],
   )
 
-  const handleTogglePlay = React.useCallback(async () => {
-    if (!videoRef.current) {
-      setIsPlaying((value) => !value)
-      return
-    }
-    if (videoRef.current.paused) {
-      await videoRef.current.play()
-      setIsPlaying(true)
-      return
-    }
-    videoRef.current.pause()
-    setIsPlaying(false)
-  }, [])
-
-  const handleSeek = React.useCallback(
-    (deltaSeconds: number) => {
-      jumpToTime(currentTime + deltaSeconds)
-    },
-    [currentTime, jumpToTime],
-  )
-
   const handleCopyTranscript = React.useCallback(async () => {
     try {
       await navigator.clipboard.writeText(effectiveTask?.transcript_text || "")
@@ -1151,6 +1099,26 @@ export function TaskProcessingWorkbench({
     },
     [taskId],
   )
+
+  const handleDownloadTranscript = React.useCallback(() => {
+    void handleDownloadArtifact("transcript")
+  }, [handleDownloadArtifact])
+
+  const handleDownloadNotes = React.useCallback(() => {
+    void handleDownloadArtifact("notes")
+  }, [handleDownloadArtifact])
+
+  const handleExportBundle = React.useCallback(() => {
+    void handleDownloadArtifact("bundle")
+  }, [handleDownloadArtifact])
+
+  const handleVideoError = React.useCallback((message: string) => {
+    setVideoLoadError(message)
+  }, [])
+
+  const handleActiveTranscriptChange = React.useCallback((nextActiveId: string) => {
+    setActiveTranscriptId((current) => (current === nextActiveId ? current : nextActiveId))
+  }, [])
 
   const handleSaveNotes = React.useCallback(async () => {
     if (!canEditArtifacts) {
@@ -1176,6 +1144,20 @@ export function TaskProcessingWorkbench({
     setNotesTab("notes")
     toast.success("已加入笔记草稿")
   }, [])
+
+  const handleAddTranscriptToResearch = React.useCallback(
+    (segment: TranscriptSegment) => {
+      addItemToResearchBoard({
+        type: "transcript",
+        title: `转写片段 · ${formatSecondsAsClock(segment.start)}`,
+        content: segment.text,
+        start: segment.start,
+        end: segment.end,
+        source: segment.speaker || "transcript",
+      })
+    },
+    [addItemToResearchBoard],
+  )
 
   const handleUseTranscriptAsQuestion = React.useCallback((segment: TranscriptSegment) => {
     setQuestion(`请结合上下文解释这段内容的重点：${segment.text}`)
@@ -1281,7 +1263,7 @@ export function TaskProcessingWorkbench({
         canRerun={isTerminalTask(effectiveTask?.status)}
         onRerun={handleRerunStageD}
         canExportBundle={effectiveTask?.status === "completed"}
-        onExportBundle={() => void handleDownloadArtifact("bundle")}
+        onExportBundle={handleExportBundle}
       />
 
       <ResizablePanelGroup direction="horizontal" className="min-h-0 flex-1">
@@ -1290,52 +1272,23 @@ export function TaskProcessingWorkbench({
             workflow={workflow}
             videoUrl={videoUrl}
             videoRef={videoRef}
-            isPlaying={isPlaying}
-            isMuted={isMuted}
-            currentTime={currentTime}
-            totalDuration={totalDuration || effectiveTask?.duration_seconds || 0}
-            onTogglePlay={handleTogglePlay}
-            onSeekDelta={handleSeek}
+            fallbackDurationSeconds={effectiveTask?.duration_seconds || 0}
             onSeek={jumpToTime}
-            onToggleMute={() => {
-              if (!videoRef.current) return
-              videoRef.current.muted = !videoRef.current.muted
-              setIsMuted(videoRef.current.muted)
-            }}
-            onFullscreen={() => {
-              if (videoRef.current?.requestFullscreen) {
-                void videoRef.current.requestFullscreen()
-              } else if (!document.fullscreenElement) {
-                void document.documentElement.requestFullscreen()
-              } else {
-                void document.exitFullscreen()
-              }
-            }}
-            onTimeUpdate={setCurrentTime}
-            onLoadedMetadata={setTotalDuration}
+            onActiveTranscriptChange={handleActiveTranscriptChange}
             leftTab={leftTab}
             onLeftTabChange={setLeftTab}
             transcriptSegments={transcriptSegments}
             activeTranscriptId={activeTranscriptId}
             videoErrorMessage={videoLoadError}
-            onVideoError={setVideoLoadError}
+            onVideoError={handleVideoError}
             errorMessage={errorMessage}
             isInitialLoading={isInitialLoading}
             isRefreshing={isRefreshing}
             onCopyTranscript={handleCopyTranscript}
-            onDownloadTranscript={() => void handleDownloadArtifact("transcript")}
+            onDownloadTranscript={handleDownloadTranscript}
             onAddTranscriptToNotes={handleAddTranscriptToNotes}
             onUseTranscriptAsQuestion={handleUseTranscriptAsQuestion}
-            onAddTranscriptToResearch={(segment) =>
-              addItemToResearchBoard({
-                type: "transcript",
-                title: `转写片段 · ${formatSecondsAsClock(segment.start)}`,
-                content: segment.text,
-                start: segment.start,
-                end: segment.end,
-                source: segment.speaker || "transcript",
-              })
-            }
+            onAddTranscriptToResearch={handleAddTranscriptToResearch}
             evidenceTimelineItems={evidenceTimelineItems}
             stageMetrics={effectiveTask?.vm_phase_metrics || {}}
             taskEvents={taskEvents}
@@ -1363,7 +1316,7 @@ export function TaskProcessingWorkbench({
               canEditArtifacts={canEditArtifacts}
               isSavingNotes={isSavingNotes}
               onSaveNotes={handleSaveNotes}
-              onDownloadNotes={() => void handleDownloadArtifact("notes")}
+              onDownloadNotes={handleDownloadNotes}
               onSeek={jumpToTime}
               mindmapHtml={mindmapHtml}
               isMindmapLoading={isMindmapLoading}
@@ -1417,7 +1370,7 @@ interface TaskWorkspaceHeaderProps {
   onExportBundle: () => void
 }
 
-function TaskWorkspaceHeader({
+const TaskWorkspaceHeader = React.memo(function TaskWorkspaceHeader({
   effectiveTitle,
   workflow,
   updatedAt,
@@ -1495,23 +1448,275 @@ function TaskWorkspaceHeader({
       </div>
     </div>
   )
+})
+
+interface VideoPreviewPaneProps {
+  videoUrl: string
+  videoRef: React.RefObject<HTMLVideoElement | null>
+  fallbackDurationSeconds: number
+  transcriptSegments: TranscriptSegment[]
+  videoErrorMessage: string
+  onVideoError: (message: string) => void
+  onSeek: (seconds: number) => void
+  onActiveTranscriptChange: (segmentId: string) => void
 }
+
+const VideoPreviewPane = React.memo(function VideoPreviewPane({
+  videoUrl,
+  videoRef,
+  fallbackDurationSeconds,
+  transcriptSegments,
+  videoErrorMessage,
+  onVideoError,
+  onSeek,
+  onActiveTranscriptChange,
+}: VideoPreviewPaneProps) {
+  const [currentTime, setCurrentTime] = React.useState(0)
+  const [totalDuration, setTotalDuration] = React.useState(fallbackDurationSeconds)
+  const [isPlaying, setIsPlaying] = React.useState(false)
+  const [isMuted, setIsMuted] = React.useState(false)
+  const activeTranscriptRef = React.useRef("")
+
+  const syncActiveTranscript = React.useCallback(
+    (time: number) => {
+      const nextActiveId = findActiveTranscriptId(transcriptSegments, time)
+      if (activeTranscriptRef.current === nextActiveId) {
+        return
+      }
+      activeTranscriptRef.current = nextActiveId
+      onActiveTranscriptChange(nextActiveId)
+    },
+    [onActiveTranscriptChange, transcriptSegments],
+  )
+
+  React.useEffect(() => {
+    setCurrentTime(0)
+    setTotalDuration(fallbackDurationSeconds)
+    setIsPlaying(false)
+    setIsMuted(false)
+    activeTranscriptRef.current = ""
+    onActiveTranscriptChange("")
+    onVideoError("")
+
+    const node = videoRef.current
+    if (!node) {
+      return
+    }
+    node.pause()
+    if (videoUrl) {
+      node.load()
+      return
+    }
+    node.removeAttribute("src")
+    node.load()
+  }, [onActiveTranscriptChange, onVideoError, videoRef, videoUrl])
+
+  React.useEffect(() => {
+    setTotalDuration((current) => (current > 0 ? current : fallbackDurationSeconds))
+  }, [fallbackDurationSeconds])
+
+  React.useEffect(() => {
+    syncActiveTranscript(videoRef.current?.currentTime ?? 0)
+  }, [syncActiveTranscript, videoRef])
+
+  const handleTogglePlay = React.useCallback(async () => {
+    if (!videoRef.current) {
+      return
+    }
+    if (videoRef.current.paused) {
+      await videoRef.current.play()
+      setIsPlaying(true)
+      return
+    }
+    videoRef.current.pause()
+    setIsPlaying(false)
+  }, [videoRef])
+
+  const handleSeekDelta = React.useCallback(
+    (deltaSeconds: number) => {
+      const referenceTime = videoRef.current?.currentTime ?? currentTime
+      onSeek(referenceTime + deltaSeconds)
+    },
+    [currentTime, onSeek, videoRef],
+  )
+
+  const handleToggleMute = React.useCallback(() => {
+    if (!videoRef.current) {
+      return
+    }
+    videoRef.current.muted = !videoRef.current.muted
+    setIsMuted(videoRef.current.muted)
+  }, [videoRef])
+
+  const handleFullscreen = React.useCallback(() => {
+    if (videoRef.current?.requestFullscreen) {
+      void videoRef.current.requestFullscreen()
+      return
+    }
+    if (!document.fullscreenElement) {
+      void document.documentElement.requestFullscreen()
+      return
+    }
+    void document.exitFullscreen()
+  }, [videoRef])
+
+  return (
+    <div className="relative aspect-video shrink-0 bg-black">
+      {videoUrl ? (
+        <video
+          ref={videoRef}
+          src={videoUrl}
+          className="absolute inset-0 h-full w-full object-contain"
+          preload="metadata"
+          playsInline
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+          onVolumeChange={(event) => setIsMuted(event.currentTarget.muted)}
+          onDurationChange={(event) => {
+            const nextDuration = event.currentTarget.duration || 0
+            setTotalDuration(nextDuration || fallbackDurationSeconds)
+          }}
+          onLoadedMetadata={(event) => {
+            const nextDuration = event.currentTarget.duration || 0
+            setTotalDuration(nextDuration || fallbackDurationSeconds)
+            setIsMuted(event.currentTarget.muted)
+          }}
+          onTimeUpdate={(event) => {
+            const nextTime = event.currentTarget.currentTime
+            setCurrentTime(nextTime)
+            syncActiveTranscript(nextTime)
+          }}
+          onSeeked={(event) => {
+            const nextTime = event.currentTarget.currentTime
+            setCurrentTime(nextTime)
+            syncActiveTranscript(nextTime)
+          }}
+          onCanPlay={() => onVideoError("")}
+          onError={() => {
+            setCurrentTime(0)
+            setTotalDuration(fallbackDurationSeconds)
+            onVideoError("当前视频预览加载失败，请检查源文件是否仍可访问。")
+          }}
+        />
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-white/55">
+          当前任务没有可预览的本地视频文件
+        </div>
+      )}
+      {videoUrl && videoErrorMessage ? (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/55 px-6 text-center text-sm text-white/80">
+          {videoErrorMessage}
+        </div>
+      ) : null}
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/82 to-transparent px-4 py-3">
+        <input
+          type="range"
+          min={0}
+          max={totalDuration || fallbackDurationSeconds || 0}
+          step={0.1}
+          value={Math.min(currentTime, totalDuration || fallbackDurationSeconds || currentTime)}
+          onChange={(event) => onSeek(Number(event.target.value))}
+          className="mb-3 h-1.5 w-full cursor-pointer accent-primary"
+        />
+        <div className="flex items-center gap-2 text-white">
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20" onClick={() => void handleTogglePlay()}>
+            {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20" onClick={() => handleSeekDelta(-10)}>
+            <SkipBack className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20" onClick={() => handleSeekDelta(10)}>
+            <SkipForward className="h-4 w-4" />
+          </Button>
+          <span className="text-xs tabular-nums">
+            {formatSecondsAsClock(currentTime)} / {formatSecondsAsClock(totalDuration || fallbackDurationSeconds)}
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20" onClick={handleToggleMute}>
+              {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+            </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20" onClick={handleFullscreen}>
+              <Maximize className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+})
+
+interface TranscriptSegmentCardProps {
+  workflow: WorkflowType
+  segment: TranscriptSegment
+  isActive: boolean
+  onSeek: (seconds: number) => void
+  onAddTranscriptToNotes: (segment: TranscriptSegment) => void
+  onUseTranscriptAsQuestion: (segment: TranscriptSegment) => void
+  onAddTranscriptToResearch: (segment: TranscriptSegment) => void
+}
+
+const TranscriptSegmentCard = React.memo(function TranscriptSegmentCard({
+  workflow,
+  segment,
+  isActive,
+  onSeek,
+  onAddTranscriptToNotes,
+  onUseTranscriptAsQuestion,
+  onAddTranscriptToResearch,
+}: TranscriptSegmentCardProps) {
+  return (
+    <div
+      className={cn(
+        "rounded-xl border px-3 py-3 transition-colors",
+        isActive ? "border-primary/35 bg-primary/8" : "border-border/60 bg-card/45",
+      )}
+    >
+      <div className="flex flex-col gap-2.5 lg:flex-row lg:items-start">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 lg:min-w-28 lg:flex-col lg:items-start lg:gap-1.5">
+          <Badge variant="outline" className="font-mono text-[11px]">
+            {formatSecondsAsClock(segment.start)}
+          </Badge>
+          <span className="text-[11px] text-muted-foreground">
+            至 {formatSecondsAsClock(segment.end)}
+          </span>
+          {segment.speaker ? <Badge variant="secondary" className="text-[11px]">{segment.speaker}</Badge> : null}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="whitespace-pre-wrap text-sm leading-6">{segment.text}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={() => onSeek(segment.start)}>
+              <MapPin className="mr-1.5 h-3.5 w-3.5" />
+              定位
+            </Button>
+            {workflow === "notes" ? (
+              <Button variant="ghost" size="sm" className="h-7 px-2.5 text-xs" onClick={() => onAddTranscriptToNotes(segment)}>
+                <Edit3 className="mr-1.5 h-3.5 w-3.5" />
+                加入笔记
+              </Button>
+            ) : (
+              <Button variant="ghost" size="sm" className="h-7 px-2.5 text-xs" onClick={() => onUseTranscriptAsQuestion(segment)}>
+                <MessageSquare className="mr-1.5 h-3.5 w-3.5" />
+                设为问题
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" className="h-7 px-2.5 text-xs" onClick={() => onAddTranscriptToResearch(segment)}>
+              <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+              加入研究板
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+})
 
 interface LeftWorkbenchPanelProps {
   workflow: WorkflowType
   videoUrl: string
   videoRef: React.RefObject<HTMLVideoElement | null>
-  isPlaying: boolean
-  isMuted: boolean
-  currentTime: number
-  totalDuration: number
-  onTogglePlay: () => void | Promise<void>
-  onSeekDelta: (deltaSeconds: number) => void
+  fallbackDurationSeconds: number
   onSeek: (seconds: number) => void
-  onToggleMute: () => void
-  onFullscreen: () => void
-  onTimeUpdate: (seconds: number) => void
-  onLoadedMetadata: (seconds: number) => void
+  onActiveTranscriptChange: (segmentId: string) => void
   leftTab: LeftTab
   onLeftTabChange: (value: LeftTab) => void
   transcriptSegments: TranscriptSegment[]
@@ -1541,21 +1746,13 @@ interface LeftWorkbenchPanelProps {
   taskStatus: string
 }
 
-function LeftWorkbenchPanel({
+const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
   workflow,
   videoUrl,
   videoRef,
-  isPlaying,
-  isMuted,
-  currentTime,
-  totalDuration,
-  onTogglePlay,
-  onSeekDelta,
+  fallbackDurationSeconds,
   onSeek,
-  onToggleMute,
-  onFullscreen,
-  onTimeUpdate,
-  onLoadedMetadata,
+  onActiveTranscriptChange,
   leftTab,
   onLeftTabChange,
   transcriptSegments,
@@ -1579,64 +1776,16 @@ function LeftWorkbenchPanel({
 }: LeftWorkbenchPanelProps) {
   return (
     <div className="flex h-full min-h-0 flex-col border-r">
-      <div className="relative aspect-video shrink-0 bg-black">
-        {videoUrl ? (
-          <video
-            ref={videoRef}
-            src={videoUrl}
-            className="absolute inset-0 h-full w-full object-contain"
-            preload="metadata"
-            playsInline
-            onTimeUpdate={(event) => onTimeUpdate(event.currentTarget.currentTime)}
-            onLoadedMetadata={(event) => onLoadedMetadata(event.currentTarget.duration || 0)}
-            onCanPlay={() => onVideoError("")}
-            onError={() => {
-              onLoadedMetadata(0)
-              onVideoError("当前视频预览加载失败，请检查源文件是否仍可访问。")
-            }}
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-white/55">
-            当前任务没有可预览的本地视频文件
-          </div>
-        )}
-        {videoUrl && videoErrorMessage ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/55 px-6 text-center text-sm text-white/80">
-            {videoErrorMessage}
-          </div>
-        ) : null}
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/82 to-transparent px-4 py-3">
-          <input
-            type="range"
-            min={0}
-            max={totalDuration || 0}
-            step={0.1}
-            value={Math.min(currentTime, totalDuration || currentTime)}
-            onChange={(event) => onSeek(Number(event.target.value))}
-            className="mb-3 h-1.5 w-full cursor-pointer accent-primary"
-          />
-          <div className="flex items-center gap-2 text-white">
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20" onClick={() => void onTogglePlay()}>
-              {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20" onClick={() => onSeekDelta(-10)}>
-              <SkipBack className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20" onClick={() => onSeekDelta(10)}>
-              <SkipForward className="h-4 w-4" />
-            </Button>
-            <span className="text-xs tabular-nums">{formatSecondsAsClock(currentTime)} / {formatSecondsAsClock(totalDuration)}</span>
-            <div className="ml-auto flex items-center gap-2">
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20" onClick={onToggleMute}>
-                {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-              </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20" onClick={onFullscreen}>
-                <Maximize className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <VideoPreviewPane
+        videoUrl={videoUrl}
+        videoRef={videoRef}
+        fallbackDurationSeconds={fallbackDurationSeconds}
+        transcriptSegments={transcriptSegments}
+        videoErrorMessage={videoErrorMessage}
+        onVideoError={onVideoError}
+        onSeek={onSeek}
+        onActiveTranscriptChange={onActiveTranscriptChange}
+      />
 
       <Tabs value={leftTab} onValueChange={(value) => onLeftTabChange(value as LeftTab)} className="flex min-h-0 flex-1 flex-col">
         <TabsList className="w-full justify-start rounded-none border-b bg-transparent p-0">
@@ -1678,51 +1827,16 @@ function LeftWorkbenchPanel({
                 {transcriptSegments.map((segment) => {
                   const segmentId = `${segment.start}-${segment.end}`
                   return (
-                    <div
+                    <TranscriptSegmentCard
                       key={segmentId}
-                      className={cn(
-                        "rounded-xl border px-3 py-3 transition-colors",
-                        activeTranscriptId === segmentId
-                          ? "border-primary/35 bg-primary/8"
-                          : "border-border/60 bg-card/45",
-                      )}
-                    >
-                      <div className="flex flex-col gap-2.5 lg:flex-row lg:items-start">
-                        <div className="flex shrink-0 flex-wrap items-center gap-2 lg:min-w-28 lg:flex-col lg:items-start lg:gap-1.5">
-                          <Badge variant="outline" className="font-mono text-[11px]">
-                            {formatSecondsAsClock(segment.start)}
-                          </Badge>
-                          <span className="text-[11px] text-muted-foreground">
-                            至 {formatSecondsAsClock(segment.end)}
-                          </span>
-                          {segment.speaker ? <Badge variant="secondary" className="text-[11px]">{segment.speaker}</Badge> : null}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="whitespace-pre-wrap text-sm leading-6">{segment.text}</p>
-                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                            <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={() => onSeek(segment.start)}>
-                              <MapPin className="mr-1.5 h-3.5 w-3.5" />
-                              定位
-                            </Button>
-                            {workflow === "notes" ? (
-                              <Button variant="ghost" size="sm" className="h-7 px-2.5 text-xs" onClick={() => onAddTranscriptToNotes(segment)}>
-                                <Edit3 className="mr-1.5 h-3.5 w-3.5" />
-                                加入笔记
-                              </Button>
-                            ) : (
-                              <Button variant="ghost" size="sm" className="h-7 px-2.5 text-xs" onClick={() => onUseTranscriptAsQuestion(segment)}>
-                                <MessageSquare className="mr-1.5 h-3.5 w-3.5" />
-                                设为问题
-                              </Button>
-                            )}
-                            <Button variant="ghost" size="sm" className="h-7 px-2.5 text-xs" onClick={() => onAddTranscriptToResearch(segment)}>
-                              <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-                              加入研究板
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                      workflow={workflow}
+                      segment={segment}
+                      isActive={activeTranscriptId === segmentId}
+                      onSeek={onSeek}
+                      onAddTranscriptToNotes={onAddTranscriptToNotes}
+                      onUseTranscriptAsQuestion={onUseTranscriptAsQuestion}
+                      onAddTranscriptToResearch={onAddTranscriptToResearch}
+                    />
                   )
                 })}
               </div>
@@ -1814,7 +1928,7 @@ function LeftWorkbenchPanel({
       </Tabs>
     </div>
   )
-}
+})
 
 interface NotesWorkbenchProps {
   taskId: string
@@ -1837,7 +1951,7 @@ interface NotesWorkbenchProps {
   isTaskCompleted: boolean
 }
 
-function NotesWorkbench({
+const NotesWorkbench = React.memo(function NotesWorkbench({
   taskId,
   effectiveTitle,
   notesTab,
@@ -1915,9 +2029,9 @@ function NotesWorkbench({
       </TabsContent>
     </Tabs>
   )
-}
+})
 
-function VqaWorkbench({
+const VqaWorkbench = React.memo(function VqaWorkbench({
   effectiveTitle,
   vqaTab,
   onVqaTabChange,
@@ -2065,7 +2179,7 @@ function VqaWorkbench({
       </TabsContent>
     </Tabs>
   )
-}
+})
 
 interface VqaWorkbenchProps {
   effectiveTitle: string
