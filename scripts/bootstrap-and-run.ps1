@@ -41,6 +41,15 @@ function Resolve-CommandPath {
     throw "Command '$Name' is unavailable. Please install it and rerun the script."
 }
 
+function Convert-ToEncodedCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$CommandText
+    )
+
+    return [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($CommandText))
+}
+
 function Get-PortOwningPids {
     param(
         [Parameter(Mandatory = $true)]
@@ -401,13 +410,15 @@ Write-Host '[run] Backend API base: http://127.0.0.1:$SelectedBackendPort/api'
 Write-Host '[run] Frontend dev server: http://127.0.0.1:$SelectedFrontendPort'
 pnpm exec concurrently -k -n VITE,ELECTRON -c cyan,green "pnpm dev --host 127.0.0.1 --port $SelectedFrontendPort" "pnpm exec wait-on tcp:$SelectedFrontendPort && electron electron/main.cjs"
 "@
+$encodedBackendCommand = Convert-ToEncodedCommand -CommandText $backendCommand
+$encodedFrontendCommand = Convert-ToEncodedCommand -CommandText $frontendCommand
 
 Write-Host "[run] Starting backend at http://127.0.0.1:$SelectedBackendPort ..."
-$backendProc = Start-Process -FilePath "powershell" -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-Command", $backendCommand) -PassThru
+$backendProc = Start-Process -FilePath "powershell" -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-EncodedCommand", $encodedBackendCommand) -PassThru
 Wait-PortReady -Port $SelectedBackendPort -Label "backend"
 
 Write-Host "[run] Starting frontend (electron)..."
-$frontendProc = Start-Process -FilePath "powershell" -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-Command", $frontendCommand) -PassThru
+$frontendProc = Start-Process -FilePath "powershell" -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-EncodedCommand", $encodedFrontendCommand) -PassThru
 Wait-ElectronReady -FrontendPath $FrontendDir -LauncherPid $frontendProc.Id
 
 $backendListenPids = @(Get-PortOwningPids -Port $SelectedBackendPort)

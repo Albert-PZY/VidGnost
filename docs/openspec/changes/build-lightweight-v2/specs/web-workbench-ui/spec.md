@@ -64,6 +64,7 @@ Electron desktop startup SHALL open a dedicated splash window first, keep the ma
 - **WHEN** the Windows or shell startup script finds that the preferred backend port `8000` or frontend dev port `5173` cannot be bound and no owning PID can be resolved, such as when the OS excludes that port range
 - **THEN** the script selects the next available port for the affected service automatically instead of waiting indefinitely on the preferred port
 - **AND** the spawned frontend or Electron process receives matching `VITE_API_BASE_URL` and `VITE_DEV_SERVER_URL` values so the workbench still connects to the correct backend and Vite instances
+- **AND** the Windows launcher preserves quoted child-console bootstrap commands so frontend wait chains that contain shell operators such as `&&` stay compatible with Windows PowerShell 5.1
 
 ### Requirement: Workbench SHALL surface transient notifications through a compact toast stack
 Renderer SHALL present transient `success`, `error`, and `loading` feedback through a single top-centered toast stack. The stack SHALL keep at most three visible notifications and SHALL retire older visible items when newer notifications overflow the cap.
