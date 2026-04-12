@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import io
 import mimetypes
+import shutil
 import tarfile
 import zipfile
 from datetime import datetime, timezone
@@ -40,6 +41,7 @@ from app.services.exporters import render_markmap_html
 from app.services.ingestion import ALLOWED_VIDEO_EXTENSIONS, sanitize_filename
 from app.services.naming import generate_time_key
 from app.services.task_artifact_index import build_task_artifact_index, parse_task_artifact_index
+from app.services.task_preflight import TaskPreflightService
 from app.services.task_runner import TaskSubmission, TaskRunner
 from app.services.task_store import TaskStore
 
@@ -59,6 +61,10 @@ def get_event_bus(request: Request) -> EventBus:
 
 def get_task_store(request: Request) -> TaskStore:
     return request.app.state.task_store
+
+
+def get_task_preflight_service(request: Request) -> TaskPreflightService:
+    return request.app.state.task_preflight_service
 
 
 def _validate_video_extension(suffix: str) -> None:
@@ -86,10 +92,12 @@ async def create_task_from_url(
     payload: TaskCreateFromUrlRequest,
     task_store: TaskStore = Depends(get_task_store),
     runner: TaskRunner = Depends(get_runner),
+    task_preflight_service: TaskPreflightService = Depends(get_task_preflight_service),
 ) -> TaskCreateResponse:
+    workflow: WorkflowType = payload.workflow
+    await task_preflight_service.assert_ready_for_analysis(workflow=workflow)
     task_id = _next_task_id(task_store)
     now = datetime.now(timezone.utc)
-    workflow: WorkflowType = payload.workflow
     record = TaskRecord(
         id=task_id,
         source_type="bilibili",
@@ -129,6 +137,7 @@ async def create_task_from_path(
     payload: TaskCreateFromPathRequest,
     task_store: TaskStore = Depends(get_task_store),
     runner: TaskRunner = Depends(get_runner),
+    task_preflight_service: TaskPreflightService = Depends(get_task_preflight_service),
 ) -> TaskCreateResponse:
     local_path = Path(payload.local_path).expanduser()
     if not local_path.exists() or not local_path.is_file():
@@ -136,6 +145,7 @@ async def create_task_from_path(
     _validate_video_extension(local_path.suffix.lower())
 
     workflow: WorkflowType = payload.workflow
+    await task_preflight_service.assert_ready_for_analysis(workflow=workflow)
     task_id = _next_task_id(task_store)
     now = datetime.now(timezone.utc)
     record = TaskRecord(
@@ -183,8 +193,10 @@ async def create_task_from_file(
     workflow: WorkflowType = Form(default="notes"),
     task_store: TaskStore = Depends(get_task_store),
     runner: TaskRunner = Depends(get_runner),
+    task_preflight_service: TaskPreflightService = Depends(get_task_preflight_service),
 ) -> TaskCreateResponse:
     _ = model_size
+    await task_preflight_service.assert_ready_for_analysis(workflow=workflow)
     task = await _create_task_from_uploaded_file(
         request=request,
         file=file,
@@ -206,6 +218,7 @@ async def create_tasks_from_files(
     strategy: Literal["single_task_per_file", "batch_task"] = Form(default="single_task_per_file"),
     task_store: TaskStore = Depends(get_task_store),
     runner: TaskRunner = Depends(get_runner),
+    task_preflight_service: TaskPreflightService = Depends(get_task_preflight_service),
 ) -> TaskBatchCreateResponse:
     _ = model_size
     if not files:
@@ -221,6 +234,7 @@ async def create_tasks_from_files(
             hint="当前版本支持 single_task_per_file。",
         )
 
+    await task_preflight_service.assert_ready_for_analysis(workflow=workflow)
     tasks: list[TaskCreateResponse] = []
     for file in files:
         created = await _create_task_from_uploaded_file(
@@ -368,6 +382,7 @@ def update_task_artifacts(
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_task(
+    request: Request,
     task_id: str,
     task_store: TaskStore = Depends(get_task_store),
 ) -> Response:
@@ -375,6 +390,13 @@ def delete_task(
     if record.status not in {TaskStatus.COMPLETED.value, TaskStatus.FAILED.value, TaskStatus.CANCELLED.value}:
         raise AppError.conflict("Running task cannot be deleted", code="TASK_DELETE_FORBIDDEN")
     task_store.delete(task_id)
+    settings = request.app.state.settings
+    shutil.rmtree(Path(settings.temp_dir) / task_id, ignore_errors=True)
+    for candidate in Path(settings.upload_dir).glob(f"{task_id}_*"):
+        if candidate.is_dir():
+            shutil.rmtree(candidate, ignore_errors=True)
+        else:
+            candidate.unlink(missing_ok=True)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

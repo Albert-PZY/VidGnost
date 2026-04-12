@@ -32,6 +32,13 @@ Backend SHALL allow title update and task deletion only for terminal tasks.
 #### Scenario: Delete terminal task
 - **WHEN** client deletes completed/failed/cancelled task
 - **THEN** backend removes task record and related persisted artifacts
+- **AND** backend removes the task-scoped temporary workspace under `temp_dir/<task_id>`
+- **AND** backend removes uploaded shadow source files owned by the task under `upload_dir/<task_id>_*`
+
+#### Scenario: Delete task from history view and refresh recent tasks
+- **WHEN** user deletes a terminal task from the renderer history view
+- **THEN** the history list removes that task immediately after the delete request succeeds
+- **AND** the application shell refreshes the recent-task summary so deleted tasks no longer remain in the sidebar
 
 ### Requirement: Artifact markdown edits SHALL be supported after terminal status
 Backend SHALL allow notes/mindmap markdown update only after task reaches terminal state.

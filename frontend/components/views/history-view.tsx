@@ -49,6 +49,7 @@ import type { TaskStatsResponse, TaskSummaryItem, WorkflowType } from "@/lib/typ
 
 interface HistoryViewProps {
   onOpenTask: (taskId: string, meta?: { title?: string; workflow?: WorkflowType }) => void
+  onTasksChanged?: () => Promise<void> | void
 }
 
 type HistoryWorkflowFilter = WorkflowType | "all"
@@ -80,7 +81,7 @@ const getStatusBadge = (status: string) => {
   }
 }
 
-export function HistoryView({ onOpenTask }: HistoryViewProps) {
+export function HistoryView({ onOpenTask, onTasksChanged }: HistoryViewProps) {
   const [searchQuery, setSearchQuery] = React.useState("")
   const deferredSearchQuery = React.useDeferredValue(searchQuery)
   const [workflowFilter, setWorkflowFilter] = React.useState<HistoryWorkflowFilter>("all")
@@ -139,6 +140,7 @@ export function HistoryView({ onOpenTask }: HistoryViewProps) {
       setPendingDeleteTask(null)
       toast.success("任务已删除")
       await loadHistory()
+      await onTasksChanged?.()
     } catch (error) {
       toast.error(getApiErrorMessage(error, "删除任务失败"))
     } finally {

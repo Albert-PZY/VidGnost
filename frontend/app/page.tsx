@@ -474,7 +474,10 @@ export default function VideoMindApp() {
                 />
               )}
               {viewState.type === "history" && (
-                <HistoryView onOpenTask={handleOpenTask} />
+                <HistoryView
+                  onOpenTask={handleOpenTask}
+                  onTasksChanged={handleTaskChanged}
+                />
               )}
               {viewState.type === "settings" && (
                 <SettingsView
