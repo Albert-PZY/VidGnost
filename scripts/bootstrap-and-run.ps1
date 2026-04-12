@@ -295,8 +295,8 @@ Ensure-Admin
 $RootDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $BackendDir = Join-Path $RootDir "backend"
 $FrontendDir = Join-Path $RootDir "frontend"
-$BackendPort = 8000
-$FrontendPort = 5173
+$BackendPort = 8666
+$FrontendPort = 6221
 $PinnedPythonVersion = "3.12"
 $UvDefaultIndexMirror = if ($env:UV_DEFAULT_INDEX_MIRROR) { $env:UV_DEFAULT_INDEX_MIRROR } else { "https://pypi.tuna.tsinghua.edu.cn/simple" }
 $PnpmRegistryMirror = if ($env:PNPM_REGISTRY_MIRROR) { $env:PNPM_REGISTRY_MIRROR } else { "https://registry.npmmirror.com" }

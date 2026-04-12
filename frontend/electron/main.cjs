@@ -2,7 +2,7 @@ const { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } = require("ele
 const fs = require("node:fs")
 const path = require("node:path")
 
-const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://127.0.0.1:5173"
+const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://127.0.0.1:6221"
 const PRELOAD_PATH = path.join(__dirname, "preload.cjs")
 const SPLASH_PRELOAD_PATH = path.join(__dirname, "splash-preload.cjs")
 const SPLASH_HTML_PATH = path.join(__dirname, "splash.html")

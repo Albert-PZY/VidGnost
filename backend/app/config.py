@@ -47,7 +47,7 @@ class Settings:
     runtime_config_path: str = "./storage/config.toml"
     enable_mock_llm: bool = False
 
-    allow_origins: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173"
+    allow_origins: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:6221,http://127.0.0.1:6221"
 
     def __post_init__(self) -> None:
         self.max_concurrent_jobs = max(1, int(self.max_concurrent_jobs))

@@ -62,7 +62,7 @@ Electron desktop startup SHALL open a dedicated splash window first, keep the ma
 
 #### Scenario: Bootstrap script enforces fixed service ports
 - **WHEN** the Windows or shell startup script launches the local desktop workbench
-- **THEN** the backend process binds only to `8000` and the frontend dev server binds only to `5173`
+- **THEN** the backend process binds only to `8666` and the frontend dev server binds only to `6221`
 - **AND** the script attempts to reclaim those fixed ports before startup
 - **AND** startup stops with a clear port-availability failure if either fixed port still cannot be bound
 - **AND** the spawned frontend or Electron process receives matching `VITE_API_BASE_URL` and `VITE_DEV_SERVER_URL` values for the fixed ports

@@ -53,7 +53,7 @@ VidGnost is a local-first video analysis workbench with web and Electron runtime
 
 ### 2.3 Host forms
 
-- Web: React + Vite app with backend API base `http://localhost:8000/api`
+- Web: React + Vite app with backend API base `http://localhost:8666/api`
 - Desktop: Electron (`main/preload/renderer`) with IPC bridge
   - Electron checks `/api/health` and can auto-spawn backend via `uv run uvicorn`
 
@@ -177,7 +177,7 @@ Backend:
 ```bash
 cd backend
 uv sync --python 3.12
-uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8666 --reload
 ```
 
 Frontend:
@@ -185,7 +185,7 @@ Frontend:
 ```bash
 cd frontend
 pnpm install
-pnpm dev --host 0.0.0.0 --port 5173
+pnpm dev --host 0.0.0.0 --port 6221
 ```
 
 ### 7.3 Electron desktop mode
