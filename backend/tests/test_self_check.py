@@ -138,3 +138,48 @@ def test_self_check_vlm_reports_disabled_when_model_is_turned_off(tmp_path: Path
 
     assert outcome.status == "warning"
     assert outcome.message == "VLM 模型已停用"
+
+
+def test_self_check_llm_reports_missing_api_key(tmp_path: Path) -> None:
+    settings = _build_settings(tmp_path)
+    service = SelfCheckService(settings=settings, event_bus=EventBus())
+
+    outcome = asyncio.run(service._check_llm())  # type: ignore[attr-defined]
+
+    assert outcome.status == "warning"
+    assert outcome.message == "LLM API Key 未配置"
+
+
+def test_self_check_llm_reports_connectivity_failure(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    settings = _build_settings(tmp_path)
+    service = SelfCheckService(settings=settings, event_bus=EventBus())
+    asyncio.run(
+        service._llm_config_store.save(  # type: ignore[attr-defined]
+            {
+                "mode": "api",
+                "load_profile": "balanced",
+                "local_model_id": "Qwen/Qwen2.5-7B-Instruct",
+                "api_key": "sk-test",
+                "api_key_configured": True,
+                "base_url": "https://example.invalid/v1",
+                "model": "qwen-test",
+                "correction_mode": "strict",
+                "correction_batch_size": 24,
+                "correction_overlap": 3,
+            }
+        )
+    )
+
+    monkeypatch.setattr(
+        "app.services.self_check.probe_openai_compat_models_endpoint",
+        lambda **_: (False, "NameResolutionError: host not found"),
+    )
+
+    outcome = asyncio.run(service._check_llm())  # type: ignore[attr-defined]
+
+    assert outcome.status == "failed"
+    assert outcome.message == "LLM 在线 API 连通失败"
+    assert outcome.details["连通性"] == "NameResolutionError: host not found"

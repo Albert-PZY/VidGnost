@@ -222,11 +222,8 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
   return (
     <div className="flex-1 overflow-auto">
       <div className="container mx-auto flex max-w-6xl flex-col gap-8 p-6">
-        <div className="space-y-2">
+        <div>
           <h1 className="text-2xl font-semibold tracking-tight">新建分析任务</h1>
-          <p className="text-muted-foreground">
-            当前工作流是{selectedWorkflow === "notes" ? "笔记整理" : "视频问答"}。现在支持上传文件、网络链接和本地路径三种入口。
-          </p>
         </div>
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(21rem,0.9fr)]">

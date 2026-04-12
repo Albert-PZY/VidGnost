@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import shutil
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -11,6 +9,7 @@ from typing import Literal
 from app.config import Settings
 from app.errors import AppError
 from app.schemas import WorkflowType
+from app.services.llm_connectivity import probe_openai_compat_models_endpoint
 from app.services.llm_config_store import LLMConfigStore
 from app.services.model_catalog_store import ModelCatalogStore
 from app.services.runtime_config_store import RuntimeConfigStore
@@ -107,7 +106,7 @@ class TaskPreflightService:
     def _assert_llm_connectivity(self, llm_config: dict[str, object]) -> None:
         llm_api_key = str(llm_config.get("api_key", "")).strip()
         llm_base_url = str(llm_config.get("base_url", self.settings.llm_base_url)).strip() or self.settings.llm_base_url
-        llm_ok, llm_reason = _probe_openai_compat_models_endpoint(
+        llm_ok, llm_reason = probe_openai_compat_models_endpoint(
             base_url=llm_base_url,
             api_key=llm_api_key,
             timeout_seconds=6.0,
@@ -170,39 +169,6 @@ def _required_model_ids(stage: PreflightStage) -> tuple[str, ...]:
     if stage == "stage_d_retry":
         return ("llm-default",)
     return ("whisper-default", "llm-default")
-
-
-def _probe_openai_compat_models_endpoint(*, base_url: str, api_key: str, timeout_seconds: float) -> tuple[bool, str]:
-    normalized_base_url = str(base_url).strip().rstrip("/")
-    if not normalized_base_url:
-        return (False, "missing base_url")
-
-    endpoint = f"{normalized_base_url}/models"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Accept": "application/json",
-        "User-Agent": "VidGnost/TaskPreflight",
-    }
-    request = urllib.request.Request(endpoint, headers=headers, method="GET")
-
-    try:
-        with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response:
-            status_code = int(getattr(response, "status", 200))
-            if 200 <= status_code < 400:
-                return (True, f"HTTP {status_code}")
-            return (False, f"HTTP {status_code}")
-    except urllib.error.HTTPError as exc:
-        if exc.code == 404:
-            return (True, "HTTP 404")
-        if exc.code in {401, 403}:
-            return (False, f"HTTP {exc.code} (authentication rejected)")
-        return (False, f"HTTP {exc.code}")
-    except urllib.error.URLError as exc:
-        reason = exc.reason if getattr(exc, "reason", None) is not None else exc
-        reason_type = type(reason).__name__
-        return (False, f"{reason_type}: {reason}")
-    except Exception as exc:  # noqa: BLE001
-        return (False, f"{type(exc).__name__}: {exc}")
 
 
 def _format_bytes(value: int) -> str:

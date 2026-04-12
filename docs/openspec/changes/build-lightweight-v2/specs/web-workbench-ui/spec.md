@@ -261,3 +261,9 @@ Diagnostics view SHALL provide a direct autofix action when the backend marks is
 - **WHEN** diagnostics report indicates `auto_fix_available`
 - **THEN** the renderer shows an `自动修复` action
 - **AND** the issue summary lists each problem, its status, message, and optional manual action guidance
+
+#### Scenario: Diagnostics self-check validates LLM online connectivity
+- **WHEN** the backend runs the `LLM 模型` self-check step
+- **THEN** it verifies the configured online LLM API key and Base URL
+- **AND** it probes the configured OpenAI-compatible `/models` endpoint
+- **AND** the diagnostics issue summary reports the concrete connectivity result instead of only checking whether the config file exists
