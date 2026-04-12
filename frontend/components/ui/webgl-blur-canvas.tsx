@@ -23,6 +23,7 @@ interface WebGLBlurCanvasProps {
   pixelRatioCap?: number
   quality?: "balanced" | "performance"
   cropToImageRect?: boolean
+  onFrameRendered?: () => void
 }
 
 type RenderTarget = {
@@ -415,12 +416,14 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
     pixelRatioCap = 1.5,
     quality = "balanced",
     cropToImageRect = false,
+    onFrameRendered,
   } = props
 
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
   const resourcesRef = React.useRef<GLResources | null>(null)
   const imageRef = React.useRef<HTMLImageElement | null>(null)
   const frameRef = React.useRef<number | null>(null)
+  const notifyFrameRef = React.useRef<number | null>(null)
   const [imageReadyKey, setImageReadyKey] = React.useState<string | null>(null)
   const [fallbackMode, setFallbackMode] = React.useState(false)
   const releaseResources = React.useCallback((options?: { loseContext?: boolean }) => {
@@ -428,12 +431,33 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
       window.cancelAnimationFrame(frameRef.current)
       frameRef.current = null
     }
+    if (notifyFrameRef.current !== null) {
+      window.cancelAnimationFrame(notifyFrameRef.current)
+      notifyFrameRef.current = null
+    }
     if (resourcesRef.current) {
       destroyResources(resourcesRef.current, options)
       resourcesRef.current = null
     }
     resetCanvasBackbuffer(canvasRef.current)
   }, [])
+
+  const scheduleFrameRenderedNotification = React.useCallback(() => {
+    if (!onFrameRendered) {
+      return
+    }
+
+    if (notifyFrameRef.current !== null) {
+      window.cancelAnimationFrame(notifyFrameRef.current)
+    }
+
+    notifyFrameRef.current = window.requestAnimationFrame(() => {
+      notifyFrameRef.current = window.requestAnimationFrame(() => {
+        notifyFrameRef.current = null
+        onFrameRendered()
+      })
+    })
+  }, [onFrameRendered])
 
   React.useEffect(() => {
     if (!src) {
@@ -639,6 +663,8 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
         )
         gl.uniform1f(resources.copyProgram.cropToImageRectLocation, cropToImageRect ? 1 : 0)
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+
+        scheduleFrameRenderedNotification()
       } catch {
         releaseResources({ loseContext: true })
         setFallbackMode(true)
@@ -665,9 +691,22 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
     quality,
     cropToImageRect,
     releaseResources,
+    scheduleFrameRenderedNotification,
     src,
     width,
   ])
+
+  React.useEffect(() => {
+    if (!src || !imageRect || width <= 0 || height <= 0) {
+      return
+    }
+
+    if (!fallbackMode && blur > 0) {
+      return
+    }
+
+    scheduleFrameRenderedNotification()
+  }, [blur, fallbackMode, height, imageRect, scheduleFrameRenderedNotification, src, width])
 
   if (!src || !imageRect || width <= 0 || height <= 0) {
     return null

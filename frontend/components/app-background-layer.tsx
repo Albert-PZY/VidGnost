@@ -287,16 +287,12 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
     viewportSize.width,
   ])
 
-  React.useEffect(() => {
-    if (!overlayLayer || !overlayImageLayout) {
+  const handleOverlayFrameRendered = React.useCallback((overlayId: string) => {
+    if (!overlayLayer || overlayLayer.id !== overlayId || transitionOverlayIdRef.current === overlayId) {
       return
     }
 
-    if (transitionOverlayIdRef.current === overlayLayer.id) {
-      return
-    }
-
-    transitionOverlayIdRef.current = overlayLayer.id
+    transitionOverlayIdRef.current = overlayId
     transitionFrameRef.current = window.requestAnimationFrame(() => {
       transitionFrameRef.current = null
       setOverlayVisible(true)
@@ -307,7 +303,7 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
           skin: overlayLayer.skin,
         })
         setOverlayLayer((currentOverlay) =>
-          currentOverlay?.id === overlayLayer.id ? null : currentOverlay,
+          currentOverlay?.id === overlayId ? null : currentOverlay,
         )
         setOverlayVisible(false)
         setIsAnimatingSkin(false)
@@ -315,7 +311,7 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
         transitionTimerRef.current = null
       }, SKIN_PREVIEW_TRANSITION_MS)
     })
-  }, [overlayImageLayout, overlayLayer])
+  }, [overlayLayer])
 
   if (!baseLayer.skin.background_image && !overlayLayer?.skin.background_image) {
     return null
@@ -360,6 +356,9 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
             className="absolute inset-0 h-full w-full select-none"
             pixelRatioCap={1}
             quality="performance"
+            onFrameRendered={() => {
+              handleOverlayFrameRendered(overlayLayer.id)
+            }}
           />
         </div>
       ) : null}
