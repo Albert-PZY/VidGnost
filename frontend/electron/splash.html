@@ -15,6 +15,7 @@
         --line: rgba(224, 230, 239, 0.84);
         --line-soft: rgba(224, 230, 239, 0.24);
         --success: #63d8b6;
+        --error: #ff9b73;
         --spinner: #5d7cff;
       }
 
@@ -156,6 +157,14 @@
         box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
       }
 
+      .step.error {
+        padding: 0 16px;
+        border: 1px solid rgba(255, 155, 115, 0.42);
+        border-radius: 9px;
+        color: rgba(255, 238, 231, 0.98);
+        background: rgba(255, 155, 115, 0.04);
+      }
+
       .step.pending {
         color: rgba(131, 140, 158, 0.54);
       }
@@ -192,6 +201,10 @@
         transform: translateY(-1px);
       }
 
+      .step.error .step-meta {
+        color: var(--error);
+      }
+
       .step-icon {
         position: relative;
         width: 24px;
@@ -226,6 +239,20 @@
         border-left-color: var(--spinner);
         border-radius: 999px;
         animation: spin 920ms linear infinite;
+      }
+
+      .step.error .step-icon::before {
+        content: "!";
+        width: 16px;
+        height: 16px;
+        display: grid;
+        place-items: center;
+        border-radius: 999px;
+        background: rgba(255, 155, 115, 0.14);
+        color: var(--error);
+        font-size: 12px;
+        line-height: 1;
+        font-weight: 700;
       }
 
       .detail {
@@ -303,22 +330,23 @@
       const versionElement = document.getElementById("status-version")
       const stepsElement = document.getElementById("steps")
 
-      const STEP_DEFS = [
-        { id: "config", label: "加载配置和设置" },
-        { id: "validate", label: "验证本地数据量" },
-        { id: "ml", label: "初始化本地机器学习组件" },
-        { id: "mount", label: "挂载应用程序 UI" },
-        { id: "ready", label: "系统准备就绪" },
+      const DEFAULT_STEPS = [
+        { id: "load-renderer", label: "加载前端资源", status: "active" },
+        { id: "connect-backend", label: "连接本地服务", status: "pending" },
+        { id: "sync-overview", label: "同步任务概览", status: "pending" },
+        { id: "sync-config", label: "同步界面配置", status: "pending" },
+        { id: "settle-ui", label: "稳定首帧并挂载 UI", status: "pending" },
       ]
 
       const startupAt = performance.now()
-      const stepStats = STEP_DEFS.map((step, index) => ({
-        ...step,
-        startedAt: index === 0 ? startupAt : null,
+      const stepStats = new Map()
+      stepStats.set(DEFAULT_STEPS[0].id, {
+        startedAt: startupAt,
         completedAt: null,
-      }))
+        lastStatus: "active",
+      })
 
-      let activeStepId = STEP_DEFS[0].id
+      let lastRenderedSteps = DEFAULT_STEPS.map((step) => ({ ...step }))
       let renderTicker = null
 
       function formatDuration(durationMs) {
@@ -350,75 +378,105 @@
           .replaceAll("'", "&#39;")
       }
 
-      function resolveStepId(nextState) {
-        const text = `${nextState.title || ""} ${nextState.message || ""} ${nextState.detail || ""}`
-
-        if (/系统准备就绪|VidGnost 已准备就绪/.test(text)) {
-          return "ready"
-        }
-
-        if (/挂载应用程序 UI|主界面即将显示|受限状态打开|基础页面预热完成/.test(text)) {
-          return "mount"
-        }
-
-        if (/初始化本地机器学习组件|本地服务|运行状态|基础数据|核心页面预热/.test(text)) {
-          return "ml"
-        }
-
-        if (/验证本地数据量|前端资源|工作台资源/.test(text)) {
-          return "validate"
-        }
-
-        return "config"
+      function isKnownStepStatus(status) {
+        return status === "active" || status === "complete" || status === "error" || status === "pending"
       }
 
-      function markStepTransition(nextStepId) {
-        const now = performance.now()
-        const currentIndex = STEP_DEFS.findIndex((step) => step.id === activeStepId)
-        const nextIndex = STEP_DEFS.findIndex((step) => step.id === nextStepId)
-
-        if (nextIndex === -1) {
-          return
+      function normalizeSteps(steps) {
+        if (!Array.isArray(steps) || steps.length === 0) {
+          return DEFAULT_STEPS.map((step) => ({ ...step }))
         }
 
-        for (let index = 0; index < nextIndex; index += 1) {
-          if (stepStats[index].startedAt === null) {
-            const previousCompletedAt =
-              index > 0 ? stepStats[index - 1].completedAt || startupAt : startupAt
-            stepStats[index].startedAt = previousCompletedAt
-          }
-          if (stepStats[index].completedAt === null) {
-            stepStats[index].completedAt = now
-          }
-        }
-
-        if (stepStats[nextIndex].startedAt === null) {
-          const previousCompletedAt =
-            nextIndex > 0 ? stepStats[nextIndex - 1].completedAt || now : startupAt
-          stepStats[nextIndex].startedAt = previousCompletedAt
-        }
-
-        if (currentIndex >= 0 && currentIndex < nextIndex && stepStats[currentIndex].completedAt === null) {
-          stepStats[currentIndex].completedAt = now
-        }
-
-        activeStepId = nextStepId
+        return steps.map((step, index) => ({
+          id:
+            typeof step?.id === "string" && step.id.trim()
+              ? step.id.trim()
+              : DEFAULT_STEPS[index]?.id || `step-${index + 1}`,
+          label:
+            typeof step?.label === "string" && step.label.trim()
+              ? step.label.trim()
+              : DEFAULT_STEPS[index]?.label || `步骤 ${index + 1}`,
+          status: isKnownStepStatus(step?.status) ? step.status : "pending",
+        }))
       }
 
-      function renderSteps(progress) {
-        const now = performance.now()
-        const activeIndex = STEP_DEFS.findIndex((step) => step.id === activeStepId)
+      function deriveProgress(steps) {
+        if (!steps.length) {
+          return 0
+        }
 
-        const markup = stepStats
-          .map((step, index) => {
-            const isComplete = index < activeIndex || (progress >= 100 && index <= activeIndex)
-            const isActive = !isComplete && index === activeIndex
-            const stateClass = isComplete ? "complete" : isActive ? "active" : "pending"
-            const duration = isComplete
-              ? formatDuration((step.completedAt || now) - (step.startedAt || startupAt))
-              : isActive
-                ? "..."
-                : "-"
+        const completedSteps = steps.filter((step) => step.status === "complete").length
+        return Math.max(0, Math.min(100, Math.round((completedSteps / steps.length) * 100)))
+      }
+
+      function getCurrentStep(steps) {
+        return (
+          steps.find((step) => step.status === "active" || step.status === "error") ||
+          [...steps].reverse().find((step) => step.status === "complete") ||
+          steps[0] ||
+          null
+        )
+      }
+
+      function syncStepStats(steps) {
+        const now = performance.now()
+        const activeIds = new Set(steps.map((step) => step.id))
+
+        for (const stepId of stepStats.keys()) {
+          if (!activeIds.has(stepId)) {
+            stepStats.delete(stepId)
+          }
+        }
+
+        steps.forEach((step, index) => {
+          const previousStepMetrics = index > 0 ? stepStats.get(steps[index - 1].id) : null
+          const metrics = stepStats.get(step.id) || {
+            startedAt: null,
+            completedAt: null,
+            lastStatus: "pending",
+          }
+          const fallbackStartedAt = previousStepMetrics?.completedAt || startupAt
+
+          if (step.status !== "pending" && metrics.startedAt === null) {
+            metrics.startedAt = fallbackStartedAt
+          }
+
+          if (step.status === "complete" && metrics.completedAt === null) {
+            metrics.completedAt = now
+          }
+
+          metrics.lastStatus = step.status
+          stepStats.set(step.id, metrics)
+        })
+      }
+
+      function getProgressFillWidth(progress) {
+        if (progress <= 0) {
+          return "0"
+        }
+
+        if (progress >= 100) {
+          return "calc(100% - 2px)"
+        }
+
+        return `calc(${progress}% - 2px)`
+      }
+
+      function renderSteps(steps) {
+        const now = performance.now()
+
+        const markup = steps
+          .map((step) => {
+            const metrics = stepStats.get(step.id)
+            const stateClass = step.status
+            const duration =
+              step.status === "complete" && metrics?.startedAt !== null && metrics?.completedAt !== null
+                ? formatDuration(metrics.completedAt - metrics.startedAt)
+                : step.status === "active"
+                  ? "..."
+                  : step.status === "error"
+                    ? "失败"
+                    : "-"
 
             return `
               <div class="step ${stateClass}">
@@ -434,44 +492,49 @@
       }
 
       function applyState(nextState) {
-        const progress = Math.max(0, Math.min(100, Number(nextState.progress) || 0))
+        const steps = normalizeSteps(nextState.steps)
+        const rawProgress = Number(nextState.progress)
+        const progress = Number.isFinite(rawProgress)
+          ? Math.max(0, Math.min(100, Math.round(rawProgress)))
+          : deriveProgress(steps)
+        const currentStep = getCurrentStep(steps)
         const title = nextState.title || "初始化引擎"
+        const progressTitle = nextState.message || currentStep?.label || title
         const detail = nextState.detail || ""
         const version = nextState.version || versionElement.textContent || "v0.1.0-local"
-        const nextStepId = resolveStepId(nextState)
-        const detailVisible = /失败|超时|不可用|排查|受限/.test(
-          `${nextState.title || ""} ${nextState.message || ""} ${detail}`,
-        )
+        const hasActiveStep = steps.some((step) => step.status === "active")
 
-        markStepTransition(nextStepId)
+        syncStepStats(steps)
+        lastRenderedSteps = steps
 
-        progressTitleElement.textContent = title
+        progressTitleElement.textContent = progressTitle
         progressTextElement.textContent = `${progress}%`
         progressFillElement.style.setProperty("--progress", `${progress}%`)
-        progressFillElement.style.width = `calc(${progress}% - 2px)`
+        progressFillElement.style.width = getProgressFillWidth(progress)
         detailElement.textContent = detail
-        detailElement.classList.toggle("is-visible", detailVisible)
+        detailElement.classList.toggle("is-visible", Boolean(detail))
         versionElement.textContent = version
-        liveElement.textContent = `${title}，${STEP_DEFS.find((step) => step.id === nextStepId)?.label || ""}，进度 ${progress}%`
+        liveElement.textContent = `${title}，${currentStep?.label || progressTitle}，进度 ${progress}%`
 
-        renderSteps(progress)
+        renderSteps(steps)
 
-        if (renderTicker === null && progress < 100) {
-          renderTicker = window.setInterval(() => renderSteps(progress), 120)
+        if (renderTicker === null && hasActiveStep) {
+          renderTicker = window.setInterval(() => renderSteps(lastRenderedSteps), 120)
         }
 
-        if (progress >= 100 && renderTicker !== null) {
+        if (!hasActiveStep && renderTicker !== null) {
           window.clearInterval(renderTicker)
           renderTicker = null
         }
       }
 
       applyState({
-        progress: 8,
+        progress: 0,
         title: "初始化引擎",
-        message: "加载配置和设置",
+        message: "加载前端资源",
         detail: "准备应用窗口、图标与基础运行环境。",
         version: "v0.1.0-local",
+        steps: DEFAULT_STEPS,
       })
 
       if (window.vidGnostSplash?.onState) {

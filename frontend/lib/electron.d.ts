@@ -1,15 +1,26 @@
 export {}
 
 declare global {
+  type DesktopBootstrapStepStatus = "pending" | "active" | "complete" | "error"
+
+  interface DesktopBootstrapStep {
+    id: string
+    label: string
+    status: DesktopBootstrapStepStatus
+  }
+
   interface DesktopWindowState {
     isMaximized: boolean
   }
 
   interface DesktopBootstrapState {
     progress?: number
+    phaseId?: string
     title?: string
     message?: string
     detail?: string
+    version?: string
+    steps?: DesktopBootstrapStep[]
   }
 
   interface Window {

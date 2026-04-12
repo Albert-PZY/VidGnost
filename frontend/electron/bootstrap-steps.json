@@ -1,0 +1,22 @@
+[
+  {
+    "id": "load-renderer",
+    "label": "加载前端资源"
+  },
+  {
+    "id": "connect-backend",
+    "label": "连接本地服务"
+  },
+  {
+    "id": "sync-overview",
+    "label": "同步任务概览"
+  },
+  {
+    "id": "sync-config",
+    "label": "同步界面配置"
+  },
+  {
+    "id": "settle-ui",
+    "label": "稳定首帧并挂载 UI"
+  }
+]

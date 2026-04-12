@@ -50,15 +50,17 @@ Prompt template editor SHALL use a markdown editor that keeps the source editor 
 - **AND** scrolling one pane keeps the other pane aligned for long prompt content
 
 ### Requirement: Desktop startup SHALL preload core workbench views before main window reveal
-Electron desktop startup SHALL open a dedicated splash window first, keep the main window hidden while renderer assets and core workbench views initialize, and reveal the main window only after bootstrap completes or enters degraded mode. Core workbench views such as `新建任务`, `历史记录`, `设置中心`, `系统自检`, `任务处理`, and the prompt-template Markdown editor SHALL be included in the initial renderer startup path instead of route-level or dialog-level lazy loading placeholders. The splash surface SHALL follow the same restrained professional dark-tool styling as the renderer shell, using the project logo, a centered vertical brand composition, a single thin progress bar, and a five-step startup checklist with per-step elapsed-time feedback instead of decorative gradients, scanlines, floating ornaments, oversized glass effects, or multi-panel card chrome.
+Electron desktop startup SHALL open a dedicated splash window first, keep the main window hidden while renderer assets and core workbench views initialize, and reveal the main window only after bootstrap completes or enters degraded mode. Core workbench views such as `新建任务`, `历史记录`, `设置中心`, `系统自检`, `任务处理`, and the prompt-template Markdown editor SHALL be included in the initial renderer startup path instead of route-level or dialog-level lazy loading placeholders. The splash surface SHALL follow the same restrained professional dark-tool styling as the renderer shell, using the project logo, a centered vertical brand composition, a single thin progress bar, and a five-step startup checklist with per-step elapsed-time feedback. The checklist SHALL be bound to explicit startup task states emitted by the hidden main window and renderer instead of inferring stages from display copy.
 
 #### Scenario: Launch the Electron workbench
 - **WHEN** user opens the desktop application
 - **THEN** a standalone splash surface appears immediately with the project brand image and startup progress copy
 - **AND** the splash surface keeps a compact professional layout with restrained dark surfaces and no decorative glow, scanline, floating ornament, or card-heavy dashboard treatment
 - **AND** the splash surface centers the project logo, product name, and product subtitle above the startup progress region
-- **AND** the startup progress region presents a thin progress bar plus the ordered checklist `加载配置和设置` → `验证本地数据量` → `初始化本地机器学习组件` → `挂载应用程序 UI` → `系统准备就绪`
+- **AND** the startup progress region presents a thin progress bar plus the ordered checklist `加载前端资源` → `连接本地服务` → `同步任务概览` → `同步界面配置` → `稳定首帧并挂载 UI`
 - **AND** completed checklist items show elapsed-time feedback while the active item shows a loading affordance instead of repeating large paragraphs of copy
+- **AND** the splash progress percentage is derived from the count of completed explicit startup steps rather than heuristic text matching
+- **AND** each checklist step is promoted to `active`, `complete`, or `error` only when the corresponding renderer or main-process startup task actually changes state
 - **AND** the hidden main window continues loading renderer assets, core workbench views, and initial UI data in the background
 - **AND** the main window is revealed only after startup bootstrap reports completion or explicitly enters degraded mode
 - **AND** no page-level or prompt-editor skeleton placeholder is shown as part of the initial desktop startup chain
@@ -222,6 +224,7 @@ Workbench bootstrap SHALL expose a desktop splash progress state before the main
 #### Scenario: Backend is unavailable during bootstrap
 - **WHEN** renderer cannot complete initial health/config synchronization
 - **THEN** the desktop splash completes the startup handoff and the main window opens in degraded mode
+- **AND** the desktop splash marks the failing explicit startup step as `error` instead of fabricating a fully completed progress bar
 - **AND** a blocking overlay explains that the backend is unavailable
 - **AND** the overlay provides `重试连接`, `查看诊断`, and `打开日志目录` actions
 - **AND** the overlay is dismissed automatically once bootstrap reaches `ready`

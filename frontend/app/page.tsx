@@ -26,6 +26,7 @@ import {
   updateUiSettings,
   uploadTaskFiles,
 } from "@/lib/api"
+import { createDesktopBootstrapState, getDesktopBootstrapStepLabel } from "@/lib/desktop-bootstrap"
 import type {
   TaskDetailResponse,
   TaskRecentItem,
@@ -129,15 +130,6 @@ export default function VideoMindApp() {
     }
   }, [])
 
-  React.useEffect(() => {
-    reportDesktopBootstrapState({
-      progress: 46,
-      title: "初始化引擎",
-      message: "初始化本地机器学习组件",
-      detail: "新建任务、历史记录、设置中心、诊断页和处理工作台都会在启动阶段一次性预热。",
-    })
-  }, [reportDesktopBootstrapState])
-
   const refreshOverview = React.useCallback(async () => {
     const [statsResponse, recentResponse] = await Promise.all([getTaskStats(), getRecentTasks(3)])
     setTaskStats(statsResponse)
@@ -146,69 +138,79 @@ export default function VideoMindApp() {
 
   const runBootstrap = React.useCallback(
     async (showToastOnError = false) => {
+      let currentPhaseId = "connect-backend"
+
       setBootstrapStatus((current) => (current === "ready" ? "connecting" : "initializing"))
-      setBootstrapMessage("正在连接后端并同步任务、设置与运行时目录。")
-      reportDesktopBootstrapState({
-        progress: 68,
+      setBootstrapMessage("正在连接本地服务并准备同步工作台初始化数据。")
+      reportDesktopBootstrapState(createDesktopBootstrapState({
+        phaseId: currentPhaseId,
         title: "初始化引擎",
-        message: "初始化本地机器学习组件",
-        detail: "正在连接本地服务，并校验模型、运行状态与基础目录。",
-      })
+        message: "连接本地服务",
+        detail: "正在检查后端健康状态，准备进入任务和配置同步。",
+      }))
 
       try {
         await getHealth()
         setBootstrapStatus("connecting")
-        setBootstrapMessage("后端已连接，正在同步任务、设置和运行时路径。")
-        reportDesktopBootstrapState({
-          progress: 86,
+        currentPhaseId = "sync-overview"
+        setBootstrapMessage("本地服务已连接，正在同步任务概览。")
+        reportDesktopBootstrapState(createDesktopBootstrapState({
+          phaseId: currentPhaseId,
           title: "初始化引擎",
-          message: "挂载应用程序 UI",
-          detail: "最近任务、统计信息、UI 设置和运行时路径已完成同步。",
-        })
+          message: "同步任务概览",
+          detail: "正在拉取任务统计和最近任务列表。",
+        }))
 
-        const [statsResponse, recentResponse, uiResponse, pathsResponse] = await Promise.all([
-          getTaskStats(),
-          getRecentTasks(3),
-          getUiSettings(),
-          getRuntimePaths(),
-        ])
-
+        const [statsResponse, recentResponse] = await Promise.all([getTaskStats(), getRecentTasks(3)])
         setTaskStats(statsResponse)
         setRecentTasks(recentResponse.items)
+
+        currentPhaseId = "sync-config"
+        setBootstrapMessage("任务概览已同步，正在加载界面配置与运行时目录。")
+        reportDesktopBootstrapState(createDesktopBootstrapState({
+          phaseId: currentPhaseId,
+          title: "初始化引擎",
+          message: "同步界面配置",
+          detail: "正在加载 UI 设置和本地运行时目录。",
+        }))
+
+        const [uiResponse, pathsResponse] = await Promise.all([getUiSettings(), getRuntimePaths()])
         setUiSettings(uiResponse)
         setRuntimePaths(pathsResponse)
+
+        currentPhaseId = "settle-ui"
+        setBootstrapMessage("配置已同步，正在稳定首帧并挂载工作台。")
+        reportDesktopBootstrapState(createDesktopBootstrapState({
+          phaseId: currentPhaseId,
+          title: "初始化引擎",
+          message: "稳定首帧并挂载 UI",
+          detail: "正在等待字体、首帧绘制和主工作台挂载完成。",
+        }))
+
         await settleStartupFrame()
         setBootstrapStatus("ready")
         setBootstrapMessage("系统运行正常。")
-        reportDesktopBootstrapState({
-          progress: 92,
-          title: "初始化引擎",
-          message: "挂载应用程序 UI",
-          detail: "主界面即将显示，你打开历史、设置和诊断页面时将不再经过懒加载占位。",
-        })
-        completeDesktopBootstrap({
-          progress: 100,
+        completeDesktopBootstrap(createDesktopBootstrapState({
+          phaseId: currentPhaseId,
+          phaseStatus: "complete",
           title: "系统准备就绪",
           message: "系统准备就绪",
           detail: "正在切换到主工作台界面。",
-        })
+        }))
       } catch (error) {
         const message = getApiErrorMessage(error, "后端当前不可用，请稍后重试。")
         setBootstrapStatus("degraded")
         setBootstrapMessage(message)
         await settleStartupFrame()
-        reportDesktopBootstrapState({
-          progress: 96,
-          title: "初始化引擎",
-          message: "挂载应用程序 UI",
-          detail: "后端尚未就绪，你仍可进入主界面查看诊断信息并继续重试连接。",
+        const degradedBootstrapState = createDesktopBootstrapState({
+          phaseId: currentPhaseId,
+          phaseStatus: "error",
+          title: "进入受限模式",
+          message: getDesktopBootstrapStepLabel(currentPhaseId),
+          detail: "后端尚未就绪，主界面会继续打开，并保留诊断与重试入口。",
         })
-        completeDesktopBootstrap({
-          progress: 100,
-          title: "系统准备就绪",
-          message: "系统准备就绪",
-          detail: "主界面会继续打开，并保留诊断与重试入口。",
-        })
+        reportDesktopBootstrapState(degradedBootstrapState)
+        completeDesktopBootstrap(degradedBootstrapState)
         if (showToastOnError) {
           toast.error(message)
         }
