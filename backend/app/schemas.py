@@ -232,12 +232,14 @@ class PromptTemplateSelectionUpdateRequest(BaseModel):
 
 
 class WhisperRuntimeLibrariesProgressResponse(BaseModel):
-    state: Literal["idle", "installing", "completed", "failed"] = "idle"
+    state: Literal["idle", "installing", "paused", "completed", "failed"] = "idle"
     message: str = ""
     current_package: str = ""
     downloaded_bytes: int = 0
     total_bytes: int = 0
     percent: float = Field(default=0.0, ge=0.0, le=100.0)
+    speed_bps: float = Field(default=0.0, ge=0.0)
+    resumable: bool = False
     updated_at: str = ""
 
 
@@ -247,7 +249,7 @@ class WhisperRuntimeLibrariesResponse(BaseModel):
     version_label: str
     platform_supported: bool = True
     ready: bool = False
-    status: Literal["ready", "not_ready", "installing", "failed", "unsupported"] = "not_ready"
+    status: Literal["ready", "not_ready", "installing", "paused", "failed", "unsupported"] = "not_ready"
     message: str = ""
     bin_dir: str = ""
     missing_files: list[str] = Field(default_factory=list)

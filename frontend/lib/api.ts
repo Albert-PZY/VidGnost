@@ -472,6 +472,20 @@ export function installWhisperRuntimeLibraries(payload: {
   })
 }
 
+export function pauseWhisperRuntimeLibraries(): Promise<WhisperRuntimeLibrariesResponse> {
+  return apiFetch<WhisperRuntimeLibrariesResponse>("/config/whisper/runtime-libraries/pause", {
+    method: "POST",
+    body: JSON.stringify({}),
+  })
+}
+
+export function resumeWhisperRuntimeLibraries(): Promise<WhisperRuntimeLibrariesResponse> {
+  return apiFetch<WhisperRuntimeLibrariesResponse>("/config/whisper/runtime-libraries/resume", {
+    method: "POST",
+    body: JSON.stringify({}),
+  })
+}
+
 export function startSelfCheck(): Promise<SelfCheckStartResponse> {
   return apiFetch<SelfCheckStartResponse>("/self-check/start", {
     method: "POST",

@@ -45,6 +45,8 @@
 - `PUT /api/config/whisper`
 - `PUT /api/config/whisper/runtime-libraries`
 - `POST /api/config/whisper/runtime-libraries/install`
+- `POST /api/config/whisper/runtime-libraries/pause`
+- `POST /api/config/whisper/runtime-libraries/resume`
 - `GET /api/config/prompts`
 - `PUT /api/config/prompts/selection`
 - `POST /api/config/prompts/templates`

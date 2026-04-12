@@ -238,6 +238,22 @@ async def install_whisper_runtime_libraries(
     return WhisperRuntimeLibrariesResponse.model_validate(payload)
 
 
+@router.post("/whisper/runtime-libraries/pause", response_model=WhisperRuntimeLibrariesResponse)
+async def pause_whisper_runtime_libraries(
+    whisper_gpu_runtime_service: WhisperGpuRuntimeService = Depends(get_whisper_gpu_runtime_service),
+) -> WhisperRuntimeLibrariesResponse:
+    payload = await whisper_gpu_runtime_service.pause_install()
+    return WhisperRuntimeLibrariesResponse.model_validate(payload)
+
+
+@router.post("/whisper/runtime-libraries/resume", response_model=WhisperRuntimeLibrariesResponse)
+async def resume_whisper_runtime_libraries(
+    whisper_gpu_runtime_service: WhisperGpuRuntimeService = Depends(get_whisper_gpu_runtime_service),
+) -> WhisperRuntimeLibrariesResponse:
+    payload = await whisper_gpu_runtime_service.resume_install()
+    return WhisperRuntimeLibrariesResponse.model_validate(payload)
+
+
 @router.get("/prompts", response_model=PromptTemplateBundleResponse)
 async def get_prompt_templates(prompt_store: PromptTemplateStore = Depends(get_prompt_store)) -> PromptTemplateBundleResponse:
     payload = await prompt_store.get_bundle()

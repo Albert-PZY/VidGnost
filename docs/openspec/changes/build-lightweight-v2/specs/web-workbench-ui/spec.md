@@ -23,8 +23,9 @@ The settings-center model surface SHALL expose a dedicated Whisper GPU runtime a
 - **THEN** the renderer shows a Whisper GPU runtime card near the GPU acceleration toggle
 - **AND** the card allows editing the runtime install directory directly or by opening a native directory picker from Electron
 - **AND** the card allows toggling automatic user-environment-variable configuration
-- **AND** the card exposes `保存运行库配置`, `一键安装完整运行库`, and `刷新状态` actions
-- **AND** when installation is in progress, the card polls backend runtime-library status and renders a compact progress bar with current package label and percent
+- **AND** the card exposes `保存运行库配置`, an install action, a pause-or-resume action that changes with the current runtime install state, and `刷新状态`
+- **AND** when installation is active, paused, or resumable, the card renders a compact progress surface with current package label, percent, downloaded bytes, and transfer speed or paused-state text
+- **AND** when installation is in progress, the card polls backend runtime-library status until the backend leaves the active install state
 
 ### Requirement: Configuration dialogs SHALL stay within viewport with fixed chrome
 Model configuration and prompt-template configuration dialogs SHALL remain within the visible viewport, keep header and action area fixed, and allow inner content scrolling when fields exceed available height. The header chrome SHALL stay visually compact so the main form area remains the dominant surface inside the dialog.

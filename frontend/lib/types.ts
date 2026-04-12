@@ -15,9 +15,9 @@ export type ModelRuntimeStatus = "ready" | "loading" | "not_ready" | "error"
 
 export type ModelDownloadState = "idle" | "downloading" | "completed" | "cancelled" | "failed"
 
-export type WhisperRuntimeLibrariesStatus = "ready" | "not_ready" | "installing" | "failed" | "unsupported"
+export type WhisperRuntimeLibrariesStatus = "ready" | "not_ready" | "installing" | "paused" | "failed" | "unsupported"
 
-export type WhisperRuntimeLibrariesInstallState = "idle" | "installing" | "completed" | "failed"
+export type WhisperRuntimeLibrariesInstallState = "idle" | "installing" | "paused" | "completed" | "failed"
 
 export interface ApiErrorPayload {
   code: string
@@ -191,6 +191,8 @@ export interface WhisperRuntimeLibrariesProgressResponse {
   downloaded_bytes: number
   total_bytes: number
   percent: number
+  speed_bps: number
+  resumable: boolean
   updated_at: string
 }
 

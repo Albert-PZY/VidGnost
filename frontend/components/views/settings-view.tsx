@@ -15,6 +15,8 @@ import {
   Save,
   RefreshCw,
   HardDrive,
+  Pause,
+  Play,
   Sparkles,
   Zap,
 } from "lucide-react"
@@ -60,7 +62,9 @@ import {
   getPromptTemplates,
   getWhisperConfig,
   installWhisperRuntimeLibraries,
+  pauseWhisperRuntimeLibraries,
   reloadModels,
+  resumeWhisperRuntimeLibraries,
   startModelDownload,
   updateLLMConfig,
   updateModel,
@@ -517,6 +521,8 @@ export function SettingsView({
         return <Badge className="bg-status-success text-white">已就绪</Badge>
       case "installing":
         return <Badge className="bg-status-processing text-white">安装中</Badge>
+      case "paused":
+        return <Badge variant="outline">已暂停</Badge>
       case "failed":
         return <Badge variant="destructive">异常</Badge>
       case "unsupported":
@@ -1060,6 +1066,37 @@ export function SettingsView({
     }
   }
 
+  const handlePauseWhisperRuntime = async () => {
+    setIsUpdatingWhisperRuntime(true)
+    try {
+      const runtimeLibraries = await pauseWhisperRuntimeLibraries()
+      mergeWhisperRuntimeLibraries(runtimeLibraries)
+      toast.success("Whisper GPU 运行库下载已暂停")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "暂停 Whisper GPU 运行库下载失败"))
+    } finally {
+      setIsUpdatingWhisperRuntime(false)
+    }
+  }
+
+  const handleResumeWhisperRuntime = async () => {
+    setIsUpdatingWhisperRuntime(true)
+    try {
+      const runtimeLibraries = await resumeWhisperRuntimeLibraries()
+      mergeWhisperRuntimeLibraries(runtimeLibraries)
+      setWhisperRuntimeForm({
+        install_dir: runtimeLibraries.install_dir,
+        auto_configure_env: runtimeLibraries.auto_configure_env,
+      })
+      setWhisperRuntimeDirty(false)
+      toast.success("Whisper GPU 运行库安装已继续")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "继续 Whisper GPU 运行库安装失败"))
+    } finally {
+      setIsUpdatingWhisperRuntime(false)
+    }
+  }
+
   const handleGpuToggle = async (checked: boolean) => {
     if (!whisperConfig) {
       return
@@ -1099,6 +1136,15 @@ export function SettingsView({
   const gpuAcceleration = whisperConfig ? whisperConfig.device !== "cpu" : false
   const whisperRuntimeLibraries = whisperConfig?.runtime_libraries ?? null
   const whisperRuntimeInstalling = whisperRuntimeLibraries?.progress.state === "installing"
+  const whisperRuntimePaused = whisperRuntimeLibraries?.progress.state === "paused"
+  const whisperRuntimeCanResume = Boolean(whisperRuntimeLibraries?.progress.resumable || whisperRuntimePaused)
+  const whisperRuntimeShowProgress = Boolean(
+    whisperRuntimeLibraries &&
+      (whisperRuntimeInstalling ||
+        whisperRuntimePaused ||
+        whisperRuntimeLibraries.progress.total_bytes > 0 ||
+        whisperRuntimeLibraries.status === "failed"),
+  )
   const activeModelPreset = editingModel ? getModelConfigPreset(editingModel) : null
   const modelDialogHasQuantization = Boolean(activeModelPreset?.fields.includes("quantization"))
   const modelDialogHasBatchSize = Boolean(activeModelPreset?.fields.includes("max_batch_size"))
@@ -1294,19 +1340,38 @@ export function SettingsView({
                               <Save className="mr-2 h-4 w-4" />
                               保存运行库配置
                             </Button>
-                            <Button
-                              disabled={
-                                isUpdatingWhisperRuntime ||
-                                whisperRuntimeInstalling ||
-                                !whisperRuntimeLibraries.platform_supported
-                              }
-                              onClick={() => {
-                                void handleInstallWhisperRuntime()
-                              }}
-                            >
-                              <CloudDownload className="mr-2 h-4 w-4" />
-                              一键安装完整运行库
-                            </Button>
+                            {whisperRuntimeInstalling ? (
+                              <Button
+                                variant="outline"
+                                disabled={isUpdatingWhisperRuntime || !whisperRuntimeLibraries.platform_supported}
+                                onClick={() => {
+                                  void handlePauseWhisperRuntime()
+                                }}
+                              >
+                                <Pause className="mr-2 h-4 w-4" />
+                                暂停下载
+                              </Button>
+                            ) : whisperRuntimeCanResume ? (
+                              <Button
+                                disabled={isUpdatingWhisperRuntime || !whisperRuntimeLibraries.platform_supported}
+                                onClick={() => {
+                                  void handleResumeWhisperRuntime()
+                                }}
+                              >
+                                <Play className="mr-2 h-4 w-4" />
+                                继续安装
+                              </Button>
+                            ) : (
+                              <Button
+                                disabled={isUpdatingWhisperRuntime || !whisperRuntimeLibraries.platform_supported}
+                                onClick={() => {
+                                  void handleInstallWhisperRuntime()
+                                }}
+                              >
+                                <CloudDownload className="mr-2 h-4 w-4" />
+                                一键安装完整运行库
+                              </Button>
+                            )}
                             <Button
                               variant="outline"
                               disabled={isUpdatingWhisperRuntime}
@@ -1319,13 +1384,14 @@ export function SettingsView({
                             </Button>
                           </div>
 
-                          {whisperRuntimeInstalling ? (
+                          {whisperRuntimeShowProgress ? (
                             <div className="space-y-2 rounded-xl border bg-muted/25 p-4">
                               <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
                                 <span className="min-w-0 truncate">
                                   {whisperRuntimeLibraries.progress.current_package
                                     ? `当前包：${whisperRuntimeLibraries.progress.current_package}`
-                                    : whisperRuntimeLibraries.progress.message || "正在安装运行库..."}
+                                    : whisperRuntimeLibraries.progress.message ||
+                                      (whisperRuntimePaused ? "运行库下载已暂停" : "正在安装运行库...")}
                                 </span>
                                 <span className="shrink-0">{Math.round(whisperRuntimeLibraries.progress.percent)}%</span>
                               </div>
@@ -1334,8 +1400,29 @@ export function SettingsView({
                                 className="h-2 bg-primary/10"
                                 indicatorClassName="download-progress-indicator"
                               />
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                                <span>
+                                  已下载：
+                                  {whisperRuntimeLibraries.progress.total_bytes > 0
+                                    ? `${formatBytes(whisperRuntimeLibraries.progress.downloaded_bytes)} / ${formatBytes(
+                                        whisperRuntimeLibraries.progress.total_bytes,
+                                      )}`
+                                    : formatBytes(whisperRuntimeLibraries.progress.downloaded_bytes)}
+                                </span>
+                                <span>
+                                  速度：
+                                  {whisperRuntimeInstalling && whisperRuntimeLibraries.progress.speed_bps > 0
+                                    ? `${formatBytes(Math.round(whisperRuntimeLibraries.progress.speed_bps))}/s`
+                                    : whisperRuntimePaused
+                                      ? "已暂停"
+                                      : "等待中"}
+                                </span>
+                              </div>
                               <p className="text-xs text-muted-foreground">
-                                {whisperRuntimeLibraries.progress.message || "正在下载并解压官方运行库组件。"}
+                                {whisperRuntimeLibraries.progress.message ||
+                                  (whisperRuntimePaused
+                                    ? "当前下载已暂停，点击“继续安装”后会从已完成分片处断点续传。"
+                                    : "正在下载并解压官方运行库组件。")}
                               </p>
                             </div>
                           ) : null}
