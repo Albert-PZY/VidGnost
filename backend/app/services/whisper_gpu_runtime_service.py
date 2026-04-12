@@ -30,7 +30,8 @@ RuntimeStatus = Literal["ready", "not_ready", "installing", "paused", "failed", 
 _CUDA_REDIST_VERSION = "12.9.1"
 _CUDNN_REDIST_VERSION = "9.20.0"
 _BUNDLE_VERSION_LABEL = f"CUDA {_CUDA_REDIST_VERSION} + cuDNN {_CUDNN_REDIST_VERSION}"
-_REQUIRED_DLLS = ("cublas64_12.dll", "cudart64_12.dll", "nvJitLink_12.dll")
+_REQUIRED_DLLS = ("cublas64_12.dll", "cudart64_12.dll")
+_NVJITLINK_GLOB = "nvJitLink*.dll"
 _CUDNN_GLOB = "cudnn64*.dll"
 _INSTALLER_SCRIPT_RELATIVE_PATH = Path("..") / ".." / ".." / "scripts" / "install-whisper-gpu-runtime.ps1"
 _CUDA_MANIFEST_URL = f"https://developer.download.nvidia.com/compute/cuda/redist/redistrib_{_CUDA_REDIST_VERSION}.json"
@@ -769,7 +770,7 @@ class WhisperGpuRuntimeService:
                 "status": "unsupported",
                 "message": "当前平台不支持自动安装 Whisper GPU 运行库。",
                 "bin_dir": bin_dir,
-                "missing_files": list(_REQUIRED_DLLS) + [_CUDNN_GLOB],
+                "missing_files": list(_REQUIRED_DLLS) + [_NVJITLINK_GLOB, _CUDNN_GLOB],
                 "discovered_files": {},
                 "load_error": "",
                 "path_configured": False,
@@ -785,6 +786,12 @@ class WhisperGpuRuntimeService:
                 discovered_files[dll_name] = resolved
             else:
                 missing_files.append(dll_name)
+
+        nvjitlink_path = self._resolve_glob(_NVJITLINK_GLOB, search_dirs)
+        if nvjitlink_path:
+            discovered_files[_NVJITLINK_GLOB] = nvjitlink_path
+        else:
+            missing_files.append(_NVJITLINK_GLOB)
 
         cudnn_path = self._resolve_glob(_CUDNN_GLOB, search_dirs)
         if cudnn_path:
@@ -809,7 +816,7 @@ class WhisperGpuRuntimeService:
                 resumable=False,
             )
 
-        path_configured = self._path_contains(bin_dir)
+        path_configured = self._path_contains(self._runtime_bin_dirs(install_dir))
         if ready:
             status: RuntimeStatus = "ready"
         elif snapshot["state"] == "installing":
@@ -842,16 +849,22 @@ class WhisperGpuRuntimeService:
         if not install_dir:
             return
         install_path = Path(install_dir)
-        bin_path = install_path / "bin"
-        if not bin_path.exists():
+        bin_paths = self._runtime_bin_dirs(install_dir)
+        if not bin_paths:
             return
 
         current_path = os.environ.get("PATH", "")
         entries = [entry for entry in current_path.split(os.pathsep) if entry]
         normalized_entries = {Path(entry).resolve().as_posix().lower() for entry in entries if Path(entry).exists()}
-        normalized_bin = bin_path.resolve().as_posix().lower()
-        if normalized_bin not in normalized_entries:
-            os.environ["PATH"] = f"{bin_path}{os.pathsep}{current_path}" if current_path else str(bin_path)
+        next_path = current_path
+        for bin_path in reversed(bin_paths):
+            normalized_bin = bin_path.resolve().as_posix().lower()
+            if normalized_bin in normalized_entries:
+                continue
+            next_path = f"{bin_path}{os.pathsep}{next_path}" if next_path else str(bin_path)
+            normalized_entries.add(normalized_bin)
+        if next_path != current_path:
+            os.environ["PATH"] = next_path
         os.environ["CUDA_PATH"] = str(install_path.resolve())
         os.environ["VIDGNOST_WHISPER_GPU_RUNTIME_ROOT"] = str(install_path.resolve())
 
@@ -859,8 +872,8 @@ class WhisperGpuRuntimeService:
         if not self._is_windows():
             return
         install_path = Path(install_dir).resolve()
-        bin_path = install_path / "bin"
-        if not bin_path.exists():
+        bin_paths = self._runtime_bin_dirs(install_dir)
+        if not bin_paths:
             return
 
         import winreg
@@ -885,7 +898,7 @@ class WhisperGpuRuntimeService:
                 "Path",
                 0,
                 winreg.REG_EXPAND_SZ,
-                self._prepend_path_entry(existing_path, str(bin_path)),
+                self._prepend_path_entries(existing_path, [str(path) for path in bin_paths]),
             )
         self._broadcast_environment_change()
 
@@ -906,7 +919,8 @@ class WhisperGpuRuntimeService:
             candidates.append(resolved)
 
         if install_dir:
-            append(Path(install_dir) / "bin")
+            for bin_path in WhisperGpuRuntimeService._runtime_bin_dirs(install_dir):
+                append(bin_path)
         for raw_entry in os.environ.get("PATH", "").split(os.pathsep):
             if not raw_entry.strip():
                 continue
@@ -971,15 +985,25 @@ class WhisperGpuRuntimeService:
         return "Whisper GPU 运行库未就绪。"
 
     @staticmethod
-    def _path_contains(bin_dir: str) -> bool:
-        normalized = Path(bin_dir).resolve().as_posix().lower()
+    def _path_contains(bin_dirs: list[Path]) -> bool:
+        if not bin_dirs:
+            return False
+        normalized_targets = {path.resolve().as_posix().lower() for path in bin_dirs}
         for entry in os.environ.get("PATH", "").split(os.pathsep):
             try:
-                if Path(entry).resolve().as_posix().lower() == normalized:
+                if Path(entry).resolve().as_posix().lower() in normalized_targets:
                     return True
             except OSError:
                 continue
         return False
+
+    @staticmethod
+    def _runtime_bin_dirs(install_dir: str) -> list[Path]:
+        if not install_dir:
+            return []
+        install_path = Path(install_dir)
+        candidates = [install_path / "bin", install_path / "bin" / "x64"]
+        return [path.resolve() for path in candidates if path.exists()]
 
     @staticmethod
     def _is_windows() -> bool:
@@ -1173,6 +1197,13 @@ class WhisperGpuRuntimeService:
         if entry.lower() not in normalized:
             parts = [entry] + parts
         return ";".join(parts)
+
+    @classmethod
+    def _prepend_path_entries(cls, current_value: str, entries: list[str]) -> str:
+        next_value = current_value
+        for entry in reversed([item for item in entries if item]):
+            next_value = cls._prepend_path_entry(next_value, entry)
+        return next_value
 
     @staticmethod
     def _read_registry_value(registry_key: object, value_name: str) -> str:

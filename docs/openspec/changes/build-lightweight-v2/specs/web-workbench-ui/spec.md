@@ -25,6 +25,7 @@ The settings-center model surface SHALL expose a dedicated Whisper GPU runtime a
 - **AND** the card allows toggling automatic user-environment-variable configuration
 - **AND** the card exposes `保存运行库配置`, an install action, a pause-or-resume action that changes with the current runtime install state, and `刷新状态`
 - **AND** the card condenses runtime information into a current-status summary, a next-step guidance block, and a single issue summary so users can act without first parsing low-level diagnostics fields
+- **AND** managed-runtime readiness detection accepts the versioned `nvJitLink*.dll` naming used by current CUDA 12 redist bundles and also searches managed subdirectories such as `bin/x64` when the official package layout keeps cuDNN DLLs there
 - **AND** when installation is active, paused, or resumable, the card renders a compact progress surface with current package label, percent, downloaded bytes, and transfer speed or paused-state text
 - **AND** when installation is in progress, the card polls backend runtime-library status until the backend leaves the active install state
 
@@ -303,5 +304,6 @@ Diagnostics view SHALL provide a direct autofix action when the backend marks is
 #### Scenario: Diagnostics self-check validates Whisper GPU runtime
 - **WHEN** the backend runs the `Whisper GPU 运行库` self-check step
 - **THEN** it reports the configured install directory, effective runtime-library directory, and environment-variable state
+- **AND** it treats versioned `nvJitLink*.dll` files and managed `bin/x64` cuDNN locations as valid parts of the installed bundle when the NVIDIA package layout uses those forms
 - **AND** it lists missing runtime DLLs or load errors when the bundle is not ready
 - **AND** the diagnostics issue summary tells the user to return to the settings-center model section to install or repair the runtime bundle
