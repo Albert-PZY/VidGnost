@@ -48,6 +48,7 @@ import { WebGLBlurCanvas } from "@/components/ui/webgl-blur-canvas"
 import { CustomSkinDialog } from "@/components/views/custom-skin-dialog"
 import { PromptLabPanel } from "@/components/views/prompt-lab-panel"
 import { useTheme } from "next-themes"
+import { pulseHueAppearanceTransition } from "@/lib/appearance-transition"
 import { cn } from "@/lib/utils"
 import {
   cancelModelDownload,
@@ -293,6 +294,7 @@ export function SettingsView({
   const backgroundFileInputRef = React.useRef<HTMLInputElement | null>(null)
   const backgroundFileResolverRef = React.useRef<((image: PickedSkinImage | null) => void) | null>(null)
   const skinPreviewRef = React.useRef<HTMLDivElement | null>(null)
+  const hasMountedThemeHueRef = React.useRef(false)
   const [skinPreviewSize, setSkinPreviewSize] = React.useState({ width: 0, height: 0 })
   const [skinPreviewImageSize, setSkinPreviewImageSize] = React.useState({ width: 0, height: 0 })
 
@@ -311,6 +313,20 @@ export function SettingsView({
       document.documentElement.style.setProperty("--theme-hue", String(uiSettings.theme_hue))
     }
   }, [themeHue, uiSettings.theme_hue])
+
+  React.useEffect(() => {
+    const activeHue = themeHue[0] ?? uiSettings.theme_hue
+    if (!hasMountedThemeHueRef.current) {
+      hasMountedThemeHueRef.current = true
+      return
+    }
+
+    if (activeHue === uiSettings.theme_hue && !isSavingUi) {
+      return
+    }
+
+    pulseHueAppearanceTransition()
+  }, [isSavingUi, themeHue, uiSettings.theme_hue])
 
   React.useEffect(() => {
     return () => {

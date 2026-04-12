@@ -8,6 +8,9 @@
 
 :root {
   --theme-hue: 220;
+  --appearance-transition-duration: 300ms;
+  --appearance-hue-transition-duration: 220ms;
+  --appearance-transition-easing: cubic-bezier(0.22, 1, 0.36, 1);
   /* 亮色主题 - 简洁专业 */
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -148,6 +151,126 @@
   --color-status-processing: var(--status-processing);
   --color-status-success: var(--status-success);
   --color-status-error: var(--status-error);
+}
+
+@keyframes app-appearance-wash {
+  0% {
+    opacity: 0;
+  }
+  35% {
+    opacity: 0.085;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes app-root-fade-out {
+  from {
+    opacity: 1;
+    filter: saturate(1);
+  }
+  to {
+    opacity: 0;
+    filter: saturate(0.98);
+  }
+}
+
+@keyframes app-root-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--appearance-active-transition-duration, var(--appearance-transition-duration));
+  animation-timing-function: var(--appearance-transition-easing);
+}
+
+::view-transition-old(root) {
+  animation-name: app-root-fade-out;
+}
+
+::view-transition-new(root) {
+  animation-name: app-root-fade-in;
+}
+
+html[data-appearance-transition="active"] body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2147483647;
+  background: color-mix(in oklch, var(--background) 92%, var(--foreground) 8%);
+  opacity: 0;
+  animation: app-appearance-wash
+    var(--appearance-active-transition-duration, var(--appearance-transition-duration))
+    var(--appearance-transition-easing);
+}
+
+html[data-appearance-transition-kind="theme"] :is(body, body *, body *::before, body *::after) {
+  transition-duration: var(--appearance-active-transition-duration, var(--appearance-transition-duration)) !important;
+  transition-timing-function: var(--appearance-transition-easing) !important;
+  transition-property:
+    color,
+    background-color,
+    border-color,
+    outline-color,
+    text-decoration-color,
+    box-shadow,
+    fill,
+    stroke,
+    opacity,
+    backdrop-filter !important;
+}
+
+html[data-appearance-transition-kind="hue"] :is(
+    body,
+    [data-slot="card"],
+    [data-slot="button"],
+    [data-slot="badge"],
+    [data-slot="input"],
+    [data-slot="textarea"],
+    [data-slot="select-trigger"],
+    [data-slot="select-content"],
+    [data-slot="dialog-content"],
+    [data-slot="alert-dialog-content"],
+    [data-slot="popover-content"],
+    [data-slot="dropdown-menu-content"],
+    [data-slot="dropdown-menu-item"],
+    [data-slot="sidebar-wrapper"],
+    [data-slot="sidebar-menu-button"],
+    [data-slot="separator"],
+    .app-header-shell,
+    .app-header-control,
+    .app-header-menu,
+    .app-header-menu-item,
+    .appearance-theme-chip,
+    .appearance-action-button,
+    .prompt-markdown-editor-shell,
+    .artifact-markdown-viewer-shell,
+    .app-toast-shell,
+    .app-toast-icon-shell,
+    .sidebar-workflow-trigger,
+    .sidebar-workflow-option
+  ) {
+  transition-duration: var(--appearance-active-transition-duration, var(--appearance-hue-transition-duration)) !important;
+  transition-timing-function: var(--appearance-transition-easing) !important;
+  transition-property:
+    color,
+    background-color,
+    border-color,
+    outline-color,
+    text-decoration-color,
+    box-shadow,
+    fill,
+    stroke,
+    opacity,
+    backdrop-filter !important;
 }
 
 @layer base {
