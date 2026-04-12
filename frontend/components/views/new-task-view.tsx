@@ -23,7 +23,7 @@ import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
-import { formatBytes } from "@/lib/format"
+import { formatBytes, formatDurationSeconds } from "@/lib/format"
 import { getApiErrorMessage } from "@/lib/api"
 import type { WorkflowType } from "@/lib/types"
 
@@ -102,6 +102,46 @@ const MODE_COPY: Record<
   },
 }
 
+async function readVideoDurationLabel(file: File): Promise<string> {
+  if (typeof document === "undefined") {
+    return "--:--"
+  }
+
+  return new Promise((resolve) => {
+    const video = document.createElement("video")
+    const objectUrl = URL.createObjectURL(file)
+    let settled = false
+
+    const finalize = (value: string) => {
+      if (settled) {
+        return
+      }
+      settled = true
+      video.onloadedmetadata = null
+      video.onerror = null
+      video.pause()
+      video.removeAttribute("src")
+      video.load()
+      URL.revokeObjectURL(objectUrl)
+      resolve(value)
+    }
+
+    video.preload = "metadata"
+    video.muted = true
+    video.playsInline = true
+
+    video.onloadedmetadata = () => {
+      finalize(formatDurationSeconds(video.duration))
+    }
+
+    video.onerror = () => {
+      finalize("--:--")
+    }
+
+    video.src = objectUrl
+  })
+}
+
 export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps) {
   const [sourceMode, setSourceMode] = React.useState<TaskSourceMode>("upload")
   const [isDragging, setIsDragging] = React.useState(false)
@@ -111,6 +151,13 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
   const [urlInput, setUrlInput] = React.useState("")
   const [pathInput, setPathInput] = React.useState("")
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const isMountedRef = React.useRef(true)
+
+  React.useEffect(() => {
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
 
   const appendFiles = React.useCallback((files: File[]) => {
     const nextFiles = files.map((file, index) => ({
@@ -124,6 +171,20 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
     setUploadedFiles((prev) => {
       const seen = new Set(prev.map((item) => item.id))
       return [...prev, ...nextFiles.filter((item) => !seen.has(item.id))]
+    })
+
+    nextFiles.forEach((item) => {
+      void readVideoDurationLabel(item.file).then((duration) => {
+        if (!isMountedRef.current) {
+          return
+        }
+
+        setUploadedFiles((prev) =>
+          prev.map((current) =>
+            current.id === item.id && current.duration !== duration ? { ...current, duration } : current,
+          ),
+        )
+      })
     })
   }, [])
 
@@ -358,7 +419,7 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
                         点击选择文件
                       </Button>
                     </p>
-                    <p className="mt-1 text-xs text-muted-foreground">{modeCopy.helper}</p>
+                    <p className="mt-1 text-xs text-muted-foreground dark:text-foreground/72">{modeCopy.helper}</p>
                   </div>
 
                   {isSubmitting && sourceMode === "upload" ? (
@@ -380,13 +441,13 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
                     <div className="text-sm font-medium">已选择 {uploadedFiles.length} 个文件</div>
                     <div className="space-y-2">
                       {uploadedFiles.map((file) => (
-                        <div key={file.id} className="flex items-center gap-3 rounded-lg border bg-card p-3">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                            <FileVideo className="h-5 w-5 text-muted-foreground" />
+                        <div key={file.id} className="selected-video-file-item flex items-center gap-3 rounded-lg border bg-card p-3">
+                          <div className="selected-video-file-icon-shell flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+                            <FileVideo className="selected-video-file-icon h-5 w-5 text-primary" />
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="truncate text-sm font-medium">{file.name}</div>
-                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <div className="selected-video-file-meta flex items-center gap-3 text-xs text-muted-foreground">
                               <span className="flex items-center gap-1">
                                 <HardDrive className="h-3 w-3" />
                                 {formatBytes(file.size)}
@@ -425,7 +486,7 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
                     value={urlInput}
                     onChange={(event) => setUrlInput(event.target.value)}
                   />
-                  <p className="mt-3 text-xs leading-6 text-muted-foreground">{modeCopy.helper}</p>
+                  <p className="mt-3 text-xs leading-6 text-muted-foreground dark:text-foreground/72">{modeCopy.helper}</p>
                 </div>
               </TabsContent>
 
@@ -441,7 +502,7 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
                     value={pathInput}
                     onChange={(event) => setPathInput(event.target.value)}
                   />
-                  <p className="mt-3 text-xs leading-6 text-muted-foreground">{modeCopy.helper}</p>
+                  <p className="mt-3 text-xs leading-6 text-muted-foreground dark:text-foreground/72">{modeCopy.helper}</p>
                 </div>
               </TabsContent>
             </Tabs>

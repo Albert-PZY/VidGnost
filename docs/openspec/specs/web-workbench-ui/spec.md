@@ -24,6 +24,7 @@ The settings-center model surface SHALL expose a dedicated Whisper GPU runtime a
 - **AND** the card allows editing the runtime install directory directly or by opening a native directory picker from Electron
 - **AND** the card allows toggling automatic user-environment-variable configuration
 - **AND** the card exposes `保存运行库配置`, an install action, a pause-or-resume action that changes with the current runtime install state, and `刷新状态`
+- **AND** the card condenses runtime information into a current-status summary, a next-step guidance block, and a single issue summary so users can act without first parsing low-level diagnostics fields
 - **AND** when installation is active, paused, or resumable, the card renders a compact progress surface with current package label, percent, downloaded bytes, and transfer speed or paused-state text
 - **AND** when installation is in progress, the card polls backend runtime-library status until the backend leaves the active install state
 
@@ -142,6 +143,7 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **AND** the fixed shell background layer applies skin blur through the same offscreen WebGL pipeline used by the skin dialog preview
 - **AND** the appearance settings skin status preview reuses the stored scale and focus coordinates when rendering its blurred preview surface
 - **AND** the appearance settings skin status preview becomes visible as soon as the appearance section enters view and has a measurable preview surface
+- **AND** the appearance settings skin status preview keeps its helper and status strip docked flush to the bottom edge of the preview frame without exposing a visual gap below the strip
 - **AND** the title bar, sidebar, and main content shell render above the same background layer
 - **AND** cards, dialogs, popovers, and the left sidebar switch to translucent glass surfaces while the custom skin is active
 - **AND** shell text outside card surfaces uses high-contrast light text with a soft shadow while the custom skin is active
@@ -163,6 +165,7 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **AND** sidebar separators stay clipped to the sidebar content width in every theme and SHALL NOT visually protrude past the container edge
 - **AND** in light theme with a custom skin active, generic select and dropdown controls across the workbench keep white foreground text and icons by default and SHALL NOT fall back to dark typography inside glass popup surfaces
 - **AND** in light theme with a custom skin active, new-task intake mode tabs and intake panels use theme-hue translucent fills with white foreground text and explicit hover or active emphasis
+- **AND** in light theme with a custom skin active, selected upload-file rows use the active theme hue family for their video icon shells while keeping the glyphs readable
 - **AND** in light theme with a custom skin active, history pagination controls keep white foreground text
 - **AND** in light theme with a custom skin active, the diagnostics `自动修复` action keeps white foreground text and icon color in resting, hover, focus, and disabled states
 - **AND** in light theme with a custom skin active, titlebar language/theme menus and the sidebar workflow menu use the shared glass dropdown surface, default to white text/icons, and express selected or hover state via neutral glass emphasis instead of theme-cyan fills
@@ -232,6 +235,8 @@ New-task view SHALL expose `Upload`, `URL`, and `Path` intake modes inside the s
 - **THEN** the renderer shows responsive workflow step cards without horizontal scrolling, a value-preview summary, and the three intake modes
 - **AND** workflow-step and value-preview content keep a compact flat structure inside the surrounding shell cards instead of reintroducing nested heavyweight sub-cards
 - **AND** the upload mode supports drag-and-drop plus batch file selection
+- **AND** selected local video files attempt to read media duration from local metadata and show the detected duration when the browser can resolve it
+- **AND** upload helper copy keeps a higher-contrast foreground treatment in dark theme so the prompt remains readable during idle and importing states
 - **AND** the user can switch to URL or absolute local-path input without leaving the page
 
 ### Requirement: Diagnostics view SHALL surface developer-mode samples when enabled
@@ -278,6 +283,7 @@ Prompt-template settings SHALL include a `Prompt Lab` surface that compares two 
 - **THEN** the renderer shows the template list and the Prompt Lab surface in the same section
 - **AND** Prompt Lab allows selecting a channel plus template `A/B`
 - **AND** Prompt Lab shows both the original template text and a generated sample prompt draft for comparison
+- **AND** the surface explicitly explains that `模板原文` is the saved template body while `样例提示草稿` is the assembled prompt preview before model invocation rather than a model answer
 
 ### Requirement: Diagnostics view SHALL expose autofix and issue summary
 Diagnostics view SHALL provide a direct autofix action when the backend marks issues as auto-fixable, and SHALL summarize actionable issues below the live runtime strip.

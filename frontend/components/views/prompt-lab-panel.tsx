@@ -75,7 +75,7 @@ export function PromptLabPanel({ promptBundle }: PromptLabPanelProps) {
           <Badge variant="secondary">实验区</Badge>
         </div>
         <p className="text-sm text-muted-foreground">
-          这里用于对比两个模板在同一段样例转写上的表现，帮助你更快判断结构、语气和信息密度是否合适。
+          这里用于对比两个模板在同一段样例转写上的组织方式。左边看模板本体，右边看把样例标题和转写内容拼进去后的实际发送预览，不是模型输出结果。
         </p>
       </CardHeader>
       <CardContent className="space-y-5 p-5">
@@ -127,6 +127,21 @@ export function PromptLabPanel({ promptBundle }: PromptLabPanelProps) {
           </div>
         </div>
 
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
+            <p className="text-sm font-medium">模板原文</p>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              原样展示当前模板内容，方便你检查结构、指令顺序和措辞。
+            </p>
+          </div>
+          <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
+            <p className="text-sm font-medium">样例提示草稿</p>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              把模板原文、样例标题和样例转写拼成一份调用前的提示词预览稿，用来判断真实发送给模型时会不会歧义。
+            </p>
+          </div>
+        </div>
+
         <div className="grid gap-4 lg:grid-cols-[15rem_minmax(0,1fr)]">
           <div className="space-y-3">
             <div className="space-y-2">
@@ -168,12 +183,16 @@ export function PromptLabPanel({ promptBundle }: PromptLabPanelProps) {
               <div className="grid gap-3 lg:grid-cols-2">
                 <div className="rounded-xl border border-border/60 bg-card/70 p-3">
                   <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">模板原文</p>
+                  <p className="mt-2 text-[11px] leading-5 text-muted-foreground">这里显示你当前保存的模板本体，不做额外加工。</p>
                   <pre className="mt-3 whitespace-pre-wrap text-sm leading-6">
                     {entry.template?.content || "当前通道还没有可比较的模板。"}
                   </pre>
                 </div>
                 <div className="rounded-xl border border-border/60 bg-card/70 p-3">
                   <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">样例提示草稿</p>
+                  <p className="mt-2 text-[11px] leading-5 text-muted-foreground">
+                    这里是实际发给模型前的拼装预览，用来检查上下文是否顺畅，不代表模型最终回答。
+                  </p>
                   <pre className="mt-3 whitespace-pre-wrap text-sm leading-6">
                     {entry.template
                       ? buildPromptPreview(entry.template.content, sampleTitle, sampleTranscript)

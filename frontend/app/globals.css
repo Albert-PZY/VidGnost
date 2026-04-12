@@ -684,6 +684,31 @@ html:not(.dark) body[data-app-background-active="true"] .upload-dropzone-icon-sh
   opacity: 0.92;
 }
 
+html:not(.dark) body[data-app-background-active="true"] .selected-video-file-item {
+  border-color: transparent !important;
+  background: color-mix(in oklch, var(--primary) 14%, transparent) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 8px 20px rgba(6, 10, 18, 0.08);
+}
+
+html:not(.dark) body[data-app-background-active="true"] .selected-video-file-icon-shell {
+  background: var(--wallpaper-tint-fill-soft) !important;
+  color: var(--primary-foreground) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .selected-video-file-icon-shell .selected-video-file-icon {
+  color: var(--primary-foreground) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .selected-video-file-meta {
+  color: color-mix(in oklch, white 84%, transparent) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .selected-video-file-meta svg {
+  color: inherit !important;
+}
+
 html:not(.dark) body[data-app-background-active="true"] .settings-models-panel {
   border-color: transparent !important;
   background:

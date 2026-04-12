@@ -532,6 +532,42 @@ export function SettingsView({
     }
   }
 
+  const getWhisperRuntimeHeadline = (runtime: WhisperRuntimeLibrariesResponse) => {
+    switch (runtime.status) {
+      case "ready":
+        return "运行库已完整就绪，可以直接开启上方 GPU 加速。"
+      case "installing":
+        return "正在后台下载并解压官方运行库，保持当前窗口开启即可。"
+      case "paused":
+        return "下载已暂停，继续安装后会从已完成分片处断点续传。"
+      case "failed":
+        return "运行库还没补齐，先看下面的缺失项或加载错误，再继续安装。"
+      case "unsupported":
+        return "当前平台不支持自动安装链路，请改用 CPU 或手动准备运行库。"
+      default:
+        return "先确认安装目录，再执行一键安装，安装完成后就能启用 GPU 模式。"
+    }
+  }
+
+  const getWhisperRuntimeNextStep = (runtime: WhisperRuntimeLibrariesResponse) => {
+    if (runtime.status === "ready") {
+      return "下一步：开启 GPU 加速，重新执行一次系统自检确认模型链路。"
+    }
+    if (runtime.status === "installing") {
+      return "下一步：等待当前下载完成；如果要暂停，直接点“暂停下载”。"
+    }
+    if (runtime.status === "paused") {
+      return "下一步：点击“继续安装”，从当前进度继续补齐官方 CUDA/cuDNN 组件。"
+    }
+    if (runtime.status === "failed") {
+      return "下一步：保留当前目录，修复异常后再次执行“一键安装完整运行库”。"
+    }
+    if (runtime.status === "unsupported") {
+      return "下一步：在当前机器上改用 CPU 模式，或手动部署兼容的 GPU 运行库。"
+    }
+    return "下一步：保存安装目录配置后，执行“一键安装完整运行库”。"
+  }
+
   const getModelVisual = (component: ModelDescriptor["component"]) => {
     return modelVisuals[component] || modelVisuals.llm
   }
@@ -1145,6 +1181,14 @@ export function SettingsView({
         whisperRuntimeLibraries.progress.total_bytes > 0 ||
         whisperRuntimeLibraries.status === "failed"),
   )
+  const whisperRuntimeHeadline = whisperRuntimeLibraries ? getWhisperRuntimeHeadline(whisperRuntimeLibraries) : ""
+  const whisperRuntimeNextStep = whisperRuntimeLibraries ? getWhisperRuntimeNextStep(whisperRuntimeLibraries) : ""
+  const whisperRuntimeIssueSummary = whisperRuntimeLibraries
+    ? whisperRuntimeLibraries.load_error ||
+      (whisperRuntimeLibraries.missing_files.length > 0
+        ? `仍缺少 ${whisperRuntimeLibraries.missing_files.length} 个运行库文件：${whisperRuntimeLibraries.missing_files.join("、")}`
+        : "")
+    : ""
   const activeModelPreset = editingModel ? getModelConfigPreset(editingModel) : null
   const modelDialogHasQuantization = Boolean(activeModelPreset?.fields.includes("quantization"))
   const modelDialogHasBatchSize = Boolean(activeModelPreset?.fields.includes("max_batch_size"))
@@ -1272,8 +1316,30 @@ export function SettingsView({
                         {getWhisperRuntimeBadge(whisperRuntimeLibraries)}
                       </div>
 
-                      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
-                        <div className="space-y-4">
+                      <div className="mt-4 space-y-4">
+                        <div className="grid gap-3 md:grid-cols-3">
+                          <div className="rounded-xl border bg-muted/20 px-4 py-3">
+                            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">当前状态</p>
+                            <p className="mt-2 text-sm font-medium">{whisperRuntimeHeadline}</p>
+                            <p className="mt-1 text-xs leading-5 text-muted-foreground">{whisperRuntimeLibraries.message}</p>
+                          </div>
+                          <div className="rounded-xl border bg-muted/20 px-4 py-3">
+                            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">生效目录</p>
+                            <p className="mt-2 break-all text-sm leading-6 text-foreground/90">
+                              {whisperRuntimeLibraries.bin_dir || "安装完成后会在所选目录下生成 bin 目录"}
+                            </p>
+                          </div>
+                          <div className="rounded-xl border bg-muted/20 px-4 py-3">
+                            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">环境与版本</p>
+                            <p className="mt-2 text-sm font-medium">{whisperRuntimeLibraries.version_label}</p>
+                            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                              {whisperRuntimeLibraries.path_configured ? "当前进程已识别 PATH/CUDA_PATH。" : "当前进程还没有识别到完整环境变量。"}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+                          <div className="space-y-4 rounded-xl border bg-muted/15 p-4">
                           <div className="space-y-2">
                             <Label htmlFor="whisper-runtime-install-dir">安装目录</Label>
                             <div className="flex flex-col gap-2 sm:flex-row">
@@ -1302,7 +1368,7 @@ export function SettingsView({
                               </Button>
                             </div>
                             <p className="text-xs text-muted-foreground">
-                              安装目录下会生成统一的 <code>bin</code>、<code>lib</code>、<code>include</code> 结构，并写入当前应用进程环境。
+                              安装目录下会自动整理出统一的 <code>bin</code>、<code>lib</code>、<code>include</code> 结构，便于后续自检和分析任务直接复用。
                             </p>
                           </div>
 
@@ -1426,45 +1492,41 @@ export function SettingsView({
                               </p>
                             </div>
                           ) : null}
-                        </div>
+                          </div>
 
-                        <div className="space-y-3 rounded-xl border bg-muted/25 p-4">
-                          <div>
-                            <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">版本</div>
-                            <div className="mt-1 text-sm text-foreground/90">{whisperRuntimeLibraries.version_label}</div>
-                          </div>
-                          <div>
-                            <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">状态</div>
-                            <div className="mt-1 text-sm text-foreground/90">{whisperRuntimeLibraries.message}</div>
-                          </div>
-                          <div>
-                            <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">运行库目录</div>
-                            <div className="mt-1 break-all text-xs leading-relaxed text-foreground/90">
-                              {whisperRuntimeLibraries.bin_dir || "未配置"}
+                          <div className="space-y-4 rounded-xl border bg-muted/25 p-4">
+                            <div className="space-y-1.5">
+                              <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">下一步该做什么</p>
+                              <p className="text-sm leading-6">{whisperRuntimeNextStep}</p>
                             </div>
-                          </div>
-                          <div>
-                            <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">环境变量</div>
-                            <div className="mt-1 text-sm text-foreground/90">
-                              {whisperRuntimeLibraries.path_configured ? "已写入当前进程 PATH" : "尚未生效"}
+
+                            <div className="rounded-xl border bg-background/40 px-4 py-3">
+                              <p className="text-xs font-medium text-muted-foreground">自动环境配置</p>
+                              <p className="mt-1 text-sm leading-6">
+                                {whisperRuntimeForm.auto_configure_env
+                                  ? "保存后会尝试把 CUDA_PATH 与 PATH 写入当前用户环境，重启 Electron 后更稳定。"
+                                  : "当前只在本次应用进程里生效，适合先试装、先验证，再决定是否写入系统环境。"}
+                              </p>
                             </div>
-                          </div>
-                          {whisperRuntimeLibraries.missing_files.length > 0 ? (
-                            <div>
-                              <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">缺失文件</div>
-                              <div className="mt-1 break-words text-xs leading-relaxed text-foreground/90">
-                                {whisperRuntimeLibraries.missing_files.join(" , ")}
+
+                            {whisperRuntimeIssueSummary ? (
+                              <div className="rounded-xl border border-destructive/30 bg-destructive/8 px-4 py-3">
+                                <p className="text-xs font-medium uppercase tracking-[0.12em] text-destructive">需要补齐的问题</p>
+                                <p className="mt-2 break-words text-sm leading-6 text-foreground/90">
+                                  {whisperRuntimeIssueSummary}
+                                </p>
                               </div>
-                            </div>
-                          ) : null}
-                          {whisperRuntimeLibraries.load_error ? (
-                            <div>
-                              <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">加载错误</div>
-                              <div className="mt-1 break-words text-xs leading-relaxed text-destructive">
-                                {whisperRuntimeLibraries.load_error}
+                            ) : (
+                              <div className="rounded-xl border bg-background/40 px-4 py-3">
+                                <p className="text-xs font-medium text-muted-foreground">当前检查结果</p>
+                                <p className="mt-1 text-sm leading-6 text-foreground/90">
+                                  {whisperRuntimeLibraries.ready
+                                    ? "关键运行库文件已齐全，当前进程也已经识别到可用目录。"
+                                    : "当前还没有发现额外报错；安装完成后会在这里显示缺失文件或加载异常。"}
+                                </p>
                               </div>
-                            </div>
-                          ) : null}
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -2344,12 +2406,10 @@ export function SettingsView({
                     </div>
 
                     <div className="grid gap-4 rounded-xl border bg-card p-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(18rem,0.75fr)]">
-                      <div
-                        ref={skinPreviewRef}
-                        className="overflow-hidden rounded-xl border border-border/70 bg-muted/20"
-                      >
-                        {hasSkinImage ? (
-                          <div className="relative h-52">
+                      <div className="overflow-hidden rounded-xl border border-border/70 bg-muted/20">
+                        <div ref={skinPreviewRef} className="relative h-52 overflow-hidden">
+                          {hasSkinImage ? (
+                            <>
                             <WebGLBlurCanvas
                               src={uiSettings.background_image}
                               width={skinPreviewSize.width}
@@ -2361,8 +2421,8 @@ export function SettingsView({
                               pixelRatioCap={1.5}
                               quality="performance"
                             />
-                            <div className="absolute inset-0 bg-background/28" />
-                            <div className="absolute inset-x-0 bottom-0 flex items-center justify-between border-t border-white/10 bg-background/48 px-4 py-2.5 backdrop-blur-sm">
+                            <div className="absolute inset-0 bg-background/24" />
+                            <div className="absolute inset-x-0 bottom-0 z-10 flex items-center justify-between border-t border-white/8 bg-background/56 px-4 py-2.5 backdrop-blur-sm">
                               <div>
                                 <p className="text-sm font-medium">当前换肤已启用</p>
                                 <p className="text-xs text-muted-foreground">
@@ -2374,13 +2434,14 @@ export function SettingsView({
                                 <p>{uiSettings.background_image_blur}px 模糊度</p>
                               </div>
                             </div>
-                          </div>
-                        ) : (
-                          <div className="flex h-52 flex-col items-center justify-center gap-2 px-6 text-center">
-                            <Sparkles className="h-5 w-5 text-primary/70" />
-                            <p className="text-sm font-medium">当前未设置换肤图片</p>
-                          </div>
-                        )}
+                            </>
+                          ) : (
+                            <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
+                              <Sparkles className="h-5 w-5 text-primary/70" />
+                              <p className="text-sm font-medium">当前未设置换肤图片</p>
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       <div className="space-y-4 rounded-xl border border-border/70 bg-muted/10 p-4">
