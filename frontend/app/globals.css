@@ -1143,6 +1143,12 @@ body[data-app-background-active="true"] .custom-skin-dialog-surface * {
   background: color-mix(in oklch, var(--primary) 68%, var(--foreground) 8%);
 }
 
+.workbench-collection-item {
+  content-visibility: auto;
+  contain: layout paint style;
+  contain-intrinsic-size: 220px;
+}
+
 .dialog-ultra-thin-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in oklch, var(--primary) 50%, transparent) transparent;

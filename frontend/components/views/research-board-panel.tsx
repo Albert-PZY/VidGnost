@@ -44,10 +44,10 @@ export function ResearchBoardPanel({ onSeek }: ResearchBoardPanelProps) {
           清空
         </Button>
       </div>
-      <ScrollArea className="themed-thin-scrollbar flex-1">
+      <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
         <div className="space-y-3 p-4">
           {items.map((item) => (
-            <div key={item.id} className="rounded-2xl border border-border/70 bg-card/70 p-4">
+            <div key={item.id} className="workbench-collection-item rounded-2xl border border-border/70 bg-card/70 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">

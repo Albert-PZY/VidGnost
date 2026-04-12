@@ -268,6 +268,7 @@ Task processing workbench SHALL use a horizontal resizable split layout. The lef
 - **THEN** the renderer shows the resizable video-and-artifact layout
 - **AND** summary and notes results render as Markdown instead of plain preformatted text
 - **AND** Markdown timestamps can seek the video
+- **AND** the Markdown workspace keeps an inner vertical scrollbar so long notes remain scrollable without moving the outer workbench shell
 - **AND** transcript cards support quick actions such as `加入笔记` and `加入研究板`
 
 #### Scenario: Preview imported source media inside the workbench
@@ -292,6 +293,7 @@ Task processing workbench SHALL use a horizontal resizable split layout. The lef
 - **THEN** the renderer appends transcript cards and updates the visible overall progress from stream data without forcing a full task-detail refresh on every delta
 - **AND** background task-detail refresh is reserved for stage transitions, milestone logs, and terminal events
 - **AND** stream-driven progress updates do not recreate the task SSE subscription or cancel already scheduled milestone refreshes
+- **AND** unchanged right-side Markdown or VQA workspaces remain stable while transcript deltas continue arriving, unless their own displayed artifact data has changed
 - **AND** the running-state badge summarizes the active workflow step in business language instead of showing a raw generic backend status string
 - **AND** recent stage activity omits repetitive raw progress spam and keeps milestone-focused readable updates
 - **AND** terminal task events immediately retire the cancel action and trigger a background task-detail sync so the workbench does not remain visually stuck on an earlier phase after backend completion

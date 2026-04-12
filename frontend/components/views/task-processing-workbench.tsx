@@ -753,7 +753,6 @@ export function TaskProcessingWorkbench({
   const [isInitialLoading, setIsInitialLoading] = React.useState(true)
   const [isRefreshing, setIsRefreshing] = React.useState(false)
   const [errorMessage, setErrorMessage] = React.useState("")
-  const [activeTranscriptId, setActiveTranscriptId] = React.useState("")
   const [leftTab, setLeftTab] = React.useState<LeftTab>("transcript")
   const [notesTab, setNotesTab] = React.useState<NotesTab>("notes")
   const [vqaTab, setVqaTab] = React.useState<VqaTab>("chat")
@@ -953,12 +952,8 @@ export function TaskProcessingWorkbench({
       if (videoRef.current) {
         videoRef.current.currentTime = nextTime
       }
-      setActiveTranscriptId((current) => {
-        const nextActiveId = findActiveTranscriptId(transcriptSegments, nextTime)
-        return current === nextActiveId ? current : nextActiveId
-      })
     },
-    [transcriptSegments],
+    [],
   )
 
   const addItemToResearchBoard = React.useCallback(
@@ -1116,10 +1111,6 @@ export function TaskProcessingWorkbench({
     setVideoLoadError(message)
   }, [])
 
-  const handleActiveTranscriptChange = React.useCallback((nextActiveId: string) => {
-    setActiveTranscriptId((current) => (current === nextActiveId ? current : nextActiveId))
-  }, [])
-
   const handleSaveNotes = React.useCallback(async () => {
     if (!canEditArtifacts) {
       toast.error("请等待任务进入终态后再保存笔记")
@@ -1274,11 +1265,9 @@ export function TaskProcessingWorkbench({
             videoRef={videoRef}
             fallbackDurationSeconds={effectiveTask?.duration_seconds || 0}
             onSeek={jumpToTime}
-            onActiveTranscriptChange={handleActiveTranscriptChange}
             leftTab={leftTab}
             onLeftTabChange={setLeftTab}
             transcriptSegments={transcriptSegments}
-            activeTranscriptId={activeTranscriptId}
             videoErrorMessage={videoLoadError}
             onVideoError={handleVideoError}
             errorMessage={errorMessage}
@@ -1667,7 +1656,7 @@ const TranscriptSegmentCard = React.memo(function TranscriptSegmentCard({
   return (
     <div
       className={cn(
-        "rounded-xl border px-3 py-3 transition-colors",
+        "workbench-collection-item rounded-xl border px-3 py-3 transition-colors",
         isActive ? "border-primary/35 bg-primary/8" : "border-border/60 bg-card/45",
       )}
     >
@@ -1716,11 +1705,9 @@ interface LeftWorkbenchPanelProps {
   videoRef: React.RefObject<HTMLVideoElement | null>
   fallbackDurationSeconds: number
   onSeek: (seconds: number) => void
-  onActiveTranscriptChange: (segmentId: string) => void
   leftTab: LeftTab
   onLeftTabChange: (value: LeftTab) => void
   transcriptSegments: TranscriptSegment[]
-  activeTranscriptId: string
   videoErrorMessage: string
   onVideoError: (message: string) => void
   errorMessage: string
@@ -1752,11 +1739,9 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
   videoRef,
   fallbackDurationSeconds,
   onSeek,
-  onActiveTranscriptChange,
   leftTab,
   onLeftTabChange,
   transcriptSegments,
-  activeTranscriptId,
   videoErrorMessage,
   onVideoError,
   errorMessage,
@@ -1774,6 +1759,28 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
   artifactCount,
   taskStatus,
 }: LeftWorkbenchPanelProps) {
+  const [activeTranscriptId, setActiveTranscriptId] = React.useState("")
+
+  React.useEffect(() => {
+    setActiveTranscriptId("")
+  }, [videoUrl])
+
+  const handleActiveTranscriptChange = React.useCallback((nextActiveId: string) => {
+    setActiveTranscriptId((current) => (current === nextActiveId ? current : nextActiveId))
+  }, [])
+
+  const handleSeekWithTranscriptSync = React.useCallback(
+    (seconds: number) => {
+      const nextTime = Math.max(0, seconds)
+      setActiveTranscriptId((current) => {
+        const nextActiveId = findActiveTranscriptId(transcriptSegments, nextTime)
+        return current === nextActiveId ? current : nextActiveId
+      })
+      onSeek(nextTime)
+    },
+    [onSeek, transcriptSegments],
+  )
+
   return (
     <div className="flex h-full min-h-0 flex-col border-r">
       <VideoPreviewPane
@@ -1783,8 +1790,8 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
         transcriptSegments={transcriptSegments}
         videoErrorMessage={videoErrorMessage}
         onVideoError={onVideoError}
-        onSeek={onSeek}
-        onActiveTranscriptChange={onActiveTranscriptChange}
+        onSeek={handleSeekWithTranscriptSync}
+        onActiveTranscriptChange={handleActiveTranscriptChange}
       />
 
       <Tabs value={leftTab} onValueChange={(value) => onLeftTabChange(value as LeftTab)} className="flex min-h-0 flex-1 flex-col">
@@ -1832,7 +1839,7 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
                       workflow={workflow}
                       segment={segment}
                       isActive={activeTranscriptId === segmentId}
-                      onSeek={onSeek}
+                      onSeek={handleSeekWithTranscriptSync}
                       onAddTranscriptToNotes={onAddTranscriptToNotes}
                       onUseTranscriptAsQuestion={onUseTranscriptAsQuestion}
                       onAddTranscriptToResearch={onAddTranscriptToResearch}
@@ -1849,7 +1856,7 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
             <div className="space-y-3 p-4">
               {evidenceTimelineItems.length === 0 ? <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">{workflow === "notes" ? "当前还没有时间轴内容。" : "先发起一次视频问答，这里会自动汇总命中证据。"}</div> : null}
               {evidenceTimelineItems.map((item) => (
-                <div key={item.id} className="rounded-2xl border border-border/70 bg-card/65 p-4">
+                <div key={item.id} className="workbench-collection-item rounded-2xl border border-border/70 bg-card/65 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
@@ -1912,7 +1919,7 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
                 </div>
                 <div className="mt-3 space-y-2">
                   {taskEvents.length > 0 ? taskEvents.map((event, index) => (
-                    <div key={`${event.timestamp}-${index}`} className="rounded-xl border border-border/60 bg-background/55 px-3 py-2.5">
+                    <div key={`${event.timestamp}-${index}`} className="workbench-collection-item rounded-xl border border-border/60 bg-background/55 px-3 py-2.5">
                       <div className="flex flex-wrap items-center gap-2 text-xs">
                         <Badge variant="outline">{formatTaskEventBadge(event)}</Badge>
                         {formatTaskEventTimestamp(event.timestamp) ? <span className="text-muted-foreground">{formatTaskEventTimestamp(event.timestamp)}</span> : null}
@@ -1979,8 +1986,8 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
         <TabsTrigger value="research" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">研究板</TabsTrigger>
       </TabsList>
 
-      <TabsContent value="notes" className="mt-0 min-h-0 flex-1">
-        <ScrollArea className="themed-thin-scrollbar flex-1">
+      <TabsContent value="notes" className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden">
+        <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
           <div className="space-y-4 p-4">
             <div className="flex items-center justify-end gap-2">
               {isEditingNotes ? (
@@ -2060,13 +2067,13 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
         <TabsTrigger value="research" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">研究板</TabsTrigger>
       </TabsList>
 
-      <TabsContent value="chat" className="mt-0 min-h-0 flex-1">
+      <TabsContent value="chat" className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="flex h-full min-h-0 flex-col">
-          <ScrollArea className="themed-thin-scrollbar flex-1">
+          <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
             <div className="space-y-4 p-4">
               {chatHistory.length === 0 ? <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">开始提问，系统会以流式方式输出回答和证据。</div> : null}
               {chatHistory.map((message) => (
-                <div key={message.id} className={cn("flex gap-3", message.role === "user" && "justify-end")}>
+                <div key={message.id} className={cn("workbench-collection-item flex gap-3", message.role === "user" && "justify-end")}>
                   {message.role === "assistant" ? <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">{message.status === "streaming" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}</div> : null}
                   <div className={cn("max-w-[88%] space-y-3 rounded-2xl p-4", message.role === "user" ? "bg-primary text-primary-foreground" : "border border-border/70 bg-card/70")}>
                     <p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p>
@@ -2082,7 +2089,7 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
                         {message.citations.length > 0 ? (
                           <div className="space-y-3">
                             {message.citations.map((citation, index) => (
-                              <div key={`${message.id}-${citation.doc_id}-${index}`} className="rounded-xl border border-border/60 bg-background/55 p-3">
+                              <div key={`${message.id}-${citation.doc_id}-${index}`} className="workbench-collection-item rounded-xl border border-border/60 bg-background/55 p-3">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                   <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-sm font-medium">{citation.task_title || effectiveTitle}</span>
@@ -2115,8 +2122,8 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
         </div>
       </TabsContent>
 
-      <TabsContent value="trace" className="mt-0 min-h-0 flex-1">
-        <ScrollArea className="themed-thin-scrollbar flex-1">
+      <TabsContent value="trace" className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden">
+        <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
           <div className="space-y-4 p-4">
             {!selectedTraceId ? <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">先在问答卡片里选择一个 trace_id，这里会展示完整的检索与回答链路。</div> : null}
             {traceError ? <div className="rounded-2xl border border-destructive/30 bg-destructive/6 p-4 text-sm text-destructive">{traceError}</div> : null}
@@ -2148,7 +2155,7 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
                         <AccordionContent>
                           <div className="space-y-3">
                             {hits.map((hit, index) => (
-                              <div key={`${section.key}-${index}-${asString(hit.doc_id)}`} className="rounded-xl border border-border/60 bg-background/55 p-3">
+                              <div key={`${section.key}-${index}-${asString(hit.doc_id)}`} className="workbench-collection-item rounded-xl border border-border/60 bg-background/55 p-3">
                                 <div className="flex flex-wrap items-center gap-2">
                                   <span className="text-sm font-medium">{asString(hit.task_title) || "未命名任务"}</span>
                                   <Badge variant="outline">{asString(hit.source) || "evidence"}</Badge>
