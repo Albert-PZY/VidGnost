@@ -131,9 +131,9 @@ export default function VideoMindApp() {
 
   React.useEffect(() => {
     reportDesktopBootstrapState({
-      progress: 18,
-      title: "正在预热 VidGnost 工作台",
-      message: "前端运行时与完整页面模块正在装载",
+      progress: 46,
+      title: "初始化引擎",
+      message: "初始化本地机器学习组件",
       detail: "新建任务、历史记录、设置中心、诊断页和处理工作台都会在启动阶段一次性预热。",
     })
   }, [reportDesktopBootstrapState])
@@ -149,10 +149,10 @@ export default function VideoMindApp() {
       setBootstrapStatus((current) => (current === "ready" ? "connecting" : "initializing"))
       setBootstrapMessage("正在连接后端并同步任务、设置与运行时目录。")
       reportDesktopBootstrapState({
-        progress: 42,
-        title: "正在预热 VidGnost 工作台",
-        message: "正在连接本地服务并校验运行状态",
-        detail: "健康检查通过后会继续同步最近任务、统计、界面设置和日志路径。",
+        progress: 68,
+        title: "初始化引擎",
+        message: "初始化本地机器学习组件",
+        detail: "正在连接本地服务，并校验模型、运行状态与基础目录。",
       })
 
       try {
@@ -160,10 +160,10 @@ export default function VideoMindApp() {
         setBootstrapStatus("connecting")
         setBootstrapMessage("后端已连接，正在同步任务、设置和运行时路径。")
         reportDesktopBootstrapState({
-          progress: 62,
-          title: "正在同步基础数据",
-          message: "本地服务已连接，正在装载任务与界面配置",
-          detail: "最近任务、统计信息、UI 设置和运行时路径正在预热。",
+          progress: 86,
+          title: "初始化引擎",
+          message: "挂载应用程序 UI",
+          detail: "最近任务、统计信息、UI 设置和运行时路径已完成同步。",
         })
 
         const [statsResponse, recentResponse, uiResponse, pathsResponse] = await Promise.all([
@@ -182,14 +182,14 @@ export default function VideoMindApp() {
         setBootstrapMessage("系统运行正常。")
         reportDesktopBootstrapState({
           progress: 92,
-          title: "工作台已准备完成",
-          message: "全部核心页面与基础数据已经预热完成",
+          title: "初始化引擎",
+          message: "挂载应用程序 UI",
           detail: "主界面即将显示，你打开历史、设置和诊断页面时将不再经过懒加载占位。",
         })
         completeDesktopBootstrap({
           progress: 100,
-          title: "工作台已准备完成",
-          message: "VidGnost 已准备就绪",
+          title: "系统准备就绪",
+          message: "系统准备就绪",
           detail: "正在切换到主工作台界面。",
         })
       } catch (error) {
@@ -199,14 +199,14 @@ export default function VideoMindApp() {
         await settleStartupFrame()
         reportDesktopBootstrapState({
           progress: 96,
-          title: "基础初始化已结束",
-          message: "主界面将以受限状态打开",
+          title: "初始化引擎",
+          message: "挂载应用程序 UI",
           detail: "后端尚未就绪，你仍可进入主界面查看诊断信息并继续重试连接。",
         })
         completeDesktopBootstrap({
           progress: 100,
-          title: "启动进入受限模式",
-          message: "基础页面预热完成，但后端暂不可用",
+          title: "系统准备就绪",
+          message: "系统准备就绪",
           detail: "主界面会继续打开，并保留诊断与重试入口。",
         })
         if (showToastOnError) {

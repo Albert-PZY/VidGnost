@@ -7,17 +7,15 @@
     <style>
       :root {
         color-scheme: dark;
-        --bg: #08111b;
-        --shell: rgba(11, 19, 31, 0.96);
-        --shell-border: rgba(89, 123, 156, 0.28);
-        --shell-edge: rgba(255, 255, 255, 0.04);
-        --panel: rgba(14, 23, 37, 0.92);
-        --panel-border: rgba(72, 102, 132, 0.24);
-        --accent: #3cb8d9;
-        --accent-soft: rgba(60, 184, 217, 0.14);
-        --text: rgba(238, 246, 255, 0.94);
-        --muted: rgba(173, 191, 212, 0.72);
-        --track: rgba(78, 105, 132, 0.34);
+        --bg: #0c1422;
+        --accent: #18c5e8;
+        --accent-soft: rgba(24, 197, 232, 0.2);
+        --text: rgba(244, 247, 252, 0.96);
+        --muted: rgba(129, 139, 160, 0.9);
+        --line: rgba(224, 230, 239, 0.84);
+        --line-soft: rgba(224, 230, 239, 0.24);
+        --success: #63d8b6;
+        --spinner: #5d7cff;
       }
 
       * {
@@ -36,226 +34,444 @@
       }
 
       body {
-        display: grid;
-        place-items: center;
         -webkit-user-select: none;
         user-select: none;
       }
 
-      .shell {
-        width: min(100vw - 36px, 548px);
-        min-height: 324px;
-        padding: 22px;
-        border: 1px solid var(--shell-border);
-        border-radius: 18px;
-        background: var(--shell);
-        box-shadow:
-          inset 0 1px 0 var(--shell-edge),
-          0 22px 44px rgba(0, 0, 0, 0.24);
+      .splash {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        padding: 40px 38px 22px;
+        display: flex;
+        flex-direction: column;
       }
 
       .brand {
-        display: grid;
-        grid-template-columns: 92px minmax(0, 1fr);
-        gap: 18px;
+        display: flex;
+        flex-direction: column;
         align-items: center;
+        text-align: center;
       }
 
-      .logo-wrap {
-        display: grid;
-        place-items: center;
-        width: 92px;
-        height: 92px;
-        border-radius: 16px;
-        border: 1px solid rgba(91, 124, 156, 0.32);
-        background: rgba(14, 23, 37, 0.94);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-      }
-
-      .logo {
-        width: 62px;
-        height: 62px;
+      .brand-logo {
+        width: 116px;
+        height: 116px;
         object-fit: contain;
+        filter: invert(1) brightness(1.06) drop-shadow(0 18px 32px rgba(5, 10, 18, 0.34));
+        mix-blend-mode: screen;
+        opacity: 0.94;
       }
 
-      .eyebrow {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 0 10px;
-        height: 26px;
-        border-radius: 999px;
-        border: 1px solid rgba(60, 184, 217, 0.22);
-        background: var(--accent-soft);
-        color: rgba(205, 233, 240, 0.88);
-        font-size: 11px;
-        font-weight: 600;
-        letter-spacing: 0.14em;
-        text-transform: uppercase;
-      }
-
-      .eyebrow::before {
-        content: "";
-        width: 6px;
-        height: 6px;
-        border-radius: 999px;
-        background: var(--accent);
-      }
-
-      .title {
-        margin: 12px 0 0;
-        font-size: 28px;
+      .brand-name {
+        margin: 18px 0 0;
+        color: var(--accent);
+        font-size: 29px;
+        line-height: 1;
         font-weight: 700;
-        letter-spacing: -0.03em;
+        letter-spacing: -0.035em;
       }
 
-      .subtitle {
-        margin: 8px 0 0;
+      .brand-subtitle {
+        margin: 12px 0 0;
         color: var(--muted);
-        font-size: 14px;
-        line-height: 1.65;
+        font-size: 17px;
+        line-height: 1.4;
+        font-weight: 600;
       }
 
-      .status-panel {
-        margin-top: 22px;
-        padding: 18px;
-        border-radius: 14px;
-        border: 1px solid var(--panel-border);
-        background: var(--panel);
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+      .progress-block {
+        margin-top: 52px;
       }
 
-      .status-row {
+      .progress-row {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 16px;
+        gap: 18px;
+        font-size: 14px;
+        line-height: 1.3;
       }
 
-      .status-title {
-        font-size: 12px;
+      .progress-title {
+        color: rgba(153, 162, 180, 0.88);
         font-weight: 600;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        color: rgba(198, 216, 236, 0.74);
       }
 
       .progress-value {
+        color: #5b73ff;
+        font-size: 30px;
+        font-weight: 700;
         font-variant-numeric: tabular-nums;
-        font-size: 12px;
-        color: rgba(213, 227, 244, 0.76);
+        letter-spacing: -0.035em;
       }
 
-      .message {
-        margin-top: 14px;
-        font-size: 18px;
+      .track {
+        position: relative;
+        margin-top: 16px;
+        height: 8px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        overflow: hidden;
+        background: transparent;
+      }
+
+      .fill {
+        position: absolute;
+        inset: 1px auto 1px 1px;
+        width: calc(var(--progress, 0%) - 2px);
+        max-width: calc(100% - 2px);
+        min-width: 0;
+        border-radius: inherit;
+        background: linear-gradient(90deg, rgba(90, 120, 255, 0.95), rgba(104, 141, 255, 0.98));
+        box-shadow: 0 0 16px rgba(90, 120, 255, 0.2);
+        transition: width 220ms cubic-bezier(0.22, 1, 0.36, 1);
+      }
+
+      .steps {
+        margin-top: 28px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .step {
+        display: grid;
+        grid-template-columns: 28px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 14px;
+        min-height: 46px;
+        padding: 0 8px;
+        color: rgba(186, 194, 210, 0.5);
+      }
+
+      .step.complete {
+        color: rgba(195, 205, 221, 0.92);
+      }
+
+      .step.active {
+        padding: 0 16px;
+        border: 1px solid rgba(228, 234, 243, 0.92);
+        border-radius: 9px;
+        color: rgba(242, 246, 252, 0.98);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+      }
+
+      .step.pending {
+        color: rgba(131, 140, 158, 0.54);
+      }
+
+      .step-label {
+        min-width: 0;
+        font-size: 16px;
+        line-height: 1.35;
         font-weight: 600;
-        letter-spacing: -0.02em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .step-meta {
+        min-width: 72px;
+        text-align: right;
+        font-size: 15px;
+        line-height: 1;
+        font-weight: 500;
+        color: rgba(131, 140, 158, 0.78);
+        font-variant-numeric: tabular-nums;
+      }
+
+      .step.complete .step-meta {
+        color: rgba(131, 140, 158, 0.9);
+      }
+
+      .step.active .step-meta {
+        min-width: 40px;
+        color: #5f74ff;
+        font-size: 24px;
+        letter-spacing: 0.08em;
+        transform: translateY(-1px);
+      }
+
+      .step-icon {
+        position: relative;
+        width: 24px;
+        height: 24px;
+        display: grid;
+        place-items: center;
+      }
+
+      .step.complete .step-icon::before {
+        content: "";
+        width: 11px;
+        height: 6px;
+        border-left: 2px solid var(--success);
+        border-bottom: 2px solid var(--success);
+        transform: rotate(-45deg) translateY(-1px);
+      }
+
+      .step.pending .step-icon::before {
+        content: "";
+        width: 13px;
+        height: 13px;
+        border: 2px solid rgba(103, 113, 131, 0.52);
+        border-radius: 999px;
+      }
+
+      .step.active .step-icon::before {
+        content: "";
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(93, 124, 255, 0.18);
+        border-top-color: var(--spinner);
+        border-left-color: var(--spinner);
+        border-radius: 999px;
+        animation: spin 920ms linear infinite;
       }
 
       .detail {
-        margin-top: 7px;
-        min-height: 42px;
-        color: var(--muted);
-        font-size: 13px;
-        line-height: 1.7;
-      }
-
-      .progress-track {
-        position: relative;
-        margin-top: 16px;
-        height: 4px;
-        border-radius: 999px;
-        background: var(--track);
-        overflow: hidden;
-      }
-
-      .progress-fill {
-        position: absolute;
-        inset: 0 auto 0 0;
-        width: 6%;
-        border-radius: inherit;
-        background: var(--accent);
-        transition: width 180ms cubic-bezier(0.22, 1, 0.36, 1);
-      }
-
-      .footer {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        margin-top: 18px;
-        color: rgba(173, 191, 212, 0.68);
+        margin-top: 12px;
+        min-height: 18px;
+        color: rgba(144, 153, 170, 0.82);
         font-size: 12px;
-        line-height: 1.6;
+        line-height: 1.45;
+        opacity: 0;
+        transition: opacity 140ms ease;
       }
 
-      .footer-mark {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
+      .detail.is-visible {
+        opacity: 1;
       }
 
-      .footer-mark::before {
-        content: "";
-        width: 28px;
+      .version {
+        margin-top: auto;
+        text-align: right;
+        color: rgba(106, 114, 130, 0.86);
+        font-size: 12px;
+        line-height: 1;
+        letter-spacing: 0.04em;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
         height: 1px;
-        background: rgba(60, 184, 217, 0.44);
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
       }
     </style>
   </head>
   <body>
-    <main class="shell" aria-live="polite">
+    <main class="splash" aria-live="polite">
       <section class="brand">
-        <div class="logo-wrap">
-          <img class="logo" src="../public/icon.svg" alt="VidGnost" />
+        <img class="brand-logo" src="../public/icon.svg" alt="VidGnost" />
+        <h1 class="brand-name">VidGnost</h1>
+        <p class="brand-subtitle">本地优先人工智能视频分析</p>
+      </section>
+
+      <section class="progress-block" aria-hidden="true">
+        <div class="progress-row">
+          <span class="progress-title" id="status-title">初始化引擎</span>
+          <span class="progress-value" id="status-progress">8%</span>
         </div>
-        <div>
-          <div class="eyebrow">Local Workbench</div>
-          <h1 class="title">VidGnost</h1>
-          <p class="subtitle">本地优先的视频分析工作台正在完成基础数据初始化，并预热核心页面与运行时信息。</p>
+        <div class="track">
+          <div class="fill" id="progress-fill"></div>
         </div>
       </section>
 
-      <section class="status-panel">
-        <div class="status-row">
-          <span class="status-title" id="status-title">正在启动 VidGnost</span>
-          <span class="progress-value" id="status-progress">06%</span>
-        </div>
-        <div class="message" id="status-message">正在创建启动上下文</div>
-        <div class="detail" id="status-detail">准备应用窗口、图标与基础运行环境。</div>
-        <div class="progress-track" aria-hidden="true">
-          <div class="progress-fill" id="progress-fill"></div>
-        </div>
-      </section>
-
-      <footer class="footer">
-        <span class="footer-mark">启动阶段会一次性预热主工作台视图</span>
-        <span>完成后再显示主界面</span>
-      </footer>
+      <section class="steps" id="steps"></section>
+      <p class="detail" id="status-detail"></p>
+      <p class="sr-only" id="status-live"></p>
+      <div class="version" id="status-version">v0.1.0-local</div>
     </main>
 
     <script>
-      const titleElement = document.getElementById("status-title")
-      const messageElement = document.getElementById("status-message")
-      const detailElement = document.getElementById("status-detail")
+      const progressTitleElement = document.getElementById("status-title")
       const progressTextElement = document.getElementById("status-progress")
       const progressFillElement = document.getElementById("progress-fill")
+      const detailElement = document.getElementById("status-detail")
+      const liveElement = document.getElementById("status-live")
+      const versionElement = document.getElementById("status-version")
+      const stepsElement = document.getElementById("steps")
+
+      const STEP_DEFS = [
+        { id: "config", label: "加载配置和设置" },
+        { id: "validate", label: "验证本地数据量" },
+        { id: "ml", label: "初始化本地机器学习组件" },
+        { id: "mount", label: "挂载应用程序 UI" },
+        { id: "ready", label: "系统准备就绪" },
+      ]
+
+      const startupAt = performance.now()
+      const stepStats = STEP_DEFS.map((step, index) => ({
+        ...step,
+        startedAt: index === 0 ? startupAt : null,
+        completedAt: null,
+      }))
+
+      let activeStepId = STEP_DEFS[0].id
+      let renderTicker = null
+
+      function formatDuration(durationMs) {
+        if (!Number.isFinite(durationMs)) {
+          return "-"
+        }
+
+        if (durationMs <= 0) {
+          return "1毫秒"
+        }
+
+        if (durationMs < 1000) {
+          return `${Math.max(1, Math.round(durationMs))}毫秒`
+        }
+
+        if (durationMs < 10_000) {
+          return `${(Math.round(durationMs / 100) / 10).toFixed(1)}秒`
+        }
+
+        return `${Math.max(1, Math.round(durationMs / 1000))}秒`
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;")
+      }
+
+      function resolveStepId(nextState) {
+        const text = `${nextState.title || ""} ${nextState.message || ""} ${nextState.detail || ""}`
+
+        if (/系统准备就绪|VidGnost 已准备就绪/.test(text)) {
+          return "ready"
+        }
+
+        if (/挂载应用程序 UI|主界面即将显示|受限状态打开|基础页面预热完成/.test(text)) {
+          return "mount"
+        }
+
+        if (/初始化本地机器学习组件|本地服务|运行状态|基础数据|核心页面预热/.test(text)) {
+          return "ml"
+        }
+
+        if (/验证本地数据量|前端资源|工作台资源/.test(text)) {
+          return "validate"
+        }
+
+        return "config"
+      }
+
+      function markStepTransition(nextStepId) {
+        const now = performance.now()
+        const currentIndex = STEP_DEFS.findIndex((step) => step.id === activeStepId)
+        const nextIndex = STEP_DEFS.findIndex((step) => step.id === nextStepId)
+
+        if (nextIndex === -1) {
+          return
+        }
+
+        for (let index = 0; index < nextIndex; index += 1) {
+          if (stepStats[index].startedAt === null) {
+            const previousCompletedAt =
+              index > 0 ? stepStats[index - 1].completedAt || startupAt : startupAt
+            stepStats[index].startedAt = previousCompletedAt
+          }
+          if (stepStats[index].completedAt === null) {
+            stepStats[index].completedAt = now
+          }
+        }
+
+        if (stepStats[nextIndex].startedAt === null) {
+          const previousCompletedAt =
+            nextIndex > 0 ? stepStats[nextIndex - 1].completedAt || now : startupAt
+          stepStats[nextIndex].startedAt = previousCompletedAt
+        }
+
+        if (currentIndex >= 0 && currentIndex < nextIndex && stepStats[currentIndex].completedAt === null) {
+          stepStats[currentIndex].completedAt = now
+        }
+
+        activeStepId = nextStepId
+      }
+
+      function renderSteps(progress) {
+        const now = performance.now()
+        const activeIndex = STEP_DEFS.findIndex((step) => step.id === activeStepId)
+
+        const markup = stepStats
+          .map((step, index) => {
+            const isComplete = index < activeIndex || (progress >= 100 && index <= activeIndex)
+            const isActive = !isComplete && index === activeIndex
+            const stateClass = isComplete ? "complete" : isActive ? "active" : "pending"
+            const duration = isComplete
+              ? formatDuration((step.completedAt || now) - (step.startedAt || startupAt))
+              : isActive
+                ? "..."
+                : "-"
+
+            return `
+              <div class="step ${stateClass}">
+                <span class="step-icon" aria-hidden="true"></span>
+                <span class="step-label">${escapeHtml(step.label)}</span>
+                <span class="step-meta">${escapeHtml(duration)}</span>
+              </div>
+            `
+          })
+          .join("")
+
+        stepsElement.innerHTML = markup
+      }
 
       function applyState(nextState) {
         const progress = Math.max(0, Math.min(100, Number(nextState.progress) || 0))
-        titleElement.textContent = nextState.title || "正在启动 VidGnost"
-        messageElement.textContent = nextState.message || "正在准备工作台"
-        detailElement.textContent = nextState.detail || "请稍候，应用正在完成基础初始化。"
-        progressTextElement.textContent = `${String(progress).padStart(2, "0")}%`
-        progressFillElement.style.width = `${progress}%`
+        const title = nextState.title || "初始化引擎"
+        const detail = nextState.detail || ""
+        const version = nextState.version || versionElement.textContent || "v0.1.0-local"
+        const nextStepId = resolveStepId(nextState)
+        const detailVisible = /失败|超时|不可用|排查|受限/.test(
+          `${nextState.title || ""} ${nextState.message || ""} ${detail}`,
+        )
+
+        markStepTransition(nextStepId)
+
+        progressTitleElement.textContent = title
+        progressTextElement.textContent = `${progress}%`
+        progressFillElement.style.setProperty("--progress", `${progress}%`)
+        progressFillElement.style.width = `calc(${progress}% - 2px)`
+        detailElement.textContent = detail
+        detailElement.classList.toggle("is-visible", detailVisible)
+        versionElement.textContent = version
+        liveElement.textContent = `${title}，${STEP_DEFS.find((step) => step.id === nextStepId)?.label || ""}，进度 ${progress}%`
+
+        renderSteps(progress)
+
+        if (renderTicker === null && progress < 100) {
+          renderTicker = window.setInterval(() => renderSteps(progress), 120)
+        }
+
+        if (progress >= 100 && renderTicker !== null) {
+          window.clearInterval(renderTicker)
+          renderTicker = null
+        }
       }
 
       applyState({
-        progress: 6,
-        title: "正在启动 VidGnost",
-        message: "正在创建启动上下文",
+        progress: 8,
+        title: "初始化引擎",
+        message: "加载配置和设置",
         detail: "准备应用窗口、图标与基础运行环境。",
+        version: "v0.1.0-local",
       })
 
       if (window.vidGnostSplash?.onState) {

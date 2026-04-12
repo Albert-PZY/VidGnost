@@ -28,10 +28,11 @@ let startupMarkedComplete = false
 let mainWindowCanReveal = false
 let startupFailsafeTimer = null
 let splashState = {
-  progress: 6,
-  title: "正在启动 VidGnost",
-  message: "正在创建启动上下文",
+  progress: 8,
+  title: "初始化引擎",
+  message: "加载配置和设置",
   detail: "准备应用窗口、图标与基础运行环境。",
+  version: `v${app.getVersion()}${app.isPackaged ? "" : "-local"}`,
 }
 
 function loadAppIcon() {
@@ -85,6 +86,10 @@ function normalizeSplashState(nextState = {}) {
       typeof nextState.detail === "string" && nextState.detail.trim()
         ? nextState.detail.trim()
         : splashState.detail,
+    version:
+      typeof nextState.version === "string" && nextState.version.trim()
+        ? nextState.version.trim()
+        : splashState.version,
   }
 }
 
@@ -161,12 +166,12 @@ function emitWindowState(win) {
 
 function createSplashWindow() {
   const win = new BrowserWindow({
-    width: 620,
-    height: 420,
-    minWidth: 620,
-    minHeight: 420,
-    maxWidth: 620,
-    maxHeight: 420,
+    width: 592,
+    height: 676,
+    minWidth: 592,
+    minHeight: 676,
+    maxWidth: 592,
+    maxHeight: 676,
     frame: false,
     transparent: false,
     resizable: false,
@@ -176,7 +181,7 @@ function createSplashWindow() {
     movable: false,
     show: false,
     autoHideMenuBar: true,
-    backgroundColor: "#07111f",
+    backgroundColor: "#0c1422",
     icon: APP_ICON.isEmpty() ? undefined : APP_ICON,
     webPreferences: {
       contextIsolation: true,
@@ -211,8 +216,8 @@ function createWindow() {
   mainWindowCanReveal = false
   splashState = normalizeSplashState({
     progress: 8,
-    title: "正在启动 VidGnost",
-    message: "启动窗口已建立",
+    title: "初始化引擎",
+    message: "加载配置和设置",
     detail: "即将装载完整工作台与本地运行时数据。",
   })
 
@@ -270,18 +275,20 @@ function createWindow() {
 
   win.webContents.on("did-start-loading", () => {
     pushSplashState({
-      progress: 16,
-      message: "正在加载前端资源",
-      detail: "主工作台 bundle、样式和基础运行时正在装载。",
+      progress: 24,
+      title: "初始化引擎",
+      message: "验证本地数据量",
+      detail: "主工作台资源、样式和基础运行时正在装载。",
     })
   })
 
   win.webContents.on("did-finish-load", () => {
     emitWindowState(win)
     pushSplashState({
-      progress: 30,
-      message: "前端资源已装载",
-      detail: "等待渲染进程完成页面预热与基础数据初始化。",
+      progress: 38,
+      title: "初始化引擎",
+      message: "初始化本地机器学习组件",
+      detail: "等待渲染进程完成核心页面预热与基础数据初始化。",
     })
   })
 
@@ -298,7 +305,8 @@ function createWindow() {
 
     completeStartup({
       progress: 100,
-      message: "启动资源加载失败",
+      title: "系统准备就绪",
+      message: "挂载应用程序 UI",
       detail: errorDescription || "主界面资源未能成功装载，已尝试打开主窗口以便继续排查。",
     })
   })
@@ -307,7 +315,8 @@ function createWindow() {
   startupFailsafeTimer = setTimeout(() => {
     completeStartup({
       progress: 100,
-      message: "启动等待超时",
+      title: "系统准备就绪",
+      message: "挂载应用程序 UI",
       detail: "主界面将继续打开，方便你在应用内查看当前状态并进一步排查。",
     })
   }, STARTUP_FAILSAFE_MS)
