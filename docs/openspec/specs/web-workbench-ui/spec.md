@@ -104,6 +104,7 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **AND** surrounding appearance cards keep helper copy minimal and avoid repeating nearby controls or status labels
 - **AND** the selection frame stays fully inside the currently rendered image bounds, including at the minimum persisted `100%` scale
 - **AND** the current shell background updates in real time while the dialog is open
+- **AND** brief drag, zoom, opacity, or blur bursts from the dialog coalesce before they reach the shell background layer so each preview fade can complete without being restarted on every pointer frame
 - **AND** higher blur values MAY reduce the internal offscreen blur resolution to preserve interactive smoothness while keeping the saved scale, focus, and output frame unchanged
 - **AND** the primary save action follows the active UI theme hue instead of using a fixed accent color
 - **AND** saving the dialog persists opacity, blur, scale, and focus coordinates for the selected image
@@ -136,6 +137,7 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **AND** in light theme with a custom skin active, generic select and dropdown controls across the workbench keep white foreground text and icons by default and SHALL NOT fall back to dark typography inside glass popup surfaces
 - **AND** in light theme with a custom skin active, new-task intake mode tabs and intake panels use theme-hue translucent fills with white foreground text and explicit hover or active emphasis
 - **AND** in light theme with a custom skin active, history pagination controls keep white foreground text
+- **AND** in light theme with a custom skin active, the diagnostics `自动修复` action keeps white foreground text and icon color in resting, hover, focus, and disabled states
 - **AND** in light theme with a custom skin active, titlebar language/theme menus and the sidebar workflow menu use the shared glass dropdown surface, default to white text/icons, and express selected or hover state via neutral glass emphasis instead of theme-cyan fills
 - **AND** in light theme with a custom skin active, titlebar language/theme menu items and sidebar workflow options keep a neutral resting state and SHALL NOT inherit global accent background fills outside their explicit local hover, focus, highlight, or selected glass states
 - **AND** in light theme with a custom skin active, prompt-template list cards suppress hard white outline strokes in favor of translucent surface separation
@@ -196,6 +198,7 @@ New-task view SHALL expose `Upload`, `URL`, and `Path` intake modes inside the s
 #### Scenario: Open new-task view for notes workflow
 - **WHEN** user enters the new-task view with workflow `notes`
 - **THEN** the renderer shows responsive workflow step cards without horizontal scrolling, a value-preview summary, and the three intake modes
+- **AND** workflow-step and value-preview content keep a compact flat structure inside the surrounding shell cards instead of reintroducing nested heavyweight sub-cards
 - **AND** the upload mode supports drag-and-drop plus batch file selection
 - **AND** the user can switch to URL or absolute local-path input without leaving the page
 

@@ -6,14 +6,78 @@ import { WebGLBlurCanvas } from "@/components/ui/webgl-blur-canvas"
 import type { UISettingsResponse } from "@/lib/types"
 import { getImageLayout, normalizeSkinSettings } from "@/lib/ui-skin"
 
-const SKIN_PREVIEW_TRANSITION_MS = 168
+const SKIN_PREVIEW_TRANSITION_MS = 220
+const SKIN_PREVIEW_EASING = "cubic-bezier(0.22, 1, 0.36, 1)"
 
-function easeOutQuint(value: number) {
-  return 1 - (1 - value) ** 5
+type NormalizedSkin = ReturnType<typeof normalizeSkinSettings>
+
+type RenderedBackgroundLayer = {
+  id: string
+  skin: NormalizedSkin
 }
 
-function interpolate(from: number, to: number, progress: number) {
-  return from + (to - from) * progress
+type NaturalSize = {
+  width: number
+  height: number
+}
+
+function hasSameVisualState(current: NormalizedSkin, next: NormalizedSkin) {
+  return (
+    current.background_image === next.background_image &&
+    Math.abs(current.background_image_blur - next.background_image_blur) <= 0.01 &&
+    Math.abs(current.background_image_opacity - next.background_image_opacity) <= 0.01 &&
+    Math.abs(current.background_image_scale - next.background_image_scale) <= 0.0005 &&
+    Math.abs(current.background_image_focus_x - next.background_image_focus_x) <= 0.0005 &&
+    Math.abs(current.background_image_focus_y - next.background_image_focus_y) <= 0.0005
+  )
+}
+
+function useImageNaturalSize(src: string | null) {
+  const [naturalSize, setNaturalSize] = React.useState<NaturalSize>({ width: 0, height: 0 })
+
+  React.useEffect(() => {
+    if (!src) {
+      setNaturalSize({ width: 0, height: 0 })
+      return
+    }
+
+    let cancelled = false
+    const image = new Image()
+    image.decoding = "async"
+    image.src = src
+
+    const updateSize = () => {
+      if (cancelled) {
+        return
+      }
+
+      setNaturalSize((current) => {
+        if (current.width === image.naturalWidth && current.height === image.naturalHeight) {
+          return current
+        }
+        return {
+          width: image.naturalWidth,
+          height: image.naturalHeight,
+        }
+      })
+    }
+
+    if (image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
+      updateSize()
+      return () => {
+        cancelled = true
+      }
+    }
+
+    image.onload = updateSize
+    return () => {
+      cancelled = true
+      image.onload = null
+      image.onerror = null
+    }
+  }, [src])
+
+  return naturalSize
 }
 
 export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsResponse }) {
@@ -29,16 +93,39 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
     ],
   )
   const [viewportSize, setViewportSize] = React.useState({ width: 0, height: 0 })
-  const [naturalSize, setNaturalSize] = React.useState({ width: 0, height: 0 })
-  const [displaySkin, setDisplaySkin] = React.useState(() => normalizedSkin)
   const [prefersReducedMotion, setPrefersReducedMotion] = React.useState(false)
+  const [baseLayer, setBaseLayer] = React.useState<RenderedBackgroundLayer>(() => ({
+    id: "base-0",
+    skin: normalizedSkin,
+  }))
+  const [overlayLayer, setOverlayLayer] = React.useState<RenderedBackgroundLayer | null>(null)
+  const [overlayVisible, setOverlayVisible] = React.useState(false)
   const [isAnimatingSkin, setIsAnimatingSkin] = React.useState(false)
-  const animationFrameRef = React.useRef<number | null>(null)
-  const displaySkinRef = React.useRef(displaySkin)
+  const transitionFrameRef = React.useRef<number | null>(null)
+  const transitionTimerRef = React.useRef<number | null>(null)
+  const layerSequenceRef = React.useRef(0)
+  const activeSkinRef = React.useRef(normalizedSkin)
+
+  const clearSkinTransition = React.useCallback(() => {
+    if (transitionFrameRef.current !== null) {
+      window.cancelAnimationFrame(transitionFrameRef.current)
+      transitionFrameRef.current = null
+    }
+
+    if (transitionTimerRef.current !== null) {
+      window.clearTimeout(transitionTimerRef.current)
+      transitionTimerRef.current = null
+    }
+  }, [])
+
+  const baseNaturalSize = useImageNaturalSize(baseLayer.skin.background_image)
+  const overlayNaturalSize = useImageNaturalSize(overlayLayer?.skin.background_image ?? null)
 
   React.useEffect(() => {
-    displaySkinRef.current = displaySkin
-  }, [displaySkin])
+    return () => {
+      clearSkinTransition()
+    }
+  }, [clearSkinTransition])
 
   React.useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -58,100 +145,65 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
   }, [])
 
   React.useEffect(() => {
-    if (animationFrameRef.current !== null) {
-      window.cancelAnimationFrame(animationFrameRef.current)
-      animationFrameRef.current = null
+    clearSkinTransition()
+
+    const currentSkin = activeSkinRef.current
+    if (hasSameVisualState(currentSkin, normalizedSkin)) {
+      return
     }
 
-    const currentSkin = displaySkinRef.current
-    const shouldAnimate =
+    activeSkinRef.current = normalizedSkin
+
+    const canAnimate =
       !prefersReducedMotion &&
       Boolean(currentSkin.background_image) &&
-      currentSkin.background_image === normalizedSkin.background_image
+      Boolean(normalizedSkin.background_image)
 
-    if (!shouldAnimate) {
-      setIsAnimatingSkin(false)
-      setDisplaySkin(normalizedSkin)
-      return
-    }
-
-    const startSkin = currentSkin
-    const targetSkin = normalizedSkin
-    const hasVisualDelta =
-      Math.abs(startSkin.background_image_blur - targetSkin.background_image_blur) > 0.01 ||
-      Math.abs(startSkin.background_image_opacity - targetSkin.background_image_opacity) > 0.01 ||
-      Math.abs(startSkin.background_image_scale - targetSkin.background_image_scale) > 0.0005 ||
-      Math.abs(startSkin.background_image_focus_x - targetSkin.background_image_focus_x) > 0.0005 ||
-      Math.abs(startSkin.background_image_focus_y - targetSkin.background_image_focus_y) > 0.0005
-
-    if (!hasVisualDelta) {
-      setIsAnimatingSkin(false)
-      setDisplaySkin(normalizedSkin)
-      return
-    }
-
-    setIsAnimatingSkin(true)
-    const startAt = performance.now()
-
-    const animate = (now: number) => {
-      const progress = Math.min(1, (now - startAt) / SKIN_PREVIEW_TRANSITION_MS)
-      const eased = easeOutQuint(progress)
-
-      setDisplaySkin({
-        ...targetSkin,
-        background_image_blur: interpolate(
-          startSkin.background_image_blur,
-          targetSkin.background_image_blur,
-          eased,
-        ),
-        background_image_opacity: interpolate(
-          startSkin.background_image_opacity,
-          targetSkin.background_image_opacity,
-          eased,
-        ),
-        background_image_scale: interpolate(
-          startSkin.background_image_scale,
-          targetSkin.background_image_scale,
-          eased,
-        ),
-        background_image_focus_x: interpolate(
-          startSkin.background_image_focus_x,
-          targetSkin.background_image_focus_x,
-          eased,
-        ),
-        background_image_focus_y: interpolate(
-          startSkin.background_image_focus_y,
-          targetSkin.background_image_focus_y,
-          eased,
-        ),
+    if (!canAnimate) {
+      layerSequenceRef.current += 1
+      setBaseLayer({
+        id: `base-${layerSequenceRef.current}`,
+        skin: normalizedSkin,
       })
-
-      if (progress >= 1) {
-        animationFrameRef.current = null
-        setIsAnimatingSkin(false)
-        return
-      }
-
-      animationFrameRef.current = window.requestAnimationFrame(animate)
+      setOverlayLayer(null)
+      setOverlayVisible(false)
+      setIsAnimatingSkin(false)
+      return
     }
 
-    animationFrameRef.current = window.requestAnimationFrame(animate)
-    return () => {
-      if (animationFrameRef.current !== null) {
-        window.cancelAnimationFrame(animationFrameRef.current)
-        animationFrameRef.current = null
-      }
+    layerSequenceRef.current += 1
+    const nextBaseLayer = {
+      id: `base-${layerSequenceRef.current}`,
+      skin: currentSkin,
     }
-  }, [
-    normalizedSkin,
-    normalizedSkin.background_image,
-    normalizedSkin.background_image_blur,
-    normalizedSkin.background_image_focus_x,
-    normalizedSkin.background_image_focus_y,
-    normalizedSkin.background_image_opacity,
-    normalizedSkin.background_image_scale,
-    prefersReducedMotion,
-  ])
+    layerSequenceRef.current += 1
+    const nextOverlayLayer = {
+      id: `overlay-${layerSequenceRef.current}`,
+      skin: normalizedSkin,
+    }
+
+    setBaseLayer(nextBaseLayer)
+    setOverlayLayer(nextOverlayLayer)
+    setOverlayVisible(false)
+    setIsAnimatingSkin(true)
+
+    transitionFrameRef.current = window.requestAnimationFrame(() => {
+      transitionFrameRef.current = null
+      setOverlayVisible(true)
+    })
+
+    transitionTimerRef.current = window.setTimeout(() => {
+      layerSequenceRef.current += 1
+      setBaseLayer({
+        id: `base-${layerSequenceRef.current}`,
+        skin: normalizedSkin,
+      })
+      setOverlayLayer(null)
+      setOverlayVisible(false)
+      setIsAnimatingSkin(false)
+      transitionTimerRef.current = null
+    }, SKIN_PREVIEW_TRANSITION_MS)
+  }, [clearSkinTransition, normalizedSkin, prefersReducedMotion])
 
   React.useEffect(() => {
     let frameId: number | null = null
@@ -188,89 +240,107 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
     }
   }, [])
 
-  React.useEffect(() => {
-    if (!displaySkin.background_image) {
-      setNaturalSize({ width: 0, height: 0 })
-      return
-    }
-
-    let cancelled = false
-    const image = new Image()
-    image.decoding = "async"
-    image.src = displaySkin.background_image
-
-    const updateSize = () => {
-      if (cancelled) {
-        return
-      }
-      setNaturalSize((current) => {
-        if (current.width === image.naturalWidth && current.height === image.naturalHeight) {
-          return current
-        }
-        return {
-          width: image.naturalWidth,
-          height: image.naturalHeight,
-        }
-      })
-    }
-
-    if (image.complete && image.naturalWidth > 0 && image.naturalHeight > 0) {
-      updateSize()
-      return () => {
-        cancelled = true
-      }
-    }
-
-    image.onload = updateSize
-    return () => {
-      cancelled = true
-      image.onload = null
-      image.onerror = null
-    }
-  }, [displaySkin.background_image])
-
-  const imageLayout = React.useMemo(() => {
-    if (!displaySkin.background_image || naturalSize.width <= 0 || naturalSize.height <= 0) {
+  const baseImageLayout = React.useMemo(() => {
+    if (
+      !baseLayer.skin.background_image ||
+      baseNaturalSize.width <= 0 ||
+      baseNaturalSize.height <= 0
+    ) {
       return null
     }
 
     return getImageLayout({
       viewportWidth: viewportSize.width,
       viewportHeight: viewportSize.height,
-      imageWidth: naturalSize.width,
-      imageHeight: naturalSize.height,
-      scale: displaySkin.background_image_scale,
-      focusX: displaySkin.background_image_focus_x,
-      focusY: displaySkin.background_image_focus_y,
+      imageWidth: baseNaturalSize.width,
+      imageHeight: baseNaturalSize.height,
+      scale: baseLayer.skin.background_image_scale,
+      focusX: baseLayer.skin.background_image_focus_x,
+      focusY: baseLayer.skin.background_image_focus_y,
     })
   }, [
-    displaySkin.background_image,
-    displaySkin.background_image_focus_x,
-    displaySkin.background_image_focus_y,
-    displaySkin.background_image_scale,
-    naturalSize.height,
-    naturalSize.width,
+    baseLayer.skin.background_image,
+    baseLayer.skin.background_image_focus_x,
+    baseLayer.skin.background_image_focus_y,
+    baseLayer.skin.background_image_scale,
+    baseNaturalSize.height,
+    baseNaturalSize.width,
     viewportSize.height,
     viewportSize.width,
   ])
 
-  if (!displaySkin.background_image) {
+  const overlayImageLayout = React.useMemo(() => {
+    if (
+      !overlayLayer?.skin.background_image ||
+      overlayNaturalSize.width <= 0 ||
+      overlayNaturalSize.height <= 0
+    ) {
+      return null
+    }
+
+    return getImageLayout({
+      viewportWidth: viewportSize.width,
+      viewportHeight: viewportSize.height,
+      imageWidth: overlayNaturalSize.width,
+      imageHeight: overlayNaturalSize.height,
+      scale: overlayLayer.skin.background_image_scale,
+      focusX: overlayLayer.skin.background_image_focus_x,
+      focusY: overlayLayer.skin.background_image_focus_y,
+    })
+  }, [
+    overlayLayer,
+    overlayNaturalSize.height,
+    overlayNaturalSize.width,
+    viewportSize.height,
+    viewportSize.width,
+  ])
+
+  if (!baseLayer.skin.background_image && !overlayLayer?.skin.background_image) {
     return null
   }
 
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-      <WebGLBlurCanvas
-        src={displaySkin.background_image}
-        width={viewportSize.width}
-        height={viewportSize.height}
-        imageRect={imageLayout}
-        blur={displaySkin.background_image_blur}
-        opacity={displaySkin.background_image_opacity / 100}
-        className="absolute inset-0 h-full w-full select-none"
-        pixelRatioCap={isAnimatingSkin ? 1.08 : 1.35}
-        quality="performance"
-      />
+      {baseLayer.skin.background_image && baseImageLayout ? (
+        <div className="absolute inset-0">
+          <WebGLBlurCanvas
+            src={baseLayer.skin.background_image}
+            width={viewportSize.width}
+            height={viewportSize.height}
+            imageRect={baseImageLayout}
+            blur={baseLayer.skin.background_image_blur}
+            opacity={baseLayer.skin.background_image_opacity / 100}
+            className="absolute inset-0 h-full w-full select-none"
+            pixelRatioCap={isAnimatingSkin ? 1.02 : 1.28}
+            quality="performance"
+          />
+        </div>
+      ) : null}
+
+      {overlayLayer?.skin.background_image && overlayImageLayout ? (
+        <div
+          className="absolute inset-0"
+          style={{
+            opacity: overlayVisible ? 1 : 0,
+            transition: prefersReducedMotion
+              ? undefined
+              : `opacity ${SKIN_PREVIEW_TRANSITION_MS}ms ${SKIN_PREVIEW_EASING}`,
+            willChange: prefersReducedMotion ? undefined : "opacity",
+          }}
+        >
+          <WebGLBlurCanvas
+            src={overlayLayer.skin.background_image}
+            width={viewportSize.width}
+            height={viewportSize.height}
+            imageRect={overlayImageLayout}
+            blur={overlayLayer.skin.background_image_blur}
+            opacity={overlayLayer.skin.background_image_opacity / 100}
+            className="absolute inset-0 h-full w-full select-none"
+            pixelRatioCap={1}
+            quality="performance"
+          />
+        </div>
+      ) : null}
     </div>
   )
 }

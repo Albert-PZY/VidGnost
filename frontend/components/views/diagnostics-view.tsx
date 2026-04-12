@@ -347,6 +347,7 @@ export function DiagnosticsView() {
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
+              className="diagnostics-autofix-button"
               onClick={() => {
                 void handleAutoFix()
               }}

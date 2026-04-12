@@ -229,7 +229,7 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
           </p>
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(22rem,0.95fr)]">
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(21rem,0.9fr)]">
           <Card className="border-border/70">
             <CardHeader className="pb-3">
               <div className="flex items-center gap-2">
@@ -251,19 +251,19 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
                   : "构建语义索引和关键帧证据，支持自然语言检索视频内容。"}
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(13rem,1fr))]">
+            <CardContent className="pt-0">
+              <div className="flex flex-wrap gap-2">
                 {steps.map((step) => (
                   <div
                     key={step.id}
-                    className="workflow-step-card flex min-h-[5.25rem] items-start gap-3 rounded-2xl border border-border/70 bg-muted/20 px-3.5 py-3"
+                    className="workflow-step-card workflow-step-card--compact flex min-w-[11rem] flex-1 items-start gap-2.5 rounded-lg border border-border/50 bg-transparent px-3 py-2"
                   >
-                    <div className="workflow-step-chip flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
+                    <div className="workflow-step-chip flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold">
                       {step.id}
                     </div>
-                    <div className="min-w-0 text-sm">
-                      <div className="font-medium">{step.name}</div>
-                      <div className="mt-1 text-xs leading-5 text-muted-foreground">{step.description}</div>
+                    <div className="min-w-0 text-sm leading-5">
+                      <div className="font-medium leading-5">{step.name}</div>
+                      <div className="mt-px text-[10px] leading-[1.05rem] text-muted-foreground">{step.description}</div>
                     </div>
                   </div>
                 ))}
@@ -275,29 +275,39 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
             <CardHeader>
               <CardTitle className="text-base">价值预期</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="rounded-2xl border border-border/70 bg-muted/25 p-4">
-                <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+            <CardContent className="space-y-0 pt-1">
+              <div className="value-expectation-panel border-b border-border/55 pb-3">
+                <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
                   {selectedWorkflow === "notes" ? "笔记整理结果" : "视频问答结果"}
                 </p>
-                <p className="mt-3 text-sm leading-6">
+                <p className="mt-2 max-w-[46ch] text-sm leading-6">
                   {selectedWorkflow === "notes"
                     ? "你会得到可继续编辑的 Markdown 摘要、结构化笔记和思维导图，同时支持从时间戳回跳视频。"
                     : "你会得到实时生成的回答、对应的视频证据片段、可直接跳转的时间点，以及方便排查依据的过程记录。"}
                 </p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border border-border/70 bg-muted/25 p-4">
-                  <p className="text-sm font-medium">证据驱动</p>
-                  <p className="mt-2 text-xs leading-6 text-muted-foreground">
-                    时间轴、转写片段和问答证据会在任务页联动展示。
-                  </p>
+              <div className="divide-y divide-border/50 border-b border-border/55">
+                <div className="value-expectation-row flex items-start justify-between gap-4 px-0 py-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">证据联动</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      时间轴、转写片段和问答证据会在任务页联动展示。
+                    </p>
+                  </div>
+                  <span className="shrink-0 pt-0.5 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                    回溯更快
+                  </span>
                 </div>
-                <div className="rounded-2xl border border-border/70 bg-muted/25 p-4">
-                  <p className="text-sm font-medium">本地优先</p>
-                  <p className="mt-2 text-xs leading-6 text-muted-foreground">
-                    支持直接引用本地绝对路径，适合桌面端批量复盘视频素材。
-                  </p>
+                <div className="value-expectation-row flex items-start justify-between gap-4 px-0 py-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">本地优先</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      支持直接引用本地绝对路径，适合桌面端批量复盘视频素材。
+                    </p>
+                  </div>
+                  <span className="shrink-0 pt-0.5 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                    连接更少
+                  </span>
                 </div>
               </div>
             </CardContent>
