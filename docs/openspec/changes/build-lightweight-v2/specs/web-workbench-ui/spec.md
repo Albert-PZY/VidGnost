@@ -169,6 +169,7 @@ Header theme controls SHALL show the current selected theme mode with explicit s
 - **THEN** the active theme option is visually highlighted
 - **AND** only the selected theme option shows the explicit selection indicator
 - **AND** switching between `light`, `dark`, and `system` themes uses a lightweight global fade veil so the shell does not visually hard-cut between theme states
+- **AND** the fade veil behaves as a single smooth fade without a separate brightness pulse or visible flicker during the handoff
 - **AND** when the runtime reports reduced motion, the theme switch MAY shorten the fade but SHALL still avoid an abrupt instant swap
 
 ### Requirement: Workbench branding SHALL use the project logo asset

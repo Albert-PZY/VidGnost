@@ -5,11 +5,8 @@ const THEME_TRANSITION_MS = 220
 const HUE_TRANSITION_MS = 220
 const REDUCED_MOTION_TRANSITION_MS = 160
 const APPEARANCE_TRANSITION_EASING = "cubic-bezier(0.22, 1, 0.36, 1)"
-const THEME_FADE_OPACITY = 0.92
-const THEME_FADE_OPACITY_WITH_WALLPAPER = 0.22
-const THEME_FADE_ENTER_RATIO = 0.38
-const THEME_FADE_ENTER_MIN_MS = 68
-const THEME_FADE_ENTER_MAX_MS = 96
+const THEME_FADE_OPACITY = 0.86
+const THEME_FADE_OPACITY_WITH_WALLPAPER = 0.18
 
 type AppearanceTransitionKind = "theme" | "hue"
 
@@ -30,13 +27,6 @@ function prefersReducedMotion() {
 
 function getTransitionDurationMs() {
   return prefersReducedMotion() ? REDUCED_MOTION_TRANSITION_MS : THEME_TRANSITION_MS
-}
-
-function getThemeFadeEnterDurationMs(durationMs: number) {
-  return Math.min(
-    THEME_FADE_ENTER_MAX_MS,
-    Math.max(THEME_FADE_ENTER_MIN_MS, Math.round(durationMs * THEME_FADE_ENTER_RATIO)),
-  )
 }
 
 function applyAppearanceTransitionState(kind: AppearanceTransitionKind, durationMs: number) {
@@ -119,9 +109,9 @@ function createThemeFadeLayer(durationMs: number) {
   overlay.style.inset = "0"
   overlay.style.pointerEvents = "none"
   overlay.style.zIndex = "2147483647"
-  overlay.style.opacity = "0"
+  overlay.style.opacity = String(targetOpacity)
   overlay.style.background = overlayBackground
-  overlay.style.transition = `opacity ${durationMs}ms ${APPEARANCE_TRANSITION_EASING}`
+  overlay.style.transition = "none"
   overlay.style.willChange = "opacity"
   overlay.style.contain = "strict"
   overlay.style.transform = "translate3d(0, 0, 0)"
@@ -135,7 +125,6 @@ function createThemeFadeLayer(durationMs: number) {
   return {
     overlay,
     cleanup,
-    targetOpacity,
   }
 }
 
@@ -161,7 +150,6 @@ export async function runThemeAppearanceTransition(update: () => void | Promise<
   activeThemeTransitionCleanup = null
 
   const durationMs = getTransitionDurationMs()
-  const enterDurationMs = getThemeFadeEnterDurationMs(durationMs)
   const freezeStyle = createThemeTransitionFreezeStyle()
   const fadeLayer = createThemeFadeLayer(durationMs)
 
@@ -171,7 +159,7 @@ export async function runThemeAppearanceTransition(update: () => void | Promise<
     return
   }
 
-  applyAppearanceTransitionState("theme", enterDurationMs + durationMs)
+  applyAppearanceTransitionState("theme", durationMs)
 
   const cleanup = () => {
     freezeStyle?.cleanup()
@@ -182,11 +170,10 @@ export async function runThemeAppearanceTransition(update: () => void | Promise<
 
   try {
     await nextAnimationFrame()
-    fadeLayer.overlay.style.opacity = String(fadeLayer.targetOpacity)
-    await waitForDuration(enterDurationMs)
     await update()
     await nextAnimationFrame()
     await nextAnimationFrame()
+    fadeLayer.overlay.style.transition = `opacity ${durationMs}ms ${APPEARANCE_TRANSITION_EASING}`
     fadeLayer.overlay.style.opacity = "0"
     await waitForDuration(durationMs + 24)
   } finally {
