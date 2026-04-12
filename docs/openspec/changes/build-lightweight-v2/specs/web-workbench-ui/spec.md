@@ -60,6 +60,11 @@ Electron desktop startup SHALL open a dedicated splash window first, keep the ma
 - **AND** the main window is revealed only after startup bootstrap reports completion or explicitly enters degraded mode
 - **AND** no page-level or prompt-editor skeleton placeholder is shown as part of the initial desktop startup chain
 
+#### Scenario: Bootstrap script encounters a reserved preferred service port
+- **WHEN** the Windows or shell startup script finds that the preferred backend port `8000` or frontend dev port `5173` cannot be bound and no owning PID can be resolved, such as when the OS excludes that port range
+- **THEN** the script selects the next available port for the affected service automatically instead of waiting indefinitely on the preferred port
+- **AND** the spawned frontend or Electron process receives matching `VITE_API_BASE_URL` and `VITE_DEV_SERVER_URL` values so the workbench still connects to the correct backend and Vite instances
+
 ### Requirement: Workbench SHALL surface transient notifications through a compact toast stack
 Renderer SHALL present transient `success`, `error`, and `loading` feedback through a single top-centered toast stack. The stack SHALL keep at most three visible notifications and SHALL retire older visible items when newer notifications overflow the cap.
 

@@ -48,11 +48,11 @@ function Get-PortOwningPids {
     )
 
     try {
-        return @(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction Stop |
+        return @(Get-NetTCPConnection -LocalPort $Port -ErrorAction Stop |
             Select-Object -ExpandProperty OwningProcess -Unique |
             Where-Object { $_ -and $_ -gt 0 })
     } catch {
-        $matches = @(netstat -ano -p tcp | Select-String -Pattern (":{0}\s+.*LISTENING\s+(\d+)$" -f $Port))
+        $matches = @(netstat -ano -p tcp | Select-String -Pattern (":{0}\s+.+\s+(\d+)\s*$" -f $Port))
         $pids = @()
         foreach ($match in $matches) {
             if ($match.Matches.Count -gt 0) {
@@ -60,6 +60,36 @@ function Get-PortOwningPids {
             }
         }
         return @($pids | Select-Object -Unique)
+    }
+}
+
+function Find-AvailablePort {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$StartPort,
+        [int]$Attempts = 256
+    )
+
+    for ($offset = 0; $offset -lt $Attempts; $offset++) {
+        $candidatePort = $StartPort + $offset
+        if (Test-PortBindable -Port $candidatePort) {
+            return $candidatePort
+        }
+    }
+
+    $ephemeralListener = $null
+    try {
+        $ephemeralListener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, 0)
+        $ephemeralListener.Start()
+        return ([System.Net.IPEndPoint]$ephemeralListener.LocalEndpoint).Port
+    } catch {
+        throw "No available TCP port was found from $StartPort to $($StartPort + $Attempts - 1), and automatic dynamic port allocation also failed."
+    } finally {
+        if ($null -ne $ephemeralListener) {
+            try {
+                $ephemeralListener.Stop()
+            } catch {}
+        }
     }
 }
 
@@ -192,6 +222,36 @@ function Ensure-PortFree {
     }
 }
 
+function Resolve-ServicePort {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$PreferredPort,
+        [Parameter(Mandatory = $true)]
+        [string]$Label
+    )
+
+    if (Test-PortBindable -Port $PreferredPort) {
+        Write-Host "[setup] Port $PreferredPort ($Label) is free."
+        return $PreferredPort
+    }
+
+    $ownerPids = @((Get-PortOwningPids -Port $PreferredPort) | Where-Object { $_ -and $_ -gt 0 -and $_ -ne $PID } | Select-Object -Unique)
+    if ($ownerPids.Count -gt 0) {
+        try {
+            Ensure-PortFree -Port $PreferredPort -Label $Label
+            return $PreferredPort
+        } catch {
+            Write-Warning "[setup] Port $PreferredPort ($Label) could not be reclaimed. Falling back to another port. $($_.Exception.Message)"
+        }
+    } else {
+        Write-Warning "[setup] Port $PreferredPort ($Label) is unavailable, but no PID was resolved. Trying another $Label port instead of waiting indefinitely."
+    }
+
+    $fallbackPort = Find-AvailablePort -StartPort ($PreferredPort + 1)
+    Write-Host "[setup] $Label will use fallback port $fallbackPort."
+    return $fallbackPort
+}
+
 function Wait-PortReady {
     param(
         [Parameter(Mandatory = $true)]
@@ -306,8 +366,8 @@ $pnpmExe = Resolve-CommandPath -Name "pnpm" -Candidates @("pnpm.cmd", "pnpm.exe"
 $uvIndexDisplay = $UvDefaultIndexMirror
 Write-Host "[setup] Mirrors configured (uv index-url: $uvIndexDisplay, pnpm: $PnpmRegistryMirror, electron: $($env:ELECTRON_MIRROR))."
 
-Ensure-PortFree -Port $BackendPort -Label "backend"
-Ensure-PortFree -Port $FrontendPort -Label "frontend"
+$SelectedBackendPort = Resolve-ServicePort -PreferredPort $BackendPort -Label "backend"
+$SelectedFrontendPort = Resolve-ServicePort -PreferredPort $FrontendPort -Label "frontend"
 
 Write-Host "[setup] Sync backend dependencies..."
 Push-Location $BackendDir
@@ -328,24 +388,29 @@ Set-Location -LiteralPath '$escapedBackendDir'
 `$env:PYTHONUTF8 = '1'
 `$env:PYTHONIOENCODING = 'utf-8'
 Write-Host '[run] Backend live logs (Ctrl+C to stop this window).'
-uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app --reload-exclude=.venv/* --reload-exclude=storage/*
+Write-Host '[run] Backend URL: http://127.0.0.1:$SelectedBackendPort'
+uv run python -m uvicorn app.main:app --host 0.0.0.0 --port $SelectedBackendPort --reload --reload-dir app --reload-exclude=.venv/* --reload-exclude=storage/*
 "@
 Stop-ElectronAppProcesses -FrontendPath $FrontendDir
 $frontendCommand = @"
 Set-Location -LiteralPath '$escapedFrontendDir'
+`$env:VITE_API_BASE_URL = 'http://127.0.0.1:$SelectedBackendPort/api'
+`$env:VITE_DEV_SERVER_URL = 'http://127.0.0.1:$SelectedFrontendPort'
 Write-Host '[run] Frontend desktop live logs (Ctrl+C to stop this window).'
-pnpm desktop:dev
+Write-Host '[run] Backend API base: http://127.0.0.1:$SelectedBackendPort/api'
+Write-Host '[run] Frontend dev server: http://127.0.0.1:$SelectedFrontendPort'
+pnpm exec concurrently -k -n VITE,ELECTRON -c cyan,green "pnpm dev --host 127.0.0.1 --port $SelectedFrontendPort" "pnpm exec wait-on tcp:$SelectedFrontendPort && electron electron/main.cjs"
 "@
 
-Write-Host "[run] Starting backend..."
+Write-Host "[run] Starting backend at http://127.0.0.1:$SelectedBackendPort ..."
 $backendProc = Start-Process -FilePath "powershell" -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-Command", $backendCommand) -PassThru
-Wait-PortReady -Port $BackendPort -Label "backend"
+Wait-PortReady -Port $SelectedBackendPort -Label "backend"
 
 Write-Host "[run] Starting frontend (electron)..."
 $frontendProc = Start-Process -FilePath "powershell" -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-Command", $frontendCommand) -PassThru
 Wait-ElectronReady -FrontendPath $FrontendDir -LauncherPid $frontendProc.Id
 
-$backendListenPids = @(Get-PortOwningPids -Port $BackendPort)
+$backendListenPids = @(Get-PortOwningPids -Port $SelectedBackendPort)
 $frontendListenPids = @(Get-ElectronAppPids -FrontendPath $FrontendDir)
 $stopPids = @($backendListenPids + $frontendListenPids) | Select-Object -Unique
 Write-Host "[ready] Backend launcher PID: $($backendProc.Id)"
@@ -353,6 +418,8 @@ Write-Host "[ready] Frontend launcher PID: $($frontendProc.Id)"
 Write-Host "[ready] Backend service PID(s): $($backendListenPids -join ', ')"
 Write-Host "[ready] Frontend service PID(s): $($frontendListenPids -join ', ')"
 Write-Host "[ready] Frontend mode: electron"
+Write-Host "[ready] Backend API URL: http://127.0.0.1:$SelectedBackendPort/api"
+Write-Host "[ready] Frontend dev server URL: http://127.0.0.1:$SelectedFrontendPort"
 if ($stopPids.Count -gt 0) {
     Write-Host "[ready] Stop all with: Stop-Process -Id $($stopPids -join ',')"
 } else {

@@ -19,7 +19,7 @@ require_cmd() {
   fi
 }
 
-port_pids() {
+listening_port_pids() {
   local port="$1"
   local pids=""
   if command -v lsof >/dev/null 2>&1; then
@@ -34,20 +34,66 @@ port_pids() {
   echo "${pids}"
 }
 
+port_owner_pids() {
+  local port="$1"
+  local pids=""
+  if command -v lsof >/dev/null 2>&1; then
+    pids="$(lsof -ti TCP:"${port}" 2>/dev/null || true)"
+  fi
+  if [[ -z "${pids}" ]] && command -v ss >/dev/null 2>&1; then
+    pids="$(ss -Htanp "( sport = :${port} )" 2>/dev/null | awk -F'pid=' '{split($2, a, ","); if (a[1] != "") print a[1]}' | sort -u || true)"
+  fi
+  if [[ -z "${pids}" ]] && command -v fuser >/dev/null 2>&1; then
+    pids="$(fuser -n tcp "${port}" 2>/dev/null || true)"
+  fi
+  echo "${pids}"
+}
+
+test_port_bindable() {
+  local port="$1"
+  local host="${2:-127.0.0.1}"
+  node -e "const net = require('node:net'); const port = Number(process.argv[1]); const host = process.argv[2]; const server = net.createServer(); server.once('error', () => process.exit(1)); server.listen({ port, host, exclusive: true }, () => server.close(() => process.exit(0)));" "${port}" "${host}" >/dev/null 2>&1
+}
+
+find_available_port() {
+  local start_port="$1"
+  local bind_host="$2"
+  local attempts="${3:-256}"
+  local candidate_port
+
+  for ((offset = 0; offset < attempts; offset++)); do
+    candidate_port=$((start_port + offset))
+    if test_port_bindable "${candidate_port}" "${bind_host}"; then
+      echo "${candidate_port}"
+      return
+    fi
+  done
+
+  node -e "const net = require('node:net'); const host = process.argv[1]; const server = net.createServer(); server.once('error', () => process.exit(1)); server.listen({ port: 0, host, exclusive: true }, () => { const address = server.address(); process.stdout.write(String(address.port)); server.close(() => process.exit(0)); });" "${bind_host}"
+}
+
 ensure_port_free() {
   local port="$1"
   local label="$2"
+  local bind_host="$3"
   local attempt=1
   while (( attempt <= 6 )); do
-    local pids
-    pids="$(port_pids "${port}")"
-    if [[ -z "${pids//[[:space:]]/}" ]]; then
+    if test_port_bindable "${port}" "${bind_host}"; then
       if (( attempt == 1 )); then
         echo "[setup] Port ${port} (${label}) is free."
       else
         echo "[setup] Port ${port} (${label}) has been released."
       fi
       return
+    fi
+
+    local pids
+    pids="$(port_owner_pids "${port}")"
+    if [[ -z "${pids//[[:space:]]/}" ]]; then
+      echo "[warn] Port ${port} (${label}) is unavailable, but no PID was resolved. Waiting..."
+      sleep 0.4
+      ((attempt++))
+      continue
     fi
 
     if (( attempt == 1 )); then
@@ -66,10 +112,18 @@ ensure_port_free() {
     ((attempt++))
   done
 
-  local remaining
-  remaining="$(port_pids "${port}")"
-  echo "[error] Port ${port} (${label}) is still occupied: ${remaining}"
-  exit 1
+  if ! test_port_bindable "${port}" "${bind_host}"; then
+    local remaining
+    remaining="$(port_owner_pids "${port}")"
+    if [[ -n "${remaining//[[:space:]]/}" ]]; then
+      echo "[error] Port ${port} (${label}) is still occupied: ${remaining}"
+    else
+      echo "[error] Port ${port} (${label}) is still unavailable and no owning PID could be resolved."
+    fi
+    return 1
+  fi
+
+  return 0
 }
 
 wait_port_ready() {
@@ -80,7 +134,7 @@ wait_port_ready() {
 
   while (( SECONDS < deadline )); do
     local pids
-    pids="$(port_pids "${port}")"
+    pids="$(listening_port_pids "${port}")"
     if [[ -n "${pids//[[:space:]]/}" ]]; then
       echo "[ready] Port ${port} (${label}) is listening. PID(s): ${pids}"
       return
@@ -90,6 +144,35 @@ wait_port_ready() {
 
   echo "[error] Port ${port} (${label}) did not become ready within ${timeout_seconds}s"
   exit 1
+}
+
+resolve_service_port() {
+  local preferred_port="$1"
+  local label="$2"
+  local bind_host="$3"
+
+  if test_port_bindable "${preferred_port}" "${bind_host}"; then
+    echo "[setup] Port ${preferred_port} (${label}) is free." >&2
+    echo "${preferred_port}"
+    return
+  fi
+
+  local owner_pids
+  owner_pids="$(port_owner_pids "${preferred_port}")"
+  if [[ -n "${owner_pids//[[:space:]]/}" ]]; then
+    if ensure_port_free "${preferred_port}" "${label}" "${bind_host}"; then
+      echo "${preferred_port}"
+      return
+    fi
+    echo "[warn] Port ${preferred_port} (${label}) could not be reclaimed. Falling back to another port." >&2
+  else
+    echo "[warn] Port ${preferred_port} (${label}) is unavailable, but no PID was resolved. Trying another ${label} port instead of waiting indefinitely." >&2
+  fi
+
+  local fallback_port
+  fallback_port="$(find_available_port "$((preferred_port + 1))" "${bind_host}")"
+  echo "[setup] ${label} will use fallback port ${fallback_port}." >&2
+  echo "${fallback_port}"
 }
 
 electron_pids_for_project() {
@@ -152,6 +235,7 @@ trap cleanup INT TERM EXIT
 
 require_cmd uv
 require_cmd pnpm
+require_cmd node
 
 export COREPACK_NPM_REGISTRY="${COREPACK_NPM_REGISTRY:-${PNPM_REGISTRY_MIRROR}}"
 export ELECTRON_MIRROR
@@ -159,8 +243,8 @@ pnpm config set registry "${PNPM_REGISTRY_MIRROR}" >/dev/null 2>&1 || true
 uv_index_display="${UV_DEFAULT_INDEX_MIRROR}"
 echo "[setup] Mirrors configured (uv index-url: ${uv_index_display}, pnpm: ${PNPM_REGISTRY_MIRROR}, electron: ${ELECTRON_MIRROR})."
 
-ensure_port_free "${BACKEND_PORT}" "backend"
-ensure_port_free "${FRONTEND_PORT}" "frontend"
+SELECTED_BACKEND_PORT="$(resolve_service_port "${BACKEND_PORT}" "backend" "0.0.0.0")"
+SELECTED_FRONTEND_PORT="$(resolve_service_port "${FRONTEND_PORT}" "frontend" "127.0.0.1")"
 
 echo "[setup] Sync backend dependencies..."
 uv_sync_args=(uv sync --python "${PINNED_PYTHON_VERSION}")
@@ -170,23 +254,25 @@ uv_sync_args+=(--index-url "${UV_DEFAULT_INDEX_MIRROR}")
 echo "[setup] Install frontend dependencies..."
 (cd "${FRONTEND_DIR}" && pnpm install)
 
-echo "[run] Starting backend at http://localhost:${BACKEND_PORT} ..."
-(cd "${BACKEND_DIR}" && PYTHONUTF8=1 PYTHONIOENCODING=utf-8 uv run python -m uvicorn app.main:app --host 0.0.0.0 --port "${BACKEND_PORT}" --reload --reload-dir app --reload-exclude=".venv/*" --reload-exclude="storage/*") &
+echo "[run] Starting backend at http://127.0.0.1:${SELECTED_BACKEND_PORT} ..."
+(cd "${BACKEND_DIR}" && PYTHONUTF8=1 PYTHONIOENCODING=utf-8 uv run python -m uvicorn app.main:app --host 0.0.0.0 --port "${SELECTED_BACKEND_PORT}" --reload --reload-dir app --reload-exclude=".venv/*" --reload-exclude="storage/*") &
 BACKEND_PID=$!
-wait_port_ready "${BACKEND_PORT}" "backend"
+wait_port_ready "${SELECTED_BACKEND_PORT}" "backend"
 
 stop_existing_electron_for_project
 echo "[run] Starting frontend in Electron mode ..."
-(cd "${FRONTEND_DIR}" && pnpm desktop:dev) &
+(cd "${FRONTEND_DIR}" && VITE_API_BASE_URL="http://127.0.0.1:${SELECTED_BACKEND_PORT}/api" VITE_DEV_SERVER_URL="http://127.0.0.1:${SELECTED_FRONTEND_PORT}" pnpm exec concurrently -k -n VITE,ELECTRON -c cyan,green "pnpm dev --host 127.0.0.1 --port ${SELECTED_FRONTEND_PORT}" "pnpm exec wait-on tcp:${SELECTED_FRONTEND_PORT} && electron electron/main.cjs") &
 FRONTEND_PID=$!
 wait_electron_ready 45
 
-BACKEND_SERVICE_PIDS="$(port_pids "${BACKEND_PORT}")"
+BACKEND_SERVICE_PIDS="$(listening_port_pids "${SELECTED_BACKEND_PORT}")"
 FRONTEND_SERVICE_PIDS="$(electron_pids_for_project)"
 echo "[ready] Backend launcher PID: ${BACKEND_PID}, Frontend launcher PID: ${FRONTEND_PID}"
 echo "[ready] Backend service PID(s): ${BACKEND_SERVICE_PIDS}"
 echo "[ready] Frontend service PID(s): ${FRONTEND_SERVICE_PIDS}"
 echo "[ready] Frontend mode: electron"
+echo "[ready] Backend API URL: http://127.0.0.1:${SELECTED_BACKEND_PORT}/api"
+echo "[ready] Frontend dev server URL: http://127.0.0.1:${SELECTED_FRONTEND_PORT}"
 echo "[ready] Press Ctrl+C to stop both processes."
 
 wait -n "${BACKEND_PID}" "${FRONTEND_PID}"
