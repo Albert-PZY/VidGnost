@@ -73,6 +73,10 @@ export function buildTaskArtifactFileUrl(taskId: string, relativePath: string): 
   return buildApiUrl(`/tasks/${taskId}/artifacts/file`, { path: relativePath })
 }
 
+export function buildTaskSourceMediaUrl(taskId: string): string {
+  return buildApiUrl(`/tasks/${taskId}/source-media`)
+}
+
 async function readErrorPayload(response: Response): Promise<Partial<ApiErrorPayload>> {
   const contentType = response.headers.get("content-type") || ""
   if (contentType.includes("application/json")) {

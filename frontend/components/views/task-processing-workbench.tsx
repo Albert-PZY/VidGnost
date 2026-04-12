@@ -41,7 +41,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { MarkdownArtifactViewer } from "@/components/ui/markdown-artifact-viewer"
 import { ResearchBoardPanel } from "@/components/views/research-board-panel"
 import {
+  ApiError,
   buildTaskArtifactFileUrl,
+  buildTaskSourceMediaUrl,
   cancelTask,
   downloadTaskArtifact,
   getApiErrorMessage,
@@ -53,7 +55,7 @@ import {
   streamTaskEvents,
   updateTaskArtifacts,
 } from "@/lib/api"
-import { formatBytes, formatDateTime, formatSecondsAsClock, toFileUrl } from "@/lib/format"
+import { formatBytes, formatDateTime, formatSecondsAsClock } from "@/lib/format"
 import { logPerfSample, markPerfStart } from "@/lib/perf"
 import { addResearchBoardItem } from "@/lib/research-board"
 import type {
@@ -227,6 +229,257 @@ function appendMarkdownSection(base: string, title: string, line: string): strin
 
 function buildTranscriptSnippet(segment: TranscriptSegment): string {
   return `- ${formatSecondsAsClock(segment.start)} - ${formatSecondsAsClock(segment.end)} ${segment.text}`
+}
+
+function cloneTaskSteps(task: TaskDetailResponse): TaskStepItem[] {
+  const sourceSteps = task.steps.length > 0 ? task.steps : buildFallbackSteps(task.workflow)
+  return sourceSteps.map((step) => ({
+    ...step,
+    logs: Array.isArray(step.logs) ? [...step.logs] : [],
+  }))
+}
+
+function getStreamStepId(
+  workflow: WorkflowType,
+  stage: string,
+  substage: string,
+  rawType: string,
+): string | null {
+  if (stage === "A" || stage === "B") {
+    return "extract"
+  }
+  if (stage === "C") {
+    return "transcribe"
+  }
+  if (substage === "transcript_optimize") {
+    return "correct"
+  }
+  if (substage === "fusion_delivery") {
+    return workflow === "notes" ? "notes" : "ready"
+  }
+  if (stage === "D" && rawType === "stage_complete") {
+    return workflow === "notes" ? "notes" : "ready"
+  }
+  return null
+}
+
+function deriveCurrentStepId(status: string, steps: TaskStepItem[]): string {
+  const activeStep = steps.find((step) => step.status === "processing")
+  if (activeStep) {
+    return activeStep.id
+  }
+  if (isTerminalTask(status)) {
+    const lastCompleted = [...steps].reverse().find((step) => step.status === "completed")
+    return lastCompleted?.id || ""
+  }
+  const nextStep = steps.find((step) => step.status !== "completed")
+  return nextStep?.id || ""
+}
+
+function updateStepProgress(
+  steps: TaskStepItem[],
+  stepId: string,
+  status: TaskStepItem["status"],
+  progress?: number | null,
+): TaskStepItem[] {
+  const targetIndex = steps.findIndex((step) => step.id === stepId)
+  if (targetIndex < 0) {
+    return steps
+  }
+
+  const normalizedProgress = progress == null ? null : Math.max(0, Math.min(100, Math.round(progress)))
+  return steps.map((step, index) => {
+    if (index < targetIndex && status === "processing" && step.status !== "error") {
+      return { ...step, status: "completed", progress: 100 }
+    }
+    if (index !== targetIndex) {
+      if (status === "processing" && step.status === "processing") {
+        return { ...step, status: "pending", progress: 0 }
+      }
+      return step
+    }
+    if (status === "processing") {
+      return {
+        ...step,
+        status,
+        progress: normalizedProgress == null ? Math.max(step.progress, 1) : Math.max(step.progress, normalizedProgress),
+      }
+    }
+    if (status === "completed") {
+      return { ...step, status, progress: 100 }
+    }
+    if (status === "error") {
+      return {
+        ...step,
+        status,
+        progress: normalizedProgress == null ? step.progress : normalizedProgress,
+      }
+    }
+    return { ...step, status, progress: normalizedProgress ?? step.progress }
+  })
+}
+
+function updateVmPhaseMetrics(
+  currentMetrics: Record<string, Record<string, unknown>>,
+  event: TaskStreamEvent,
+  rawType: string,
+): Record<string, Record<string, unknown>> {
+  if (rawType === "task_complete" || rawType === "task_failed" || rawType === "task_cancelled") {
+    return currentMetrics
+  }
+
+  const stage = asString(event.stage).trim()
+  const substage = asString(event.substage).trim()
+  const timestamp = asString(event.timestamp).trim()
+  const nextMetrics: Record<string, Record<string, unknown>> = Object.fromEntries(
+    Object.entries(currentMetrics).map(([key, value]) => [key, { ...asObject(value) }]),
+  )
+
+  const updateMetric = (key: string, patcher: (metric: Record<string, unknown>) => Record<string, unknown>) => {
+    const currentMetric = { ...asObject(nextMetrics[key]) }
+    nextMetrics[key] = patcher(currentMetric)
+  }
+
+  if (rawType === "progress" && (stage === "A" || stage === "B" || stage === "C")) {
+    const metricKey = stage
+    updateMetric(metricKey, (metric) => ({
+      ...metric,
+      status: metric.status === "completed" ? "completed" : "running",
+      started_at: asString(metric.started_at) || timestamp,
+    }))
+    return nextMetrics
+  }
+
+  if (rawType === "stage_start" && (stage === "A" || stage === "B" || stage === "C" || stage === "D")) {
+    const metricKey = stage
+    updateMetric(metricKey, (metric) => ({
+      ...metric,
+      status: "running",
+      started_at: timestamp || metric.started_at,
+      completed_at: null,
+      reason: null,
+    }))
+    return nextMetrics
+  }
+
+  if (rawType === "stage_complete" && (stage === "A" || stage === "B" || stage === "C" || stage === "D")) {
+    const metricKey = stage
+    updateMetric(metricKey, (metric) => ({
+      ...metric,
+      status: "completed",
+      completed_at: timestamp || metric.completed_at,
+      reason: null,
+    }))
+    return nextMetrics
+  }
+
+  if (substage === "transcript_optimize" && (rawType === "substage_start" || rawType === "substage_complete")) {
+    updateMetric("transcript_optimize", (metric) => ({
+      ...metric,
+      status:
+        rawType === "substage_start"
+          ? "running"
+          : asString(event.status).trim().toLowerCase() === "failed"
+            ? "failed"
+            : asString(event.status).trim().toLowerCase() === "skipped"
+              ? "skipped"
+              : "completed",
+      started_at: rawType === "substage_start" ? (timestamp || metric.started_at) : metric.started_at,
+      completed_at: rawType === "substage_complete" ? (timestamp || metric.completed_at) : null,
+      reason: rawType === "substage_complete" ? asString(event.message).trim() || null : null,
+    }))
+    return nextMetrics
+  }
+
+  if (substage === "fusion_delivery" && (rawType === "substage_start" || rawType === "substage_complete")) {
+    updateMetric("D", (metric) => ({
+      ...metric,
+      status:
+        rawType === "substage_start"
+          ? "running"
+          : asString(event.status).trim().toLowerCase() === "failed"
+            ? "failed"
+            : asString(event.status).trim().toLowerCase() === "skipped"
+              ? "skipped"
+              : "completed",
+      started_at: asString(metric.started_at) || timestamp,
+      completed_at: rawType === "substage_complete" ? (timestamp || metric.completed_at) : null,
+      reason: rawType === "substage_complete" ? asString(event.message).trim() || null : null,
+    }))
+    return nextMetrics
+  }
+
+  return currentMetrics
+}
+
+function applyTaskStreamEvent(current: TaskDetailResponse, event: TaskStreamEvent): TaskDetailResponse {
+  const rawType = getRawTaskEventType(event)
+  const stage = asString(event.stage).trim()
+  const substage = asString(event.substage).trim()
+  const overallProgress = asNumber(event["overall_progress"])
+  const stageProgress = asNumber(event["stage_progress"])
+  const nextSteps = cloneTaskSteps(current)
+  const stepId = getStreamStepId(current.workflow, stage, substage, rawType)
+
+  let nextStatus = current.status
+  let nextErrorMessage = current.error_message
+
+  if (rawType === "task_complete") {
+    nextStatus = "completed"
+    nextSteps.forEach((step, index) => {
+      nextSteps[index] = { ...step, status: "completed", progress: 100 }
+    })
+  } else if (rawType === "task_cancelled") {
+    nextStatus = "cancelled"
+  } else if (rawType === "task_failed") {
+    nextStatus = "failed"
+    nextErrorMessage = asString(event.error || event.message).trim() || nextErrorMessage
+    const activeStep = nextSteps.find((step) => step.status === "processing")
+    if (activeStep) {
+      const failedSteps = updateStepProgress(nextSteps, activeStep.id, "error")
+      nextSteps.splice(0, nextSteps.length, ...failedSteps)
+    }
+  } else if (rawType === "progress") {
+    nextStatus = isTerminalTask(current.status) ? current.status : "running"
+    if (stepId) {
+      const progressedSteps = updateStepProgress(nextSteps, stepId, "processing", stageProgress)
+      nextSteps.splice(0, nextSteps.length, ...progressedSteps)
+    }
+  } else if (rawType === "stage_start" || rawType === "substage_start") {
+    nextStatus = isTerminalTask(current.status) ? current.status : "running"
+    if (stepId) {
+      const progressedSteps = updateStepProgress(nextSteps, stepId, "processing", stageProgress)
+      nextSteps.splice(0, nextSteps.length, ...progressedSteps)
+    }
+  } else if (rawType === "stage_complete" || rawType === "substage_complete") {
+    if (stepId) {
+      if (rawType === "stage_complete" && stage === "A") {
+        const progressedSteps = updateStepProgress(nextSteps, stepId, "processing", 100)
+        nextSteps.splice(0, nextSteps.length, ...progressedSteps)
+      } else {
+        const substageStatus = asString(event.status).trim().toLowerCase()
+        const targetStatus =
+          substageStatus === "failed" ? "error" : "completed"
+        const progressedSteps = updateStepProgress(nextSteps, stepId, targetStatus, stageProgress ?? 100)
+        nextSteps.splice(0, nextSteps.length, ...progressedSteps)
+      }
+    }
+  }
+
+  const nextProgress =
+    overallProgress == null ? current.progress : Math.max(0, Math.min(100, Math.round(overallProgress)))
+  const nextVmPhaseMetrics = updateVmPhaseMetrics(current.vm_phase_metrics, event, rawType)
+
+  return {
+    ...current,
+    status: nextStatus,
+    error_message: nextErrorMessage,
+    progress: nextProgress,
+    overall_progress: nextProgress,
+    steps: nextSteps,
+    current_step_id: deriveCurrentStepId(nextStatus, nextSteps),
+    vm_phase_metrics: nextVmPhaseMetrics,
+  }
 }
 
 function buildTranscriptSegmentKey(segment: Pick<TranscriptSegment, "start" | "end">): string {
@@ -425,6 +678,9 @@ function translateTaskLogMessage(message: string): string {
   if (normalized === "Generating detailed notes and mindmap in parallel...") {
     return "正在并行生成详细笔记和思维导图"
   }
+  if (normalized === "Detailed notes and mindmap persisted to local storage") {
+    return "笔记、导图和阶段产物已经保存到本地"
+  }
   if (normalized === "Rewrite correction completed.") {
     return "转写文本优化完成"
   }
@@ -520,6 +776,7 @@ export function TaskProcessingWorkbench({
   const [isMindmapLoading, setIsMindmapLoading] = React.useState(false)
   const [taskEvents, setTaskEvents] = React.useState<TaskStreamEvent[]>([])
   const [liveTranscriptSegments, setLiveTranscriptSegments] = React.useState<TranscriptSegment[]>([])
+  const [videoLoadError, setVideoLoadError] = React.useState("")
   const [isCancelling, setIsCancelling] = React.useState(false)
   const [isRerunning, setIsRerunning] = React.useState(false)
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
@@ -540,11 +797,16 @@ export function TaskProcessingWorkbench({
     setTraceCache({})
     setTaskEvents([])
     setLiveTranscriptSegments([])
+    setVideoLoadError("")
     setLeftTab("transcript")
     setNotesTab("notes")
     setVqaTab("chat")
     setMindmapHtml("")
     setMindmapKey("")
+    setCurrentTime(0)
+    setTotalDuration(0)
+    setIsPlaying(false)
+    setIsMuted(false)
   }, [taskId, workflow])
 
   React.useEffect(() => {
@@ -611,62 +873,31 @@ export function TaskProcessingWorkbench({
     void onTaskChanged()
   }, [onTaskChanged, task?.status, task?.updated_at])
 
+  const liveTaskId = task?.id || ""
+  const liveTaskStatus = task?.status || ""
+
   React.useEffect(() => {
-    if (!task || !isRunningTask(task.status)) {
+    if (!liveTaskId || !isRunningTask(liveTaskStatus)) {
       return
     }
-    const source = streamTaskEvents(task.id, (event) => {
+    const source = streamTaskEvents(liveTaskId, (event) => {
       const rawType = getRawTaskEventType(event)
       const streamedSegment = extractTranscriptSegmentFromEvent(event)
       if (streamedSegment) {
         setLiveTranscriptSegments((current) => mergeTranscriptSegments(current, [streamedSegment]))
       }
-      if (rawType === "progress") {
-        const overallProgress = asNumber(event["overall_progress"])
-        if (overallProgress !== null) {
-          setTask((current) =>
-            current
-              ? {
-                  ...current,
-                  progress: Math.round(overallProgress),
-                  overall_progress: Math.round(overallProgress),
-                }
-              : current,
-          )
-        }
-      } else if (rawType === "task_complete") {
-        setTask((current) =>
-          current
-            ? {
-                ...current,
-                status: "completed",
-                progress: 100,
-                overall_progress: 100,
-              }
-            : current,
-        )
-      } else if (rawType === "task_cancelled") {
-        setTask((current) =>
-          current
-            ? {
-                ...current,
-                status: "cancelled",
-              }
-            : current,
-        )
-      } else if (rawType === "task_failed") {
-        setTask((current) =>
-          current
-            ? {
-                ...current,
-                status: "failed",
-                error_message: asString(event.error || event.message),
-              }
-            : current,
-        )
-      }
+      setTask((current) => (current ? applyTaskStreamEvent(current, event) : current))
       if (shouldRecordTaskEvent(event)) {
         setTaskEvents((current) => [event, ...current].slice(0, 80))
+      }
+      const shouldRefreshImmediately = rawType === "task_complete" || rawType === "task_cancelled" || rawType === "task_failed"
+      if (shouldRefreshImmediately) {
+        if (refreshTimerRef.current !== null) {
+          window.clearTimeout(refreshTimerRef.current)
+          refreshTimerRef.current = null
+        }
+        void loadTask({ showToastOnError: false, background: true })
+        return
       }
       if (!shouldTriggerTaskRefresh(event) || refreshTimerRef.current !== null) {
         return
@@ -674,7 +905,7 @@ export function TaskProcessingWorkbench({
       refreshTimerRef.current = window.setTimeout(() => {
         refreshTimerRef.current = null
         void loadTask({ showToastOnError: false, background: true })
-      }, 900)
+      }, 450)
     })
     source.onerror = () => source.close()
     return () => {
@@ -684,7 +915,7 @@ export function TaskProcessingWorkbench({
         refreshTimerRef.current = null
       }
     }
-  }, [loadTask, task])
+  }, [liveTaskId, liveTaskStatus, loadTask])
 
   React.useEffect(() => {
     const loadMindmap = async () => {
@@ -721,8 +952,26 @@ export function TaskProcessingWorkbench({
     [effectiveTask?.transcript_segments, liveTranscriptSegments],
   )
   const totalProgress = effectiveTask?.overall_progress ?? 0
-  const videoUrl = toFileUrl(effectiveTask?.source_local_path)
+  const videoUrl = effectiveTask?.source_local_path ? buildTaskSourceMediaUrl(effectiveTask.id) : ""
   const canEditArtifacts = isTerminalTask(effectiveTask?.status)
+
+  React.useEffect(() => {
+    setVideoLoadError("")
+    setCurrentTime(0)
+    setTotalDuration(0)
+    setIsPlaying(false)
+    const node = videoRef.current
+    if (!node) {
+      return
+    }
+    node.pause()
+    if (videoUrl) {
+      node.load()
+      return
+    }
+    node.removeAttribute("src")
+    node.load()
+  }, [videoUrl])
 
   const updateAssistantMessage = React.useCallback(
     (messageId: string, updater: (current: ChatMessage) => ChatMessage) => {
@@ -948,6 +1197,11 @@ export function TaskProcessingWorkbench({
       toast.success("已发送取消任务请求")
       await loadTask({ showToastOnError: false })
     } catch (error) {
+      if (error instanceof ApiError && error.code === "TASK_ALREADY_FINISHED") {
+        await loadTask({ showToastOnError: false })
+        toast.success("任务已经结束，界面已同步最新状态")
+        return
+      }
       toast.error(getApiErrorMessage(error, "取消任务失败"))
     } finally {
       setIsCancelling(false)
@@ -1063,6 +1317,8 @@ export function TaskProcessingWorkbench({
             onLeftTabChange={setLeftTab}
             transcriptSegments={transcriptSegments}
             activeTranscriptId={activeTranscriptId}
+            videoErrorMessage={videoLoadError}
+            onVideoError={setVideoLoadError}
             errorMessage={errorMessage}
             isInitialLoading={isInitialLoading}
             isRefreshing={isRefreshing}
@@ -1260,6 +1516,8 @@ interface LeftWorkbenchPanelProps {
   onLeftTabChange: (value: LeftTab) => void
   transcriptSegments: TranscriptSegment[]
   activeTranscriptId: string
+  videoErrorMessage: string
+  onVideoError: (message: string) => void
   errorMessage: string
   isInitialLoading: boolean
   isRefreshing: boolean
@@ -1302,6 +1560,8 @@ function LeftWorkbenchPanel({
   onLeftTabChange,
   transcriptSegments,
   activeTranscriptId,
+  videoErrorMessage,
+  onVideoError,
   errorMessage,
   isInitialLoading,
   isRefreshing,
@@ -1325,14 +1585,26 @@ function LeftWorkbenchPanel({
             ref={videoRef}
             src={videoUrl}
             className="absolute inset-0 h-full w-full object-contain"
+            preload="metadata"
+            playsInline
             onTimeUpdate={(event) => onTimeUpdate(event.currentTarget.currentTime)}
             onLoadedMetadata={(event) => onLoadedMetadata(event.currentTarget.duration || 0)}
+            onCanPlay={() => onVideoError("")}
+            onError={() => {
+              onLoadedMetadata(0)
+              onVideoError("当前视频预览加载失败，请检查源文件是否仍可访问。")
+            }}
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-white/55">
             当前任务没有可预览的本地视频文件
           </div>
         )}
+        {videoUrl && videoErrorMessage ? (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/55 px-6 text-center text-sm text-white/80">
+            {videoErrorMessage}
+          </div>
+        ) : null}
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/82 to-transparent px-4 py-3">
           <input
             type="range"
@@ -1406,36 +1678,50 @@ function LeftWorkbenchPanel({
                 {transcriptSegments.map((segment) => {
                   const segmentId = `${segment.start}-${segment.end}`
                   return (
-                    <div key={segmentId} className={cn("rounded-2xl border p-4", activeTranscriptId === segmentId ? "border-primary/30 bg-primary/8" : "border-border/70 bg-card/60")}>
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="outline" className="font-mono">{formatSecondsAsClock(segment.start)}</Badge>
-                          <span className="text-xs text-muted-foreground">{formatSecondsAsClock(segment.end)}</span>
-                          {segment.speaker ? <Badge variant="secondary">{segment.speaker}</Badge> : null}
+                    <div
+                      key={segmentId}
+                      className={cn(
+                        "rounded-xl border px-3 py-3 transition-colors",
+                        activeTranscriptId === segmentId
+                          ? "border-primary/35 bg-primary/8"
+                          : "border-border/60 bg-card/45",
+                      )}
+                    >
+                      <div className="flex flex-col gap-2.5 lg:flex-row lg:items-start">
+                        <div className="flex shrink-0 flex-wrap items-center gap-2 lg:min-w-28 lg:flex-col lg:items-start lg:gap-1.5">
+                          <Badge variant="outline" className="font-mono text-[11px]">
+                            {formatSecondsAsClock(segment.start)}
+                          </Badge>
+                          <span className="text-[11px] text-muted-foreground">
+                            至 {formatSecondsAsClock(segment.end)}
+                          </span>
+                          {segment.speaker ? <Badge variant="secondary" className="text-[11px]">{segment.speaker}</Badge> : null}
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Button variant="outline" size="sm" onClick={() => onSeek(segment.start)}>
-                            <MapPin className="mr-1.5 h-3.5 w-3.5" />
-                            定位
-                          </Button>
-                          {workflow === "notes" ? (
-                            <Button variant="ghost" size="sm" onClick={() => onAddTranscriptToNotes(segment)}>
-                              <Edit3 className="mr-1.5 h-3.5 w-3.5" />
-                              加入笔记
+                        <div className="min-w-0 flex-1">
+                          <p className="whitespace-pre-wrap text-sm leading-6">{segment.text}</p>
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                            <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs" onClick={() => onSeek(segment.start)}>
+                              <MapPin className="mr-1.5 h-3.5 w-3.5" />
+                              定位
                             </Button>
-                          ) : (
-                            <Button variant="ghost" size="sm" onClick={() => onUseTranscriptAsQuestion(segment)}>
-                              <MessageSquare className="mr-1.5 h-3.5 w-3.5" />
-                              设为问题
+                            {workflow === "notes" ? (
+                              <Button variant="ghost" size="sm" className="h-7 px-2.5 text-xs" onClick={() => onAddTranscriptToNotes(segment)}>
+                                <Edit3 className="mr-1.5 h-3.5 w-3.5" />
+                                加入笔记
+                              </Button>
+                            ) : (
+                              <Button variant="ghost" size="sm" className="h-7 px-2.5 text-xs" onClick={() => onUseTranscriptAsQuestion(segment)}>
+                                <MessageSquare className="mr-1.5 h-3.5 w-3.5" />
+                                设为问题
+                              </Button>
+                            )}
+                            <Button variant="ghost" size="sm" className="h-7 px-2.5 text-xs" onClick={() => onAddTranscriptToResearch(segment)}>
+                              <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                              加入研究板
                             </Button>
-                          )}
-                          <Button variant="ghost" size="sm" onClick={() => onAddTranscriptToResearch(segment)}>
-                            <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-                            加入研究板
-                          </Button>
+                          </div>
                         </div>
                       </div>
-                      <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{segment.text}</p>
                     </div>
                   )
                 })}

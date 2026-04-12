@@ -301,6 +301,14 @@ def get_task(task_id: str, task_store: TaskStore = Depends(get_task_store)) -> T
     return _to_detail(record)
 
 
+@router.get("/{task_id}/source-media")
+def get_task_source_media(task_id: str, task_store: TaskStore = Depends(get_task_store)):
+    record = _require_task(task_store, task_id)
+    target_path = _resolve_task_source_media_path(record)
+    media_type = mimetypes.guess_type(str(target_path))[0] or "application/octet-stream"
+    return FileResponse(target_path, media_type=media_type)
+
+
 @router.get("/{task_id}/artifacts/file")
 def get_task_artifact_file(
     task_id: str,
@@ -711,6 +719,16 @@ def _build_content_disposition(filename: str) -> str:
     return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded_filename}"
 
 
+def _resolve_task_source_media_path(record: TaskRecord) -> Path:
+    path_value = (record.source_local_path or "").strip()
+    if not path_value:
+        raise AppError.bad_request("Task has no local source media", code="TASK_SOURCE_MEDIA_MISSING")
+    target_path = Path(path_value).expanduser()
+    if not target_path.exists() or not target_path.is_file():
+        raise AppError.not_found("Task source media not found", code="TASK_SOURCE_MEDIA_NOT_FOUND")
+    return target_path
+
+
 def _resolve_task_artifact_path(*, storage_dir: str, task_id: str, relative_path: str) -> Path:
     normalized = relative_path.replace("\\", "/").strip().lstrip("/")
     if not normalized or ".." in Path(normalized).parts:
@@ -847,12 +865,16 @@ def _workflow_step_blueprint(workflow: WorkflowType) -> list[dict[str, str]]:
 
 def _resolve_metric_for_step(step_id: str, stage_metrics: dict[str, dict[str, object]]) -> dict[str, object]:
     a_metric = stage_metrics.get("A", {})
+    b_metric = stage_metrics.get("B", {})
     c_metric = stage_metrics.get("C", {})
     d_metric = stage_metrics.get("D", {})
     sub = d_metric.get("substage_metrics", {}) if isinstance(d_metric, dict) else {}
     sub_metrics = sub if isinstance(sub, dict) else {}
     if step_id == "extract":
-        return a_metric if isinstance(a_metric, dict) else {}
+        return _merge_step_metrics(
+            a_metric if isinstance(a_metric, dict) else {},
+            b_metric if isinstance(b_metric, dict) else {},
+        )
     if step_id == "transcribe":
         return c_metric if isinstance(c_metric, dict) else {}
     if step_id == "correct":
@@ -862,13 +884,43 @@ def _resolve_metric_for_step(step_id: str, stage_metrics: dict[str, dict[str, ob
     return metric if isinstance(metric, dict) else {}
 
 
+def _merge_step_metrics(*metrics: dict[str, object]) -> dict[str, object]:
+    valid_metrics = [metric for metric in metrics if isinstance(metric, dict) and metric]
+    if not valid_metrics:
+        return {}
+
+    def status_rank(metric: dict[str, object]) -> tuple[int, int]:
+        raw = str(metric.get("status", "") or "").strip().lower()
+        if raw in {"failed", "error", "cancelled"}:
+            return (4, 0)
+        if raw in {"running", "processing"}:
+            return (3, 0)
+        if raw in {"completed", "done", "success", "skipped"}:
+            return (2, 0)
+        if str(metric.get("started_at", "") or "").strip():
+            return (1, 0)
+        return (0, 0)
+
+    primary = max(valid_metrics, key=status_rank)
+    started_candidates = [str(metric.get("started_at", "") or "").strip() for metric in valid_metrics if str(metric.get("started_at", "") or "").strip()]
+    completed_candidates = [str(metric.get("completed_at", "") or "").strip() for metric in valid_metrics if str(metric.get("completed_at", "") or "").strip()]
+    elapsed_total = sum(_to_optional_float(metric.get("elapsed_seconds")) or 0.0 for metric in valid_metrics)
+
+    return {
+        **primary,
+        "started_at": min(started_candidates) if started_candidates else primary.get("started_at"),
+        "completed_at": max(completed_candidates) if completed_candidates else primary.get("completed_at"),
+        "elapsed_seconds": round(elapsed_total, 2) if elapsed_total > 0 else primary.get("elapsed_seconds"),
+    }
+
+
 def _metric_to_step_status(metric: dict[str, object]) -> Literal["pending", "processing", "completed", "error"]:
     if not metric:
         return "pending"
     raw = str(metric.get("status", "") or "").strip().lower()
     if raw in {"failed", "error", "cancelled"}:
         return "error"
-    if raw in {"completed", "done", "success"}:
+    if raw in {"completed", "done", "success", "skipped"}:
         return "completed"
     if raw in {"running", "processing"}:
         return "processing"

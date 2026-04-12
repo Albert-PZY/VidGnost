@@ -270,6 +270,12 @@ Task processing workbench SHALL use a horizontal resizable split layout. The lef
 - **AND** Markdown timestamps can seek the video
 - **AND** transcript cards support quick actions such as `加入笔记` and `加入研究板`
 
+#### Scenario: Preview imported source media inside the workbench
+- **WHEN** user opens a task whose detail payload includes a persisted `source_local_path`
+- **THEN** the left video panel requests the playable source through `GET /tasks/{task_id}/source-media` instead of a renderer-side `file://` URL
+- **AND** the video element resets stale playback time and duration state when the task or media source changes
+- **AND** if the source file can no longer be opened, the panel shows a readable preview-failure hint instead of leaving a silent black frame
+
 #### Scenario: Open a running task during transcript production
 - **WHEN** a running task has started streaming transcript chunks but task-detail polling is still refreshing in the background
 - **THEN** the transcript tab keeps a stable loading or processing hint instead of alternating between contradictory empty states
@@ -285,8 +291,10 @@ Task processing workbench SHALL use a horizontal resizable split layout. The lef
 - **WHEN** phase `C` emits frequent `transcript_delta` and `progress` events
 - **THEN** the renderer appends transcript cards and updates the visible overall progress from stream data without forcing a full task-detail refresh on every delta
 - **AND** background task-detail refresh is reserved for stage transitions, milestone logs, and terminal events
+- **AND** stream-driven progress updates do not recreate the task SSE subscription or cancel already scheduled milestone refreshes
 - **AND** the running-state badge summarizes the active workflow step in business language instead of showing a raw generic backend status string
 - **AND** recent stage activity omits repetitive raw progress spam and keeps milestone-focused readable updates
+- **AND** terminal task events immediately retire the cancel action and trigger a background task-detail sync so the workbench does not remain visually stuck on an earlier phase after backend completion
 
 #### Scenario: Open a VQA task and ask a question
 - **WHEN** user submits a question from the VQA workbench

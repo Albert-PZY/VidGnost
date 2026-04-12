@@ -80,13 +80,3 @@ export function formatRelativeTime(value: string): string {
   const diffDays = Math.round(diffHours / 24)
   return `${diffDays} 天前`
 }
-
-export function toFileUrl(localPath: string | null | undefined): string {
-  if (!localPath) {
-    return ""
-  }
-
-  const normalized = localPath.replace(/\\/g, "/")
-  const withLeadingSlash = /^[A-Za-z]:/.test(normalized) ? `/${normalized}` : normalized
-  return encodeURI(`file://${withLeadingSlash}`)
-}
