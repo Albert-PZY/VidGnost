@@ -26,7 +26,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
-import { runThemeAppearanceTransition } from "@/lib/appearance-transition"
 import { cn } from "@/lib/utils"
 
 interface AppHeaderProps {
@@ -55,15 +54,6 @@ export function AppHeader({
   const { theme, setTheme } = useTheme()
   const [isDesktopShell, setIsDesktopShell] = React.useState(false)
   const [isMaximized, setIsMaximized] = React.useState(false)
-
-  const handleThemeChange = React.useCallback(
-    (nextTheme: "light" | "dark" | "system") => {
-      void runThemeAppearanceTransition(() => {
-        setTheme(nextTheme)
-      })
-    },
-    [setTheme],
-  )
 
   const openProjectRepository = React.useCallback(async () => {
     if (window.vidGnostDesktop?.openExternal) {
@@ -166,7 +156,7 @@ export function AppHeader({
             <DropdownMenuItem
               data-selected={theme === "light"}
               className="app-header-menu-item flex items-center justify-between gap-3 rounded-md"
-              onClick={() => handleThemeChange("light")}
+              onClick={() => setTheme("light")}
             >
               <div className="flex items-center gap-2">
               <Sun className="mr-2 h-4 w-4" />
@@ -177,7 +167,7 @@ export function AppHeader({
             <DropdownMenuItem
               data-selected={theme === "dark"}
               className="app-header-menu-item flex items-center justify-between gap-3 rounded-md"
-              onClick={() => handleThemeChange("dark")}
+              onClick={() => setTheme("dark")}
             >
               <div className="flex items-center gap-2">
               <Moon className="mr-2 h-4 w-4" />
@@ -188,7 +178,7 @@ export function AppHeader({
             <DropdownMenuItem
               data-selected={theme === "system"}
               className="app-header-menu-item flex items-center justify-between gap-3 rounded-md"
-              onClick={() => handleThemeChange("system")}
+              onClick={() => setTheme("system")}
             >
               <div className="flex items-center gap-2">
               <Monitor className="mr-2 h-4 w-4" />

@@ -88,8 +88,6 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 #### Scenario: Adjust theme hue
 - **WHEN** user changes theme hue from the appearance section and saves it
 - **THEN** title bar, sidebar, and primary emphasis colors update from the persisted hue setting
-- **AND** live hue preview and saved hue application both use a short global eased transition instead of a hard visual cut
-- **AND** when the runtime reports reduced motion, the same hue update MAY shorten the transition but SHALL still avoid an abrupt instant swap
 - **AND** the hue section keeps only essential directional labels without extra explanatory taglines
 - **AND** the same hue is restored after application restart
 
@@ -168,9 +166,6 @@ Header theme controls SHALL show the current selected theme mode with explicit s
 - **WHEN** user opens the theme menu in the title bar
 - **THEN** the active theme option is visually highlighted
 - **AND** only the selected theme option shows the explicit selection indicator
-- **AND** switching between `light`, `dark`, and `system` themes uses a lightweight global fade veil so the shell does not visually hard-cut between theme states
-- **AND** the fade veil behaves as a single smooth fade without a separate brightness pulse or visible flicker during the handoff
-- **AND** when the runtime reports reduced motion, the theme switch MAY shorten the fade but SHALL still avoid an abrupt instant swap
 
 ### Requirement: Workbench branding SHALL use the project logo asset
 Renderer branding surfaces, desktop splash branding, and favicon SHALL use `frontend/public/icon.svg` as the canonical project logo asset. The desktop package MAY include a synchronized raster companion asset at `frontend/public/icon.png` for runtime or distribution compatibility, and branding assets SHALL NOT depend on a separate legacy light-icon file.

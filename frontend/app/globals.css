@@ -8,9 +8,6 @@
 
 :root {
   --theme-hue: 220;
-  --appearance-transition-duration: 220ms;
-  --appearance-hue-transition-duration: 220ms;
-  --appearance-transition-easing: cubic-bezier(0.22, 1, 0.36, 1);
   /* 亮色主题 - 简洁专业 */
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -151,18 +148,6 @@
   --color-status-processing: var(--status-processing);
   --color-status-success: var(--status-success);
   --color-status-error: var(--status-error);
-}
-
-@property --theme-hue {
-  syntax: "<number>";
-  inherits: true;
-  initial-value: 220;
-}
-
-html[data-appearance-transition="active"][data-appearance-transition-kind="hue"] {
-  transition:
-    --theme-hue var(--appearance-active-transition-duration, var(--appearance-hue-transition-duration))
-      var(--appearance-transition-easing);
 }
 
 @layer base {
