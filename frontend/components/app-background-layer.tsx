@@ -7,6 +7,7 @@ import type { UISettingsResponse } from "@/lib/types"
 import { getImageLayout, normalizeSkinSettings } from "@/lib/ui-skin"
 
 const SKIN_PREVIEW_TRANSITION_MS = 220
+const SKIN_PREVIEW_REDUCED_MOTION_MS = 160
 const SKIN_PREVIEW_EASING = "cubic-bezier(0.22, 1, 0.36, 1)"
 
 type NormalizedSkin = ReturnType<typeof normalizeSkinSettings>
@@ -106,6 +107,9 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
   const transitionOverlayIdRef = React.useRef<string | null>(null)
   const layerSequenceRef = React.useRef(0)
   const activeSkinRef = React.useRef(normalizedSkin)
+  const transitionDurationMs = prefersReducedMotion
+    ? SKIN_PREVIEW_REDUCED_MOTION_MS
+    : SKIN_PREVIEW_TRANSITION_MS
 
   const clearSkinTransition = React.useCallback(() => {
     if (transitionFrameRef.current !== null) {
@@ -158,7 +162,6 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
     activeSkinRef.current = normalizedSkin
 
     const canAnimate =
-      !prefersReducedMotion &&
       Boolean(currentSkin.background_image) &&
       Boolean(normalizedSkin.background_image)
 
@@ -189,7 +192,7 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
     setOverlayLayer(nextOverlayLayer)
     setOverlayVisible(false)
     setIsAnimatingSkin(true)
-  }, [clearSkinTransition, normalizedSkin, prefersReducedMotion])
+  }, [clearSkinTransition, normalizedSkin])
 
   React.useEffect(() => {
     let frameId: number | null = null
@@ -309,9 +312,9 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
         setIsAnimatingSkin(false)
         transitionOverlayIdRef.current = null
         transitionTimerRef.current = null
-      }, SKIN_PREVIEW_TRANSITION_MS)
+      }, transitionDurationMs)
     })
-  }, [overlayLayer])
+  }, [overlayLayer, transitionDurationMs])
 
   if (!baseLayer.skin.background_image && !overlayLayer?.skin.background_image) {
     return null
@@ -340,10 +343,8 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
           className="absolute inset-0"
           style={{
             opacity: overlayVisible ? 1 : 0,
-            transition: prefersReducedMotion
-              ? undefined
-              : `opacity ${SKIN_PREVIEW_TRANSITION_MS}ms ${SKIN_PREVIEW_EASING}`,
-            willChange: prefersReducedMotion ? undefined : "opacity",
+            transition: `opacity ${transitionDurationMs}ms ${SKIN_PREVIEW_EASING}`,
+            willChange: "opacity",
           }}
         >
           <WebGLBlurCanvas
