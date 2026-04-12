@@ -25,7 +25,7 @@ export function ResearchBoardPanel({ onSeek }: ResearchBoardPanelProps) {
 
   if (items.length === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-sm text-muted-foreground">
+      <div className="research-board-pane flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-sm text-muted-foreground">
         <ClipboardList className="h-10 w-10 text-primary/45" />
         <p>研究板还是空的。你可以把转写片段、问答证据和笔记片段随时加入这里，跨任务复盘时会更顺手。</p>
       </div>
@@ -33,8 +33,8 @@ export function ResearchBoardPanel({ onSeek }: ResearchBoardPanelProps) {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b px-4 py-3">
+    <div className="research-board-pane flex h-full flex-col">
+      <div className="research-board-header flex items-center justify-between border-b px-4 py-3">
         <div>
           <h3 className="text-sm font-medium">跨任务研究板</h3>
           <p className="text-xs text-muted-foreground">集中保留值得继续追问的片段、证据和笔记。</p>

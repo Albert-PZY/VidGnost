@@ -269,7 +269,7 @@ Task processing workbench SHALL use a horizontal resizable split layout. The lef
 - **AND** summary and notes results render as Markdown instead of plain preformatted text
 - **AND** Markdown timestamps can seek the video
 - **AND** the Markdown workspace keeps an inner vertical scrollbar so long notes remain scrollable without moving the outer workbench shell
-- **AND** when the right workspace is resized narrow, Markdown actions, headings, and tab chrome reflow within the available pane width instead of clipping the reading surface
+- **AND** when the right workspace is resized narrow, Markdown, mindmap, research-board, and VQA panes reflow their tab chrome, actions, cards, and dense content within the available pane width instead of clipping the reading surface
 - **AND** transcript cards support quick actions such as `加入笔记` and `加入研究板`
 
 #### Scenario: Preview imported source media inside the workbench

@@ -1979,8 +1979,8 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
   isTaskCompleted,
 }: NotesWorkbenchProps) {
   return (
-    <Tabs value={notesTab} onValueChange={(value) => onNotesTabChange(value as NotesTab)} className="notes-workbench-pane flex h-full min-h-0 flex-col">
-      <TabsList className="w-full justify-start rounded-none border-b bg-transparent p-0">
+    <Tabs value={notesTab} onValueChange={(value) => onNotesTabChange(value as NotesTab)} className="workbench-detail-pane notes-workbench-pane flex h-full min-h-0 flex-col">
+      <TabsList className="workbench-detail-tabs w-full justify-start rounded-none border-b bg-transparent p-0">
         <TabsTrigger value="notes" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">Markdown 工作区</TabsTrigger>
         <TabsTrigger value="mindmap" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">思维导图</TabsTrigger>
         <TabsTrigger value="research" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">研究板</TabsTrigger>
@@ -2025,13 +2025,13 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
         </ScrollArea>
       </TabsContent>
 
-      <TabsContent value="mindmap" className="mt-0 min-h-0 flex-1 p-4">
-        {isMindmapLoading ? <div className="flex h-full items-center justify-center rounded-2xl border border-border/70 bg-card/65 text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />正在载入思维导图...</div> : null}
-        {!isMindmapLoading && mindmapHtml ? <iframe title={`${effectiveTitle}-mindmap`} srcDoc={mindmapHtml} className="h-full w-full rounded-2xl border border-border/70 bg-background" /> : null}
-        {!isMindmapLoading && !mindmapHtml ? <div className="flex h-full items-center justify-center rounded-2xl border border-dashed text-sm text-muted-foreground">{isTaskCompleted ? "当前没有可展示的思维导图结果。" : "请等待任务完成后再预览思维导图。"}</div> : null}
+      <TabsContent value="mindmap" className="workbench-pane-padded mt-0 min-h-0 flex-1 p-4">
+        {isMindmapLoading ? <div className="workbench-pane-state flex h-full items-center justify-center rounded-2xl border border-border/70 bg-card/65 text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />正在载入思维导图...</div> : null}
+        {!isMindmapLoading && mindmapHtml ? <iframe title={`${effectiveTitle}-mindmap`} srcDoc={mindmapHtml} className="workbench-pane-frame h-full w-full rounded-2xl border border-border/70 bg-background" /> : null}
+        {!isMindmapLoading && !mindmapHtml ? <div className="workbench-pane-state flex h-full items-center justify-center rounded-2xl border border-dashed text-sm text-muted-foreground">{isTaskCompleted ? "当前没有可展示的思维导图结果。" : "请等待任务完成后再预览思维导图。"}</div> : null}
       </TabsContent>
 
-      <TabsContent value="research" className="mt-0 min-h-0 flex-1">
+      <TabsContent value="research" className="workbench-pane-padded mt-0 min-h-0 flex-1">
         <ResearchBoardPanel onSeek={onSeek} />
       </TabsContent>
     </Tabs>
@@ -2060,8 +2060,8 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
   traceFinishedPayload,
 }: VqaWorkbenchProps) {
   return (
-    <Tabs value={vqaTab} onValueChange={(value) => onVqaTabChange(value as VqaTab)} className="flex h-full min-h-0 flex-col">
-      <TabsList className="w-full justify-start rounded-none border-b bg-transparent p-0">
+    <Tabs value={vqaTab} onValueChange={(value) => onVqaTabChange(value as VqaTab)} className="workbench-detail-pane vqa-workbench-pane flex h-full min-h-0 flex-col">
+      <TabsList className="workbench-detail-tabs w-full justify-start rounded-none border-b bg-transparent p-0">
         <TabsTrigger value="chat" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">流式问答</TabsTrigger>
         <TabsTrigger value="trace" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">Trace Theater</TabsTrigger>
         <TabsTrigger value="research" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">研究板</TabsTrigger>
@@ -2071,11 +2071,11 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
         <div className="flex h-full min-h-0 flex-col">
           <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
             <div className="space-y-4 p-4">
-              {chatHistory.length === 0 ? <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">开始提问，系统会以流式方式输出回答和证据。</div> : null}
+              {chatHistory.length === 0 ? <div className="workbench-pane-state rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">开始提问，系统会以流式方式输出回答和证据。</div> : null}
               {chatHistory.map((message) => (
-                <div key={message.id} className={cn("workbench-collection-item flex gap-3", message.role === "user" && "justify-end")}>
+                <div key={message.id} data-role={message.role} className={cn("vqa-chat-message workbench-collection-item flex gap-3", message.role === "user" && "justify-end")}>
                   {message.role === "assistant" ? <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">{message.status === "streaming" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}</div> : null}
-                  <div className={cn("max-w-[88%] space-y-3 rounded-2xl p-4", message.role === "user" ? "bg-primary text-primary-foreground" : "border border-border/70 bg-card/70")}>
+                  <div className={cn("vqa-chat-bubble max-w-[88%] space-y-3 rounded-2xl p-4", message.role === "user" ? "bg-primary text-primary-foreground" : "border border-border/70 bg-card/70")}>
                     <p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p>
                     {message.role === "assistant" ? (
                       <>
@@ -2087,7 +2087,7 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
                         </div>
                         {message.traceId ? <Button variant="outline" size="sm" onClick={() => void onOpenTrace(message.traceId || "")}><Search className="mr-1.5 h-3.5 w-3.5" />打开 Trace Theater</Button> : null}
                         {message.citations.length > 0 ? (
-                          <div className="space-y-3">
+                          <div className="vqa-citation-list space-y-3">
                             {message.citations.map((citation, index) => (
                               <div key={`${message.id}-${citation.doc_id}-${index}`} className="workbench-collection-item rounded-xl border border-border/60 bg-background/55 p-3">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2098,7 +2098,7 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
                                   </div>
                                   <Button variant="outline" size="sm" onClick={() => onSeek(citation.start)}><MapPin className="mr-1.5 h-3.5 w-3.5" />跳转</Button>
                                 </div>
-                                <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_8rem]">
+                                <div className="vqa-citation-layout mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_8rem]">
                                   <p className="whitespace-pre-wrap text-sm leading-6">{citation.text}</p>
                                   {citation.image_path ? <img src={buildTaskArtifactFileUrl(citation.task_id, citation.image_path)} alt={citation.task_title || effectiveTitle} className="h-24 w-full rounded-xl border border-border/70 object-cover" loading="lazy" /> : null}
                                 </div>
@@ -2114,7 +2114,7 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
             </div>
           </ScrollArea>
           <div className="border-t px-4 py-4">
-            <div className="flex gap-2">
+            <div className="vqa-chat-composer-row flex gap-2">
               <Input value={question} onChange={(event) => onQuestionChange(event.target.value)} placeholder="输入你的问题，系统会实时输出回答..." onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void onAskQuestion() } }} />
               {isSearching ? <Button variant="outline" onClick={onStopAnswer}><Square className="h-4 w-4" /></Button> : <Button onClick={() => void onAskQuestion()} disabled={!question.trim()}><Send className="h-4 w-4" /></Button>}
             </div>
@@ -2125,15 +2125,15 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
       <TabsContent value="trace" className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden">
         <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
           <div className="space-y-4 p-4">
-            {!selectedTraceId ? <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">先在问答卡片里选择一个 trace_id，这里会展示完整的检索与回答链路。</div> : null}
-            {traceError ? <div className="rounded-2xl border border-destructive/30 bg-destructive/6 p-4 text-sm text-destructive">{traceError}</div> : null}
-            {selectedTraceId && traceLoadingId === selectedTraceId ? <div className="flex items-center justify-center rounded-2xl border border-border/70 bg-card/65 p-8 text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />正在加载 Trace 明细...</div> : null}
+            {!selectedTraceId ? <div className="workbench-pane-state rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">先在问答卡片里选择一个 trace_id，这里会展示完整的检索与回答链路。</div> : null}
+            {traceError ? <div className="workbench-pane-state rounded-2xl border border-destructive/30 bg-destructive/6 p-4 text-sm text-destructive">{traceError}</div> : null}
+            {selectedTraceId && traceLoadingId === selectedTraceId ? <div className="workbench-pane-state flex items-center justify-center rounded-2xl border border-border/70 bg-card/65 p-8 text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />正在加载 Trace 明细...</div> : null}
             {selectedTrace ? (
               <>
-                <div className="rounded-2xl border border-border/70 bg-card/65 p-4">
+                <div className="workbench-pane-section rounded-2xl border border-border/70 bg-card/65 p-4">
                   <h3 className="text-sm font-medium">Trace 摘要</h3>
                   <p className="mt-2 text-xs text-muted-foreground">trace_id: {selectedTrace.trace_id}</p>
-                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <div className="vqa-trace-summary-grid mt-3 grid gap-3 md:grid-cols-2">
                     <div className="rounded-xl border border-border/60 bg-background/55 p-3"><p className="text-xs text-muted-foreground">问题</p><p className="mt-1 text-sm">{asString(asObject(traceStartedPayload.metadata).query_text) || "未记录问题文本"}</p></div>
                     <div className="rounded-xl border border-border/60 bg-background/55 p-3"><p className="text-xs text-muted-foreground">完成状态</p><p className="mt-1 text-sm">{asString(traceFinishedPayload.ok) || "未记录"}</p></div>
                   </div>
@@ -2171,7 +2171,7 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
                     )
                   })}
                 </Accordion>
-                <div className="rounded-2xl border border-border/70 bg-card/65 p-4">
+                <div className="workbench-pane-section rounded-2xl border border-border/70 bg-card/65 p-4">
                   <h3 className="text-sm font-medium">模型完成阶段</h3>
                   <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{asString(traceLlmPayload.answer_preview) || "未记录回答预览"}</p>
                 </div>
@@ -2181,7 +2181,7 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
         </ScrollArea>
       </TabsContent>
 
-      <TabsContent value="research" className="mt-0 min-h-0 flex-1">
+      <TabsContent value="research" className="workbench-pane-padded mt-0 min-h-0 flex-1">
         <ResearchBoardPanel onSeek={onSeek} />
       </TabsContent>
     </Tabs>
