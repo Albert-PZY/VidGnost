@@ -1979,7 +1979,7 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
   isTaskCompleted,
 }: NotesWorkbenchProps) {
   return (
-    <Tabs value={notesTab} onValueChange={(value) => onNotesTabChange(value as NotesTab)} className="flex h-full min-h-0 flex-col">
+    <Tabs value={notesTab} onValueChange={(value) => onNotesTabChange(value as NotesTab)} className="notes-workbench-pane flex h-full min-h-0 flex-col">
       <TabsList className="w-full justify-start rounded-none border-b bg-transparent p-0">
         <TabsTrigger value="notes" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">Markdown 工作区</TabsTrigger>
         <TabsTrigger value="mindmap" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">思维导图</TabsTrigger>
@@ -1989,7 +1989,7 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
       <TabsContent value="notes" className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden">
         <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
           <div className="space-y-4 p-4">
-            <div className="flex items-center justify-end gap-2">
+            <div className="notes-workbench-actions flex items-center justify-end gap-2">
               {isEditingNotes ? (
                 <>
                   <Button variant="outline" size="sm" onClick={() => { setIsEditingNotes(false); setNotesDraft(notesMarkdown || "") }}>取消</Button>
@@ -2009,11 +2009,11 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
                 导出 Markdown
               </Button>
             </div>
-            <div className="rounded-2xl border border-border/70 bg-card/65 p-4">
+            <div className="notes-workbench-section rounded-2xl border border-border/70 bg-card/65 p-4">
               <h3 className="mb-3 text-sm font-medium">结构化摘要</h3>
               <MarkdownArtifactViewer taskId={taskId} markdown={summaryMarkdown} emptyMessage="当前还没有生成摘要内容" className="artifact-markdown-viewer-shell" onSeek={onSeek} />
             </div>
-            <div className="rounded-2xl border border-border/70 bg-card/65 p-4">
+            <div className="notes-workbench-section rounded-2xl border border-border/70 bg-card/65 p-4">
               <h3 className="mb-3 text-sm font-medium">笔记 Markdown</h3>
               {isEditingNotes ? (
                 <Textarea className="min-h-[28rem] font-mono text-sm leading-6" value={notesDraft} onChange={(event) => setNotesDraft(event.target.value)} />

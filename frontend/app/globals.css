@@ -1320,10 +1320,13 @@ body[data-app-background-active="true"] .custom-skin-dialog-surface * {
   border-radius: calc(var(--radius) + 0.125rem);
   background: color-mix(in oklch, var(--background) 94%, var(--muted) 6%);
   overflow: hidden;
+  min-width: 0;
+  container-type: inline-size;
 }
 
 .artifact-markdown-viewer {
   max-width: none !important;
+  min-width: 0;
   margin: 0 !important;
   padding: 1.1rem 1.2rem 1.35rem !important;
   background: transparent !important;
@@ -1331,6 +1334,8 @@ body[data-app-background-active="true"] .custom-skin-dialog-surface * {
   font-family: var(--font-sans);
   font-size: 0.95rem;
   line-height: 1.78;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   --color-canvas-default: transparent !important;
   --color-canvas-subtle: color-mix(in oklch, var(--muted) 78%, transparent) !important;
   --color-border-default: color-mix(in oklch, var(--border) 80%, var(--foreground) 6%) !important;
@@ -1442,6 +1447,10 @@ body[data-app-background-active="true"] .custom-skin-dialog-surface * {
 .artifact-markdown-viewer td {
   border: 1px solid color-mix(in oklch, var(--border) 72%, transparent) !important;
   padding: 0.65rem 0.8rem !important;
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .artifact-markdown-viewer th {
@@ -1479,6 +1488,112 @@ body[data-app-background-active="true"] .custom-skin-dialog-surface * {
 .artifact-markdown-viewer pre::-webkit-scrollbar-thumb:hover,
 .artifact-markdown-viewer table::-webkit-scrollbar-thumb:hover {
   background: color-mix(in oklch, var(--primary) 68%, var(--foreground) 8%);
+}
+
+.notes-workbench-pane {
+  container-type: inline-size;
+}
+
+@container (max-width: 40rem) {
+  .notes-workbench-pane [data-slot="tabs-list"] {
+    min-height: 2.5rem;
+    height: auto;
+  }
+
+  .notes-workbench-pane [data-slot="tabs-trigger"] {
+    min-width: 0;
+    padding-inline: 0.55rem;
+    font-size: 0.875rem;
+  }
+
+  .notes-workbench-actions {
+    flex-wrap: wrap;
+    justify-content: stretch;
+  }
+
+  .notes-workbench-actions > * {
+    flex: 1 1 10rem;
+    min-width: 0;
+  }
+
+  .notes-workbench-section {
+    padding: 0.9rem;
+  }
+}
+
+@container (max-width: 32rem) {
+  .notes-workbench-pane [data-slot="tabs-trigger"] {
+    padding-inline: 0.4rem;
+    font-size: 0.8125rem;
+  }
+
+  .notes-workbench-section {
+    padding: 0.8rem;
+    border-radius: calc(var(--radius) + 0.05rem);
+  }
+}
+
+@container (max-width: 34rem) {
+  .artifact-markdown-viewer {
+    padding: 0.9rem 0.95rem 1.05rem !important;
+    font-size: 0.9rem;
+    line-height: 1.7;
+  }
+
+  .artifact-markdown-viewer h1 {
+    font-size: 1.18rem;
+    padding-bottom: 0.4rem;
+  }
+
+  .artifact-markdown-viewer h2 {
+    margin-top: 1.35rem !important;
+    font-size: 1.02rem;
+  }
+
+  .artifact-markdown-viewer h3 {
+    margin-top: 1.1rem !important;
+    font-size: 0.94rem;
+  }
+
+  .artifact-markdown-viewer blockquote,
+  .artifact-markdown-viewer pre {
+    padding: 0.75rem 0.8rem !important;
+  }
+
+  .artifact-markdown-viewer table {
+    display: table;
+    width: 100%;
+    max-width: 100%;
+    table-layout: fixed;
+  }
+
+  .artifact-markdown-viewer th,
+  .artifact-markdown-viewer td {
+    padding: 0.55rem 0.6rem !important;
+    font-size: 0.84rem;
+  }
+}
+
+@container (max-width: 26rem) {
+  .artifact-markdown-viewer {
+    padding: 0.8rem 0.8rem 0.95rem !important;
+    font-size: 0.86rem;
+    line-height: 1.64;
+  }
+
+  .artifact-markdown-viewer h1 {
+    font-size: 1.06rem;
+  }
+
+  .artifact-markdown-viewer h2 {
+    font-size: 0.95rem;
+  }
+
+  .artifact-markdown-viewer th,
+  .artifact-markdown-viewer td {
+    padding: 0.45rem 0.5rem !important;
+    font-size: 0.78rem;
+  }
 }
 
 .app-toast-shell {
