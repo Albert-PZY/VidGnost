@@ -4,7 +4,7 @@ import { Toaster } from "@/components/ui/toaster"
 
 export default function App() {
   return (
-    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
+    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
       <VideoMindApp />
       <Toaster />
     </ThemeProvider>

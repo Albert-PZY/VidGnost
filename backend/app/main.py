@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import io
 import logging
-import os
-import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -19,6 +16,7 @@ from app.api.routes_self_check import router as self_check_router
 from app.api.routes_tasks import router as tasks_router
 from app.api.routes_vqa import router as vqa_router
 from app.config import get_settings
+from app.runtime_stdio import enable_windows_utf8_stdio
 from app.services.events import EventBus
 from app.services.llm_config_store import LLMConfigStore
 from app.services.model_catalog_store import ModelCatalogStore
@@ -30,6 +28,7 @@ from app.services.runtime_metrics import RuntimeMetricsService
 from app.services.runtime_config_store import RuntimeConfigStore
 from app.services.self_check import SelfCheckService
 from app.services.startup_cleanup import cleanup_temp_dir_once
+from app.services.task_preflight import TaskPreflightService
 from app.services.task_runner import TaskRunner
 from app.services.task_store import TaskStore
 from app.services.ui_settings_store import UISettingsStore
@@ -38,20 +37,7 @@ from app.services.vqa_runtime_service import VQARuntimeService
 logger = logging.getLogger(__name__)
 
 
-def _enable_windows_utf8_stdio() -> None:
-    if sys.platform != "win32":
-        return
-    # Pytest capture replaces stdio streams; wrapping again will break teardown on Windows.
-    entry_name = Path(sys.argv[0]).name.lower() if sys.argv else ""
-    if "PYTEST_CURRENT_TEST" in os.environ or "pytest" in entry_name:
-        return
-    if hasattr(sys.stdout, "buffer"):
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-    if hasattr(sys.stderr, "buffer"):
-        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
-
-
-_enable_windows_utf8_stdio()
+enable_windows_utf8_stdio(skip_pytest_capture=True)
 
 settings = get_settings()
 
@@ -96,6 +82,12 @@ async def lifespan(app: FastAPI):
         logger.warning(startup_warning)
     self_check_service = SelfCheckService(settings=settings, event_bus=event_bus)
     runtime_metrics_service = RuntimeMetricsService()
+    task_preflight_service = TaskPreflightService(
+        settings=settings,
+        llm_config_store=llm_config_store,
+        runtime_config_store=runtime_config_store,
+        model_catalog_store=model_catalog_store,
+    )
     vqa_runtime = VQARuntimeService(
         task_store=task_store,
         llm_config_store=llm_config_store,
@@ -110,6 +102,7 @@ async def lifespan(app: FastAPI):
         resource_guard=resource_guard,
         model_runtime_manager=model_runtime_manager,
         task_store=task_store,
+        task_preflight_service=task_preflight_service,
     )
 
     app.state.settings = settings
@@ -125,6 +118,7 @@ async def lifespan(app: FastAPI):
     app.state.model_runtime_manager = model_runtime_manager
     app.state.self_check_service = self_check_service
     app.state.runtime_metrics_service = runtime_metrics_service
+    app.state.task_preflight_service = task_preflight_service
     app.state.vqa_runtime = vqa_runtime
     app.state.task_runner = runner
     yield

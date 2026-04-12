@@ -120,6 +120,12 @@ export interface TaskDetailResponse {
   updated_at: string
 }
 
+export interface TaskSourceCreatePayload {
+  workflow: WorkflowType
+  language?: string
+  model_size?: "small" | "medium"
+}
+
 export interface ModelDescriptor {
   id: string
   component: ModelComponentType
@@ -263,6 +269,18 @@ export interface RuntimeMetricsResponse {
   sampled_at: string
 }
 
+export interface RuntimePathsResponse {
+  storage_dir: string
+  event_log_dir: string
+  trace_log_dir: string
+}
+
+export interface HealthResponse {
+  status: "ok"
+  app: string
+  version: string
+}
+
 export interface TaskStreamEvent {
   type: string
   task_id: string
@@ -293,24 +311,40 @@ export interface SelfCheckStreamEvent {
   [key: string]: unknown
 }
 
-export interface VqaResultItem {
-  timestamp: number
-  relevance: number
-  context: string
-  source?: string
-  start?: number
-  end?: number
+export interface VqaCitationItem {
+  doc_id: string
+  task_id: string
+  task_title: string
+  source: string
+  source_set: string[]
+  start: number
+  end: number
+  text: string
+  image_path: string
 }
 
-export interface VqaChatResponse {
+export interface VqaTraceRecord {
   trace_id?: string
-  answer?: string
-  citations?: Array<Record<string, unknown>>
+  stage?: string
+  ts?: string
+  [key: string]: unknown
+}
+
+export interface VqaTraceResponse {
+  trace_id: string
+  records: VqaTraceRecord[]
+}
+
+export interface VqaChatStreamEvent {
+  trace_id?: string
+  type: "citations" | "chunk" | "done" | "error" | "status" | string
+  delta?: string
+  status?: string
+  message?: string
   context_tokens_approx?: number
+  citations?: VqaCitationItem[]
   error?: {
     code?: string
     message?: string
   } | null
-  hits?: Array<Record<string, unknown>>
-  results?: VqaResultItem[]
 }

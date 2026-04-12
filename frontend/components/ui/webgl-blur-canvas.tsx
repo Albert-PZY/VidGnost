@@ -23,6 +23,7 @@ interface WebGLBlurCanvasProps {
   pixelRatioCap?: number
   quality?: "balanced" | "performance"
   cropToImageRect?: boolean
+  onFrameRendered?: () => void
 }
 
 type RenderTarget = {
@@ -77,7 +78,7 @@ uniform vec2 u_canvasSize;
 uniform vec4 u_imageRect;
 
 void main() {
-  vec2 fragPx = v_uv * u_canvasSize;
+  vec2 fragPx = vec2(v_uv.x * u_canvasSize.x, (1.0 - v_uv.y) * u_canvasSize.y);
   vec2 imageUv = clamp((fragPx - u_imageRect.xy) / u_imageRect.zw, 0.0, 1.0);
   gl_FragColor = texture2D(u_image, imageUv);
 }
@@ -121,9 +122,9 @@ void main() {
   vec4 color = texture2D(u_texture, v_uv);
 
   if (u_cropToImageRect > 0.5) {
-    vec2 fragPx = v_uv * u_canvasSize;
-    bool insideX = fragPx.x >= u_imageRect.x && fragPx.x <= u_imageRect.x + u_imageRect.z;
-    bool insideY = fragPx.y >= u_imageRect.y && fragPx.y <= u_imageRect.y + u_imageRect.w;
+    vec2 fragPx = vec2(v_uv.x * u_canvasSize.x, (1.0 - v_uv.y) * u_canvasSize.y);
+    bool insideX = fragPx.x >= u_imageRect.x - 0.5 && fragPx.x <= u_imageRect.x + u_imageRect.z + 0.5;
+    bool insideY = fragPx.y >= u_imageRect.y - 0.5 && fragPx.y <= u_imageRect.y + u_imageRect.w + 0.5;
 
     if (!(insideX && insideY)) {
       color = vec4(0.0);
@@ -415,12 +416,14 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
     pixelRatioCap = 1.5,
     quality = "balanced",
     cropToImageRect = false,
+    onFrameRendered,
   } = props
 
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null)
   const resourcesRef = React.useRef<GLResources | null>(null)
   const imageRef = React.useRef<HTMLImageElement | null>(null)
   const frameRef = React.useRef<number | null>(null)
+  const notifyFrameRef = React.useRef<number | null>(null)
   const [imageReadyKey, setImageReadyKey] = React.useState<string | null>(null)
   const [fallbackMode, setFallbackMode] = React.useState(false)
   const releaseResources = React.useCallback((options?: { loseContext?: boolean }) => {
@@ -428,12 +431,33 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
       window.cancelAnimationFrame(frameRef.current)
       frameRef.current = null
     }
+    if (notifyFrameRef.current !== null) {
+      window.cancelAnimationFrame(notifyFrameRef.current)
+      notifyFrameRef.current = null
+    }
     if (resourcesRef.current) {
       destroyResources(resourcesRef.current, options)
       resourcesRef.current = null
     }
     resetCanvasBackbuffer(canvasRef.current)
   }, [])
+
+  const scheduleFrameRenderedNotification = React.useCallback(() => {
+    if (!onFrameRendered) {
+      return
+    }
+
+    if (notifyFrameRef.current !== null) {
+      window.cancelAnimationFrame(notifyFrameRef.current)
+    }
+
+    notifyFrameRef.current = window.requestAnimationFrame(() => {
+      notifyFrameRef.current = window.requestAnimationFrame(() => {
+        notifyFrameRef.current = null
+        onFrameRendered()
+      })
+    })
+  }, [onFrameRendered])
 
   React.useEffect(() => {
     if (!src) {
@@ -544,7 +568,7 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
 
         if (resources.uploadedSourceKey !== imageReadyKey) {
           gl.bindTexture(gl.TEXTURE_2D, resources.sourceTexture)
-          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1)
+          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0)
           gl.texImage2D(
             gl.TEXTURE_2D,
             0,
@@ -639,6 +663,8 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
         )
         gl.uniform1f(resources.copyProgram.cropToImageRectLocation, cropToImageRect ? 1 : 0)
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4)
+
+        scheduleFrameRenderedNotification()
       } catch {
         releaseResources({ loseContext: true })
         setFallbackMode(true)
@@ -665,31 +691,81 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
     quality,
     cropToImageRect,
     releaseResources,
+    scheduleFrameRenderedNotification,
     src,
     width,
   ])
+
+  React.useEffect(() => {
+    if (!src || !imageRect || width <= 0 || height <= 0) {
+      return
+    }
+
+    if (!fallbackMode && blur > 0) {
+      return
+    }
+
+    scheduleFrameRenderedNotification()
+  }, [blur, fallbackMode, height, imageRect, scheduleFrameRenderedNotification, src, width])
 
   if (!src || !imageRect || width <= 0 || height <= 0) {
     return null
   }
 
   if (fallbackMode || blur <= 0) {
+    const imageStyle = {
+      left: `${imageRect.left}px`,
+      top: `${imageRect.top}px`,
+      width: `${imageRect.width}px`,
+      height: `${imageRect.height}px`,
+      filter: blur > 0 ? `blur(${blur}px)` : undefined,
+    }
+
     return (
-      <img
-        alt=""
-        src={src}
-        draggable={false}
-        className={cn(className, "absolute max-w-none select-none")}
+      <div
+        aria-hidden="true"
+        className={cn(className, "absolute select-none")}
         style={{
           ...style,
-          left: `${imageRect.left}px`,
-          top: `${imageRect.top}px`,
-          width: `${imageRect.width}px`,
-          height: `${imageRect.height}px`,
+          width: `${width}px`,
+          height: `${height}px`,
           opacity,
-          filter: blur > 0 ? `blur(${blur}px)` : undefined,
         }}
-      />
+      >
+        {cropToImageRect && blur > 0 ? (
+          <div
+            className="absolute overflow-hidden"
+            style={{
+              left: imageStyle.left,
+              top: imageStyle.top,
+              width: imageStyle.width,
+              height: imageStyle.height,
+            }}
+          >
+            <img
+              alt=""
+              src={src}
+              draggable={false}
+              className="absolute max-w-none select-none"
+              style={{
+                left: 0,
+                top: 0,
+                width: "100%",
+                height: "100%",
+                filter: imageStyle.filter,
+              }}
+            />
+          </div>
+        ) : (
+          <img
+            alt=""
+            src={src}
+            draggable={false}
+            className="absolute max-w-none select-none"
+            style={imageStyle}
+          />
+        )}
+      </div>
     )
   }
 

@@ -21,6 +21,7 @@ Scope: this file is an internal navigation index for coding agents and maintaine
 
 ## 3) Git Workflow Doc
 - Commit convention guide (Conventional Commits aligned): `docs/git-commit-convention.md`
+- Default delivery branch: create and use `enhance` for ongoing requirement work, commit and push there by default, and do not auto-merge into `master` unless the user explicitly requests it.
 
 ## 4) OpenSpec Entry
 - OpenSpec index: `docs/openspec/README.md`
@@ -67,6 +68,9 @@ Scope: this file is an internal navigation index for coding agents and maintaine
 - Script wrappers:
   - `scripts/bootstrap-and-run.ps1`
   - `scripts/bootstrap-and-run.sh`
+- Workspace cleanup:
+  - `scripts/clean-workspace.ps1`
+  - `scripts/clean-workspace.sh`
 
 ## 10) OpenSpec Checker Scripts
 - Python checker: `scripts/check-openspec.py`

@@ -1,25 +1,30 @@
 import type {
   ApiErrorPayload,
+  HealthResponse,
   LLMConfigResponse,
   ModelListResponse,
   PromptTemplateBundleResponse,
+  RuntimePathsResponse,
   RuntimeMetricsResponse,
   SelfCheckReportResponse,
   SelfCheckStartResponse,
   SelfCheckStreamEvent,
   TaskBatchCreateResponse,
+  TaskCreateResponse,
+  TaskSourceCreatePayload,
   TaskDetailResponse,
   TaskListResponse,
   TaskRecentResponse,
   TaskStatsResponse,
   TaskStreamEvent,
   UISettingsResponse,
-  VqaChatResponse,
+  VqaChatStreamEvent,
+  VqaTraceResponse,
   WhisperConfigResponse,
   WorkflowType,
 } from "@/lib/types"
 
-const DEFAULT_API_BASE_URL = "http://127.0.0.1:8000/api"
+const DEFAULT_API_BASE_URL = "http://127.0.0.1:8666/api"
 
 export class ApiError extends Error {
   status: number
@@ -63,6 +68,10 @@ export function buildApiUrl(
   return url.toString()
 }
 
+export function buildTaskArtifactFileUrl(taskId: string, relativePath: string): string {
+  return buildApiUrl(`/tasks/${taskId}/artifacts/file`, { path: relativePath })
+}
+
 async function readErrorPayload(response: Response): Promise<Partial<ApiErrorPayload>> {
   const contentType = response.headers.get("content-type") || ""
   if (contentType.includes("application/json")) {
@@ -103,6 +112,10 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   }
 
   return readJson<T>(response)
+}
+
+export function getHealth(): Promise<HealthResponse> {
+  return apiFetch<HealthResponse>("/health", { method: "GET" })
 }
 
 export function getApiErrorMessage(error: unknown, fallback = "请求失败"): string {
@@ -169,6 +182,32 @@ export async function uploadTaskFiles(input: {
   })
 }
 
+export function createTaskFromUrl(payload: TaskSourceCreatePayload & { url: string }): Promise<TaskCreateResponse> {
+  return apiFetch<TaskCreateResponse>("/tasks/url", {
+    method: "POST",
+    body: JSON.stringify({
+      url: payload.url,
+      workflow: payload.workflow,
+      language: payload.language ?? "zh",
+      model_size: payload.model_size ?? "small",
+    }),
+  })
+}
+
+export function createTaskFromPath(
+  payload: TaskSourceCreatePayload & { local_path: string },
+): Promise<TaskCreateResponse> {
+  return apiFetch<TaskCreateResponse>("/tasks/path", {
+    method: "POST",
+    body: JSON.stringify({
+      local_path: payload.local_path,
+      workflow: payload.workflow,
+      language: payload.language ?? "zh",
+      model_size: payload.model_size ?? "small",
+    }),
+  })
+}
+
 export function streamTaskEvents(taskId: string, onMessage: (event: TaskStreamEvent) => void): EventSource {
   const source = new EventSource(buildApiUrl(`/tasks/${taskId}/events`))
   source.onmessage = (message) => {
@@ -194,22 +233,10 @@ export function streamSelfCheckEvents(
   return source
 }
 
-export async function listTasks(params: {
-  q?: string
-  workflow?: WorkflowType | "all"
-  sort_by?: "date" | "name" | "size"
-  limit?: number
-  offset?: number
-} = {}): Promise<TaskListResponse> {
-  return apiFetch<TaskListResponse>("/tasks", {
-    method: "GET",
-    headers: undefined,
-  })
-}
-
 export async function listTasksWithQuery(params: {
   q?: string
   workflow?: WorkflowType | "all"
+  status?: string
   sort_by?: "date" | "name" | "size"
   limit?: number
   offset?: number
@@ -446,20 +473,79 @@ export function getRuntimeMetrics(): Promise<RuntimeMetricsResponse> {
   return apiFetch<RuntimeMetricsResponse>("/runtime/metrics", { method: "GET" })
 }
 
-export function chatWithTask(payload: {
-  task_id: string
-  question: string
-  top_k?: number
-}): Promise<VqaChatResponse> {
-  return apiFetch<VqaChatResponse>("/chat", {
+export function getRuntimePaths(): Promise<RuntimePathsResponse> {
+  return apiFetch<RuntimePathsResponse>("/runtime/paths", { method: "GET" })
+}
+
+export async function streamChatWithTask(
+  payload: {
+    task_id: string
+    question: string
+    top_k?: number
+  },
+  handlers: {
+    onEvent: (event: VqaChatStreamEvent) => void
+    signal?: AbortSignal
+  },
+): Promise<void> {
+  const response = await fetch(buildApiUrl("/chat/stream"), {
     method: "POST",
+    signal: handlers.signal,
+    headers: {
+      Accept: "text/event-stream",
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify({
       task_id: payload.task_id,
       question: payload.question,
       top_k: payload.top_k ?? 5,
-      stream: false,
+      stream: true,
     }),
   })
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await readErrorPayload(response))
+  }
+
+  if (!response.body) {
+    throw new Error("后端未返回可读取的流式响应。")
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ""
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        break
+      }
+      buffer += decoder.decode(value, { stream: true })
+      buffer = drainSseBuffer(buffer, handlers.onEvent)
+    }
+    buffer += decoder.decode()
+    drainSseBuffer(buffer, handlers.onEvent)
+  } finally {
+    reader.releaseLock()
+  }
+}
+
+export function getChatTrace(traceId: string): Promise<VqaTraceResponse> {
+  return apiFetch<VqaTraceResponse>(`/traces/${traceId}`, { method: "GET" })
+}
+
+export async function getTaskArtifactText(
+  taskId: string,
+  kind: "transcript" | "notes" | "mindmap" | "srt" | "vtt",
+): Promise<string> {
+  const response = await fetch(buildApiUrl(`/tasks/${taskId}/export/${kind}`), {
+    headers: { Accept: "text/plain, text/markdown, text/html" },
+  })
+  if (!response.ok) {
+    throw new ApiError(response.status, await readErrorPayload(response))
+  }
+  return response.text()
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -472,4 +558,33 @@ async function fetchJson<T>(url: string): Promise<T> {
   }
 
   return readJson<T>(response)
+}
+
+function drainSseBuffer(
+  buffer: string,
+  onEvent: (event: VqaChatStreamEvent) => void,
+): string {
+  const chunks = buffer.split(/\r?\n\r?\n/)
+  const pending = chunks.pop() ?? ""
+
+  for (const chunk of chunks) {
+    const payloadLines = chunk
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trim())
+
+    if (payloadLines.length === 0) {
+      continue
+    }
+
+    const payload = payloadLines.join("\n")
+    if (!payload || payload === "[DONE]") {
+      onEvent({ type: "done" })
+      continue
+    }
+
+    onEvent(JSON.parse(payload) as VqaChatStreamEvent)
+  }
+
+  return pending
 }

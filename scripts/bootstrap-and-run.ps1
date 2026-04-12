@@ -41,6 +41,15 @@ function Resolve-CommandPath {
     throw "Command '$Name' is unavailable. Please install it and rerun the script."
 }
 
+function Convert-ToEncodedCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$CommandText
+    )
+
+    return [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($CommandText))
+}
+
 function Get-PortOwningPids {
     param(
         [Parameter(Mandatory = $true)]
@@ -48,11 +57,11 @@ function Get-PortOwningPids {
     )
 
     try {
-        return @(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction Stop |
+        return @(Get-NetTCPConnection -LocalPort $Port -ErrorAction Stop |
             Select-Object -ExpandProperty OwningProcess -Unique |
             Where-Object { $_ -and $_ -gt 0 })
     } catch {
-        $matches = @(netstat -ano -p tcp | Select-String -Pattern (":{0}\s+.*LISTENING\s+(\d+)$" -f $Port))
+        $matches = @(netstat -ano -p tcp | Select-String -Pattern (":{0}\s+.+\s+(\d+)\s*$" -f $Port))
         $pids = @()
         foreach ($match in $matches) {
             if ($match.Matches.Count -gt 0) {
@@ -286,8 +295,8 @@ Ensure-Admin
 $RootDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $BackendDir = Join-Path $RootDir "backend"
 $FrontendDir = Join-Path $RootDir "frontend"
-$BackendPort = 8000
-$FrontendPort = 5173
+$BackendPort = 8666
+$FrontendPort = 6221
 $PinnedPythonVersion = "3.12"
 $UvDefaultIndexMirror = if ($env:UV_DEFAULT_INDEX_MIRROR) { $env:UV_DEFAULT_INDEX_MIRROR } else { "https://pypi.tuna.tsinghua.edu.cn/simple" }
 $PnpmRegistryMirror = if ($env:PNPM_REGISTRY_MIRROR) { $env:PNPM_REGISTRY_MIRROR } else { "https://registry.npmmirror.com" }
@@ -308,6 +317,8 @@ Write-Host "[setup] Mirrors configured (uv index-url: $uvIndexDisplay, pnpm: $Pn
 
 Ensure-PortFree -Port $BackendPort -Label "backend"
 Ensure-PortFree -Port $FrontendPort -Label "frontend"
+$SelectedBackendPort = $BackendPort
+$SelectedFrontendPort = $FrontendPort
 
 Write-Host "[setup] Sync backend dependencies..."
 Push-Location $BackendDir
@@ -328,24 +339,31 @@ Set-Location -LiteralPath '$escapedBackendDir'
 `$env:PYTHONUTF8 = '1'
 `$env:PYTHONIOENCODING = 'utf-8'
 Write-Host '[run] Backend live logs (Ctrl+C to stop this window).'
-uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir app --reload-exclude=.venv/* --reload-exclude=storage/*
+Write-Host '[run] Backend URL: http://127.0.0.1:$SelectedBackendPort'
+uv run python -m uvicorn app.main:app --host 0.0.0.0 --port $SelectedBackendPort --reload --reload-dir app --reload-exclude=.venv/* --reload-exclude=storage/*
 "@
 Stop-ElectronAppProcesses -FrontendPath $FrontendDir
 $frontendCommand = @"
 Set-Location -LiteralPath '$escapedFrontendDir'
+`$env:VITE_API_BASE_URL = 'http://127.0.0.1:$SelectedBackendPort/api'
+`$env:VITE_DEV_SERVER_URL = 'http://127.0.0.1:$SelectedFrontendPort'
 Write-Host '[run] Frontend desktop live logs (Ctrl+C to stop this window).'
-pnpm desktop:dev
+Write-Host '[run] Backend API base: http://127.0.0.1:$SelectedBackendPort/api'
+Write-Host '[run] Frontend dev server: http://127.0.0.1:$SelectedFrontendPort'
+pnpm exec concurrently -k -n VITE,ELECTRON -c cyan,green "pnpm dev --host 127.0.0.1 --port $SelectedFrontendPort" "pnpm exec wait-on tcp:$SelectedFrontendPort && electron electron/main.cjs"
 "@
+$encodedBackendCommand = Convert-ToEncodedCommand -CommandText $backendCommand
+$encodedFrontendCommand = Convert-ToEncodedCommand -CommandText $frontendCommand
 
-Write-Host "[run] Starting backend..."
-$backendProc = Start-Process -FilePath "powershell" -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-Command", $backendCommand) -PassThru
-Wait-PortReady -Port $BackendPort -Label "backend"
+Write-Host "[run] Starting backend at http://127.0.0.1:$SelectedBackendPort ..."
+$backendProc = Start-Process -FilePath "powershell" -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-EncodedCommand", $encodedBackendCommand) -PassThru
+Wait-PortReady -Port $SelectedBackendPort -Label "backend"
 
 Write-Host "[run] Starting frontend (electron)..."
-$frontendProc = Start-Process -FilePath "powershell" -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-Command", $frontendCommand) -PassThru
+$frontendProc = Start-Process -FilePath "powershell" -ArgumentList @("-NoExit", "-ExecutionPolicy", "Bypass", "-EncodedCommand", $encodedFrontendCommand) -PassThru
 Wait-ElectronReady -FrontendPath $FrontendDir -LauncherPid $frontendProc.Id
 
-$backendListenPids = @(Get-PortOwningPids -Port $BackendPort)
+$backendListenPids = @(Get-PortOwningPids -Port $SelectedBackendPort)
 $frontendListenPids = @(Get-ElectronAppPids -FrontendPath $FrontendDir)
 $stopPids = @($backendListenPids + $frontendListenPids) | Select-Object -Unique
 Write-Host "[ready] Backend launcher PID: $($backendProc.Id)"
@@ -353,6 +371,8 @@ Write-Host "[ready] Frontend launcher PID: $($frontendProc.Id)"
 Write-Host "[ready] Backend service PID(s): $($backendListenPids -join ', ')"
 Write-Host "[ready] Frontend service PID(s): $($frontendListenPids -join ', ')"
 Write-Host "[ready] Frontend mode: electron"
+Write-Host "[ready] Backend API URL: http://127.0.0.1:$SelectedBackendPort/api"
+Write-Host "[ready] Frontend dev server URL: http://127.0.0.1:$SelectedFrontendPort"
 if ($stopPids.Count -gt 0) {
     Write-Host "[ready] Stop all with: Stop-Process -Id $($stopPids -join ',')"
 } else {

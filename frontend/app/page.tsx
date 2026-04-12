@@ -4,23 +4,33 @@ import * as React from "react"
 import { toast } from "react-hot-toast"
 
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
-import { Skeleton } from "@/components/ui/skeleton"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppBackgroundLayer } from "@/components/app-background-layer"
 import { AppSidebar } from "@/components/app-sidebar"
 import { AppHeader } from "@/components/app-header"
 import { NewTaskView } from "@/components/views/new-task-view"
+import { BootstrapStatusOverlay, type BootstrapStatus } from "@/components/views/bootstrap-status-overlay"
+import { DiagnosticsView } from "@/components/views/diagnostics-view"
+import { HistoryView } from "@/components/views/history-view"
+import { SettingsView } from "@/components/views/settings-view"
+import { TaskProcessingView } from "@/components/views/task-processing-view"
 import {
+  createTaskFromPath,
+  createTaskFromUrl,
   getApiErrorMessage,
+  getHealth,
   getRecentTasks,
+  getRuntimePaths,
   getTaskStats,
   getUiSettings,
   updateUiSettings,
   uploadTaskFiles,
 } from "@/lib/api"
+import { createDesktopBootstrapState, getDesktopBootstrapStepLabel } from "@/lib/desktop-bootstrap"
 import type {
   TaskDetailResponse,
   TaskRecentItem,
+  RuntimePathsResponse,
   TaskStatsResponse,
   UISettingsResponse,
   WorkflowType,
@@ -48,26 +58,6 @@ const DEFAULT_UI_SETTINGS: UISettingsResponse = {
   background_image_fill_mode: "cover",
 }
 
-const TaskProcessingView = React.lazy(async () => {
-  const module = await import("@/components/views/task-processing-view")
-  return { default: module.TaskProcessingView }
-})
-
-const HistoryView = React.lazy(async () => {
-  const module = await import("@/components/views/history-view")
-  return { default: module.HistoryView }
-})
-
-const SettingsView = React.lazy(async () => {
-  const module = await import("@/components/views/settings-view")
-  return { default: module.SettingsView }
-})
-
-const DiagnosticsView = React.lazy(async () => {
-  const module = await import("@/components/views/diagnostics-view")
-  return { default: module.DiagnosticsView }
-})
-
 const getPageTitle = (viewState: ViewState) => {
   switch (viewState.type) {
     case "new-task":
@@ -81,36 +71,6 @@ const getPageTitle = (viewState: ViewState) => {
     case "diagnostics":
       return { title: "系统自检", subtitle: "检查运行状态" }
   }
-}
-
-function ViewLoadingFallback() {
-  return (
-    <div className="flex flex-1 flex-col gap-6 overflow-hidden px-6 py-6">
-      <div className="space-y-3">
-        <Skeleton className="h-8 w-40 rounded-md" />
-        <Skeleton className="h-4 w-72 rounded-md" />
-      </div>
-      <div className="grid gap-6 xl:grid-cols-[18rem_minmax(0,1fr)]">
-        <div className="space-y-4 rounded-xl border bg-card/70 p-4">
-          <Skeleton className="h-5 w-24 rounded-md" />
-          <Skeleton className="h-10 w-full rounded-lg" />
-          <Skeleton className="h-10 w-full rounded-lg" />
-          <Skeleton className="h-10 w-full rounded-lg" />
-          <Skeleton className="h-10 w-5/6 rounded-lg" />
-        </div>
-        <div className="space-y-4 rounded-xl border bg-card/70 p-5">
-          <Skeleton className="h-6 w-44 rounded-md" />
-          <Skeleton className="h-4 w-80 rounded-md" />
-          <div className="grid gap-4 md:grid-cols-2">
-            <Skeleton className="h-32 rounded-xl" />
-            <Skeleton className="h-32 rounded-xl" />
-            <Skeleton className="h-32 rounded-xl" />
-            <Skeleton className="h-32 rounded-xl" />
-          </div>
-        </div>
-      </div>
-    </div>
-  )
 }
 
 export default function VideoMindApp() {
@@ -127,7 +87,11 @@ export default function VideoMindApp() {
   const [uiSettings, setUiSettings] = React.useState<UISettingsResponse>(DEFAULT_UI_SETTINGS)
   const [uiSettingsPreviewPatch, setUiSettingsPreviewPatch] = React.useState<Partial<UISettingsResponse> | null>(null)
   const [isCloseConfirmOpen, setIsCloseConfirmOpen] = React.useState(false)
+  const [bootstrapStatus, setBootstrapStatus] = React.useState<BootstrapStatus>("initializing")
+  const [bootstrapMessage, setBootstrapMessage] = React.useState("正在装载最近任务与界面配置。")
+  const [runtimePaths, setRuntimePaths] = React.useState<RuntimePathsResponse | null>(null)
   const uiSettingsRef = React.useRef(uiSettings)
+  const desktopBootstrapCompletedRef = React.useRef(false)
   const effectiveUiSettings = React.useMemo(
     () => ({
       ...uiSettings,
@@ -140,42 +104,124 @@ export default function VideoMindApp() {
     uiSettingsRef.current = uiSettings
   }, [uiSettings])
 
+  const reportDesktopBootstrapState = React.useCallback((state: DesktopBootstrapState) => {
+    window.vidGnostDesktop?.reportBootstrapState?.(state)
+  }, [])
+
+  const completeDesktopBootstrap = React.useCallback((state?: DesktopBootstrapState) => {
+    if (desktopBootstrapCompletedRef.current) {
+      return
+    }
+    desktopBootstrapCompletedRef.current = true
+    window.vidGnostDesktop?.completeBootstrap?.(state)
+  }, [])
+
+  const settleStartupFrame = React.useCallback(async () => {
+    if (typeof window !== "undefined") {
+      await new Promise((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(resolve)))
+    }
+
+    if (typeof document !== "undefined" && "fonts" in document) {
+      try {
+        await document.fonts.ready
+      } catch {
+        // Font settling is best-effort; startup should not block forever on it.
+      }
+    }
+  }, [])
+
   const refreshOverview = React.useCallback(async () => {
     const [statsResponse, recentResponse] = await Promise.all([getTaskStats(), getRecentTasks(3)])
     setTaskStats(statsResponse)
     setRecentTasks(recentResponse.items)
   }, [])
 
-  React.useEffect(() => {
-    let mounted = true
+  const runBootstrap = React.useCallback(
+    async (showToastOnError = false) => {
+      let currentPhaseId = "connect-backend"
 
-    const bootstrap = async () => {
+      setBootstrapStatus((current) => (current === "ready" ? "connecting" : "initializing"))
+      setBootstrapMessage("正在连接本地服务并准备同步工作台初始化数据。")
+      reportDesktopBootstrapState(createDesktopBootstrapState({
+        phaseId: currentPhaseId,
+        title: "初始化引擎",
+        message: "连接本地服务",
+        detail: "正在检查后端健康状态，准备进入任务和配置同步。",
+      }))
+
       try {
-        const [statsResponse, recentResponse, uiResponse] = await Promise.all([
-          getTaskStats(),
-          getRecentTasks(3),
-          getUiSettings(),
-        ])
-        if (!mounted) {
-          return
-        }
+        await getHealth()
+        setBootstrapStatus("connecting")
+        currentPhaseId = "sync-overview"
+        setBootstrapMessage("本地服务已连接，正在同步任务概览。")
+        reportDesktopBootstrapState(createDesktopBootstrapState({
+          phaseId: currentPhaseId,
+          title: "初始化引擎",
+          message: "同步任务概览",
+          detail: "正在拉取任务统计和最近任务列表。",
+        }))
+
+        const [statsResponse, recentResponse] = await Promise.all([getTaskStats(), getRecentTasks(3)])
         setTaskStats(statsResponse)
         setRecentTasks(recentResponse.items)
+
+        currentPhaseId = "sync-config"
+        setBootstrapMessage("任务概览已同步，正在加载界面配置与运行时目录。")
+        reportDesktopBootstrapState(createDesktopBootstrapState({
+          phaseId: currentPhaseId,
+          title: "初始化引擎",
+          message: "同步界面配置",
+          detail: "正在加载 UI 设置和本地运行时目录。",
+        }))
+
+        const [uiResponse, pathsResponse] = await Promise.all([getUiSettings(), getRuntimePaths()])
         setUiSettings(uiResponse)
+        setRuntimePaths(pathsResponse)
+
+        currentPhaseId = "settle-ui"
+        setBootstrapMessage("配置已同步，正在稳定首帧并挂载工作台。")
+        reportDesktopBootstrapState(createDesktopBootstrapState({
+          phaseId: currentPhaseId,
+          title: "初始化引擎",
+          message: "稳定首帧并挂载 UI",
+          detail: "正在等待字体、首帧绘制和主工作台挂载完成。",
+        }))
+
+        await settleStartupFrame()
+        setBootstrapStatus("ready")
+        setBootstrapMessage("系统运行正常。")
+        completeDesktopBootstrap(createDesktopBootstrapState({
+          phaseId: currentPhaseId,
+          phaseStatus: "complete",
+          title: "系统准备就绪",
+          message: "系统准备就绪",
+          detail: "正在切换到主工作台界面。",
+        }))
       } catch (error) {
-        if (!mounted) {
-          return
+        const message = getApiErrorMessage(error, "后端当前不可用，请稍后重试。")
+        setBootstrapStatus("degraded")
+        setBootstrapMessage(message)
+        await settleStartupFrame()
+        const degradedBootstrapState = createDesktopBootstrapState({
+          phaseId: currentPhaseId,
+          phaseStatus: "error",
+          title: "进入受限模式",
+          message: getDesktopBootstrapStepLabel(currentPhaseId),
+          detail: "后端尚未就绪，主界面会继续打开，并保留诊断与重试入口。",
+        })
+        reportDesktopBootstrapState(degradedBootstrapState)
+        completeDesktopBootstrap(degradedBootstrapState)
+        if (showToastOnError) {
+          toast.error(message)
         }
-        toast.error(getApiErrorMessage(error, "初始化应用数据失败"))
       }
-    }
+    },
+    [completeDesktopBootstrap, reportDesktopBootstrapState, settleStartupFrame],
+  )
 
-    void bootstrap()
-
-    return () => {
-      mounted = false
-    }
-  }, [])
+  React.useEffect(() => {
+    void runBootstrap(false)
+  }, [runBootstrap])
 
   React.useEffect(() => {
     document.documentElement.lang = effectiveUiSettings.language
@@ -213,26 +259,6 @@ export default function VideoMindApp() {
     })
     return () => {
       unsubscribe?.()
-    }
-  }, [])
-
-  React.useEffect(() => {
-    const warmupViews = () => {
-      void import("@/components/views/history-view")
-      void import("@/components/views/settings-view")
-      void import("@/components/views/diagnostics-view")
-    }
-
-    if (typeof window.requestIdleCallback === "function") {
-      const idleId = window.requestIdleCallback(warmupViews, { timeout: 1500 })
-      return () => {
-        window.cancelIdleCallback?.(idleId)
-      }
-    }
-
-    const timer = window.setTimeout(warmupViews, 900)
-    return () => {
-      window.clearTimeout(timer)
     }
   }, [])
 
@@ -285,14 +311,64 @@ export default function VideoMindApp() {
   }
 
   const handleStartTask = React.useCallback(
-    async (input: {
-      files: File[]
-      workflow: WorkflowType
-      onProgress: (progress: number) => void
-    }) => {
-      const { files, workflow, onProgress } = input
-      const response = await uploadTaskFiles({ files, workflow, onProgress })
-      const firstTask = response.tasks[0]
+    async (
+      input:
+        | {
+            source: "upload"
+            files: File[]
+            workflow: WorkflowType
+            onProgress: (progress: number) => void
+          }
+        | {
+            source: "url"
+            url: string
+            workflow: WorkflowType
+          }
+        | {
+            source: "path"
+            localPath: string
+            workflow: WorkflowType
+          },
+    ) => {
+      let firstTask:
+        | {
+            task_id: string
+            workflow: WorkflowType
+          }
+        | undefined
+      let displayTitle = ""
+
+      if (input.source === "upload") {
+        const response = await uploadTaskFiles({
+          files: input.files,
+          workflow: input.workflow,
+          onProgress: input.onProgress,
+        })
+        firstTask = response.tasks[0]
+        displayTitle = input.files[0]?.name || firstTask?.task_id || ""
+        toast.success(
+          response.tasks.length > 1
+            ? `已创建 ${response.tasks.length} 个任务，当前打开第一个任务。`
+            : "任务已提交，正在进入处理页。",
+        )
+      } else if (input.source === "url") {
+        const response = await createTaskFromUrl({
+          url: input.url,
+          workflow: input.workflow,
+        })
+        firstTask = response
+        displayTitle = input.url
+        toast.success("已根据网络链接创建任务。")
+      } else {
+        const response = await createTaskFromPath({
+          local_path: input.localPath,
+          workflow: input.workflow,
+        })
+        firstTask = response
+        displayTitle = input.localPath
+        toast.success("已根据本地路径创建任务。")
+      }
+
       if (!firstTask) {
         throw new Error("后端未返回任务信息。")
       }
@@ -302,14 +378,9 @@ export default function VideoMindApp() {
         type: "processing",
         taskId: firstTask.task_id,
         workflow: firstTask.workflow,
-        taskTitle: files[0]?.name || firstTask.task_id,
+        taskTitle: displayTitle || firstTask.task_id,
       })
       await refreshOverview()
-      toast.success(
-        response.tasks.length > 1
-          ? `已创建 ${response.tasks.length} 个任务，当前打开第一个任务。`
-          : "任务已提交，正在进入处理页。",
-      )
     },
     [refreshOverview],
   )
@@ -386,36 +457,64 @@ export default function VideoMindApp() {
               }}
             />
             <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <React.Suspense fallback={<ViewLoadingFallback />}>
-                {viewState.type === "new-task" && (
-                  <NewTaskView
-                    selectedWorkflow={selectedWorkflow}
-                    onStartTask={handleStartTask}
-                  />
-                )}
-                {viewState.type === "processing" && (
-                  <TaskProcessingView
-                    taskId={viewState.taskId}
-                    workflow={viewState.workflow}
-                    taskTitle={viewState.taskTitle}
-                    onBack={handleBackFromProcessing}
-                    onTaskChanged={handleTaskChanged}
-                    onTaskLoaded={handleTaskLoaded}
-                  />
-                )}
-                {viewState.type === "history" && (
-                  <HistoryView onOpenTask={handleOpenTask} />
-                )}
-                {viewState.type === "settings" && (
-                  <SettingsView
-                    uiSettings={uiSettings}
-                    onUiSettingsChange={persistUiSettings}
-                    onUiSettingsPreviewChange={setUiSettingsPreviewPatch}
-                  />
-                )}
-                {viewState.type === "diagnostics" && <DiagnosticsView />}
-              </React.Suspense>
+              {viewState.type === "new-task" && (
+                <NewTaskView
+                  selectedWorkflow={selectedWorkflow}
+                  onStartTask={handleStartTask}
+                />
+              )}
+              {viewState.type === "processing" && (
+                <TaskProcessingView
+                  taskId={viewState.taskId}
+                  workflow={viewState.workflow}
+                  taskTitle={viewState.taskTitle}
+                  onBack={handleBackFromProcessing}
+                  onTaskChanged={handleTaskChanged}
+                  onTaskLoaded={handleTaskLoaded}
+                />
+              )}
+              {viewState.type === "history" && (
+                <HistoryView
+                  onOpenTask={handleOpenTask}
+                  onTasksChanged={handleTaskChanged}
+                />
+              )}
+              {viewState.type === "settings" && (
+                <SettingsView
+                  uiSettings={uiSettings}
+                  onUiSettingsChange={persistUiSettings}
+                  onUiSettingsPreviewChange={setUiSettingsPreviewPatch}
+                />
+              )}
+              {viewState.type === "diagnostics" && <DiagnosticsView />}
             </main>
+            <BootstrapStatusOverlay
+              status={bootstrapStatus}
+              message={bootstrapMessage}
+              canOpenLogs={Boolean(runtimePaths?.event_log_dir)}
+              onRetry={() => {
+                void runBootstrap(true)
+              }}
+              onOpenDiagnostics={() => handleNavChange("diagnostics")}
+              onOpenLogs={() => {
+                const targetPath = runtimePaths?.event_log_dir || runtimePaths?.trace_log_dir || ""
+                if (!targetPath) {
+                  toast.error("当前还没有可用的日志目录。")
+                  return
+                }
+                if (window.vidGnostDesktop?.openPath) {
+                  void window.vidGnostDesktop.openPath(targetPath).then((result) => {
+                    if (!result.ok) {
+                      toast.error(result.message || "打开日志目录失败")
+                    }
+                  })
+                  return
+                }
+                void navigator.clipboard.writeText(targetPath).then(() => {
+                  toast.success("当前不在 Electron 环境，日志目录已复制到剪贴板。")
+                })
+              }}
+            />
             <ConfirmDialog
               open={isCloseConfirmOpen}
               onOpenChange={setIsCloseConfirmOpen}

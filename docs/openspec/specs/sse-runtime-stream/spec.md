@@ -73,3 +73,11 @@ Backend SHALL expose self-check session event stream endpoint for progress and a
 #### Scenario: Stream error and fallback
 - **WHEN** stream mode fails and backend auto-falls back
 - **THEN** stream emits error/status signals with same `trace_id` and preserves diagnostic continuity
+
+### Requirement: Task stream payloads SHALL remain renderer-friendly for stage output panes
+Per-task runtime events SHALL carry stable renderer-facing fields so the workbench can render bounded stage-output feeds without bespoke event decoding per stage. Payloads SHALL preserve `timestamp`, `type`, optional `original_type`, optional `stage`, and at least one human-readable text field among `message`, `text`, or `title`.
+
+#### Scenario: Renderer paints the stage-output feed
+- **WHEN** frontend receives buffered or live task events from `/tasks/{task_id}/events`
+- **THEN** each event exposes enough metadata for the renderer to show stage badges, timestamps, and readable copy in the stage-output tab
+- **AND** frontend MAY keep only a bounded recent window of those events locally without losing event meaning

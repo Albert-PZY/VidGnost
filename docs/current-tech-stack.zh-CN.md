@@ -1,6 +1,6 @@
 # VidGnost 当前完整技术栈（前后端）
 
-更新时间：2026-04-10
+更新时间：2026-04-12
 
 ## 1. 架构边界（已收敛）
 
@@ -27,18 +27,25 @@
 - Radix UI（Accordion/Dialog/Select/Tabs 等）
 - Lucide React（图标）
 - next-themes（主题切换，仅前端主题管理，不依赖 Next SSR）
-- sonner（通知）
-- recharts（图表）
-- react-hook-form + zod（表单与校验）
+- react-hot-toast（通知）
+- react-resizable-panels（可拖拽工作区分栏）
+- @uiw/react-md-editor + @uiw/react-markdown-preview（提示词编辑与 Markdown 结果渲染）
 
 ## 2.3 前端工程事实
 
 - 不使用 Next.js 运行链路
 - 无 SSR/SSG 服务端渲染职责
+- Electron 启动链路采用独立 splash 窗口，主窗口默认隐藏，前端通过 preload IPC 上报启动阶段进度后再显示主界面
+- 启动阶段一次性预热核心页面与提示词 Markdown 编辑器，不使用页面级或编辑器级懒加载骨架屏占位
+- 主界面显示后仍保留降级启动覆盖层，用于后端不可用时承接诊断、重试和日志目录打开动作
 - 前端入口：
   - `frontend/index.html`
   - `frontend/src/main.tsx`
   - `frontend/src/App.tsx`
+  - `frontend/electron/main.cjs`
+  - `frontend/electron/preload.cjs`
+  - `frontend/electron/splash-preload.cjs`
+  - `frontend/electron/splash.html`
 - 常用命令：
   - `pnpm desktop:dev`
   - `pnpm build`

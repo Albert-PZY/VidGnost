@@ -1,12 +1,30 @@
 import io
 from pathlib import Path
-from fastapi.testclient import TestClient
-import orjson
 import zipfile
 
+import orjson
+import pytest
+from fastapi.testclient import TestClient
+
 from app.api.routes_tasks import _normalize_stream_event
+from app.errors import AppError
 from app.main import app
 from app.models import TaskStatus
+from app.services.task_preflight import TaskPreflightService
+
+
+@pytest.fixture(autouse=True)
+def stub_task_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_preflight(
+        _self: TaskPreflightService,
+        *,
+        workflow: str,
+        stage: str = "full_task",
+    ) -> None:
+        _ = workflow
+        _ = stage
+
+    monkeypatch.setattr(TaskPreflightService, "assert_ready_for_analysis", fake_preflight)
 
 
 def test_create_url_task() -> None:
@@ -38,6 +56,77 @@ def test_create_url_task() -> None:
         assert set(detail["stage_logs"].keys()) == {"A", "B", "C", "D"}
         assert "stage_metrics" in detail
         assert set(detail["stage_metrics"].keys()) == {"A", "B", "C", "D"}
+
+
+def test_create_task_runs_preflight_before_submit(monkeypatch: pytest.MonkeyPatch) -> None:
+    with TestClient(app) as client:
+        steps: list[str] = []
+
+        async def fake_preflight(
+            _self: TaskPreflightService,
+            *,
+            workflow: str,
+            stage: str = "full_task",
+        ) -> None:
+            steps.append(f"preflight:{workflow}:{stage}")
+
+        async def fake_submit(submission) -> None:  # type: ignore[no-untyped-def]
+            steps.append(f"submit:{submission.task_id}")
+
+        monkeypatch.setattr(TaskPreflightService, "assert_ready_for_analysis", fake_preflight)
+        client.app.state.task_runner.submit = fake_submit
+
+        response = client.post(
+            "/api/tasks/url",
+            json={
+                "url": "BV1xx411c7mD",
+                "model_size": "small",
+                "language": "zh",
+                "workflow": "notes",
+            },
+        )
+
+        assert response.status_code == 202
+        assert steps[0] == "preflight:notes:full_task"
+        assert steps[1].startswith("submit:task-")
+
+
+def test_create_task_rejects_when_preflight_fails_without_persisting_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with TestClient(app) as client:
+        async def fake_preflight(
+            _self: TaskPreflightService,
+            *,
+            workflow: str,
+            stage: str = "full_task",
+        ) -> None:
+            raise AppError.conflict(
+                "运行前检查失败：LLM 服务未就绪。",
+                code="TASK_PRECHECK_FAILED",
+                hint="请先修复模型服务后重试。",
+            )
+
+        async def fake_submit(_submission) -> None:  # type: ignore[no-untyped-def]
+            pytest.fail("preflight 失败后不应继续提交任务。")
+
+        monkeypatch.setattr(TaskPreflightService, "assert_ready_for_analysis", fake_preflight)
+        client.app.state.task_runner.submit = fake_submit
+
+        response = client.post(
+            "/api/tasks/url",
+            json={
+                "url": "BV1xx411c7mD",
+                "model_size": "small",
+                "language": "zh",
+                "workflow": "notes",
+            },
+        )
+
+        assert response.status_code == 409
+        payload = response.json()
+        assert payload["code"] == "TASK_PRECHECK_FAILED"
+        assert client.get("/api/tasks").json()["total"] == 0
 
 
 def test_task_detail_includes_fusion_prompt_markdown() -> None:
@@ -278,6 +367,12 @@ def test_delete_completed_task() -> None:
         )
         stage_artifact_file.parent.mkdir(parents=True, exist_ok=True)
         stage_artifact_file.write_text("# summary", encoding="utf-8")
+        temp_artifact_file = Path(client.app.state.settings.temp_dir) / task_id / "retry-stage-d" / "cache.json"
+        temp_artifact_file.parent.mkdir(parents=True, exist_ok=True)
+        temp_artifact_file.write_text('{"ok":true}', encoding="utf-8")
+        uploaded_shadow_file = Path(client.app.state.settings.upload_dir) / f"{task_id}_uploaded.mp4"
+        uploaded_shadow_file.parent.mkdir(parents=True, exist_ok=True)
+        uploaded_shadow_file.write_bytes(b"shadow")
 
         delete_response = client.delete(f"/api/tasks/{task_id}")
         assert delete_response.status_code == 204
@@ -286,6 +381,8 @@ def test_delete_completed_task() -> None:
         assert detail_response.status_code == 404
         assert not event_log_path.exists()
         assert not stage_artifact_file.exists()
+        assert not temp_artifact_file.exists()
+        assert not uploaded_shadow_file.exists()
 
 
 def test_cancel_running_task() -> None:

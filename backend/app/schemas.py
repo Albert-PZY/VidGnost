@@ -385,3 +385,9 @@ class RuntimeMetricsResponse(BaseModel):
     gpu_memory_used_bytes: int = 0
     gpu_memory_total_bytes: int = 0
     sampled_at: str = ""
+
+
+class RuntimePathsResponse(BaseModel):
+    storage_dir: str
+    event_log_dir: str
+    trace_log_dir: str

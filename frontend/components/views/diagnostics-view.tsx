@@ -25,8 +25,10 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
+import { getPerfSamples, isPerfLoggingEnabled, subscribePerfSamples, type PerfSample } from "@/lib/perf"
 import { cn } from "@/lib/utils"
 import {
+  autoFixSelfCheck,
   getApiErrorMessage,
   getRuntimeMetrics,
   getSelfCheckReport,
@@ -37,7 +39,6 @@ import { formatBytes, formatDurationSeconds } from "@/lib/format"
 import type {
   RuntimeMetricsResponse,
   SelfCheckReportResponse,
-  SelfCheckStepResponse,
   SelfCheckStreamEvent,
 } from "@/lib/types"
 
@@ -112,6 +113,13 @@ function formatUsagePercent(usedBytes: number, totalBytes: number): string {
   return `${Math.round((usedBytes / totalBytes) * 100)}% 已用`
 }
 
+function formatPerfLabel(label: string): string {
+  return label
+    .replace(/^task\./, "任务 / ")
+    .replace(/^view\./, "视图 / ")
+    .replace(/\./g, " / ")
+}
+
 function mapStepStatus(status: string): CheckStatus {
   switch (status) {
     case "passed":
@@ -176,15 +184,23 @@ function buildChecks(report: SelfCheckReportResponse | null): DiagnosticCheck[] 
 export function DiagnosticsView() {
   const [report, setReport] = React.useState<SelfCheckReportResponse | null>(null)
   const [runtimeMetrics, setRuntimeMetrics] = React.useState<RuntimeMetricsResponse>(EMPTY_METRICS)
+  const [perfSamples, setPerfSamples] = React.useState<PerfSample[]>([])
+  const [developerModeEnabled, setDeveloperModeEnabled] = React.useState(false)
   const [activeSessionId, setActiveSessionId] = React.useState("")
   const [isStarting, setIsStarting] = React.useState(false)
+  const [isFixing, setIsFixing] = React.useState(false)
+  const runtimeMetricsToastShownRef = React.useRef(false)
 
   const loadRuntimeMetrics = React.useCallback(async () => {
     try {
       const payload = await getRuntimeMetrics()
       setRuntimeMetrics(payload)
+      runtimeMetricsToastShownRef.current = false
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "获取运行时信息失败"))
+      if (!runtimeMetricsToastShownRef.current) {
+        runtimeMetricsToastShownRef.current = true
+        toast.error(getApiErrorMessage(error, "获取运行时信息失败"))
+      }
     }
   }, [])
 
@@ -201,6 +217,18 @@ export function DiagnosticsView() {
     }, 5000)
     return () => window.clearInterval(interval)
   }, [loadRuntimeMetrics])
+
+  React.useEffect(() => {
+    setDeveloperModeEnabled(isPerfLoggingEnabled())
+    setPerfSamples(getPerfSamples())
+
+    const unsubscribe = subscribePerfSamples((samples) => {
+      setPerfSamples(samples)
+      setDeveloperModeEnabled(isPerfLoggingEnabled())
+    })
+
+    return unsubscribe
+  }, [])
 
   React.useEffect(() => {
     if (!activeSessionId) {
@@ -233,6 +261,22 @@ export function DiagnosticsView() {
       toast.error(getApiErrorMessage(error, "启动系统自检失败"))
     } finally {
       setIsStarting(false)
+    }
+  }
+
+  const handleAutoFix = async () => {
+    if (!report?.session_id || !report.auto_fix_available) {
+      return
+    }
+    setIsFixing(true)
+    try {
+      await autoFixSelfCheck(report.session_id)
+      toast.success("已触发自动修复")
+      await refreshReport(report.session_id)
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "自动修复失败"))
+    } finally {
+      setIsFixing(false)
     }
   }
 
@@ -300,10 +344,23 @@ export function DiagnosticsView() {
               检查系统环境和模型状态，确保所有组件正常运行
             </p>
           </div>
-          <Button onClick={() => void runDiagnostics()} disabled={isRunning}>
-            <RefreshCw className={cn("h-4 w-4 mr-2", isRunning && "animate-spin")} />
-            {isRunning ? "检查中..." : "开始检查"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              className="diagnostics-autofix-button"
+              onClick={() => {
+                void handleAutoFix()
+              }}
+              disabled={!report?.auto_fix_available || isFixing || isRunning}
+            >
+              <RefreshCw className={cn("mr-2 h-4 w-4", isFixing && "animate-spin")} />
+              {isFixing ? "修复中..." : "自动修复"}
+            </Button>
+            <Button onClick={() => void runDiagnostics()} disabled={isRunning || isFixing}>
+              <RefreshCw className={cn("h-4 w-4 mr-2", isRunning && "animate-spin")} />
+              {isRunning ? "检查中..." : "开始检查"}
+            </Button>
+          </div>
         </div>
 
         {(isRunning || report !== null) && (
@@ -441,6 +498,85 @@ export function DiagnosticsView() {
                 </div>
               ))}
             </div>
+          </CardContent>
+        </Card>
+
+        {report?.issues.length ? (
+          <Card className="gap-0 rounded-md border-border/70 bg-card/75 py-0 shadow-none">
+            <CardContent className="space-y-3 px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="text-sm font-medium">待处理问题</CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    这里会集中列出异常、警告以及对应的人工处理建议。
+                  </p>
+                </div>
+                {report.auto_fix_available ? <Badge variant="secondary">支持自动修复</Badge> : null}
+              </div>
+              <div className="space-y-3">
+                {report.issues.map((issue) => (
+                  <div key={issue.id} className="rounded-xl border border-border/60 bg-muted/20 p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium">{issue.title}</span>
+                      <Badge variant={issue.status === "failed" ? "destructive" : "secondary"}>{issue.status}</Badge>
+                      {issue.auto_fixable ? <Badge variant="outline">auto-fixable</Badge> : null}
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">{issue.message}</p>
+                    {issue.manual_action ? (
+                      <p className="mt-2 text-xs leading-6 text-muted-foreground">
+                        建议操作：{issue.manual_action}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        <Card className="gap-0 rounded-md border-border/70 bg-card/75 py-0 shadow-none">
+          <CardContent className="space-y-3 px-4 py-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <CardTitle className="text-sm font-medium">开发者模式</CardTitle>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  这里展示关键视图和重型操作的最近耗时采样，便于在本机排查卡顿、预热和渲染开销。
+                </p>
+              </div>
+              <Badge variant={developerModeEnabled ? "default" : "secondary"}>
+                {developerModeEnabled ? "已开启" : "未开启"}
+              </Badge>
+            </div>
+
+            {developerModeEnabled ? (
+              perfSamples.length > 0 ? (
+                <div className="dialog-ultra-thin-scrollbar max-h-72 overflow-auto rounded-xl border border-border/60 bg-muted/20">
+                  <div className="divide-y divide-border/50">
+                    {perfSamples.slice(0, 24).map((sample) => (
+                      <div key={sample.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium">{formatPerfLabel(sample.label)}</div>
+                          <div className="mt-1 text-[11px] text-muted-foreground">
+                            记录时间 {formatSampledAt(sample.recordedAt)}
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-sm font-semibold tabular-nums">
+                          {sample.durationMs.toFixed(1)}ms
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-border/60 bg-muted/12 px-4 py-5 text-sm text-muted-foreground">
+                  开发者模式已开启，当前还没有采样记录。打开任务处理页并执行实际操作后，这里会开始累积最近的耗时数据。
+                </div>
+              )
+            ) : (
+              <div className="rounded-xl border border-dashed border-border/60 bg-muted/12 px-4 py-5 text-sm text-muted-foreground">
+                你可以在设置中心开启“开发者模式”，然后回到这里查看最近的性能采样数据。
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

@@ -299,6 +299,39 @@ html:not(.dark) body[data-app-background-active="true"] .custom-skin-dialog-surf
   box-shadow: var(--wallpaper-glass-edge-strong);
 }
 
+html:not(.dark) body[data-app-background-active="true"] .confirm-dialog-content {
+  background: linear-gradient(180deg, rgba(112, 124, 142, 0.92) 0%, rgba(93, 103, 119, 0.9) 100%) !important;
+  border-color: transparent !important;
+  color: white !important;
+  backdrop-filter: blur(30px) saturate(1.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 28px 72px rgba(6, 10, 18, 0.22) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .confirm-dialog-content :is(
+    .confirm-dialog-title,
+    .confirm-dialog-description,
+    .confirm-dialog-cancel,
+    .confirm-dialog-action
+  ) {
+  color: white !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .confirm-dialog-content .confirm-dialog-description {
+  color: rgba(255, 255, 255, 0.84) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .confirm-dialog-content .confirm-dialog-cancel {
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .confirm-dialog-content .confirm-dialog-cancel:hover,
+html:not(.dark) body[data-app-background-active="true"] .confirm-dialog-content .confirm-dialog-cancel:focus-visible {
+  background: rgba(255, 255, 255, 0.14) !important;
+}
+
 html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) {
   background: linear-gradient(180deg, rgba(72, 78, 96, 0.96) 0%, rgba(56, 61, 77, 0.94) 100%) !important;
   border-color: transparent !important;
@@ -594,6 +627,58 @@ html:not(.dark) body[data-app-background-active="true"] .upload-dropzone-icon-sh
   color: var(--primary-foreground) !important;
 }
 
+html:not(.dark) body[data-app-background-active="true"] .workflow-step-card {
+  border-color: transparent !important;
+  background: color-mix(in oklch, var(--primary) 12%, transparent) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 8px 18px rgba(6, 10, 18, 0.06);
+}
+
+html:not(.dark) body[data-app-background-active="true"] .value-expectation-row {
+  background: transparent !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .value-expectation-row:is(:hover, :focus-within) {
+  background: color-mix(in oklch, var(--primary) 8%, transparent) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .new-task-source-tabs {
+  background: color-mix(in oklch, var(--primary) 24%, transparent) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 10px 24px rgba(6, 10, 18, 0.08);
+}
+
+html:not(.dark) body[data-app-background-active="true"] .new-task-source-trigger {
+  color: white !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .new-task-source-trigger:is(:hover, :focus-visible, [data-state="active"]) {
+  background: color-mix(in oklch, var(--primary) 58%, white 6%) !important;
+  color: white !important;
+  box-shadow: none !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .new-task-source-panel {
+  border-color: transparent !important;
+  background: color-mix(in oklch, var(--primary) 16%, transparent) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 12px 28px rgba(6, 10, 18, 0.08);
+}
+
+html:not(.dark) body[data-app-background-active="true"] .new-task-source-panel :is(.text-muted-foreground, .text-primary) {
+  color: white !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .new-task-source-dropzone:hover,
+html:not(.dark) body[data-app-background-active="true"] .new-task-source-dropzone:focus-within {
+  background: color-mix(in oklch, var(--primary) 22%, transparent) !important;
+}
+
 html:not(.dark) body[data-app-background-active="true"] .upload-dropzone-icon-shell svg {
   color: var(--primary-foreground) !important;
   opacity: 0.92;
@@ -783,6 +868,24 @@ html:not(.dark) body[data-app-background-active="true"] .history-stat-icon-shell
   color: white !important;
 }
 
+html:not(.dark) body[data-app-background-active="true"] .history-pagination-button,
+html:not(.dark) body[data-app-background-active="true"] .history-pagination-button:is(:hover, :focus, :focus-visible, :active, :disabled) {
+  color: white !important;
+  border-color: transparent !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .history-pagination-button:is(:hover, :focus, :focus-visible, :active) {
+  background: color-mix(in oklch, var(--primary) 34%, transparent) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .history-pagination-button:disabled {
+  background: color-mix(in oklch, white 5%, transparent) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .history-pagination-button svg {
+  color: white !important;
+}
+
 html:not(.dark) body[data-app-background-active="true"] .diagnostics-check-icon-shell {
   background: var(--wallpaper-tint-fill) !important;
   border-color: transparent !important;
@@ -794,6 +897,24 @@ html:not(.dark) body[data-app-background-active="true"] .diagnostics-check-icon-
 html:not(.dark) body[data-app-background-active="true"] .diagnostics-check-icon-shell svg {
   color: white !important;
   opacity: 0.96;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .diagnostics-autofix-button,
+html:not(.dark) body[data-app-background-active="true"] .diagnostics-autofix-button:is(:hover, :focus, :focus-visible, :active, :disabled) {
+  color: white !important;
+  border-color: transparent !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .diagnostics-autofix-button:is(:hover, :focus, :focus-visible, :active) {
+  background: color-mix(in oklch, var(--primary) 34%, transparent) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .diagnostics-autofix-button:disabled {
+  background: color-mix(in oklch, white 5%, transparent) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .diagnostics-autofix-button svg {
+  color: white !important;
 }
 
 html:not(.dark) body[data-app-background-active="true"] .settings-model-icon-shell svg {
@@ -1161,6 +1282,172 @@ body[data-app-background-active="true"] .custom-skin-dialog-surface * {
 .prompt-markdown-editor-shell .w-md-editor-text-input::-webkit-scrollbar-thumb:hover,
 .prompt-markdown-editor-shell .w-md-editor-preview::-webkit-scrollbar-thumb:hover {
   background: var(--prompt-editor-scrollbar-thumb-hover);
+}
+
+.artifact-markdown-viewer-shell {
+  border: 1px solid color-mix(in oklch, var(--border) 78%, var(--foreground) 6%);
+  border-radius: calc(var(--radius) + 0.125rem);
+  background: color-mix(in oklch, var(--background) 94%, var(--muted) 6%);
+  overflow: hidden;
+}
+
+.artifact-markdown-viewer {
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 1.1rem 1.2rem 1.35rem !important;
+  background: transparent !important;
+  color: var(--foreground) !important;
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  line-height: 1.78;
+  --color-canvas-default: transparent !important;
+  --color-canvas-subtle: color-mix(in oklch, var(--muted) 78%, transparent) !important;
+  --color-border-default: color-mix(in oklch, var(--border) 80%, var(--foreground) 6%) !important;
+  --color-border-muted: color-mix(in oklch, var(--border) 72%, transparent) !important;
+  --color-fg-default: var(--foreground) !important;
+  --color-fg-muted: var(--muted-foreground) !important;
+  --color-accent-fg: var(--primary) !important;
+}
+
+.artifact-markdown-viewer :is(h1, h2, h3, h4) {
+  color: var(--foreground) !important;
+  letter-spacing: -0.02em;
+}
+
+.artifact-markdown-viewer h1 {
+  margin-top: 0 !important;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid color-mix(in oklch, var(--border) 82%, transparent);
+  font-size: 1.45rem;
+}
+
+.artifact-markdown-viewer h2 {
+  margin-top: 1.8rem !important;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid color-mix(in oklch, var(--border) 72%, transparent);
+  font-size: 1.16rem;
+}
+
+.artifact-markdown-viewer h3 {
+  margin-top: 1.45rem !important;
+  font-size: 1.02rem;
+}
+
+.artifact-markdown-viewer :is(p, li, blockquote, code, strong, em, td, th, a) {
+  color: inherit !important;
+}
+
+.artifact-markdown-viewer p,
+.artifact-markdown-viewer ul,
+.artifact-markdown-viewer ol,
+.artifact-markdown-viewer blockquote,
+.artifact-markdown-viewer pre,
+.artifact-markdown-viewer table {
+  margin-top: 0.85rem !important;
+  margin-bottom: 0 !important;
+}
+
+.artifact-markdown-viewer ul,
+.artifact-markdown-viewer ol {
+  padding-left: 1.35rem !important;
+}
+
+.artifact-markdown-viewer li + li {
+  margin-top: 0.35rem;
+}
+
+.artifact-markdown-viewer blockquote {
+  border-left: 3px solid color-mix(in oklch, var(--primary) 42%, transparent) !important;
+  background: color-mix(in oklch, var(--accent) 34%, transparent) !important;
+  border-radius: 0 calc(var(--radius) + 0.1rem) calc(var(--radius) + 0.1rem) 0;
+  padding: 0.85rem 1rem !important;
+  color: var(--muted-foreground) !important;
+}
+
+.artifact-markdown-viewer :is(pre, code) {
+  font-family: var(--font-mono) !important;
+}
+
+.artifact-markdown-viewer pre {
+  overflow-x: auto;
+  padding: 0.95rem 1rem !important;
+  border: 1px solid color-mix(in oklch, var(--border) 76%, transparent);
+  border-radius: calc(var(--radius) + 0.125rem);
+  background: color-mix(in oklch, var(--muted) 72%, transparent) !important;
+}
+
+.artifact-markdown-viewer code {
+  border-radius: calc(var(--radius) - 2px);
+  background: color-mix(in oklch, var(--muted) 68%, transparent) !important;
+}
+
+.artifact-markdown-viewer a {
+  color: color-mix(in oklch, var(--primary) 86%, var(--foreground) 14%) !important;
+  text-decoration: none;
+  border-bottom: 1px dashed color-mix(in oklch, var(--primary) 42%, transparent);
+}
+
+.artifact-markdown-viewer a:hover {
+  color: var(--primary) !important;
+  border-bottom-style: solid;
+}
+
+.artifact-markdown-viewer img {
+  display: block;
+  max-width: 100%;
+  margin-top: 1rem;
+  border: 1px solid color-mix(in oklch, var(--border) 72%, transparent);
+  border-radius: calc(var(--radius) + 0.125rem);
+  overflow: hidden;
+}
+
+.artifact-markdown-viewer table {
+  display: block;
+  overflow-x: auto;
+  border-spacing: 0;
+}
+
+.artifact-markdown-viewer th,
+.artifact-markdown-viewer td {
+  border: 1px solid color-mix(in oklch, var(--border) 72%, transparent) !important;
+  padding: 0.65rem 0.8rem !important;
+}
+
+.artifact-markdown-viewer th {
+  background: color-mix(in oklch, var(--muted) 72%, transparent) !important;
+}
+
+.artifact-markdown-viewer,
+.artifact-markdown-viewer pre,
+.artifact-markdown-viewer table {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--primary) 54%, transparent) transparent;
+}
+
+.artifact-markdown-viewer::-webkit-scrollbar,
+.artifact-markdown-viewer pre::-webkit-scrollbar,
+.artifact-markdown-viewer table::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.artifact-markdown-viewer::-webkit-scrollbar-track,
+.artifact-markdown-viewer pre::-webkit-scrollbar-track,
+.artifact-markdown-viewer table::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.artifact-markdown-viewer::-webkit-scrollbar-thumb,
+.artifact-markdown-viewer pre::-webkit-scrollbar-thumb,
+.artifact-markdown-viewer table::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--primary) 52%, transparent);
+  border-radius: 999px;
+}
+
+.artifact-markdown-viewer::-webkit-scrollbar-thumb:hover,
+.artifact-markdown-viewer pre::-webkit-scrollbar-thumb:hover,
+.artifact-markdown-viewer table::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--primary) 68%, var(--foreground) 8%);
 }
 
 .app-toast-shell {

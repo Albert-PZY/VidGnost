@@ -55,6 +55,8 @@ type SurfaceGeometry = {
   frameCenterY: number
 }
 
+const PREVIEW_DEBOUNCE_MS = 120
+
 export function CustomSkinDialog(props: CustomSkinDialogProps) {
   const {
     open,
@@ -69,6 +71,7 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
 
   const surfaceRef = React.useRef<HTMLDivElement | null>(null)
   const previewFrameRef = React.useRef<number | null>(null)
+  const previewDebounceTimerRef = React.useRef<number | null>(null)
   const [surfaceSize, setSurfaceSize] = React.useState({ width: 0, height: 0 })
   const [naturalSize, setNaturalSize] = React.useState({ width: 0, height: 0 })
   const [draftImage, setDraftImage] = React.useState<string | null>(uiSettings.background_image)
@@ -92,6 +95,18 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
   } | null>(null)
 
   const currentScalePercent = Math.round(scale[0] * 100)
+
+  const clearScheduledPreview = React.useCallback(() => {
+    if (previewDebounceTimerRef.current !== null) {
+      window.clearTimeout(previewDebounceTimerRef.current)
+      previewDebounceTimerRef.current = null
+    }
+
+    if (previewFrameRef.current !== null) {
+      window.cancelAnimationFrame(previewFrameRef.current)
+      previewFrameRef.current = null
+    }
+  }, [])
 
   const measureSurfaceSize = React.useCallback(() => {
     if (!surfaceRef.current) {
@@ -302,29 +317,31 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
     [blur, draftImage, focus.x, focus.y, opacity, scale],
   )
 
+  const schedulePreviewCommit = React.useEffectEvent((patch: Partial<UISettingsResponse> | null) => {
+    clearScheduledPreview()
+    previewFrameRef.current = window.requestAnimationFrame(() => {
+      previewFrameRef.current = null
+      React.startTransition(() => {
+        onPreviewChange(patch)
+      })
+    })
+  })
+
   React.useEffect(() => {
     if (!open) {
       return
     }
 
-    if (previewFrameRef.current !== null) {
-      window.cancelAnimationFrame(previewFrameRef.current)
-    }
-
-    previewFrameRef.current = window.requestAnimationFrame(() => {
-      previewFrameRef.current = null
-      React.startTransition(() => {
-        onPreviewChange(previewPatch)
-      })
-    })
+    clearScheduledPreview()
+    previewDebounceTimerRef.current = window.setTimeout(() => {
+      previewDebounceTimerRef.current = null
+      schedulePreviewCommit(previewPatch)
+    }, PREVIEW_DEBOUNCE_MS)
 
     return () => {
-      if (previewFrameRef.current !== null) {
-        window.cancelAnimationFrame(previewFrameRef.current)
-        previewFrameRef.current = null
-      }
+      clearScheduledPreview()
     }
-  }, [onPreviewChange, open, previewPatch])
+  }, [clearScheduledPreview, open, previewPatch, schedulePreviewCommit])
 
   React.useEffect(() => {
     if (!dragState) {
@@ -379,10 +396,7 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
 
   const handleDialogChange = (nextOpen: boolean) => {
     if (!nextOpen) {
-      if (previewFrameRef.current !== null) {
-        window.cancelAnimationFrame(previewFrameRef.current)
-        previewFrameRef.current = null
-      }
+      clearScheduledPreview()
       React.startTransition(() => {
         onPreviewChange(null)
       })
@@ -434,6 +448,7 @@ export function CustomSkinDialog(props: CustomSkinDialogProps) {
   }
 
   const handleSave = async () => {
+    clearScheduledPreview()
     await onSave(previewPatch)
     onPreviewChange(null)
     onOpenChange(false)

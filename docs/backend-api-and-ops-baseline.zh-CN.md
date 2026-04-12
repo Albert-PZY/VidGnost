@@ -102,7 +102,7 @@ uv run python -m compileall app
 
 - 启动失败：
   - 检查 `uv sync` 与 Python 3.12 环境
-  - 检查端口 `8000` 占用
+  - 检查端口 `8666` 占用
 - 任务链路异常：
   - 查看 `backend/storage/event-logs/<task_id>.jsonl`
 - VQA 追踪：

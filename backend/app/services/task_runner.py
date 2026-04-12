@@ -6,9 +6,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
-import urllib.error
-import urllib.parse
-import urllib.request
 
 import orjson
 
@@ -31,6 +28,7 @@ from app.services.runtime_config_store import RuntimeConfigStore
 from app.services.stage_artifact_store import StageArtifactStore
 from app.services.summarizer import LLMService, NotesImageAsset
 from app.services.task_artifact_index import build_task_artifact_index
+from app.services.task_preflight import TaskPreflightService
 from app.services.task_store import TaskStore
 from app.services.transcription import WhisperService
 
@@ -42,8 +40,6 @@ ExecutionMode = Literal["api"]
 _STAGE_KEYS: tuple[StageType, StageType, StageType, StageType] = ("A", "B", "C", "D")
 _RESOURCE_GUARD_WARNING_CODE = "RESOURCE_GUARD_WARNING"
 _RESOURCE_GUARD_WARNING_ACTION = "review_runtime_config"
-_CONFIG_PRECHECK_WARNING_CODE = "CONFIG_PRECHECK_WARNING"
-_CONFIG_PRECHECK_WARNING_ACTION = "review_runtime_config"
 _D_SUBSTAGE_KEYS: tuple[DSubstageType, ...] = (
     "transcript_optimize",
     "fusion_delivery",
@@ -87,6 +83,7 @@ class TaskRunner:
         resource_guard: ResourceGuard,
         model_runtime_manager: ModelRuntimeManager,
         task_store: TaskStore,
+        task_preflight_service: TaskPreflightService,
     ) -> None:
         self._settings = settings
         self._event_bus = event_bus
@@ -95,6 +92,7 @@ class TaskRunner:
         self._runtime_config_store = runtime_config_store
         self._model_runtime_manager = model_runtime_manager
         self._task_store = task_store
+        self._task_preflight_service = task_preflight_service
         self._transcriber = WhisperService(settings)
         self._summarizer = LLMService(
             settings,
@@ -248,23 +246,10 @@ class TaskRunner:
                         stage_logs,
                         substage="scheduler",
                     )
-                preflight_warnings = await asyncio.to_thread(
-                    self._validate_analysis_prerequisites,
-                    llm_runtime_config,
-                    whisper_config,
-                    selected_model,
+                await self._task_preflight_service.assert_ready_for_analysis(
+                    workflow=submission.workflow,
+                    stage="full_task",
                 )
-                for warning in preflight_warnings:
-                    await self._emit_runtime_warning(
-                        task_id,
-                        "A",
-                        warning,
-                        stage_logs,
-                        code=_CONFIG_PRECHECK_WARNING_CODE,
-                        component="runtime_precheck",
-                        action=_CONFIG_PRECHECK_WARNING_ACTION,
-                        substage="precheck",
-                    )
                 for runtime_warning in runtime_warnings:
                     await self._emit_runtime_warning(
                         task_id,
@@ -999,21 +984,20 @@ class TaskRunner:
                         stage_logs,
                         substage="scheduler",
                     )
-                preflight_warnings = await asyncio.to_thread(
-                    self._validate_analysis_prerequisites,
-                    llm_runtime_config,
-                    whisper_config,
+                await self._task_preflight_service.assert_ready_for_analysis(
+                    workflow="notes",
+                    stage="stage_d_retry",
                 )
-                for warning in [*runtime_warnings, *preflight_warnings]:
+                for warning in runtime_warnings:
                     await self._emit_runtime_warning(
                         task_id,
                         "D",
                         warning,
                         stage_logs,
-                        code=_CONFIG_PRECHECK_WARNING_CODE,
-                        component="runtime_precheck",
-                        action=_CONFIG_PRECHECK_WARNING_ACTION,
-                        substage="precheck",
+                        code=_RESOURCE_GUARD_WARNING_CODE,
+                        component="resource_guard",
+                        action=_RESOURCE_GUARD_WARNING_ACTION,
+                        substage="resource",
                     )
 
                 llm_model_id = str(llm_runtime_config.get("model", self._settings.llm_model)).strip() or self._settings.llm_model
@@ -1293,27 +1277,6 @@ class TaskRunner:
         if not local_path.exists():
             raise FileNotFoundError(f"Local source missing: {local_path}")
         return prepare_local_video(submission.task_id, local_path, media_dir)
-
-    def _validate_analysis_prerequisites(
-        self,
-        llm_runtime_config: dict[str, object],
-        whisper_config: dict[str, object],
-        selected_whisper_model: str | None = None,
-    ) -> list[str]:
-        _ = selected_whisper_model
-        _ = whisper_config
-        llm_api_key = str(llm_runtime_config.get("api_key", "")).strip()
-        if not llm_api_key:
-            raise ValueError("运行前检查失败：LLM API 缺少 api_key。")
-        llm_base_url = str(llm_runtime_config.get("base_url", self._settings.llm_base_url)).strip() or self._settings.llm_base_url
-        llm_ok, llm_reason = _probe_openai_compat_models_endpoint(
-            base_url=llm_base_url,
-            api_key=llm_api_key,
-            timeout_seconds=6.0,
-        )
-        if not llm_ok:
-            raise ValueError(f"运行前检查失败：LLM API 连通性检查未通过（{llm_reason}）。")
-        return []
 
     async def _stage_start(
         self,
@@ -2247,36 +2210,6 @@ def _normalize_notes_image_relative_path(relative_path: str) -> str:
     if not normalized.startswith("notes-images/"):
         normalized = f"notes-images/{normalized}"
     return normalized
-
-
-def _probe_openai_compat_models_endpoint(*, base_url: str, api_key: str, timeout_seconds: float) -> tuple[bool, str]:
-    normalized_base_url = str(base_url).strip().rstrip("/")
-    if not normalized_base_url:
-        return (False, "missing base_url")
-    endpoint = f"{normalized_base_url}/models"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Accept": "application/json",
-        "User-Agent": "VidGnost/RuntimePrecheck",
-    }
-    request = urllib.request.Request(endpoint, headers=headers, method="GET")
-    try:
-        with urllib.request.urlopen(request, timeout=max(1.0, float(timeout_seconds))) as response:
-            status_code = int(getattr(response, "status", 200))
-            if 200 <= status_code < 400:
-                return (True, f"HTTP {status_code}")
-            return (False, f"HTTP {status_code}")
-    except urllib.error.HTTPError as exc:
-        if exc.code == 404:
-            # Some OpenAI-compatible providers may not expose /models but endpoint is reachable.
-            return (True, "HTTP 404")
-        if exc.code in {401, 403}:
-            return (False, f"HTTP {exc.code} (authentication rejected)")
-        return (False, f"HTTP {exc.code}")
-    except urllib.error.URLError as exc:
-        return (False, f"{type(exc.reason).__name__ if getattr(exc, 'reason', None) is not None else type(exc).__name__}: {exc.reason if getattr(exc, 'reason', None) is not None else exc}")
-    except Exception as exc:  # noqa: BLE001
-        return (False, f"{type(exc).__name__}: {exc}")
 
 
 def _join_transcript_segment_texts(segments: list[dict[str, float | str]]) -> str:

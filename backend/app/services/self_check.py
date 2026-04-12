@@ -13,6 +13,8 @@ from typing import Literal
 
 from app.config import Settings
 from app.services.events import EventBus
+from app.services.llm_config_store import LLMConfigStore
+from app.services.llm_connectivity import validate_openai_compat_model_config
 from app.services.model_catalog_store import ModelCatalogStore
 from app.services.naming import generate_time_key
 
@@ -57,6 +59,7 @@ class SelfCheckService:
     def __init__(self, settings: Settings, event_bus: EventBus) -> None:
         self._settings = settings
         self._event_bus = event_bus
+        self._llm_config_store = LLMConfigStore(settings)
         self._model_catalog_store = ModelCatalogStore(settings)
         self._sessions: dict[str, SelfCheckSession] = {}
         self._max_session_cache = _MAX_SELF_CHECK_SESSION_CACHE
@@ -331,11 +334,53 @@ class SelfCheckService:
         )
 
     async def _check_llm(self) -> SelfCheckOutcome:
+        config = await self._llm_config_store.get()
         config_path = Path(self._settings.llm_config_path)
-        details = {"配置文件": str(config_path)}
-        if config_path.exists():
-            return SelfCheckOutcome(status="passed", message="LLM 配置可读取", details=details)
-        return SelfCheckOutcome(status="warning", message="LLM 配置缺失", details=details, auto_fixable=True)
+        base_url = str(config.get("base_url", self._settings.llm_base_url)).strip() or self._settings.llm_base_url
+        model_name = str(config.get("model", self._settings.llm_model)).strip() or self._settings.llm_model
+        details = {
+            "配置文件": str(config_path),
+            "模型": model_name,
+            "Base URL": base_url,
+        }
+
+        api_key = str(config.get("api_key", "")).strip()
+        if not api_key:
+            return SelfCheckOutcome(
+                status="warning",
+                message="LLM API Key 未配置",
+                details=details,
+                auto_fixable=True,
+                manual_action="在设置中心填写可用的 LLM API Key 后重新执行系统自检。",
+            )
+
+        validation = validate_openai_compat_model_config(
+            base_url=base_url,
+            api_key=api_key,
+            model=model_name,
+            timeout_seconds=6.0,
+        )
+        details["连通性"] = validation.connectivity_reason
+        details["模型校验"] = validation.model_reason
+        if validation.ok:
+            return SelfCheckOutcome(
+                status="passed",
+                message="LLM 在线 API 连通正常",
+                details=details,
+            )
+        if validation.connectivity_ok and not validation.model_ok:
+            return SelfCheckOutcome(
+                status="failed",
+                message="LLM 在线 API 模型配置无效",
+                details=details,
+                manual_action="检查模型名是否存在于远端模型列表中，并确认当前配置与服务端返回一致。",
+            )
+        return SelfCheckOutcome(
+            status="failed",
+            message="LLM 在线 API 连通失败",
+            details=details,
+            manual_action="检查 Base URL、API Key、网络连通性和鉴权配置后重新执行系统自检。",
+        )
 
     async def _check_embedding(self) -> SelfCheckOutcome:
         return SelfCheckOutcome(

@@ -1,7 +1,5 @@
 "use client"
 
-import * as React from "react"
-
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,17 +37,18 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
-          <AlertDialogDescription>{description}</AlertDialogDescription>
+      <AlertDialogContent className="confirm-dialog-content">
+        <AlertDialogHeader className="confirm-dialog-header">
+          <AlertDialogTitle className="confirm-dialog-title">{title}</AlertDialogTitle>
+          <AlertDialogDescription className="confirm-dialog-description">{description}</AlertDialogDescription>
         </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={isPending}>{cancelLabel}</AlertDialogCancel>
+        <AlertDialogFooter className="confirm-dialog-footer">
+          <AlertDialogCancel className="confirm-dialog-cancel" disabled={isPending}>{cancelLabel}</AlertDialogCancel>
           <AlertDialogAction
             disabled={isPending}
             onClick={onConfirm}
             className={cn(
+              "confirm-dialog-action",
               confirmVariant === "destructive" &&
                 "bg-destructive text-destructive-foreground hover:bg-destructive/90",
             )}

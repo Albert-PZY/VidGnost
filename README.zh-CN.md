@@ -53,7 +53,7 @@ VidGnost 是一个本地优先的视频分析工作台，支持 Web 与 Electron
 
 ### 2.3 宿主形态
 
-- Web：React + Vite，默认后端地址 `http://localhost:8000/api`
+- Web：React + Vite，默认后端地址 `http://localhost:8666/api`
 - Desktop：Electron（`main/preload/renderer`）
   - Electron 启动时会探测 `/api/health`，必要时可通过 `uv run uvicorn` 自动拉起后端
 
@@ -177,7 +177,7 @@ powershell -ExecutionPolicy Bypass -File .\start-all.ps1
 ```bash
 cd backend
 uv sync --python 3.12
-uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8666 --reload
 ```
 
 前端：
@@ -185,7 +185,7 @@ uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```bash
 cd frontend
 pnpm install
-pnpm dev --host 0.0.0.0 --port 5173
+pnpm dev --host 0.0.0.0 --port 6221
 ```
 
 ### 7.3 Electron 桌面模式

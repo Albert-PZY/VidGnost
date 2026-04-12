@@ -1,8 +1,26 @@
 export {}
 
 declare global {
+  type DesktopBootstrapStepStatus = "pending" | "active" | "complete" | "error"
+
+  interface DesktopBootstrapStep {
+    id: string
+    label: string
+    status: DesktopBootstrapStepStatus
+  }
+
   interface DesktopWindowState {
     isMaximized: boolean
+  }
+
+  interface DesktopBootstrapState {
+    progress?: number
+    phaseId?: string
+    title?: string
+    message?: string
+    detail?: string
+    version?: string
+    steps?: DesktopBootstrapStep[]
   }
 
   interface Window {
@@ -20,6 +38,8 @@ declare global {
       toggleMaximizeWindow: () => Promise<DesktopWindowState>
       closeWindow: () => Promise<void>
       getWindowState: () => Promise<DesktopWindowState>
+      reportBootstrapState: (state: DesktopBootstrapState) => void
+      completeBootstrap: (state?: DesktopBootstrapState) => void
       onWindowStateChange: (listener: (state: DesktopWindowState) => void) => () => void
       onWindowCloseRequested: (listener: () => void) => () => void
     }

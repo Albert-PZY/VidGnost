@@ -49,14 +49,37 @@ Prompt template editor SHALL use a markdown editor that keeps the source editor 
 - **AND** the editor applies the same light or dark color mode as the renderer shell
 - **AND** scrolling one pane keeps the other pane aligned for long prompt content
 
-### Requirement: Heavy renderer modules SHALL lazy load with structured skeleton placeholders
-Heavy renderer modules such as settings subviews and embedded markdown editors SHALL load on demand and SHALL present structured skeleton placeholders instead of plain text loading prompts while code or CSS chunks are still resolving. Those placeholders SHALL use neutral placeholder surfaces with subtle shimmer sweeps rather than accent-colored solid blocks.
+### Requirement: Desktop startup SHALL preload core workbench views before main window reveal
+Electron desktop startup SHALL open a dedicated splash window first, keep the main window hidden while renderer assets and core workbench views initialize, and reveal the main window only after bootstrap completes or enters degraded mode. Core workbench views such as `新建任务`, `历史记录`, `设置中心`, `系统自检`, `任务处理`, and the prompt-template Markdown editor SHALL be included in the initial renderer startup path instead of route-level or dialog-level lazy loading placeholders. The splash surface SHALL follow the same restrained professional dark-tool styling as the renderer shell, using the project logo, a centered vertical brand composition, a single thin progress bar, and a five-step startup checklist with per-step elapsed-time feedback. The checklist SHALL be bound to explicit startup task states emitted by the hidden main window and renderer instead of inferring stages from display copy. The dedicated splash window SHALL keep a compact fixed footprint around `420 x 480` logical pixels so the launch surface reads as a concise startup panel instead of a large poster-like frame.
 
-#### Scenario: Open a lazily loaded settings surface
-- **WHEN** user opens a lazily loaded view or prompt editor
-- **THEN** the renderer shows a layout-matched skeleton placeholder
-- **AND** the placeholder uses neutral, low-contrast loading tones with a restrained shimmer effect
-- **AND** the final surface replaces the skeleton once the async chunk and styles are ready
+#### Scenario: Launch the Electron workbench
+- **WHEN** user opens the desktop application
+- **THEN** a standalone splash surface appears immediately with the project brand image and startup progress copy
+- **AND** the splash surface keeps a compact professional layout with restrained dark surfaces and no decorative glow, scanline, floating ornament, or card-heavy dashboard treatment
+- **AND** the splash surface centers the project logo, product name, and product subtitle above the startup progress region
+- **AND** the startup progress region presents a thin progress bar plus the ordered checklist `加载前端资源` → `连接本地服务` → `同步任务概览` → `同步界面配置` → `稳定首帧并挂载 UI`
+- **AND** completed checklist items show elapsed-time feedback while the active item shows a loading affordance instead of repeating large paragraphs of copy
+- **AND** the splash progress percentage is derived from the count of completed explicit startup steps rather than heuristic text matching
+- **AND** each checklist step is promoted to `active`, `complete`, or `error` only when the corresponding renderer or main-process startup task actually changes state
+- **AND** the hidden main window continues loading renderer assets, core workbench views, and initial UI data in the background
+- **AND** the main window is revealed only after startup bootstrap reports completion or explicitly enters degraded mode
+- **AND** no page-level or prompt-editor skeleton placeholder is shown as part of the initial desktop startup chain
+
+#### Scenario: Bootstrap script enforces fixed service ports
+- **WHEN** the Windows or shell startup script launches the local desktop workbench
+- **THEN** the backend process binds only to `8666` and the frontend dev server binds only to `6221`
+- **AND** the script attempts to reclaim those fixed ports before startup
+- **AND** startup stops with a clear port-availability failure if either fixed port still cannot be bound
+- **AND** the spawned frontend or Electron process receives matching `VITE_API_BASE_URL` and `VITE_DEV_SERVER_URL` values for the fixed ports
+- **AND** the Windows launcher preserves quoted child-console bootstrap commands so frontend wait chains that contain shell operators such as `&&` stay compatible with Windows PowerShell 5.1
+
+### Requirement: Workspace maintenance scripts SHALL clear local transient artifacts safely
+Repository maintenance scripts SHALL provide Windows and shell entry points that remove local transient logs, build outputs, and cache directories without touching persisted runtime data.
+
+#### Scenario: Run workspace cleanup script
+- **WHEN** maintainer executes `scripts/clean-workspace.ps1` or `scripts/clean-workspace.sh`
+- **THEN** root-level transient `.log` files, frontend build output, and local cache directories such as `.pytest_cache`, `.ruff_cache`, `.mypy_cache`, `frontend/.vite`, and `frontend/node_modules/.vite` are removed
+- **AND** persisted runtime data under `backend/storage/` remains untouched
 
 ### Requirement: Workbench SHALL surface transient notifications through a compact toast stack
 Renderer SHALL present transient `success`, `error`, and `loading` feedback through a single top-centered toast stack. The stack SHALL keep at most three visible notifications and SHALL retire older visible items when newer notifications overflow the cap.
@@ -84,7 +107,9 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **WHEN** user chooses a skin image from the Electron shell and opens the skin dialog
 - **THEN** the renderer shows a compact single-column skin dialog with a fixed selection frame and wheel-driven zoom
 - **AND** dragging inside the selection frame moves the image behind the frame instead of moving or resizing the frame itself
+- **AND** the live shell preview uses a short eased transition while the user drags the frame, changes image scale, or adjusts image opacity, unless reduced-motion is requested
 - **AND** adjusting blur only changes blur intensity and SHALL NOT alter the saved image scale or focus position
+- **AND** increasing blur SHALL NOT crop the bottom edge of the sampled image or shift the sampled frame vertically
 - **AND** blur rendering in the dialog preview uses an offscreen WebGL pipeline that keeps the image layout fixed instead of inflating the image bounds to hide blur edges
 - **AND** the blur pipeline duplicates edge samples at the image boundary so higher blur values do not reveal transparent or empty borders
 - **AND** the dialog preview only displays the original image rect and SHALL NOT expose duplicated edge-fill strips outside that rect
@@ -92,6 +117,9 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **AND** surrounding appearance cards keep helper copy minimal and avoid repeating nearby controls or status labels
 - **AND** the selection frame stays fully inside the currently rendered image bounds, including at the minimum persisted `100%` scale
 - **AND** the current shell background updates in real time while the dialog is open
+- **AND** brief drag, zoom, opacity, or blur bursts from the dialog coalesce before they reach the shell background layer so each preview fade can complete without being restarted on every pointer frame
+- **AND** the shell background layer starts each crossfade only after the incoming preview layer has produced its first rendered frame, so the user sees an actual fade instead of a direct visual swap
+- **AND** when the runtime reports reduced motion, the shell background layer MAY shorten this crossfade but SHALL keep a lightweight opacity fade for skin preview swaps so the preview does not visually snap between frames
 - **AND** higher blur values MAY reduce the internal offscreen blur resolution to preserve interactive smoothness while keeping the saved scale, focus, and output frame unchanged
 - **AND** the primary save action follows the active UI theme hue instead of using a fixed accent color
 - **AND** saving the dialog persists opacity, blur, scale, and focus coordinates for the selected image
@@ -115,12 +143,16 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **AND** in light theme with a custom skin active, appearance-setting action buttons and hue chips suppress visible outline strokes and rely on translucent surfaces plus theme-hue hover feedback
 - **AND** in light theme with a custom skin active, titlebar controls keep a neutral resting surface while the sidebar workflow trigger uses a glass resting surface and both only add emphasis on hover, focus, or open state
 - **AND** in light theme with a custom skin active, history overview icon shells use the active theme hue family while preserving each icon glyph color
+- **AND** in light theme with a custom skin active, the application-close confirmation dialog uses a denser frosted light surface with white foreground text
 - **AND** in light theme with a custom skin active, diagnostics check-list icon shells use the active theme hue family and keep the inner icon glyphs white
 - **AND** in light theme with a custom skin active, model-configuration and prompt-template dialogs reuse the custom-skin dialog's deep glass surface, preserve light foreground text, suppress hard borders, use thinner themed scrollbars, and keep header/footer chrome visually compact
 - **AND** in light theme with a custom skin active, the prompt-template Markdown editor preview SHALL NOT fall back to the library default white canvas and instead keeps a tinted dark translucent reading surface with readable light foreground text
 - **AND** in light theme with a custom skin active, the prompt-template Markdown editor input pane and preview pane use the same thin themed scrollbar styling
 - **AND** sidebar separators stay clipped to the sidebar content width in every theme and SHALL NOT visually protrude past the container edge
 - **AND** in light theme with a custom skin active, generic select and dropdown controls across the workbench keep white foreground text and icons by default and SHALL NOT fall back to dark typography inside glass popup surfaces
+- **AND** in light theme with a custom skin active, new-task intake mode tabs and intake panels use theme-hue translucent fills with white foreground text and explicit hover or active emphasis
+- **AND** in light theme with a custom skin active, history pagination controls keep white foreground text
+- **AND** in light theme with a custom skin active, the diagnostics `自动修复` action keeps white foreground text and icon color in resting, hover, focus, and disabled states
 - **AND** in light theme with a custom skin active, titlebar language/theme menus and the sidebar workflow menu use the shared glass dropdown surface, default to white text/icons, and express selected or hover state via neutral glass emphasis instead of theme-cyan fills
 - **AND** in light theme with a custom skin active, titlebar language/theme menu items and sidebar workflow options keep a neutral resting state and SHALL NOT inherit global accent background fills outside their explicit local hover, focus, highlight, or selected glass states
 - **AND** in light theme with a custom skin active, prompt-template list cards suppress hard white outline strokes in favor of translucent surface separation
@@ -144,20 +176,22 @@ Header theme controls SHALL show the current selected theme mode with explicit s
 - **AND** only the selected theme option shows the explicit selection indicator
 
 ### Requirement: Workbench branding SHALL use the project logo asset
-Renderer branding surfaces and favicon SHALL use `frontend/public/icon.svg` as the project logo asset.
+Renderer branding surfaces, desktop splash branding, and favicon SHALL use `frontend/public/icon.svg` as the canonical project logo asset. The desktop package MAY include a synchronized raster companion asset at `frontend/public/icon.png` for runtime or distribution compatibility, and branding assets SHALL NOT depend on a separate legacy light-icon file.
 
 #### Scenario: Open application shell
 - **WHEN** application renderer loads
-- **THEN** sidebar branding uses the project logo
+- **THEN** the desktop splash surface and sidebar branding use the project logo
 - **AND** browser/electron renderer favicon resolves to the same logo asset
+- **AND** any packaged raster companion icon stays visually aligned with the canonical SVG branding
 
 ### Requirement: Renderer SHALL consume backend data through plain HTTP APIs
-Frontend SHALL only render backend-provided data and call the Python backend over HTTP APIs. Electron bridge SHALL be limited to desktop shell integrations such as open path, open external link, image-file selection, and window controls.
+Frontend SHALL only render backend-provided data and call the Python backend over HTTP APIs. Electron bridge SHALL be limited to desktop shell integrations such as open path, open external link, image-file selection, startup progress handoff between splash and main windows, and window controls.
 
 #### Scenario: Load the workbench in Electron
 - **WHEN** renderer starts inside Electron
 - **THEN** data requests go through the backend HTTP API
 - **AND** Electron preload APIs are used only for desktop shell interactions
+- **AND** startup progress and completion handoff between the hidden main window and the splash surface stays inside the Electron shell bridge instead of changing backend transport contracts
 
 #### Scenario: Pick a skin image from Electron
 - **WHEN** user clicks the skin selection button in appearance settings inside Electron
@@ -172,3 +206,73 @@ Diagnostics view SHALL render runtime metrics in a single compact strip that exp
 - **THEN** the diagnostics page shows a compact runtime strip with uptime, CPU, memory, and GPU summaries
 - **AND** the strip shows the latest sample timestamp
 - **AND** memory and GPU rows expose usage detail without expanding into secondary cards
+
+### Requirement: New-task view SHALL expose multi-source intake with value preview
+New-task view SHALL expose `Upload`, `URL`, and `Path` intake modes inside the same workbench surface and SHALL show workflow-specific value preview blocks before the user starts analysis.
+
+#### Scenario: Open new-task view for notes workflow
+- **WHEN** user enters the new-task view with workflow `notes`
+- **THEN** the renderer shows responsive workflow step cards without horizontal scrolling, a value-preview summary, and the three intake modes
+- **AND** workflow-step and value-preview content keep a compact flat structure inside the surrounding shell cards instead of reintroducing nested heavyweight sub-cards
+- **AND** the upload mode supports drag-and-drop plus batch file selection
+- **AND** the user can switch to URL or absolute local-path input without leaving the page
+
+### Requirement: Diagnostics view SHALL surface developer-mode samples when enabled
+Diagnostics view SHALL expose a dedicated developer-mode area below the runtime strip and issue summary. When developer mode is enabled from settings, the area SHALL list recent local frontend performance samples captured from critical views or heavy actions; when developer mode is disabled, the same area SHALL explain how to enable it.
+
+#### Scenario: Open diagnostics view with developer mode enabled
+- **WHEN** user enables developer mode in settings and then opens diagnostics
+- **THEN** the diagnostics page shows a developer-mode panel near the bottom of the page
+- **AND** the panel lists recent performance samples with readable operation labels, local timestamps, and duration values in milliseconds
+- **AND** the panel updates as new local samples are recorded during the same renderer session
+
+### Requirement: Bootstrap surfaces SHALL provide startup progress and backend recovery actions
+Workbench bootstrap SHALL expose a desktop splash progress state before the main window reveal and a renderer overlay state machine for `initializing`, `connecting`, `degraded`, and `ready` after the main window becomes visible. Degraded states SHALL provide direct recovery actions.
+
+#### Scenario: Backend is unavailable during bootstrap
+- **WHEN** renderer cannot complete initial health/config synchronization
+- **THEN** the desktop splash completes the startup handoff and the main window opens in degraded mode
+- **AND** the desktop splash marks the failing explicit startup step as `error` instead of fabricating a fully completed progress bar
+- **AND** a blocking overlay explains that the backend is unavailable
+- **AND** the overlay provides `重试连接`, `查看诊断`, and `打开日志目录` actions
+- **AND** the overlay is dismissed automatically once bootstrap reaches `ready`
+
+### Requirement: Task processing workbench SHALL provide a resizable evidence-driven workspace
+Task processing workbench SHALL use a horizontal resizable split layout. The left workspace SHALL provide `转写片段`, `证据时间轴`, and `阶段输出` tabs. The right workspace SHALL switch between `Markdown 工作区 / 思维导图 / 研究板` for notes tasks and `流式问答 / Trace Theater / 研究板` for VQA tasks.
+
+#### Scenario: Open a completed notes task
+- **WHEN** user opens a notes task in the processing workbench
+- **THEN** the renderer shows the resizable video-and-artifact layout
+- **AND** summary and notes results render as Markdown instead of plain preformatted text
+- **AND** Markdown timestamps can seek the video
+- **AND** transcript cards support quick actions such as `加入笔记` and `加入研究板`
+
+#### Scenario: Open a VQA task and ask a question
+- **WHEN** user submits a question from the VQA workbench
+- **THEN** the renderer streams incremental answer chunks into the chat surface
+- **AND** each answer may expose `trace_id`, citations, and citation jump actions
+- **AND** opening Trace Theater reveals retrieval-stage panels such as Dense, Sparse, RRF, and rerank results
+
+### Requirement: Prompt settings SHALL include an experiment surface
+Prompt-template settings SHALL include a `Prompt Lab` surface that compares two templates under the same channel against the same sample title and transcript.
+
+#### Scenario: Open prompt settings after templates load
+- **WHEN** user enters the prompt-template section
+- **THEN** the renderer shows the template list and the Prompt Lab surface in the same section
+- **AND** Prompt Lab allows selecting a channel plus template `A/B`
+- **AND** Prompt Lab shows both the original template text and a generated sample prompt draft for comparison
+
+### Requirement: Diagnostics view SHALL expose autofix and issue summary
+Diagnostics view SHALL provide a direct autofix action when the backend marks issues as auto-fixable, and SHALL summarize actionable issues below the live runtime strip.
+
+#### Scenario: Self-check report contains auto-fixable issues
+- **WHEN** diagnostics report indicates `auto_fix_available`
+- **THEN** the renderer shows an `自动修复` action
+- **AND** the issue summary lists each problem, its status, message, and optional manual action guidance
+
+#### Scenario: Diagnostics self-check validates LLM online connectivity
+- **WHEN** the backend runs the `LLM 模型` self-check step
+- **THEN** it verifies the configured online LLM API key and Base URL
+- **AND** it probes the configured OpenAI-compatible `/models` endpoint
+- **AND** it only reports success when the `/models` response is a valid model list and the configured `model` is present in that remote list
+- **AND** the diagnostics issue summary reports the concrete connectivity result instead of only checking whether the config file exists

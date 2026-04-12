@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import io
+import mimetypes
+import shutil
 import tarfile
 import zipfile
 from datetime import datetime, timezone
@@ -12,7 +14,7 @@ from urllib.parse import quote
 import aiofiles
 import orjson
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response
 from starlette.responses import StreamingResponse
 
 from app.errors import AppError
@@ -39,6 +41,7 @@ from app.services.exporters import render_markmap_html
 from app.services.ingestion import ALLOWED_VIDEO_EXTENSIONS, sanitize_filename
 from app.services.naming import generate_time_key
 from app.services.task_artifact_index import build_task_artifact_index, parse_task_artifact_index
+from app.services.task_preflight import TaskPreflightService
 from app.services.task_runner import TaskSubmission, TaskRunner
 from app.services.task_store import TaskStore
 
@@ -58,6 +61,10 @@ def get_event_bus(request: Request) -> EventBus:
 
 def get_task_store(request: Request) -> TaskStore:
     return request.app.state.task_store
+
+
+def get_task_preflight_service(request: Request) -> TaskPreflightService:
+    return request.app.state.task_preflight_service
 
 
 def _validate_video_extension(suffix: str) -> None:
@@ -85,10 +92,12 @@ async def create_task_from_url(
     payload: TaskCreateFromUrlRequest,
     task_store: TaskStore = Depends(get_task_store),
     runner: TaskRunner = Depends(get_runner),
+    task_preflight_service: TaskPreflightService = Depends(get_task_preflight_service),
 ) -> TaskCreateResponse:
+    workflow: WorkflowType = payload.workflow
+    await task_preflight_service.assert_ready_for_analysis(workflow=workflow)
     task_id = _next_task_id(task_store)
     now = datetime.now(timezone.utc)
-    workflow: WorkflowType = payload.workflow
     record = TaskRecord(
         id=task_id,
         source_type="bilibili",
@@ -128,6 +137,7 @@ async def create_task_from_path(
     payload: TaskCreateFromPathRequest,
     task_store: TaskStore = Depends(get_task_store),
     runner: TaskRunner = Depends(get_runner),
+    task_preflight_service: TaskPreflightService = Depends(get_task_preflight_service),
 ) -> TaskCreateResponse:
     local_path = Path(payload.local_path).expanduser()
     if not local_path.exists() or not local_path.is_file():
@@ -135,6 +145,7 @@ async def create_task_from_path(
     _validate_video_extension(local_path.suffix.lower())
 
     workflow: WorkflowType = payload.workflow
+    await task_preflight_service.assert_ready_for_analysis(workflow=workflow)
     task_id = _next_task_id(task_store)
     now = datetime.now(timezone.utc)
     record = TaskRecord(
@@ -182,8 +193,10 @@ async def create_task_from_file(
     workflow: WorkflowType = Form(default="notes"),
     task_store: TaskStore = Depends(get_task_store),
     runner: TaskRunner = Depends(get_runner),
+    task_preflight_service: TaskPreflightService = Depends(get_task_preflight_service),
 ) -> TaskCreateResponse:
     _ = model_size
+    await task_preflight_service.assert_ready_for_analysis(workflow=workflow)
     task = await _create_task_from_uploaded_file(
         request=request,
         file=file,
@@ -205,6 +218,7 @@ async def create_tasks_from_files(
     strategy: Literal["single_task_per_file", "batch_task"] = Form(default="single_task_per_file"),
     task_store: TaskStore = Depends(get_task_store),
     runner: TaskRunner = Depends(get_runner),
+    task_preflight_service: TaskPreflightService = Depends(get_task_preflight_service),
 ) -> TaskBatchCreateResponse:
     _ = model_size
     if not files:
@@ -220,6 +234,7 @@ async def create_tasks_from_files(
             hint="当前版本支持 single_task_per_file。",
         )
 
+    await task_preflight_service.assert_ready_for_analysis(workflow=workflow)
     tasks: list[TaskCreateResponse] = []
     for file in files:
         created = await _create_task_from_uploaded_file(
@@ -284,6 +299,22 @@ def list_tasks(
 def get_task(task_id: str, task_store: TaskStore = Depends(get_task_store)) -> TaskDetailResponse:
     record = _require_task(task_store, task_id)
     return _to_detail(record)
+
+
+@router.get("/{task_id}/artifacts/file")
+def get_task_artifact_file(
+    task_id: str,
+    request: Request,
+    path: str = Query(..., min_length=1),
+    task_store: TaskStore = Depends(get_task_store),
+):
+    _require_task(task_store, task_id)
+    storage_dir = str(request.app.state.settings.storage_dir)
+    target_path = _resolve_task_artifact_path(storage_dir=storage_dir, task_id=task_id, relative_path=path)
+    if not target_path.exists() or not target_path.is_file():
+        raise AppError.not_found("Task artifact not found", code="TASK_ARTIFACT_NOT_FOUND")
+    media_type = mimetypes.guess_type(str(target_path))[0] or "application/octet-stream"
+    return FileResponse(target_path, media_type=media_type)
 
 
 @router.get("/{task_id}/open-location")
@@ -351,6 +382,7 @@ def update_task_artifacts(
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_task(
+    request: Request,
     task_id: str,
     task_store: TaskStore = Depends(get_task_store),
 ) -> Response:
@@ -358,6 +390,13 @@ def delete_task(
     if record.status not in {TaskStatus.COMPLETED.value, TaskStatus.FAILED.value, TaskStatus.CANCELLED.value}:
         raise AppError.conflict("Running task cannot be deleted", code="TASK_DELETE_FORBIDDEN")
     task_store.delete(task_id)
+    settings = request.app.state.settings
+    shutil.rmtree(Path(settings.temp_dir) / task_id, ignore_errors=True)
+    for candidate in Path(settings.upload_dir).glob(f"{task_id}_*"):
+        if candidate.is_dir():
+            shutil.rmtree(candidate, ignore_errors=True)
+        else:
+            candidate.unlink(missing_ok=True)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -670,6 +709,17 @@ def _build_content_disposition(filename: str) -> str:
     ascii_fallback = ascii_fallback or "download.bin"
     encoded_filename = quote(filename, safe="")
     return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded_filename}"
+
+
+def _resolve_task_artifact_path(*, storage_dir: str, task_id: str, relative_path: str) -> Path:
+    normalized = relative_path.replace("\\", "/").strip().lstrip("/")
+    if not normalized or ".." in Path(normalized).parts:
+        raise AppError.bad_request("Invalid artifact path", code="TASK_ARTIFACT_PATH_INVALID")
+    artifact_root = Path(storage_dir) / "tasks" / "stage-artifacts" / task_id / "D" / "fusion"
+    target_path = (artifact_root / normalized).resolve()
+    if artifact_root.resolve() not in target_path.parents and target_path != artifact_root.resolve():
+        raise AppError.bad_request("Artifact path escaped task root", code="TASK_ARTIFACT_PATH_INVALID")
+    return target_path
 
 
 def _to_summary_item(record: TaskRecord) -> TaskSummaryItem:
