@@ -43,6 +43,8 @@
 - `PUT /api/config/llm`
 - `GET /api/config/whisper`
 - `PUT /api/config/whisper`
+- `PUT /api/config/whisper/runtime-libraries`
+- `POST /api/config/whisper/runtime-libraries/install`
 - `GET /api/config/prompts`
 - `PUT /api/config/prompts/selection`
 - `POST /api/config/prompts/templates`

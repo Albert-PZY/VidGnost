@@ -15,6 +15,10 @@ export type ModelRuntimeStatus = "ready" | "loading" | "not_ready" | "error"
 
 export type ModelDownloadState = "idle" | "downloading" | "completed" | "cancelled" | "failed"
 
+export type WhisperRuntimeLibrariesStatus = "ready" | "not_ready" | "installing" | "failed" | "unsupported"
+
+export type WhisperRuntimeLibrariesInstallState = "idle" | "installing" | "completed" | "failed"
+
 export interface ApiErrorPayload {
   code: string
   message: string
@@ -180,6 +184,32 @@ export interface PromptTemplateBundleResponse {
   selected_mindmap_template_id: string
 }
 
+export interface WhisperRuntimeLibrariesProgressResponse {
+  state: WhisperRuntimeLibrariesInstallState
+  message: string
+  current_package: string
+  downloaded_bytes: number
+  total_bytes: number
+  percent: number
+  updated_at: string
+}
+
+export interface WhisperRuntimeLibrariesResponse {
+  install_dir: string
+  auto_configure_env: boolean
+  version_label: string
+  platform_supported: boolean
+  ready: boolean
+  status: WhisperRuntimeLibrariesStatus
+  message: string
+  bin_dir: string
+  missing_files: string[]
+  discovered_files: Record<string, string>
+  load_error: string
+  path_configured: boolean
+  progress: WhisperRuntimeLibrariesProgressResponse
+}
+
 export interface WhisperConfigResponse {
   model_default: string
   language: string
@@ -191,6 +221,7 @@ export interface WhisperConfigResponse {
   chunk_seconds: number
   target_sample_rate: number
   target_channels: number
+  runtime_libraries: WhisperRuntimeLibrariesResponse
   warnings: string[]
   rollback_applied: boolean
 }

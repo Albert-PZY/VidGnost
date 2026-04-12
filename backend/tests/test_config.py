@@ -14,6 +14,7 @@ def test_get_and_update_whisper_config_api_only() -> None:
         current = response.json()
         assert "model_default" in current
         assert "chunk_seconds" in current
+        assert "runtime_libraries" in current
         assert "frame_extraction_enabled" not in current
         assert "vlm_enabled" not in current
         assert "vlm_api_key_configured" not in current
@@ -31,7 +32,8 @@ def test_get_and_update_whisper_config_api_only() -> None:
         assert saved["chunk_seconds"] == 300
         assert saved["beam_size"] == 4
         assert saved["vad_filter"] is False
-        assert saved["device"] == "cpu"
+        assert saved["device"] == current["device"]
+        assert saved["runtime_libraries"]["install_dir"]
 
 
 def test_get_and_update_llm_config_persists_file() -> None:

@@ -17,6 +17,7 @@ from app.services.llm_config_store import LLMConfigStore
 from app.services.llm_connectivity import validate_openai_compat_model_config
 from app.services.model_catalog_store import ModelCatalogStore
 from app.services.naming import generate_time_key
+from app.services.whisper_gpu_runtime_service import WhisperGpuRuntimeService
 
 StepStatus = Literal["pending", "running", "passed", "warning", "failed"]
 SessionStatus = Literal["idle", "running", "completed", "failed", "fixing"]
@@ -56,11 +57,17 @@ class SelfCheckSession:
 
 
 class SelfCheckService:
-    def __init__(self, settings: Settings, event_bus: EventBus) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        event_bus: EventBus,
+        whisper_gpu_runtime_service: WhisperGpuRuntimeService,
+    ) -> None:
         self._settings = settings
         self._event_bus = event_bus
         self._llm_config_store = LLMConfigStore(settings)
         self._model_catalog_store = ModelCatalogStore(settings)
+        self._whisper_gpu_runtime_service = whisper_gpu_runtime_service
         self._sessions: dict[str, SelfCheckSession] = {}
         self._max_session_cache = _MAX_SELF_CHECK_SESSION_CACHE
         self._lock = asyncio.Lock()
@@ -268,6 +275,7 @@ class SelfCheckService:
         return [
             _SelfCheckItem("env", "系统环境", self._check_system),
             _SelfCheckItem("gpu", "GPU 加速", self._check_gpu),
+            _SelfCheckItem("gpu-runtime", "Whisper GPU 运行库", self._check_gpu_runtime),
             _SelfCheckItem("whisper", "FasterWhisper", self._check_whisper),
             _SelfCheckItem("llm", "LLM 模型", self._check_llm),
             _SelfCheckItem("embedding", "嵌入模型", self._check_embedding),
@@ -321,6 +329,42 @@ class SelfCheckService:
         except Exception:  # noqa: BLE001
             details["显卡"] = "未检测到 NVIDIA GPU"
             return SelfCheckOutcome(status="warning", message="GPU 加速不可用", details=details)
+
+    async def _check_gpu_runtime(self) -> SelfCheckOutcome:
+        status = await self._whisper_gpu_runtime_service.get_status()
+        details = {
+            "版本": status["version_label"],
+            "安装目录": status["install_dir"],
+            "运行库目录": status["bin_dir"],
+            "环境变量": "已配置" if status["path_configured"] else "未配置",
+        }
+        if status["missing_files"]:
+            details["缺失文件"] = ", ".join(status["missing_files"])
+        if status["load_error"]:
+            details["加载错误"] = status["load_error"]
+
+        if status["status"] == "ready":
+            return SelfCheckOutcome(
+                status="passed",
+                message="Whisper GPU 运行库已就绪",
+                details=details,
+            )
+
+        if status["status"] == "unsupported":
+            return SelfCheckOutcome(
+                status="warning",
+                message="当前平台不支持 Whisper GPU 运行库自动安装",
+                details=details,
+                manual_action="如需 GPU 转写，请在支持的平台手动安装完整 CUDA 12 与 cuDNN 9 运行环境。",
+            )
+
+        return SelfCheckOutcome(
+            status="warning",
+            message="Whisper GPU 运行库未就绪",
+            details=details,
+            auto_fixable=False,
+            manual_action="在设置中心的语音转写模型区域配置安装目录并执行“一键安装完整运行库”。",
+        )
 
     async def _check_whisper(self) -> SelfCheckOutcome:
         model_dir = Path(self._settings.storage_dir) / "model-hub" / "faster-whisper-small"

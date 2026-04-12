@@ -13,6 +13,7 @@ from app.services.llm_connectivity import validate_openai_compat_model_config
 from app.services.llm_config_store import LLMConfigStore
 from app.services.model_catalog_store import ModelCatalogStore
 from app.services.runtime_config_store import RuntimeConfigStore
+from app.services.whisper_gpu_runtime_service import WhisperGpuRuntimeService
 
 PreflightStage = Literal["full_task", "stage_d_retry"]
 
@@ -27,6 +28,7 @@ class TaskPreflightService:
     llm_config_store: LLMConfigStore
     runtime_config_store: RuntimeConfigStore
     model_catalog_store: ModelCatalogStore
+    whisper_gpu_runtime_service: WhisperGpuRuntimeService
 
     async def assert_ready_for_analysis(
         self,
@@ -46,6 +48,11 @@ class TaskPreflightService:
         if stage == "full_task":
             self._assert_ffmpeg_available()
             self._assert_whisper_runtime(whisper_config)
+            whisper_gpu_status = await self.whisper_gpu_runtime_service.get_status()
+            self.whisper_gpu_runtime_service.assert_runtime_ready_for_device(
+                str(whisper_config.get("device", "cpu")),
+                whisper_gpu_status,
+            )
         self._assert_required_models_ready(workflow=workflow, stage=stage, models=models)
 
     def _assert_storage_capacity(self) -> None:

@@ -6,6 +6,7 @@ import {
   CloudDownload,
   Cpu,
   FileCode,
+  FolderOpen,
   Palette,
   Globe,
   Plus,
@@ -58,6 +59,7 @@ import {
   getModels,
   getPromptTemplates,
   getWhisperConfig,
+  installWhisperRuntimeLibraries,
   reloadModels,
   startModelDownload,
   updateLLMConfig,
@@ -65,6 +67,7 @@ import {
   updatePromptSelection,
   updatePromptTemplate,
   updateWhisperConfig,
+  updateWhisperRuntimeLibrariesConfig,
 } from "@/lib/api"
 import { formatBytes } from "@/lib/format"
 import { isPerfLoggingEnabled, setPerfLoggingEnabled } from "@/lib/perf"
@@ -77,6 +80,7 @@ import type {
   PromptTemplateItem,
   UISettingsResponse,
   WhisperConfigResponse,
+  WhisperRuntimeLibrariesResponse,
 } from "@/lib/types"
 
 interface SettingsViewProps {
@@ -179,6 +183,11 @@ type LLMConfigFormState = {
   correction_overlap: string
 }
 
+type WhisperRuntimeFormState = {
+  install_dir: string
+  auto_configure_env: boolean
+}
+
 const EMPTY_LLM_FORM: LLMConfigFormState = {
   base_url: "",
   api_key: "",
@@ -186,6 +195,11 @@ const EMPTY_LLM_FORM: LLMConfigFormState = {
   correction_mode: "strict",
   correction_batch_size: "24",
   correction_overlap: "3",
+}
+
+const EMPTY_WHISPER_RUNTIME_FORM: WhisperRuntimeFormState = {
+  install_dir: "",
+  auto_configure_env: true,
 }
 
 const modelVisuals: Record<
@@ -280,12 +294,15 @@ export function SettingsView({
   const [promptForm, setPromptForm] = React.useState(EMPTY_PROMPT_FORM)
   const [modelForm, setModelForm] = React.useState<ModelConfigFormState>(EMPTY_MODEL_FORM)
   const [llmForm, setLlmForm] = React.useState<LLMConfigFormState>(EMPTY_LLM_FORM)
+  const [whisperRuntimeForm, setWhisperRuntimeForm] = React.useState<WhisperRuntimeFormState>(EMPTY_WHISPER_RUNTIME_FORM)
   const [isLoading, setIsLoading] = React.useState(true)
   const [busyModelId, setBusyModelId] = React.useState("")
   const [isSavingPrompt, setIsSavingPrompt] = React.useState(false)
   const [isSavingModel, setIsSavingModel] = React.useState(false)
   const [isSavingUi, setIsSavingUi] = React.useState(false)
   const [isUpdatingWhisper, setIsUpdatingWhisper] = React.useState(false)
+  const [isUpdatingWhisperRuntime, setIsUpdatingWhisperRuntime] = React.useState(false)
+  const [whisperRuntimeDirty, setWhisperRuntimeDirty] = React.useState(false)
   const [pendingDeletePrompt, setPendingDeletePrompt] = React.useState<PromptTemplateItem | null>(null)
   const [isDeletingPrompt, setIsDeletingPrompt] = React.useState(false)
   const [perfLoggingEnabled, setPerfLoggingState] = React.useState(false)
@@ -414,6 +431,7 @@ export function SettingsView({
       setPromptBundle(promptResponse)
       setWhisperConfig(whisperResponse)
       setLlmConfig(llmResponse)
+      setWhisperRuntimeDirty(false)
     } catch (error) {
       toast.error(getApiErrorMessage(error, "加载设置数据失败"))
     } finally {
@@ -424,6 +442,16 @@ export function SettingsView({
   React.useEffect(() => {
     void loadSettings()
   }, [loadSettings])
+
+  React.useEffect(() => {
+    if (!whisperConfig || whisperRuntimeDirty) {
+      return
+    }
+    setWhisperRuntimeForm({
+      install_dir: whisperConfig.runtime_libraries.install_dir,
+      auto_configure_env: whisperConfig.runtime_libraries.auto_configure_env,
+    })
+  }, [whisperConfig, whisperRuntimeDirty])
 
   React.useEffect(() => {
     if (!models.some((model) => model.download?.state === "downloading")) {
@@ -442,6 +470,24 @@ export function SettingsView({
       window.clearInterval(timer)
     }
   }, [models])
+
+  React.useEffect(() => {
+    if (whisperConfig?.runtime_libraries.progress.state !== "installing") {
+      return
+    }
+    const timer = window.setInterval(() => {
+      void getWhisperConfig()
+        .then((response) => {
+          setWhisperConfig(response)
+        })
+        .catch(() => {
+          // Runtime polling is best-effort; explicit actions will surface errors.
+        })
+    }, 1500)
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [whisperConfig?.runtime_libraries.progress.state])
 
   const sections = [
     { id: "models", label: "模型配置", icon: Cpu },
@@ -462,6 +508,21 @@ export function SettingsView({
         return <Badge variant="destructive">错误</Badge>
       default:
         return <Badge variant="outline">{status}</Badge>
+    }
+  }
+
+  const getWhisperRuntimeBadge = (runtime: WhisperRuntimeLibrariesResponse) => {
+    switch (runtime.status) {
+      case "ready":
+        return <Badge className="bg-status-success text-white">已就绪</Badge>
+      case "installing":
+        return <Badge className="bg-status-processing text-white">安装中</Badge>
+      case "failed":
+        return <Badge variant="destructive">异常</Badge>
+      case "unsupported":
+        return <Badge variant="outline">当前平台不支持</Badge>
+      default:
+        return <Badge variant="outline">未就绪</Badge>
     }
   }
 
@@ -911,8 +972,101 @@ export function SettingsView({
     }
   }
 
+  const mergeWhisperRuntimeLibraries = React.useCallback((runtimeLibraries: WhisperRuntimeLibrariesResponse) => {
+    setWhisperConfig((current) => {
+      if (!current) {
+        return current
+      }
+      return {
+        ...current,
+        runtime_libraries: runtimeLibraries,
+      }
+    })
+  }, [])
+
+  const handleBrowseWhisperRuntimeDirectory = async () => {
+    if (!window.vidGnostDesktop?.pickDirectory) {
+      toast("当前环境不支持目录选择，请直接手动填写安装目录。")
+      return
+    }
+    const picked = await window.vidGnostDesktop.pickDirectory("选择 Whisper GPU 运行库安装目录")
+    if (picked.canceled || !picked.path) {
+      return
+    }
+    setWhisperRuntimeDirty(true)
+    setWhisperRuntimeForm((current) => ({
+      ...current,
+      install_dir: picked.path || current.install_dir,
+    }))
+  }
+
+  const handleRefreshWhisperRuntimeStatus = async () => {
+    try {
+      const response = await getWhisperConfig()
+      setWhisperConfig(response)
+      toast.success("Whisper GPU 运行库状态已刷新")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "刷新 Whisper GPU 运行库状态失败"))
+    }
+  }
+
+  const handleSaveWhisperRuntimeConfig = async () => {
+    if (!whisperRuntimeForm.install_dir.trim()) {
+      toast.error("请先填写 Whisper GPU 运行库安装目录")
+      return
+    }
+    setIsUpdatingWhisperRuntime(true)
+    try {
+      const runtimeLibraries = await updateWhisperRuntimeLibrariesConfig({
+        install_dir: whisperRuntimeForm.install_dir.trim(),
+        auto_configure_env: whisperRuntimeForm.auto_configure_env,
+      })
+      mergeWhisperRuntimeLibraries(runtimeLibraries)
+      setWhisperRuntimeForm({
+        install_dir: runtimeLibraries.install_dir,
+        auto_configure_env: runtimeLibraries.auto_configure_env,
+      })
+      setWhisperRuntimeDirty(false)
+      toast.success("Whisper GPU 运行库配置已保存")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "保存 Whisper GPU 运行库配置失败"))
+    } finally {
+      setIsUpdatingWhisperRuntime(false)
+    }
+  }
+
+  const handleInstallWhisperRuntime = async () => {
+    if (!whisperRuntimeForm.install_dir.trim()) {
+      toast.error("请先填写 Whisper GPU 运行库安装目录")
+      return
+    }
+    setIsUpdatingWhisperRuntime(true)
+    try {
+      const runtimeLibraries = await installWhisperRuntimeLibraries({
+        install_dir: whisperRuntimeForm.install_dir.trim(),
+        auto_configure_env: whisperRuntimeForm.auto_configure_env,
+      })
+      mergeWhisperRuntimeLibraries(runtimeLibraries)
+      setWhisperRuntimeForm({
+        install_dir: runtimeLibraries.install_dir,
+        auto_configure_env: runtimeLibraries.auto_configure_env,
+      })
+      setWhisperRuntimeDirty(false)
+      toast.success("已开始安装 Whisper GPU 运行库")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "启动 Whisper GPU 运行库安装失败"))
+    } finally {
+      setIsUpdatingWhisperRuntime(false)
+    }
+  }
+
   const handleGpuToggle = async (checked: boolean) => {
     if (!whisperConfig) {
+      return
+    }
+
+    if (checked && !whisperConfig.runtime_libraries.ready) {
+      toast.error("请先安装并校验完整 Whisper GPU 运行库，再启用 GPU 加速。")
       return
     }
 
@@ -943,6 +1097,8 @@ export function SettingsView({
   }
 
   const gpuAcceleration = whisperConfig ? whisperConfig.device !== "cpu" : false
+  const whisperRuntimeLibraries = whisperConfig?.runtime_libraries ?? null
+  const whisperRuntimeInstalling = whisperRuntimeLibraries?.progress.state === "installing"
   const activeModelPreset = editingModel ? getModelConfigPreset(editingModel) : null
   const modelDialogHasQuantization = Boolean(activeModelPreset?.fields.includes("quantization"))
   const modelDialogHasBatchSize = Boolean(activeModelPreset?.fields.includes("max_batch_size"))
@@ -1057,6 +1213,175 @@ export function SettingsView({
                       }}
                     />
                   </div>
+
+                  {whisperRuntimeLibraries ? (
+                    <div className="settings-models-panel rounded-lg border p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <div className="font-medium">Whisper GPU 运行库</div>
+                          <div className="text-sm text-muted-foreground">
+                            使用 NVIDIA 官方 CUDA/cuDNN redist 包自动下载并解压到指定目录。
+                          </div>
+                        </div>
+                        {getWhisperRuntimeBadge(whisperRuntimeLibraries)}
+                      </div>
+
+                      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="whisper-runtime-install-dir">安装目录</Label>
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                              <Input
+                                id="whisper-runtime-install-dir"
+                                className="bg-background/80"
+                                value={whisperRuntimeForm.install_dir}
+                                onChange={(event) => {
+                                  setWhisperRuntimeDirty(true)
+                                  setWhisperRuntimeForm((current) => ({
+                                    ...current,
+                                    install_dir: event.target.value,
+                                  }))
+                                }}
+                                placeholder="如 D:\\AI\\VidGnost\\whisper-gpu-runtime"
+                              />
+                              <Button
+                                variant="outline"
+                                className="shrink-0"
+                                onClick={() => {
+                                  void handleBrowseWhisperRuntimeDirectory()
+                                }}
+                              >
+                                <FolderOpen className="mr-2 h-4 w-4" />
+                                浏览
+                              </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              安装目录下会生成统一的 <code>bin</code>、<code>lib</code>、<code>include</code> 结构，并写入当前应用进程环境。
+                            </p>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-muted/30 px-4 py-3">
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <div className="text-sm font-medium">自动配置环境变量</div>
+                              <p className="text-xs text-muted-foreground">
+                                保存到当前用户级 <code>CUDA_PATH</code> 与 <code>PATH</code>，后续重启 Electron 后可继续生效。
+                              </p>
+                            </div>
+                            <Switch
+                              checked={whisperRuntimeForm.auto_configure_env}
+                              onCheckedChange={(checked) => {
+                                setWhisperRuntimeDirty(true)
+                                setWhisperRuntimeForm((current) => ({
+                                  ...current,
+                                  auto_configure_env: checked,
+                                }))
+                              }}
+                            />
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                              variant="outline"
+                              disabled={
+                                isUpdatingWhisperRuntime ||
+                                whisperRuntimeInstalling ||
+                                !whisperRuntimeLibraries.platform_supported
+                              }
+                              onClick={() => {
+                                void handleSaveWhisperRuntimeConfig()
+                              }}
+                            >
+                              <Save className="mr-2 h-4 w-4" />
+                              保存运行库配置
+                            </Button>
+                            <Button
+                              disabled={
+                                isUpdatingWhisperRuntime ||
+                                whisperRuntimeInstalling ||
+                                !whisperRuntimeLibraries.platform_supported
+                              }
+                              onClick={() => {
+                                void handleInstallWhisperRuntime()
+                              }}
+                            >
+                              <CloudDownload className="mr-2 h-4 w-4" />
+                              一键安装完整运行库
+                            </Button>
+                            <Button
+                              variant="outline"
+                              disabled={isUpdatingWhisperRuntime}
+                              onClick={() => {
+                                void handleRefreshWhisperRuntimeStatus()
+                              }}
+                            >
+                              <RefreshCw className="mr-2 h-4 w-4" />
+                              刷新状态
+                            </Button>
+                          </div>
+
+                          {whisperRuntimeInstalling ? (
+                            <div className="space-y-2 rounded-xl border bg-muted/25 p-4">
+                              <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
+                                <span className="min-w-0 truncate">
+                                  {whisperRuntimeLibraries.progress.current_package
+                                    ? `当前包：${whisperRuntimeLibraries.progress.current_package}`
+                                    : whisperRuntimeLibraries.progress.message || "正在安装运行库..."}
+                                </span>
+                                <span className="shrink-0">{Math.round(whisperRuntimeLibraries.progress.percent)}%</span>
+                              </div>
+                              <Progress
+                                value={whisperRuntimeLibraries.progress.percent}
+                                className="h-2 bg-primary/10"
+                                indicatorClassName="download-progress-indicator"
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                {whisperRuntimeLibraries.progress.message || "正在下载并解压官方运行库组件。"}
+                              </p>
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="space-y-3 rounded-xl border bg-muted/25 p-4">
+                          <div>
+                            <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">版本</div>
+                            <div className="mt-1 text-sm text-foreground/90">{whisperRuntimeLibraries.version_label}</div>
+                          </div>
+                          <div>
+                            <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">状态</div>
+                            <div className="mt-1 text-sm text-foreground/90">{whisperRuntimeLibraries.message}</div>
+                          </div>
+                          <div>
+                            <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">运行库目录</div>
+                            <div className="mt-1 break-all text-xs leading-relaxed text-foreground/90">
+                              {whisperRuntimeLibraries.bin_dir || "未配置"}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">环境变量</div>
+                            <div className="mt-1 text-sm text-foreground/90">
+                              {whisperRuntimeLibraries.path_configured ? "已写入当前进程 PATH" : "尚未生效"}
+                            </div>
+                          </div>
+                          {whisperRuntimeLibraries.missing_files.length > 0 ? (
+                            <div>
+                              <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">缺失文件</div>
+                              <div className="mt-1 break-words text-xs leading-relaxed text-foreground/90">
+                                {whisperRuntimeLibraries.missing_files.join(" , ")}
+                              </div>
+                            </div>
+                          ) : null}
+                          {whisperRuntimeLibraries.load_error ? (
+                            <div>
+                              <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">加载错误</div>
+                              <div className="mt-1 break-words text-xs leading-relaxed text-destructive">
+                                {whisperRuntimeLibraries.load_error}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
 
                   <Separator />
 

@@ -55,6 +55,20 @@ Transcription runtime SHALL apply persisted whisper `device` and `compute_type` 
 - **THEN** backend uses effective whisper `device=auto|cpu|cuda` and `compute_type=int8|float32`
 - **AND** runtime model caching keys are derived from the effective device and compute type
 
+### Requirement: Whisper GPU runtime SHALL be prepared before GPU transcription begins
+When persisted whisper device strategy is `auto` or `cuda`, backend SHALL configure the current process environment from the persisted Whisper GPU runtime-library install directory and SHALL only enter Faster-Whisper GPU loading after required runtime DLLs pass readiness validation.
+
+#### Scenario: Start transcription with ready GPU runtime
+- **WHEN** persisted whisper `device` is `auto` or `cuda`
+- **AND** required runtime DLLs such as `cublas64_12.dll` and `cudnn64*.dll` are discoverable and loadable from the configured runtime-library directory or current process `PATH`
+- **THEN** backend starts Faster-Whisper model loading with GPU-capable process environment already configured
+
+#### Scenario: Start transcription with missing GPU runtime
+- **WHEN** persisted whisper `device` is `auto` or `cuda`
+- **AND** the configured Whisper GPU runtime-library bundle is missing files or cannot be loaded
+- **THEN** backend reports the runtime as not ready
+- **AND** the task-runtime preflight blocks task execution before transcription starts
+
 ### Requirement: Whisper model selection SHALL preserve current effective implementation contract
 The whisper config API SHALL persist `model_default=small|medium` as a config field, while the current managed transcription implementation prepares and uses the Whisper small cache as the effective bundled runtime path.
 

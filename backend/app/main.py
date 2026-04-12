@@ -33,6 +33,7 @@ from app.services.task_runner import TaskRunner
 from app.services.task_store import TaskStore
 from app.services.ui_settings_store import UISettingsStore
 from app.services.vqa_runtime_service import VQARuntimeService
+from app.services.whisper_gpu_runtime_service import WhisperGpuRuntimeService
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,11 @@ async def lifespan(app: FastAPI):
     ui_settings_store = UISettingsStore(settings=settings)
     await ui_settings_store.get()
     runtime_config_store = RuntimeConfigStore(settings)
+    whisper_gpu_runtime_service = WhisperGpuRuntimeService(
+        settings=settings,
+        runtime_config_store=runtime_config_store,
+    )
+    await whisper_gpu_runtime_service.bootstrap_process_environment()
     resource_guard = ResourceGuard(settings=settings)
     model_runtime_manager = ModelRuntimeManager(
         max_cached_models_by_component={
@@ -80,13 +86,18 @@ async def lifespan(app: FastAPI):
     startup_warning = resource_guard.startup_warning()
     if startup_warning:
         logger.warning(startup_warning)
-    self_check_service = SelfCheckService(settings=settings, event_bus=event_bus)
+    self_check_service = SelfCheckService(
+        settings=settings,
+        event_bus=event_bus,
+        whisper_gpu_runtime_service=whisper_gpu_runtime_service,
+    )
     runtime_metrics_service = RuntimeMetricsService()
     task_preflight_service = TaskPreflightService(
         settings=settings,
         llm_config_store=llm_config_store,
         runtime_config_store=runtime_config_store,
         model_catalog_store=model_catalog_store,
+        whisper_gpu_runtime_service=whisper_gpu_runtime_service,
     )
     vqa_runtime = VQARuntimeService(
         task_store=task_store,
@@ -114,6 +125,7 @@ async def lifespan(app: FastAPI):
     app.state.model_download_service = model_download_service
     app.state.ui_settings_store = ui_settings_store
     app.state.runtime_config_store = runtime_config_store
+    app.state.whisper_gpu_runtime_service = whisper_gpu_runtime_service
     app.state.resource_guard = resource_guard
     app.state.model_runtime_manager = model_runtime_manager
     app.state.self_check_service = self_check_service
@@ -124,6 +136,7 @@ async def lifespan(app: FastAPI):
     yield
     await runner.shutdown()
     await model_download_service.shutdown()
+    await whisper_gpu_runtime_service.shutdown()
 
 
 app = FastAPI(

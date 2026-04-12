@@ -11,6 +11,7 @@ from app.services.llm_connectivity import OpenAICompatModelValidationResult
 from app.services.model_catalog_store import ModelCatalogStore
 from app.services.runtime_config_store import RuntimeConfigStore
 from app.services.task_preflight import TaskPreflightService
+from app.services.whisper_gpu_runtime_service import WhisperGpuRuntimeService
 
 
 def _build_settings(tmp_path: Path) -> Settings:
@@ -32,6 +33,10 @@ def test_task_preflight_rejects_invalid_remote_llm_model(monkeypatch, tmp_path: 
         llm_config_store=LLMConfigStore(settings),
         runtime_config_store=RuntimeConfigStore(settings),
         model_catalog_store=ModelCatalogStore(settings),
+        whisper_gpu_runtime_service=WhisperGpuRuntimeService(
+            settings=settings,
+            runtime_config_store=RuntimeConfigStore(settings),
+        ),
     )
 
     monkeypatch.setattr(
@@ -57,3 +62,43 @@ def test_task_preflight_rejects_invalid_remote_llm_model(monkeypatch, tmp_path: 
 
     assert exc_info.value.code == "TASK_PRECHECK_LLM_MODEL_INVALID"
     assert "test-model" in (exc_info.value.hint or "")
+
+
+@pytest.mark.asyncio
+async def test_task_preflight_rejects_missing_gpu_runtime_when_device_is_auto(tmp_path: Path) -> None:
+    settings = _build_settings(tmp_path)
+    runtime_store = RuntimeConfigStore(settings)
+    llm_store = LLMConfigStore(settings)
+    await llm_store.save(
+        {
+            "mode": "api",
+            "load_profile": "balanced",
+            "local_model_id": "Qwen/Qwen2.5-7B-Instruct",
+            "api_key": "sk-test",
+            "api_key_configured": True,
+            "base_url": "https://example.com/v1",
+            "model": "qwen-test",
+            "correction_mode": "strict",
+            "correction_batch_size": 24,
+            "correction_overlap": 3,
+        }
+    )
+    await runtime_store.save_whisper({**await runtime_store.get_whisper(), "device": "auto"})
+    service = TaskPreflightService(
+        settings=settings,
+        llm_config_store=llm_store,
+        runtime_config_store=runtime_store,
+        model_catalog_store=ModelCatalogStore(settings),
+        whisper_gpu_runtime_service=WhisperGpuRuntimeService(
+            settings=settings,
+            runtime_config_store=runtime_store,
+        ),
+    )
+
+    with pytest.raises(AppError) as exc_info:
+        service.whisper_gpu_runtime_service.assert_runtime_ready_for_device(
+            "auto",
+            await service.whisper_gpu_runtime_service.get_status(),
+        )
+
+    assert exc_info.value.code == "TASK_PRECHECK_WHISPER_GPU_RUNTIME_MISSING"

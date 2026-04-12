@@ -16,6 +16,8 @@ from app.services.self_check import (
     SelfCheckSession,
     _prune_terminal_self_check_sessions,
 )
+from app.services.runtime_config_store import RuntimeConfigStore
+from app.services.whisper_gpu_runtime_service import WhisperGpuRuntimeService
 
 
 def test_self_check_start_and_report() -> None:
@@ -78,10 +80,19 @@ def test_self_check_prune_keeps_running_and_newest_terminal_sessions() -> None:
 
 
 def test_self_check_build_steps_is_api_only() -> None:
-    service = SelfCheckService(settings=get_settings(), event_bus=EventBus())
+    settings = get_settings()
+    service = SelfCheckService(
+        settings=settings,
+        event_bus=EventBus(),
+        whisper_gpu_runtime_service=WhisperGpuRuntimeService(
+            settings=settings,
+            runtime_config_store=RuntimeConfigStore(settings),
+        ),
+    )
     step_ids = [item.id for item in service._build_steps()]  # type: ignore[attr-defined]
     assert "env" in step_ids
     assert "ffmpeg" in step_ids
+    assert "gpu-runtime" in step_ids
     assert "gpu-driver" not in step_ids
     assert "model-cache" in step_ids
     assert "llm-local-config" not in step_ids
@@ -120,7 +131,14 @@ def test_self_check_vlm_reports_ready_when_model_cache_exists(tmp_path: Path) ->
     default_dir = Path(settings.storage_dir) / "model-hub" / "vikhyatk--moondream2"
     _materialize_vlm_cache(default_dir)
 
-    service = SelfCheckService(settings=settings, event_bus=EventBus())
+    service = SelfCheckService(
+        settings=settings,
+        event_bus=EventBus(),
+        whisper_gpu_runtime_service=WhisperGpuRuntimeService(
+            settings=settings,
+            runtime_config_store=RuntimeConfigStore(settings),
+        ),
+    )
     outcome = asyncio.run(service._check_vlm())  # type: ignore[attr-defined]
 
     assert outcome.status == "passed"
@@ -134,7 +152,14 @@ def test_self_check_vlm_reports_disabled_when_model_is_turned_off(tmp_path: Path
     store = ModelCatalogStore(settings)
     asyncio.run(store.update_model("vlm-default", {"enabled": False}))
 
-    service = SelfCheckService(settings=settings, event_bus=EventBus())
+    service = SelfCheckService(
+        settings=settings,
+        event_bus=EventBus(),
+        whisper_gpu_runtime_service=WhisperGpuRuntimeService(
+            settings=settings,
+            runtime_config_store=RuntimeConfigStore(settings),
+        ),
+    )
     outcome = asyncio.run(service._check_vlm())  # type: ignore[attr-defined]
 
     assert outcome.status == "warning"
@@ -143,7 +168,14 @@ def test_self_check_vlm_reports_disabled_when_model_is_turned_off(tmp_path: Path
 
 def test_self_check_llm_reports_missing_api_key(tmp_path: Path) -> None:
     settings = _build_settings(tmp_path)
-    service = SelfCheckService(settings=settings, event_bus=EventBus())
+    service = SelfCheckService(
+        settings=settings,
+        event_bus=EventBus(),
+        whisper_gpu_runtime_service=WhisperGpuRuntimeService(
+            settings=settings,
+            runtime_config_store=RuntimeConfigStore(settings),
+        ),
+    )
 
     outcome = asyncio.run(service._check_llm())  # type: ignore[attr-defined]
 
@@ -156,7 +188,14 @@ def test_self_check_llm_reports_connectivity_failure(
     monkeypatch,
 ) -> None:
     settings = _build_settings(tmp_path)
-    service = SelfCheckService(settings=settings, event_bus=EventBus())
+    service = SelfCheckService(
+        settings=settings,
+        event_bus=EventBus(),
+        whisper_gpu_runtime_service=WhisperGpuRuntimeService(
+            settings=settings,
+            runtime_config_store=RuntimeConfigStore(settings),
+        ),
+    )
     asyncio.run(
         service._llm_config_store.save(  # type: ignore[attr-defined]
             {
@@ -197,7 +236,14 @@ def test_self_check_llm_reports_invalid_model_name(
     monkeypatch,
 ) -> None:
     settings = _build_settings(tmp_path)
-    service = SelfCheckService(settings=settings, event_bus=EventBus())
+    service = SelfCheckService(
+        settings=settings,
+        event_bus=EventBus(),
+        whisper_gpu_runtime_service=WhisperGpuRuntimeService(
+            settings=settings,
+            runtime_config_store=RuntimeConfigStore(settings),
+        ),
+    )
     asyncio.run(
         service._llm_config_store.save(  # type: ignore[attr-defined]
             {

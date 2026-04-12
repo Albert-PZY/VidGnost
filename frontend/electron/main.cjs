@@ -462,6 +462,23 @@ ipcMain.handle("dialog:pick-image-file", async (event) => {
   }
 })
 
+ipcMain.handle("dialog:pick-directory", async (event, title) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  const { canceled, filePaths } = await dialog.showOpenDialog(win || undefined, {
+    title: typeof title === "string" && title.trim() ? title.trim() : "选择目录",
+    properties: ["openDirectory", "createDirectory"],
+  })
+
+  if (canceled || filePaths.length === 0) {
+    return { canceled: true }
+  }
+
+  return {
+    canceled: false,
+    path: filePaths[0],
+  }
+})
+
 ipcMain.handle("shell:open-path", async (_event, targetPath) => {
   if (typeof targetPath !== "string" || !targetPath.trim()) {
     return { ok: false, message: "Invalid path." }

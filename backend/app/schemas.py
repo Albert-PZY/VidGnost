@@ -231,6 +231,32 @@ class PromptTemplateSelectionUpdateRequest(BaseModel):
     vqa: str | None = None
 
 
+class WhisperRuntimeLibrariesProgressResponse(BaseModel):
+    state: Literal["idle", "installing", "completed", "failed"] = "idle"
+    message: str = ""
+    current_package: str = ""
+    downloaded_bytes: int = 0
+    total_bytes: int = 0
+    percent: float = Field(default=0.0, ge=0.0, le=100.0)
+    updated_at: str = ""
+
+
+class WhisperRuntimeLibrariesResponse(BaseModel):
+    install_dir: str
+    auto_configure_env: bool = True
+    version_label: str
+    platform_supported: bool = True
+    ready: bool = False
+    status: Literal["ready", "not_ready", "installing", "failed", "unsupported"] = "not_ready"
+    message: str = ""
+    bin_dir: str = ""
+    missing_files: list[str] = Field(default_factory=list)
+    discovered_files: dict[str, str] = Field(default_factory=dict)
+    load_error: str = ""
+    path_configured: bool = False
+    progress: WhisperRuntimeLibrariesProgressResponse = Field(default_factory=WhisperRuntimeLibrariesProgressResponse)
+
+
 class WhisperConfigResponse(BaseModel):
     model_default: str
     language: str
@@ -242,6 +268,7 @@ class WhisperConfigResponse(BaseModel):
     chunk_seconds: int
     target_sample_rate: int
     target_channels: int
+    runtime_libraries: WhisperRuntimeLibrariesResponse
     warnings: list[str] = Field(default_factory=list)
     rollback_applied: bool = False
 
@@ -257,6 +284,16 @@ class WhisperConfigUpdateRequest(BaseModel):
     chunk_seconds: int = Field(default=180, ge=30, le=1200)
     target_sample_rate: int = Field(default=16000, ge=8000, le=48000)
     target_channels: int = Field(default=1, ge=1, le=2)
+
+
+class WhisperRuntimeLibrariesUpdateRequest(BaseModel):
+    install_dir: str = ""
+    auto_configure_env: bool = True
+
+
+class WhisperRuntimeLibrariesInstallRequest(BaseModel):
+    install_dir: str | None = None
+    auto_configure_env: bool | None = None
 
 
 class ModelDownloadStatus(BaseModel):

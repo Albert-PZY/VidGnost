@@ -15,6 +15,17 @@ Settings center SHALL provide `模型配置`, `提示词模板`, `外观设置`,
 - **WHEN** user opens settings from the application shell
 - **THEN** the renderer shows the four sections with current persisted values from backend config APIs
 
+### Requirement: Settings center SHALL expose managed Whisper GPU runtime controls
+The settings-center model surface SHALL expose a dedicated Whisper GPU runtime area above the model list. That area SHALL show install status, install directory, runtime version label, missing-file diagnostics, environment-configuration state, and install progress, and SHALL allow saving runtime-library config plus starting a one-click managed install.
+
+#### Scenario: Configure Whisper GPU runtime from settings
+- **WHEN** user opens settings and visits `模型配置`
+- **THEN** the renderer shows a Whisper GPU runtime card near the GPU acceleration toggle
+- **AND** the card allows editing the runtime install directory directly or by opening a native directory picker from Electron
+- **AND** the card allows toggling automatic user-environment-variable configuration
+- **AND** the card exposes `保存运行库配置`, `一键安装完整运行库`, and `刷新状态` actions
+- **AND** when installation is in progress, the card polls backend runtime-library status and renders a compact progress bar with current package label and percent
+
 ### Requirement: Configuration dialogs SHALL stay within viewport with fixed chrome
 Model configuration and prompt-template configuration dialogs SHALL remain within the visible viewport, keep header and action area fixed, and allow inner content scrolling when fields exceed available height. The header chrome SHALL stay visually compact so the main form area remains the dominant surface inside the dialog.
 
@@ -198,6 +209,11 @@ Frontend SHALL only render backend-provided data and call the Python backend ove
 - **THEN** Electron opens the native file picker for image files
 - **AND** the renderer receives the selected image payload through the preload bridge without changing the backend transport model
 
+#### Scenario: Pick a Whisper GPU runtime install directory from Electron
+- **WHEN** user clicks the runtime install-directory browse action inside settings
+- **THEN** Electron opens the native directory picker
+- **AND** the renderer receives the selected absolute directory path through the preload bridge without changing backend transport contracts
+
 ### Requirement: Diagnostics view SHALL present runtime metrics as a compact live strip
 Diagnostics view SHALL render runtime metrics in a single compact strip that exposes `uptime_seconds`, `cpu_percent`, `memory_used_bytes`, `memory_total_bytes`, `gpu_percent`, `gpu_memory_used_bytes`, `gpu_memory_total_bytes`, and `sampled_at` from the backend runtime metrics API without nested metric cards.
 
@@ -276,3 +292,9 @@ Diagnostics view SHALL provide a direct autofix action when the backend marks is
 - **AND** it probes the configured OpenAI-compatible `/models` endpoint
 - **AND** it only reports success when the `/models` response is a valid model list and the configured `model` is present in that remote list
 - **AND** the diagnostics issue summary reports the concrete connectivity result instead of only checking whether the config file exists
+
+#### Scenario: Diagnostics self-check validates Whisper GPU runtime
+- **WHEN** the backend runs the `Whisper GPU 运行库` self-check step
+- **THEN** it reports the configured install directory, effective runtime-library directory, and environment-variable state
+- **AND** it lists missing runtime DLLs or load errors when the bundle is not ready
+- **AND** the diagnostics issue summary tells the user to return to the settings-center model section to install or repair the runtime bundle

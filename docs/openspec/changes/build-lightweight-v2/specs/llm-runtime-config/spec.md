@@ -49,6 +49,7 @@ The system SHALL expose `/config/whisper` read/update endpoints and persist effe
 #### Scenario: Read Whisper config
 - **WHEN** client requests `/config/whisper`
 - **THEN** backend returns current persisted config or normalized defaults
+- **AND** the response includes nested Whisper GPU runtime-library status, install directory, environment-configuration flag, missing-file diagnostics, and current install progress snapshot when available
 
 #### Scenario: Save Whisper config
 - **WHEN** client updates whisper runtime fields
@@ -69,6 +70,20 @@ Whisper config SHALL include `model_default`, `language`, `device`, `compute_typ
 #### Scenario: Save unsupported compute type
 - **WHEN** client submits unsupported whisper `compute_type`
 - **THEN** backend persists normalized `compute_type=int8`
+
+### Requirement: Whisper GPU runtime management SHALL expose editable install config and managed install actions
+The system SHALL expose `/config/whisper/runtime-libraries` and `/config/whisper/runtime-libraries/install` so frontend settings can persist an install directory, toggle environment-variable configuration, inspect runtime readiness, and trigger a managed install of the bundled NVIDIA runtime set.
+
+#### Scenario: Save Whisper GPU runtime config
+- **WHEN** frontend saves a Whisper GPU runtime-library configuration
+- **THEN** backend persists `install_dir` and `auto_configure_env` into `backend/storage/config.toml`
+- **AND** backend applies the configured install directory to the current backend process environment when the runtime directory exists
+
+#### Scenario: Start managed Whisper GPU runtime install
+- **WHEN** frontend requests `/config/whisper/runtime-libraries/install`
+- **THEN** backend launches the bundled installer script from `scripts/`
+- **AND** the installer resolves package URLs from NVIDIA official redist manifests instead of hard-coded third-party mirrors
+- **AND** the returned runtime-library status exposes install progress, package-level progress text, and final readiness diagnostics
 
 ### Requirement: Managed model catalog SHALL expose install and download state for settings UI
 The system SHALL expose `/config/models` and related model-management APIs with effective path, default path, install state, and download progress for frontend settings.

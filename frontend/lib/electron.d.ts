@@ -27,6 +27,11 @@ declare global {
     vidGnostDesktop?: {
       openPath: (targetPath: string) => Promise<{ ok: boolean; message?: string }>
       openExternal: (targetUrl: string) => Promise<{ ok: boolean; message?: string }>
+      pickDirectory: (title?: string) => Promise<{
+        canceled: boolean
+        path?: string
+        message?: string
+      }>
       pickImageFile: () => Promise<{
         canceled: boolean
         fileName?: string
