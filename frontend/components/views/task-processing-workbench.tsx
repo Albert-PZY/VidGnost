@@ -279,11 +279,46 @@ function extractTranscriptSegmentFromEvent(event: TaskStreamEvent): TranscriptSe
 function shouldRecordTaskEvent(event: TaskStreamEvent): boolean {
   return ![
     "transcript_delta",
+    "progress",
     "summary_delta",
     "mindmap_delta",
     "transcript_optimized_preview",
     "fusion_prompt_preview",
   ].includes(getRawTaskEventType(event))
+}
+
+function shouldTriggerTaskRefresh(event: TaskStreamEvent): boolean {
+  return [
+    "stage_start",
+    "stage_complete",
+    "substage_start",
+    "substage_complete",
+    "log",
+    "task_complete",
+    "task_cancelled",
+    "task_failed",
+  ].includes(getRawTaskEventType(event))
+}
+
+function getTaskStatusSummary(status: string, steps: TaskStepItem[]): string {
+  const normalized = asString(status).trim().toLowerCase()
+  const activeStep = steps.find((step) => step.status === "processing")
+  if (normalized === "completed") {
+    return "已完成"
+  }
+  if (normalized === "failed") {
+    return "执行失败"
+  }
+  if (normalized === "cancelled") {
+    return "已取消"
+  }
+  if (normalized === "queued") {
+    return "排队中"
+  }
+  if (activeStep) {
+    return `${activeStep.name}中`
+  }
+  return "处理中"
 }
 
 function formatTaskEventTimestamp(timestamp: string): string {
@@ -581,20 +616,65 @@ export function TaskProcessingWorkbench({
       return
     }
     const source = streamTaskEvents(task.id, (event) => {
+      const rawType = getRawTaskEventType(event)
       const streamedSegment = extractTranscriptSegmentFromEvent(event)
       if (streamedSegment) {
         setLiveTranscriptSegments((current) => mergeTranscriptSegments(current, [streamedSegment]))
       }
+      if (rawType === "progress") {
+        const overallProgress = asNumber(event["overall_progress"])
+        if (overallProgress !== null) {
+          setTask((current) =>
+            current
+              ? {
+                  ...current,
+                  progress: Math.round(overallProgress),
+                  overall_progress: Math.round(overallProgress),
+                }
+              : current,
+          )
+        }
+      } else if (rawType === "task_complete") {
+        setTask((current) =>
+          current
+            ? {
+                ...current,
+                status: "completed",
+                progress: 100,
+                overall_progress: 100,
+              }
+            : current,
+        )
+      } else if (rawType === "task_cancelled") {
+        setTask((current) =>
+          current
+            ? {
+                ...current,
+                status: "cancelled",
+              }
+            : current,
+        )
+      } else if (rawType === "task_failed") {
+        setTask((current) =>
+          current
+            ? {
+                ...current,
+                status: "failed",
+                error_message: asString(event.error || event.message),
+              }
+            : current,
+        )
+      }
       if (shouldRecordTaskEvent(event)) {
         setTaskEvents((current) => [event, ...current].slice(0, 80))
       }
-      if (refreshTimerRef.current !== null) {
+      if (!shouldTriggerTaskRefresh(event) || refreshTimerRef.current !== null) {
         return
       }
       refreshTimerRef.current = window.setTimeout(() => {
         refreshTimerRef.current = null
         void loadTask({ showToastOnError: false, background: true })
-      }, 280)
+      }, 900)
     })
     source.onerror = () => source.close()
     return () => {
@@ -1099,6 +1179,7 @@ function TaskWorkspaceHeader({
   canExportBundle,
   onExportBundle,
 }: TaskWorkspaceHeaderProps) {
+  const statusSummary = getTaskStatusSummary(status, steps)
   return (
     <div className="border-b bg-card/50 px-4 py-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1119,7 +1200,7 @@ function TaskWorkspaceHeader({
         <div className="flex flex-wrap items-center gap-2">
           {errorMessage ? <Badge variant="destructive">{errorMessage}</Badge> : null}
           <Badge variant={totalProgress >= 100 ? "default" : "secondary"}>
-            {status || "queued"} · {Math.round(totalProgress)}%
+            {statusSummary} · {Math.round(totalProgress)}%
           </Badge>
           {canCancel ? (
             <Button variant="outline" size="sm" disabled={isCancelling} onClick={onCancel}>

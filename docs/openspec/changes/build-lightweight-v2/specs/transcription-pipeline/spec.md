@@ -55,6 +55,29 @@ Transcription runtime SHALL apply persisted whisper `device` and `compute_type` 
 - **THEN** backend uses effective whisper `device=auto|cpu|cuda` and `compute_type=int8|float32`
 - **AND** runtime model caching keys are derived from the effective device and compute type
 
+### Requirement: Phase C SHALL persist chunk checkpoints and resume from persisted transcription state
+Phase `C` SHALL persist transcript progress after each completed audio chunk and SHALL resume from persisted chunk checkpoints when an unfinished task is recovered.
+
+#### Scenario: Persist transcript state after each chunk
+- **WHEN** phase `C` completes any audio chunk
+- **THEN** backend writes that chunk's transcript payload to stage artifacts under `C/transcript/chunk-XXXX.json`
+- **AND** backend refreshes `C/transcript/index.json` and `C/transcript/full.txt` with the currently completed chunk set
+- **AND** backend updates task record `transcript_text` and `transcript_segments_json` with the currently completed transcript state before phase `C` finishes
+
+#### Scenario: Resume unfinished transcription from checkpoints
+- **WHEN** backend resumes a non-terminal task whose phase `C` already has persisted transcript chunk artifacts
+- **THEN** phase `C` reuses completed chunk checkpoints in order
+- **AND** backend transcribes only missing chunks before entering phase `D`
+- **AND** phase `D` starts only after the recovered full transcript state is reassembled into the task record
+
+### Requirement: Local-source task records SHALL retain a previewable source path
+Tasks created from uploaded files or explicit local paths SHALL retain a stable source path that remains previewable until the task is deleted.
+
+#### Scenario: Finish a task created from local input
+- **WHEN** a task starts from `local_file` or `local_path`
+- **THEN** task detail keeps `source_local_path` pointed at the retained source asset rather than a per-run temporary workspace copy
+- **AND** per-run temporary workspaces are cleaned after execution without deleting the retained source asset
+
 ### Requirement: Whisper GPU runtime SHALL be prepared before GPU transcription begins
 When persisted whisper device strategy is `auto` or `cuda`, backend SHALL configure the current process environment from the persisted Whisper GPU runtime-library install directory and SHALL only enter Faster-Whisper GPU loading after required runtime DLLs pass readiness validation.
 

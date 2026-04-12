@@ -281,6 +281,13 @@ Task processing workbench SHALL use a horizontal resizable split layout. The lef
 - **THEN** the left workbench panel exposes an inner vertical scrollbar for that tab
 - **AND** recent stage activity is summarized with user-readable stage labels and business-language status text instead of raw backend event type names or opaque debug payloads
 
+#### Scenario: Render a high-frequency transcription stream without workspace flicker
+- **WHEN** phase `C` emits frequent `transcript_delta` and `progress` events
+- **THEN** the renderer appends transcript cards and updates the visible overall progress from stream data without forcing a full task-detail refresh on every delta
+- **AND** background task-detail refresh is reserved for stage transitions, milestone logs, and terminal events
+- **AND** the running-state badge summarizes the active workflow step in business language instead of showing a raw generic backend status string
+- **AND** recent stage activity omits repetitive raw progress spam and keeps milestone-focused readable updates
+
 #### Scenario: Open a VQA task and ask a question
 - **WHEN** user submits a question from the VQA workbench
 - **THEN** the renderer streams incremental answer chunks into the chat surface

@@ -133,6 +133,9 @@ async def lifespan(app: FastAPI):
     app.state.task_preflight_service = task_preflight_service
     app.state.vqa_runtime = vqa_runtime
     app.state.task_runner = runner
+    recovered_task_ids = await runner.resume_incomplete_tasks()
+    if recovered_task_ids:
+        logger.info("Recovered unfinished tasks on startup: %s", ", ".join(recovered_task_ids))
     yield
     await runner.shutdown()
     await model_download_service.shutdown()
