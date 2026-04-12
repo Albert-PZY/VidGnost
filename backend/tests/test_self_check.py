@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from app.config import Settings, get_settings
 from app.main import app
 from app.services.events import EventBus
+from app.services.llm_connectivity import OpenAICompatModelValidationResult
 from app.services.model_catalog_store import ModelCatalogStore
 from app.services.self_check import (
     SelfCheckService,
@@ -174,8 +175,14 @@ def test_self_check_llm_reports_connectivity_failure(
     )
 
     monkeypatch.setattr(
-        "app.services.self_check.probe_openai_compat_models_endpoint",
-        lambda **_: (False, "NameResolutionError: host not found"),
+        "app.services.self_check.validate_openai_compat_model_config",
+        lambda **_: OpenAICompatModelValidationResult(
+            ok=False,
+            connectivity_ok=False,
+            connectivity_reason="NameResolutionError: host not found",
+            model_ok=False,
+            model_reason="skipped",
+        ),
     )
 
     outcome = asyncio.run(service._check_llm())  # type: ignore[attr-defined]
@@ -183,3 +190,46 @@ def test_self_check_llm_reports_connectivity_failure(
     assert outcome.status == "failed"
     assert outcome.message == "LLM 在线 API 连通失败"
     assert outcome.details["连通性"] == "NameResolutionError: host not found"
+
+
+def test_self_check_llm_reports_invalid_model_name(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    settings = _build_settings(tmp_path)
+    service = SelfCheckService(settings=settings, event_bus=EventBus())
+    asyncio.run(
+        service._llm_config_store.save(  # type: ignore[attr-defined]
+            {
+                "mode": "api",
+                "load_profile": "balanced",
+                "local_model_id": "Qwen/Qwen2.5-7B-Instruct",
+                "api_key": "sk-test",
+                "api_key_configured": True,
+                "base_url": "https://example.com/v1",
+                "model": "test-model",
+                "correction_mode": "strict",
+                "correction_batch_size": 24,
+                "correction_overlap": 3,
+            }
+        )
+    )
+
+    monkeypatch.setattr(
+        "app.services.self_check.validate_openai_compat_model_config",
+        lambda **_: OpenAICompatModelValidationResult(
+            ok=False,
+            connectivity_ok=True,
+            connectivity_reason="HTTP 200",
+            model_ok=False,
+            model_reason='远端 /models 未返回当前模型 "test-model"',
+            model_ids=("qwen-plus", "qwen-turbo"),
+        ),
+    )
+
+    outcome = asyncio.run(service._check_llm())  # type: ignore[attr-defined]
+
+    assert outcome.status == "failed"
+    assert outcome.message == "LLM 在线 API 模型配置无效"
+    assert outcome.details["连通性"] == "HTTP 200"
+    assert outcome.details["模型校验"] == '远端 /models 未返回当前模型 "test-model"'

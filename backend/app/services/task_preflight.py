@@ -9,7 +9,7 @@ from typing import Literal
 from app.config import Settings
 from app.errors import AppError
 from app.schemas import WorkflowType
-from app.services.llm_connectivity import probe_openai_compat_models_endpoint
+from app.services.llm_connectivity import validate_openai_compat_model_config
 from app.services.llm_config_store import LLMConfigStore
 from app.services.model_catalog_store import ModelCatalogStore
 from app.services.runtime_config_store import RuntimeConfigStore
@@ -106,17 +106,28 @@ class TaskPreflightService:
     def _assert_llm_connectivity(self, llm_config: dict[str, object]) -> None:
         llm_api_key = str(llm_config.get("api_key", "")).strip()
         llm_base_url = str(llm_config.get("base_url", self.settings.llm_base_url)).strip() or self.settings.llm_base_url
-        llm_ok, llm_reason = probe_openai_compat_models_endpoint(
+        llm_model = str(llm_config.get("model", self.settings.llm_model)).strip() or self.settings.llm_model
+        validation = validate_openai_compat_model_config(
             base_url=llm_base_url,
             api_key=llm_api_key,
+            model=llm_model,
             timeout_seconds=6.0,
         )
-        if llm_ok:
+        if validation.ok:
             return
+        if validation.connectivity_ok and not validation.model_ok:
+            raise AppError.conflict(
+                "运行前检查失败：LLM 模型配置无效。",
+                code="TASK_PRECHECK_LLM_MODEL_INVALID",
+                hint=(
+                    "请检查设置中心中的模型名是否真实存在于远端服务返回的模型列表中。"
+                    f" 详细原因：{validation.model_reason}"
+                ),
+            )
         raise AppError.conflict(
             "运行前检查失败：LLM 服务连通性校验未通过。",
             code="TASK_PRECHECK_LLM_UNREACHABLE",
-            hint=f"请检查模型服务地址、网络连接或鉴权配置。详细原因：{llm_reason}",
+            hint=f"请检查模型服务地址、网络连接或鉴权配置。详细原因：{validation.connectivity_reason}",
         )
 
     def _assert_required_models_ready(

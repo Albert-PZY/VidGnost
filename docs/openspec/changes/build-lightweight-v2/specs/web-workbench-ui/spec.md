@@ -266,4 +266,5 @@ Diagnostics view SHALL provide a direct autofix action when the backend marks is
 - **WHEN** the backend runs the `LLM 模型` self-check step
 - **THEN** it verifies the configured online LLM API key and Base URL
 - **AND** it probes the configured OpenAI-compatible `/models` endpoint
+- **AND** it only reports success when the `/models` response is a valid model list and the configured `model` is present in that remote list
 - **AND** the diagnostics issue summary reports the concrete connectivity result instead of only checking whether the config file exists

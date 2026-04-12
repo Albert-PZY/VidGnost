@@ -14,7 +14,7 @@ from typing import Literal
 from app.config import Settings
 from app.services.events import EventBus
 from app.services.llm_config_store import LLMConfigStore
-from app.services.llm_connectivity import probe_openai_compat_models_endpoint
+from app.services.llm_connectivity import validate_openai_compat_model_config
 from app.services.model_catalog_store import ModelCatalogStore
 from app.services.naming import generate_time_key
 
@@ -354,23 +354,32 @@ class SelfCheckService:
                 manual_action="在设置中心填写可用的 LLM API Key 后重新执行系统自检。",
             )
 
-        ok, reason = probe_openai_compat_models_endpoint(
+        validation = validate_openai_compat_model_config(
             base_url=base_url,
             api_key=api_key,
+            model=model_name,
             timeout_seconds=6.0,
         )
-        details["连通性"] = reason
-        if ok:
+        details["连通性"] = validation.connectivity_reason
+        details["模型校验"] = validation.model_reason
+        if validation.ok:
             return SelfCheckOutcome(
                 status="passed",
                 message="LLM 在线 API 连通正常",
                 details=details,
             )
+        if validation.connectivity_ok and not validation.model_ok:
+            return SelfCheckOutcome(
+                status="failed",
+                message="LLM 在线 API 模型配置无效",
+                details=details,
+                manual_action="检查模型名是否存在于远端模型列表中，并确认当前配置与服务端返回一致。",
+            )
         return SelfCheckOutcome(
             status="failed",
             message="LLM 在线 API 连通失败",
             details=details,
-            manual_action="检查 Base URL、网络连通性和鉴权配置后重新执行系统自检。",
+            manual_action="检查 Base URL、API Key、网络连通性和鉴权配置后重新执行系统自检。",
         )
 
     async def _check_embedding(self) -> SelfCheckOutcome:

@@ -43,6 +43,7 @@ Before the backend creates or enqueues a task, it SHALL verify that the current 
 
 #### Scenario: Reject task when runtime preflight fails
 - **WHEN** client submits a task and the required runtime checks fail because FFmpeg is unavailable, disk space is too low, the LLM service is unreachable, or a required model is not ready
+- **AND** runtime preflight treats an OpenAI-compatible LLM as unavailable when `/models` is unreachable, returns an invalid payload, or does not include the configured `model`
 - **THEN** server returns a conflict response with a clear remediation hint
 - **AND** server does not create the task record
 - **AND** server does not enqueue the task
