@@ -103,6 +103,7 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
   const [isAnimatingSkin, setIsAnimatingSkin] = React.useState(false)
   const transitionFrameRef = React.useRef<number | null>(null)
   const transitionTimerRef = React.useRef<number | null>(null)
+  const transitionOverlayIdRef = React.useRef<string | null>(null)
   const layerSequenceRef = React.useRef(0)
   const activeSkinRef = React.useRef(normalizedSkin)
 
@@ -116,6 +117,8 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
       window.clearTimeout(transitionTimerRef.current)
       transitionTimerRef.current = null
     }
+
+    transitionOverlayIdRef.current = null
   }, [])
 
   const baseNaturalSize = useImageNaturalSize(baseLayer.skin.background_image)
@@ -186,23 +189,6 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
     setOverlayLayer(nextOverlayLayer)
     setOverlayVisible(false)
     setIsAnimatingSkin(true)
-
-    transitionFrameRef.current = window.requestAnimationFrame(() => {
-      transitionFrameRef.current = null
-      setOverlayVisible(true)
-    })
-
-    transitionTimerRef.current = window.setTimeout(() => {
-      layerSequenceRef.current += 1
-      setBaseLayer({
-        id: `base-${layerSequenceRef.current}`,
-        skin: normalizedSkin,
-      })
-      setOverlayLayer(null)
-      setOverlayVisible(false)
-      setIsAnimatingSkin(false)
-      transitionTimerRef.current = null
-    }, SKIN_PREVIEW_TRANSITION_MS)
   }, [clearSkinTransition, normalizedSkin, prefersReducedMotion])
 
   React.useEffect(() => {
@@ -269,11 +255,17 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
     viewportSize.width,
   ])
 
+  const overlaySharesBaseSource =
+    Boolean(overlayLayer?.skin.background_image) &&
+    overlayLayer?.skin.background_image === baseLayer.skin.background_image
+
+  const resolvedOverlayNaturalSize = overlaySharesBaseSource ? baseNaturalSize : overlayNaturalSize
+
   const overlayImageLayout = React.useMemo(() => {
     if (
       !overlayLayer?.skin.background_image ||
-      overlayNaturalSize.width <= 0 ||
-      overlayNaturalSize.height <= 0
+      resolvedOverlayNaturalSize.width <= 0 ||
+      resolvedOverlayNaturalSize.height <= 0
     ) {
       return null
     }
@@ -281,19 +273,49 @@ export function AppBackgroundLayer({ uiSettings }: { uiSettings: UISettingsRespo
     return getImageLayout({
       viewportWidth: viewportSize.width,
       viewportHeight: viewportSize.height,
-      imageWidth: overlayNaturalSize.width,
-      imageHeight: overlayNaturalSize.height,
+      imageWidth: resolvedOverlayNaturalSize.width,
+      imageHeight: resolvedOverlayNaturalSize.height,
       scale: overlayLayer.skin.background_image_scale,
       focusX: overlayLayer.skin.background_image_focus_x,
       focusY: overlayLayer.skin.background_image_focus_y,
     })
   }, [
     overlayLayer,
-    overlayNaturalSize.height,
-    overlayNaturalSize.width,
+    resolvedOverlayNaturalSize.height,
+    resolvedOverlayNaturalSize.width,
     viewportSize.height,
     viewportSize.width,
   ])
+
+  React.useEffect(() => {
+    if (!overlayLayer || !overlayImageLayout) {
+      return
+    }
+
+    if (transitionOverlayIdRef.current === overlayLayer.id) {
+      return
+    }
+
+    transitionOverlayIdRef.current = overlayLayer.id
+    transitionFrameRef.current = window.requestAnimationFrame(() => {
+      transitionFrameRef.current = null
+      setOverlayVisible(true)
+      transitionTimerRef.current = window.setTimeout(() => {
+        layerSequenceRef.current += 1
+        setBaseLayer({
+          id: `base-${layerSequenceRef.current}`,
+          skin: overlayLayer.skin,
+        })
+        setOverlayLayer((currentOverlay) =>
+          currentOverlay?.id === overlayLayer.id ? null : currentOverlay,
+        )
+        setOverlayVisible(false)
+        setIsAnimatingSkin(false)
+        transitionOverlayIdRef.current = null
+        transitionTimerRef.current = null
+      }, SKIN_PREVIEW_TRANSITION_MS)
+    })
+  }, [overlayImageLayout, overlayLayer])
 
   if (!baseLayer.skin.background_image && !overlayLayer?.skin.background_image) {
     return null

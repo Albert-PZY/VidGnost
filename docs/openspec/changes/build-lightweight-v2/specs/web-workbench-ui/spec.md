@@ -105,6 +105,7 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **AND** the selection frame stays fully inside the currently rendered image bounds, including at the minimum persisted `100%` scale
 - **AND** the current shell background updates in real time while the dialog is open
 - **AND** brief drag, zoom, opacity, or blur bursts from the dialog coalesce before they reach the shell background layer so each preview fade can complete without being restarted on every pointer frame
+- **AND** the shell background layer starts each crossfade only after the incoming preview layer has a resolved render layout, so the user sees an actual fade instead of a direct visual swap
 - **AND** higher blur values MAY reduce the internal offscreen blur resolution to preserve interactive smoothness while keeping the saved scale, focus, and output frame unchanged
 - **AND** the primary save action follows the active UI theme hue instead of using a fixed accent color
 - **AND** saving the dialog persists opacity, blur, scale, and focus coordinates for the selected image
