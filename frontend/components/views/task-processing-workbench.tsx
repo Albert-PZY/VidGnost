@@ -1978,6 +1978,29 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
   isMindmapLoading,
   isTaskCompleted,
 }: NotesWorkbenchProps) {
+  const notesEditorRef = React.useRef<HTMLTextAreaElement | null>(null)
+
+  React.useEffect(() => {
+    if (!isEditingNotes) {
+      return
+    }
+    const frame = window.requestAnimationFrame(() => {
+      const node = notesEditorRef.current
+      if (!node) {
+        return
+      }
+      node.scrollIntoView({
+        block: "start",
+        inline: "nearest",
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      })
+      node.focus({ preventScroll: true })
+      const end = node.value.length
+      node.setSelectionRange(end, end)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [isEditingNotes])
+
   return (
     <Tabs value={notesTab} onValueChange={(value) => onNotesTabChange(value as NotesTab)} className="workbench-detail-pane notes-workbench-pane flex h-full min-h-0 flex-col">
       <TabsList className="workbench-detail-tabs w-full justify-start rounded-none border-b bg-transparent p-0">
@@ -2016,7 +2039,7 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
             <div className="notes-workbench-section rounded-2xl border border-border/70 bg-card/65 p-4">
               <h3 className="mb-3 text-sm font-medium">笔记 Markdown</h3>
               {isEditingNotes ? (
-                <Textarea className="min-h-[28rem] font-mono text-sm leading-6" value={notesDraft} onChange={(event) => setNotesDraft(event.target.value)} />
+                <Textarea ref={notesEditorRef} className="min-h-[28rem] font-mono text-sm leading-6" value={notesDraft} onChange={(event) => setNotesDraft(event.target.value)} />
               ) : (
                 <MarkdownArtifactViewer taskId={taskId} markdown={notesMarkdown} emptyMessage="当前还没有生成笔记内容" className="artifact-markdown-viewer-shell" onSeek={onSeek} />
               )}
