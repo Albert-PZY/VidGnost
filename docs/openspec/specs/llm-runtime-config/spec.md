@@ -81,7 +81,7 @@ The system SHALL expose `/config/whisper/runtime-libraries` and `/config/whisper
 
 #### Scenario: Start managed Whisper GPU runtime install
 - **WHEN** frontend requests `/config/whisper/runtime-libraries/install`
-- **THEN** backend launches the bundled installer script from `scripts/`
+- **THEN** backend launches the bundled installer script from repository root path `scripts/install-whisper-gpu-runtime.ps1`
 - **AND** the installer resolves package URLs from NVIDIA official redist manifests instead of hard-coded third-party mirrors
 - **AND** the returned runtime-library status exposes install progress, package-level progress text, and final readiness diagnostics
 

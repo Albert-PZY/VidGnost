@@ -26,6 +26,7 @@ _BUNDLE_VERSION_LABEL = f"CUDA {_CUDA_REDIST_VERSION} + cuDNN {_CUDNN_REDIST_VER
 _PROGRESS_PREFIX = "VIDGNOST_GPU_RUNTIME_PROGRESS:"
 _REQUIRED_DLLS = ("cublas64_12.dll", "cudart64_12.dll", "nvJitLink_12.dll")
 _CUDNN_GLOB = "cudnn64*.dll"
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 class RuntimeInstallSnapshot(TypedDict):
@@ -89,9 +90,7 @@ class WhisperGpuRuntimeService:
         self._lock = asyncio.Lock()
         self._snapshot: RuntimeInstallSnapshot = _build_snapshot()
         self._task: asyncio.Task[None] | None = None
-        self._installer_script = (
-            Path(__file__).resolve().parents[2] / "scripts" / "install-whisper-gpu-runtime.ps1"
-        )
+        self._installer_script = _REPO_ROOT / "scripts" / "install-whisper-gpu-runtime.ps1"
 
     async def bootstrap_process_environment(self) -> None:
         config = await self._runtime_config_store.get_whisper_runtime_libraries()
@@ -217,7 +216,7 @@ class WhisperGpuRuntimeService:
             *args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            cwd=str(Path(__file__).resolve().parents[2]),
+            cwd=str(_REPO_ROOT),
         )
         stdout_task = asyncio.create_task(self._consume_stdout(process))
         stderr_task = asyncio.create_task(process.stderr.read()) if process.stderr is not None else None
