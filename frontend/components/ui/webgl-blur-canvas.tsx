@@ -77,7 +77,7 @@ uniform vec2 u_canvasSize;
 uniform vec4 u_imageRect;
 
 void main() {
-  vec2 fragPx = v_uv * u_canvasSize;
+  vec2 fragPx = vec2(v_uv.x * u_canvasSize.x, (1.0 - v_uv.y) * u_canvasSize.y);
   vec2 imageUv = clamp((fragPx - u_imageRect.xy) / u_imageRect.zw, 0.0, 1.0);
   gl_FragColor = texture2D(u_image, imageUv);
 }
@@ -121,9 +121,9 @@ void main() {
   vec4 color = texture2D(u_texture, v_uv);
 
   if (u_cropToImageRect > 0.5) {
-    vec2 fragPx = v_uv * u_canvasSize;
-    bool insideX = fragPx.x >= u_imageRect.x && fragPx.x <= u_imageRect.x + u_imageRect.z;
-    bool insideY = fragPx.y >= u_imageRect.y && fragPx.y <= u_imageRect.y + u_imageRect.w;
+    vec2 fragPx = vec2(v_uv.x * u_canvasSize.x, (1.0 - v_uv.y) * u_canvasSize.y);
+    bool insideX = fragPx.x >= u_imageRect.x - 0.5 && fragPx.x <= u_imageRect.x + u_imageRect.z + 0.5;
+    bool insideY = fragPx.y >= u_imageRect.y - 0.5 && fragPx.y <= u_imageRect.y + u_imageRect.w + 0.5;
 
     if (!(insideX && insideY)) {
       color = vec4(0.0);
@@ -544,7 +544,7 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
 
         if (resources.uploadedSourceKey !== imageReadyKey) {
           gl.bindTexture(gl.TEXTURE_2D, resources.sourceTexture)
-          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1)
+          gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 0)
           gl.texImage2D(
             gl.TEXTURE_2D,
             0,
@@ -674,22 +674,59 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
   }
 
   if (fallbackMode || blur <= 0) {
+    const imageStyle = {
+      left: `${imageRect.left}px`,
+      top: `${imageRect.top}px`,
+      width: `${imageRect.width}px`,
+      height: `${imageRect.height}px`,
+      filter: blur > 0 ? `blur(${blur}px)` : undefined,
+    }
+
     return (
-      <img
-        alt=""
-        src={src}
-        draggable={false}
-        className={cn(className, "absolute max-w-none select-none")}
+      <div
+        aria-hidden="true"
+        className={cn(className, "absolute select-none")}
         style={{
           ...style,
-          left: `${imageRect.left}px`,
-          top: `${imageRect.top}px`,
-          width: `${imageRect.width}px`,
-          height: `${imageRect.height}px`,
+          width: `${width}px`,
+          height: `${height}px`,
           opacity,
-          filter: blur > 0 ? `blur(${blur}px)` : undefined,
         }}
-      />
+      >
+        {cropToImageRect && blur > 0 ? (
+          <div
+            className="absolute overflow-hidden"
+            style={{
+              left: imageStyle.left,
+              top: imageStyle.top,
+              width: imageStyle.width,
+              height: imageStyle.height,
+            }}
+          >
+            <img
+              alt=""
+              src={src}
+              draggable={false}
+              className="absolute max-w-none select-none"
+              style={{
+                left: 0,
+                top: 0,
+                width: "100%",
+                height: "100%",
+                filter: imageStyle.filter,
+              }}
+            />
+          </div>
+        ) : (
+          <img
+            alt=""
+            src={src}
+            draggable={false}
+            className="absolute max-w-none select-none"
+            style={imageStyle}
+          />
+        )}
+      </div>
     )
   }
 

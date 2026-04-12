@@ -388,12 +388,19 @@ export function HistoryView({ onOpenTask }: HistoryViewProps) {
                 共 {total} 条结果，当前第 {page} / {totalPages} 页
               </span>
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" disabled={page <= 1 || isLoading} onClick={() => setPage((current) => Math.max(1, current - 1))}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="history-pagination-button"
+                  disabled={page <= 1 || isLoading}
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                >
                   上一页
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
+                  className="history-pagination-button"
                   disabled={page >= totalPages || isLoading}
                   onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
                 >

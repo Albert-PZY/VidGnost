@@ -2094,9 +2094,9 @@ export function SettingsView({
                   <Separator />
                   <div className="flex items-center justify-between gap-4 rounded-xl border border-border/70 bg-muted/15 px-4 py-3">
                     <div className="space-y-1">
-                      <Label>开发态性能日志</Label>
+                      <Label>开发者模式</Label>
                       <p className="text-sm text-muted-foreground">
-                        在浏览器控制台输出关键视图和重型操作的耗时采样，仅影响当前本机。
+                        开启后会记录关键视图和重型操作的耗时采样，并在系统自检界面底部展示最近的数据。
                       </p>
                     </div>
                     <Switch
@@ -2104,7 +2104,7 @@ export function SettingsView({
                       onCheckedChange={(checked) => {
                         setPerfLoggingEnabled(checked)
                         setPerfLoggingState(checked)
-                        toast.success(checked ? "已开启性能日志采样" : "已关闭性能日志采样")
+                        toast.success(checked ? "已开启开发者模式" : "已关闭开发者模式")
                       }}
                     />
                   </div>

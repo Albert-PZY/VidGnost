@@ -4,7 +4,6 @@ import * as React from "react"
 import { toast } from "react-hot-toast"
 import {
   ArrowRight,
-  ChevronRight,
   Clock,
   FileText,
   FileVideo,
@@ -253,22 +252,20 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center gap-2 overflow-x-auto pb-2">
-                {steps.map((step, index) => (
-                  <React.Fragment key={step.id}>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <div className="workflow-step-chip flex h-7 w-7 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                        {step.id}
-                      </div>
-                      <div className="text-sm">
-                        <div className="font-medium">{step.name}</div>
-                        <div className="hidden text-xs text-muted-foreground sm:block">{step.description}</div>
-                      </div>
+              <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(13rem,1fr))]">
+                {steps.map((step) => (
+                  <div
+                    key={step.id}
+                    className="workflow-step-card flex min-h-[5.25rem] items-start gap-3 rounded-2xl border border-border/70 bg-muted/20 px-3.5 py-3"
+                  >
+                    <div className="workflow-step-chip flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
+                      {step.id}
                     </div>
-                    {index < steps.length - 1 ? (
-                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    ) : null}
-                  </React.Fragment>
+                    <div className="min-w-0 text-sm">
+                      <div className="font-medium">{step.name}</div>
+                      <div className="mt-1 text-xs leading-5 text-muted-foreground">{step.description}</div>
+                    </div>
+                  </div>
                 ))}
               </div>
             </CardContent>
@@ -277,7 +274,6 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
           <Card className="border-border/70 bg-card/70">
             <CardHeader>
               <CardTitle className="text-base">价值预期</CardTitle>
-              <CardDescription>先让用户知道最终会得到什么，而不是只看到一个上传框。</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="rounded-2xl border border-border/70 bg-muted/25 p-4">
@@ -287,7 +283,7 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
                 <p className="mt-3 text-sm leading-6">
                   {selectedWorkflow === "notes"
                     ? "你会得到可继续编辑的 Markdown 摘要、结构化笔记和思维导图，同时支持从时间戳回跳视频。"
-                    : "你会得到带 trace_id 的流式回答、证据引用、时间点定位和后续可追溯的检索调试信息。"}
+                    : "你会得到实时生成的回答、对应的视频证据片段、可直接跳转的时间点，以及方便排查依据的过程记录。"}
                 </p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -315,16 +311,16 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
           </CardHeader>
           <CardContent className="space-y-5">
             <Tabs value={sourceMode} onValueChange={(value) => setSourceMode(value as TaskSourceMode)} className="gap-4">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="upload">上传文件</TabsTrigger>
-                <TabsTrigger value="url">网络链接</TabsTrigger>
-                <TabsTrigger value="path">本地路径</TabsTrigger>
+              <TabsList className="new-task-source-tabs grid h-auto w-full grid-cols-3 gap-2 rounded-2xl bg-muted/20 p-1.5">
+                <TabsTrigger className="new-task-source-trigger rounded-xl" value="upload">上传文件</TabsTrigger>
+                <TabsTrigger className="new-task-source-trigger rounded-xl" value="url">网络链接</TabsTrigger>
+                <TabsTrigger className="new-task-source-trigger rounded-xl" value="path">本地路径</TabsTrigger>
               </TabsList>
 
               <TabsContent value="upload" className="space-y-4">
                 <div
                   className={cn(
-                    "relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-12 transition-colors",
+                    "new-task-source-panel new-task-source-dropzone relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-12 transition-colors",
                     isDragging
                       ? "border-primary bg-primary/5"
                       : "border-muted-foreground/25 hover:border-muted-foreground/50",
@@ -411,7 +407,7 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
               </TabsContent>
 
               <TabsContent value="url" className="space-y-4">
-                <div className="rounded-2xl border border-border/70 bg-muted/20 p-5">
+                <div className="new-task-source-panel rounded-2xl border border-border/70 bg-muted/20 p-5">
                   <div className="flex items-center gap-2 text-sm font-medium">
                     <Link2 className="h-4 w-4 text-primary" />
                     粘贴在线视频链接
@@ -427,7 +423,7 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
               </TabsContent>
 
               <TabsContent value="path" className="space-y-4">
-                <div className="rounded-2xl border border-border/70 bg-muted/20 p-5">
+                <div className="new-task-source-panel rounded-2xl border border-border/70 bg-muted/20 p-5">
                   <div className="flex items-center gap-2 text-sm font-medium">
                     <HardDrive className="h-4 w-4 text-primary" />
                     输入本地视频绝对路径

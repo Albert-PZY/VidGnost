@@ -50,11 +50,12 @@ Prompt template editor SHALL use a markdown editor that keeps the source editor 
 - **AND** scrolling one pane keeps the other pane aligned for long prompt content
 
 ### Requirement: Desktop startup SHALL preload core workbench views before main window reveal
-Electron desktop startup SHALL open a dedicated splash window first, keep the main window hidden while renderer assets and core workbench views initialize, and reveal the main window only after bootstrap completes or enters degraded mode. Core workbench views such as `新建任务`, `历史记录`, `设置中心`, `系统自检`, `任务处理`, and the prompt-template Markdown editor SHALL be included in the initial renderer startup path instead of route-level or dialog-level lazy loading placeholders.
+Electron desktop startup SHALL open a dedicated splash window first, keep the main window hidden while renderer assets and core workbench views initialize, and reveal the main window only after bootstrap completes or enters degraded mode. Core workbench views such as `新建任务`, `历史记录`, `设置中心`, `系统自检`, `任务处理`, and the prompt-template Markdown editor SHALL be included in the initial renderer startup path instead of route-level or dialog-level lazy loading placeholders. The splash surface SHALL follow the same restrained professional dark-tool styling as the renderer shell, using the project logo, compact status copy, and a single thin progress bar instead of decorative gradients, scanlines, floating ornaments, or oversized glass effects.
 
 #### Scenario: Launch the Electron workbench
 - **WHEN** user opens the desktop application
 - **THEN** a standalone splash surface appears immediately with the project brand image and startup progress copy
+- **AND** the splash surface keeps a compact professional layout with restrained dark surfaces and no decorative glow, scanline, or floating ornament treatment
 - **AND** the hidden main window continues loading renderer assets, core workbench views, and initial UI data in the background
 - **AND** the main window is revealed only after startup bootstrap reports completion or explicitly enters degraded mode
 - **AND** no page-level or prompt-editor skeleton placeholder is shown as part of the initial desktop startup chain
@@ -85,7 +86,9 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **WHEN** user chooses a skin image from the Electron shell and opens the skin dialog
 - **THEN** the renderer shows a compact single-column skin dialog with a fixed selection frame and wheel-driven zoom
 - **AND** dragging inside the selection frame moves the image behind the frame instead of moving or resizing the frame itself
+- **AND** the live shell preview uses a short eased transition while the user drags the frame, changes image scale, or adjusts image opacity, unless reduced-motion is requested
 - **AND** adjusting blur only changes blur intensity and SHALL NOT alter the saved image scale or focus position
+- **AND** increasing blur SHALL NOT crop the bottom edge of the sampled image or shift the sampled frame vertically
 - **AND** blur rendering in the dialog preview uses an offscreen WebGL pipeline that keeps the image layout fixed instead of inflating the image bounds to hide blur edges
 - **AND** the blur pipeline duplicates edge samples at the image boundary so higher blur values do not reveal transparent or empty borders
 - **AND** the dialog preview only displays the original image rect and SHALL NOT expose duplicated edge-fill strips outside that rect
@@ -116,12 +119,15 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **AND** in light theme with a custom skin active, appearance-setting action buttons and hue chips suppress visible outline strokes and rely on translucent surfaces plus theme-hue hover feedback
 - **AND** in light theme with a custom skin active, titlebar controls keep a neutral resting surface while the sidebar workflow trigger uses a glass resting surface and both only add emphasis on hover, focus, or open state
 - **AND** in light theme with a custom skin active, history overview icon shells use the active theme hue family while preserving each icon glyph color
+- **AND** in light theme with a custom skin active, the application-close confirmation dialog uses a denser frosted light surface with white foreground text
 - **AND** in light theme with a custom skin active, diagnostics check-list icon shells use the active theme hue family and keep the inner icon glyphs white
 - **AND** in light theme with a custom skin active, model-configuration and prompt-template dialogs reuse the custom-skin dialog's deep glass surface, preserve light foreground text, suppress hard borders, use thinner themed scrollbars, and keep header/footer chrome visually compact
 - **AND** in light theme with a custom skin active, the prompt-template Markdown editor preview SHALL NOT fall back to the library default white canvas and instead keeps a tinted dark translucent reading surface with readable light foreground text
 - **AND** in light theme with a custom skin active, the prompt-template Markdown editor input pane and preview pane use the same thin themed scrollbar styling
 - **AND** sidebar separators stay clipped to the sidebar content width in every theme and SHALL NOT visually protrude past the container edge
 - **AND** in light theme with a custom skin active, generic select and dropdown controls across the workbench keep white foreground text and icons by default and SHALL NOT fall back to dark typography inside glass popup surfaces
+- **AND** in light theme with a custom skin active, new-task intake mode tabs and intake panels use theme-hue translucent fills with white foreground text and explicit hover or active emphasis
+- **AND** in light theme with a custom skin active, history pagination controls keep white foreground text
 - **AND** in light theme with a custom skin active, titlebar language/theme menus and the sidebar workflow menu use the shared glass dropdown surface, default to white text/icons, and express selected or hover state via neutral glass emphasis instead of theme-cyan fills
 - **AND** in light theme with a custom skin active, titlebar language/theme menu items and sidebar workflow options keep a neutral resting state and SHALL NOT inherit global accent background fills outside their explicit local hover, focus, highlight, or selected glass states
 - **AND** in light theme with a custom skin active, prompt-template list cards suppress hard white outline strokes in favor of translucent surface separation
@@ -181,9 +187,18 @@ New-task view SHALL expose `Upload`, `URL`, and `Path` intake modes inside the s
 
 #### Scenario: Open new-task view for notes workflow
 - **WHEN** user enters the new-task view with workflow `notes`
-- **THEN** the renderer shows workflow step chips, a value-preview summary, and the three intake modes
+- **THEN** the renderer shows responsive workflow step cards without horizontal scrolling, a value-preview summary, and the three intake modes
 - **AND** the upload mode supports drag-and-drop plus batch file selection
 - **AND** the user can switch to URL or absolute local-path input without leaving the page
+
+### Requirement: Diagnostics view SHALL surface developer-mode samples when enabled
+Diagnostics view SHALL expose a dedicated developer-mode area below the runtime strip and issue summary. When developer mode is enabled from settings, the area SHALL list recent local frontend performance samples captured from critical views or heavy actions; when developer mode is disabled, the same area SHALL explain how to enable it.
+
+#### Scenario: Open diagnostics view with developer mode enabled
+- **WHEN** user enables developer mode in settings and then opens diagnostics
+- **THEN** the diagnostics page shows a developer-mode panel near the bottom of the page
+- **AND** the panel lists recent performance samples with readable operation labels, local timestamps, and duration values in milliseconds
+- **AND** the panel updates as new local samples are recorded during the same renderer session
 
 ### Requirement: Bootstrap surfaces SHALL provide startup progress and backend recovery actions
 Workbench bootstrap SHALL expose a desktop splash progress state before the main window reveal and a renderer overlay state machine for `initializing`, `connecting`, `degraded`, and `ready` after the main window becomes visible. Degraded states SHALL provide direct recovery actions.

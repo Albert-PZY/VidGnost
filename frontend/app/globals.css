@@ -299,6 +299,39 @@ html:not(.dark) body[data-app-background-active="true"] .custom-skin-dialog-surf
   box-shadow: var(--wallpaper-glass-edge-strong);
 }
 
+html:not(.dark) body[data-app-background-active="true"] .confirm-dialog-content {
+  background: linear-gradient(180deg, rgba(112, 124, 142, 0.92) 0%, rgba(93, 103, 119, 0.9) 100%) !important;
+  border-color: transparent !important;
+  color: white !important;
+  backdrop-filter: blur(30px) saturate(1.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 28px 72px rgba(6, 10, 18, 0.22) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .confirm-dialog-content :is(
+    .confirm-dialog-title,
+    .confirm-dialog-description,
+    .confirm-dialog-cancel,
+    .confirm-dialog-action
+  ) {
+  color: white !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .confirm-dialog-content .confirm-dialog-description {
+  color: rgba(255, 255, 255, 0.84) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .confirm-dialog-content .confirm-dialog-cancel {
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .confirm-dialog-content .confirm-dialog-cancel:hover,
+html:not(.dark) body[data-app-background-active="true"] .confirm-dialog-content .confirm-dialog-cancel:focus-visible {
+  background: rgba(255, 255, 255, 0.14) !important;
+}
+
 html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) {
   background: linear-gradient(180deg, rgba(72, 78, 96, 0.96) 0%, rgba(56, 61, 77, 0.94) 100%) !important;
   border-color: transparent !important;
@@ -594,6 +627,50 @@ html:not(.dark) body[data-app-background-active="true"] .upload-dropzone-icon-sh
   color: var(--primary-foreground) !important;
 }
 
+html:not(.dark) body[data-app-background-active="true"] .workflow-step-card {
+  border-color: transparent !important;
+  background: color-mix(in oklch, var(--primary) 16%, transparent) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 10px 24px rgba(6, 10, 18, 0.08);
+}
+
+html:not(.dark) body[data-app-background-active="true"] .new-task-source-tabs {
+  background: color-mix(in oklch, var(--primary) 24%, transparent) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 10px 24px rgba(6, 10, 18, 0.08);
+}
+
+html:not(.dark) body[data-app-background-active="true"] .new-task-source-trigger {
+  color: white !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .new-task-source-trigger:is(:hover, :focus-visible, [data-state="active"]) {
+  background: color-mix(in oklch, var(--primary) 58%, white 6%) !important;
+  color: white !important;
+  box-shadow: none !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .new-task-source-panel {
+  border-color: transparent !important;
+  background: color-mix(in oklch, var(--primary) 16%, transparent) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 12px 28px rgba(6, 10, 18, 0.08);
+}
+
+html:not(.dark) body[data-app-background-active="true"] .new-task-source-panel :is(.text-muted-foreground, .text-primary) {
+  color: white !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .new-task-source-dropzone:hover,
+html:not(.dark) body[data-app-background-active="true"] .new-task-source-dropzone:focus-within {
+  background: color-mix(in oklch, var(--primary) 22%, transparent) !important;
+}
+
 html:not(.dark) body[data-app-background-active="true"] .upload-dropzone-icon-shell svg {
   color: var(--primary-foreground) !important;
   opacity: 0.92;
@@ -780,6 +857,10 @@ html:not(.dark) body[data-app-background-active="true"] .history-stat-icon-shell
 }
 
 html:not(.dark) body[data-app-background-active="true"] .history-stat-icon-shell svg {
+  color: white !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .history-pagination-button {
   color: white !important;
 }
 
