@@ -11,6 +11,8 @@ const APP_ICON_SVG_PATH = path.join(__dirname, "..", "public", "icon.svg")
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(["http:", "https:"])
 const STARTUP_FAILSAFE_MS = 45_000
 const STARTUP_MIN_SPLASH_MS = 1_400
+const SPLASH_WINDOW_WIDTH = 420
+const SPLASH_WINDOW_HEIGHT = 480
 const INITIAL_BOOTSTRAP_PHASE_ID = BOOTSTRAP_STEP_DEFS[0]?.id || "load-renderer"
 const allowedToClose = new WeakSet()
 const IMAGE_MIME_TYPES = {
@@ -262,12 +264,12 @@ function emitWindowState(win) {
 
 function createSplashWindow() {
   const win = new BrowserWindow({
-    width: 592,
-    height: 676,
-    minWidth: 592,
-    minHeight: 676,
-    maxWidth: 592,
-    maxHeight: 676,
+    width: SPLASH_WINDOW_WIDTH,
+    height: SPLASH_WINDOW_HEIGHT,
+    minWidth: SPLASH_WINDOW_WIDTH,
+    minHeight: SPLASH_WINDOW_HEIGHT,
+    maxWidth: SPLASH_WINDOW_WIDTH,
+    maxHeight: SPLASH_WINDOW_HEIGHT,
     frame: false,
     transparent: false,
     resizable: false,
