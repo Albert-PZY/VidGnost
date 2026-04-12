@@ -42,6 +42,8 @@ _SUMMARY_WINDOW_LIMIT = 16
 _WINDOW_AGGREGATE_BATCH_SIZE = 4
 _WINDOW_AGGREGATE_OVERLAP = 1
 _CONTEXT_COMPRESS_MAX_ROUNDS = 2
+_REWRITE_TRANSCRIPT_SKIP_CHARS = 14_000
+_REWRITE_TRANSCRIPT_SKIP_SEGMENTS = 220
 _MERMAID_REPAIR_RETRIES = 3
 _MERMAID_PLACEHOLDER_TEMPLATE = (
     "> [Mermaid 图示已省略：自动渲染失败（已重试 {retries} 次）。]"
@@ -345,16 +347,44 @@ class LLMService:
             if llm_mode == "local"
             else str(llm_config.get("model", self._settings.llm_model)).strip()
         ) or self._settings.llm_model
+        correction_timeout_seconds = _resolve_correction_timeout_seconds(
+            mode=mode,
+            base_timeout_seconds=self._settings.llm_timeout_seconds,
+        )
         try:
             if mode == "rewrite":
-                try:
-                    rewritten = await self._rewrite_transcript_text(
-                        llm_mode=llm_mode,
-                        client=client,
-                        model_name=model_name,
-                        title=title,
+                if _should_skip_rewrite_correction(
+                    transcript_text=normalized_text,
+                    segments=normalized_segments,
+                ):
+                    return TranscriptCorrectionBundle(
+                        mode=mode,
                         transcript_text=normalized_text,
-                        on_preview_delta=on_preview_delta,
+                        summary_input_text=normalized_text,
+                        segments=normalized_segments,
+                        fallback_used=True,
+                        message="Transcript rewrite skipped for long transcript to keep pipeline responsive.",
+                    )
+                try:
+                    rewritten = await asyncio.wait_for(
+                        self._rewrite_transcript_text(
+                            llm_mode=llm_mode,
+                            client=client,
+                            model_name=model_name,
+                            title=title,
+                            transcript_text=normalized_text,
+                            on_preview_delta=on_preview_delta,
+                        ),
+                        timeout=correction_timeout_seconds,
+                    )
+                except asyncio.TimeoutError:
+                    return TranscriptCorrectionBundle(
+                        mode=mode,
+                        transcript_text=normalized_text,
+                        summary_input_text=normalized_text,
+                        segments=normalized_segments,
+                        fallback_used=True,
+                        message=f"Rewrite correction timed out after {correction_timeout_seconds:.0f}s, fallback to original transcript.",
                     )
                 except Exception as exc:  # noqa: BLE001
                     return TranscriptCorrectionBundle(
@@ -408,16 +438,28 @@ class LLMService:
                 overlap = max(0, batch_size - 1)
 
             try:
-                corrected_segments = await self._correct_transcript_strict(
-                    llm_mode=llm_mode,
-                    client=client,
-                    model_name=model_name,
-                    title=title,
+                corrected_segments = await asyncio.wait_for(
+                    self._correct_transcript_strict(
+                        llm_mode=llm_mode,
+                        client=client,
+                        model_name=model_name,
+                        title=title,
+                        segments=normalized_segments,
+                        batch_size=batch_size,
+                        overlap=overlap,
+                        on_preview_delta=on_preview_delta,
+                        on_preview_segment=on_preview_segment,
+                    ),
+                    timeout=correction_timeout_seconds,
+                )
+            except asyncio.TimeoutError:
+                return TranscriptCorrectionBundle(
+                    mode="strict",
+                    transcript_text=normalized_text,
+                    summary_input_text=normalized_text,
                     segments=normalized_segments,
-                    batch_size=batch_size,
-                    overlap=overlap,
-                    on_preview_delta=on_preview_delta,
-                    on_preview_segment=on_preview_segment,
+                    fallback_used=True,
+                    message=f"Strict correction timed out after {correction_timeout_seconds:.0f}s, fallback to original transcript.",
                 )
             except Exception as exc:  # noqa: BLE001
                 return TranscriptCorrectionBundle(
@@ -1369,6 +1411,28 @@ def _normalize_correction_mode(raw: object) -> Literal["off", "strict", "rewrite
     if candidate in {"off", "strict", "rewrite"}:
         return candidate  # type: ignore[return-value]
     return "strict"
+
+
+def _should_skip_rewrite_correction(
+    *,
+    transcript_text: str,
+    segments: list[dict[str, float | str]],
+) -> bool:
+    normalized_text = transcript_text.strip()
+    return len(normalized_text) > _REWRITE_TRANSCRIPT_SKIP_CHARS or len(segments) > _REWRITE_TRANSCRIPT_SKIP_SEGMENTS
+
+
+def _resolve_correction_timeout_seconds(
+    *,
+    mode: Literal["off", "strict", "rewrite"],
+    base_timeout_seconds: int | float,
+) -> float:
+    safe_base = max(15.0, float(base_timeout_seconds or 0))
+    if mode == "rewrite":
+        return min(safe_base, 45.0)
+    if mode == "strict":
+        return min(safe_base, 75.0)
+    return safe_base
 
 
 def _normalize_llm_mode(raw: object) -> Literal["api", "local"]:

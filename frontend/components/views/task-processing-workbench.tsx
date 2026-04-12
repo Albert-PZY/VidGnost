@@ -118,6 +118,11 @@ const VM_PHASE_LABELS: Record<string, string> = {
   D: "阶段 D2 · 结果交付",
 }
 
+const TASK_EVENT_BADGE_LABELS: Record<string, string> = {
+  transcript_optimize: "文本优化",
+  fusion_delivery: "结果交付",
+}
+
 const TRACE_SECTIONS = [
   { key: "dense_hits", label: "Dense 检索", scoreKey: "dense_score" },
   { key: "sparse_hits", label: "Sparse 检索", scoreKey: "sparse_score" },
@@ -224,6 +229,227 @@ function buildTranscriptSnippet(segment: TranscriptSegment): string {
   return `- ${formatSecondsAsClock(segment.start)} - ${formatSecondsAsClock(segment.end)} ${segment.text}`
 }
 
+function buildTranscriptSegmentKey(segment: Pick<TranscriptSegment, "start" | "end">): string {
+  return `${Number(segment.start).toFixed(2)}-${Number(segment.end).toFixed(2)}`
+}
+
+function mergeTranscriptSegments(
+  baseSegments: TranscriptSegment[],
+  nextSegments: TranscriptSegment[],
+): TranscriptSegment[] {
+  const merged = new Map<string, TranscriptSegment>()
+
+  const append = (segment: TranscriptSegment) => {
+    const text = asString(segment.text).trim()
+    if (!text) {
+      return
+    }
+    const normalized: TranscriptSegment = {
+      ...segment,
+      start: Number(segment.start),
+      end: Number(segment.end),
+      text,
+    }
+    merged.set(buildTranscriptSegmentKey(normalized), normalized)
+  }
+
+  baseSegments.forEach(append)
+  nextSegments.forEach(append)
+
+  return Array.from(merged.values()).sort((left, right) => left.start - right.start || left.end - right.end)
+}
+
+function getRawTaskEventType(event: TaskStreamEvent): string {
+  return asString(event.original_type || event.type).trim().toLowerCase()
+}
+
+function extractTranscriptSegmentFromEvent(event: TaskStreamEvent): TranscriptSegment | null {
+  if (getRawTaskEventType(event) !== "transcript_delta") {
+    return null
+  }
+  const start = asNumber(event["start"])
+  const end = asNumber(event["end"])
+  const text = asString(event.text).trim()
+  if (start === null || end === null || !text) {
+    return null
+  }
+  return { start, end, text }
+}
+
+function shouldRecordTaskEvent(event: TaskStreamEvent): boolean {
+  return ![
+    "transcript_delta",
+    "summary_delta",
+    "mindmap_delta",
+    "transcript_optimized_preview",
+    "fusion_prompt_preview",
+  ].includes(getRawTaskEventType(event))
+}
+
+function formatTaskEventTimestamp(timestamp: string): string {
+  const parsed = new Date(timestamp)
+  if (Number.isNaN(parsed.getTime())) {
+    return ""
+  }
+  return parsed.toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  })
+}
+
+function formatTaskEventBadge(event: TaskStreamEvent): string {
+  const substage = asString(event.substage).trim()
+  if (substage) {
+    return TASK_EVENT_BADGE_LABELS[substage] || substage
+  }
+  const stage = asString(event.stage).trim()
+  if (stage) {
+    return VM_PHASE_LABELS[stage] || `阶段 ${stage}`
+  }
+  return "任务动态"
+}
+
+function translateTaskLogMessage(message: string): string {
+  const normalized = message.trim()
+  if (!normalized) {
+    return "当前事件没有附带说明。"
+  }
+
+  const stageStartedMatch = normalized.match(/^Stage ([A-D]) started: .+$/)
+  if (stageStartedMatch) {
+    const stageKey = stageStartedMatch[1]
+    return `${VM_PHASE_LABELS[stageKey] || `阶段 ${stageKey}`}已开始`
+  }
+
+  const stageCompletedMatch = normalized.match(/^Stage ([A-D]) completed$/)
+  if (stageCompletedMatch) {
+    const stageKey = stageCompletedMatch[1]
+    return `${VM_PHASE_LABELS[stageKey] || `阶段 ${stageKey}`}已完成`
+  }
+
+  if (normalized === "Checking local Whisper small model cache...") {
+    return "正在检查本地 Whisper small 模型缓存"
+  }
+  if (normalized === "Whisper small model cache is ready.") {
+    return "本地 Whisper small 模型缓存已就绪"
+  }
+  if (normalized.startsWith("Source type: ")) {
+    const sourceType = normalized.slice("Source type: ".length).trim()
+    const mapped = sourceType === "local_file" ? "本地文件" : sourceType === "local_path" ? "本地路径" : sourceType === "bilibili" ? "在线视频" : sourceType
+    return `已确认输入来源：${mapped}`
+  }
+  if (normalized.startsWith("Video ready: ")) {
+    return `视频源已就绪：${normalized.slice("Video ready: ".length).trim()}`
+  }
+  if (normalized.startsWith("Converting audio to WAV")) {
+    return normalized
+      .replace(/^Converting audio to WAV /, "正在提取音频并转换为 WAV ")
+      .replace(/\.\.\.$/, "")
+  }
+  if (normalized.startsWith("Audio conversion completed: ")) {
+    return `音频转换完成：${normalized.slice("Audio conversion completed: ".length).trim()}`
+  }
+  if (normalized.startsWith("Splitting audio into chunks")) {
+    return normalized
+      .replace(/^Splitting audio into chunks /, "正在切分音频 ")
+      .replace(/\.\.\.$/, "")
+  }
+
+  const chunkPreparedMatch = normalized.match(
+    /^Chunk (\d+)\/(\d+): ([^,]+), start ([\d.]+)s, duration ([\d.]+)s$/,
+  )
+  if (chunkPreparedMatch) {
+    const [, current, total, , startSeconds, durationSeconds] = chunkPreparedMatch
+    return `已生成音频分段 ${current}/${total}，起点 ${formatSecondsAsClock(Number(startSeconds))}，时长 ${Number(durationSeconds).toFixed(1)} 秒`
+  }
+
+  const chunkTranscribingMatch = normalized.match(/^Transcribing chunk (\d+)\/(\d+): .+$/)
+  if (chunkTranscribingMatch) {
+    const [, current, total] = chunkTranscribingMatch
+    return `正在转写第 ${current}/${total} 段音频`
+  }
+
+  const chunkCompletedMatch = normalized.match(/^Chunk (\d+)\/(\d+) transcription completed$/)
+  if (chunkCompletedMatch) {
+    const [, current, total] = chunkCompletedMatch
+    return `第 ${current}/${total} 段音频转写完成`
+  }
+
+  if (normalized === "Transcript optimization skipped because correction mode is off.") {
+    return "已跳过转写文本优化，直接进入结果整理"
+  }
+  if (normalized === "Running transcript correction strategy...") {
+    return "正在整理和优化转写文本"
+  }
+  if (normalized.startsWith("Waiting for model runtime lock: ")) {
+    return normalized
+      .replace(/^Waiting for model runtime lock: /, "正在等待模型执行资源：")
+      .replace(/s$/, " 秒")
+  }
+  if (normalized === "Generating detailed notes and mindmap in parallel...") {
+    return "正在并行生成详细笔记和思维导图"
+  }
+  if (normalized === "Rewrite correction completed.") {
+    return "转写文本优化完成"
+  }
+  if (normalized.startsWith("Transcript rewrite skipped for long transcript")) {
+    return "转写内容较长，已跳过全文改写以避免长时间停留在文本优化阶段"
+  }
+  if (normalized.startsWith("Rewrite correction timed out")) {
+    return "转写文本优化超时，已回退到原始转写继续后续处理"
+  }
+  if (normalized.startsWith("Strict correction timed out")) {
+    return "分段文本优化超时，已回退到原始转写继续后续处理"
+  }
+
+  return normalized
+}
+
+function formatTaskEventMessage(event: TaskStreamEvent): string {
+  const rawType = getRawTaskEventType(event)
+  const stageLabel = formatTaskEventBadge(event)
+  if (rawType === "stage_start") {
+    return `${stageLabel}已开始`
+  }
+  if (rawType === "stage_complete") {
+    return `${stageLabel}已完成`
+  }
+  if (rawType === "substage_start") {
+    return `${stageLabel}已开始`
+  }
+  if (rawType === "substage_complete") {
+    const status = asString(event["status"]).trim().toLowerCase()
+    if (status === "failed") {
+      return `${stageLabel}失败：${translateTaskLogMessage(asString(event.message))}`
+    }
+    if (status === "skipped") {
+      return `${stageLabel}已跳过`
+    }
+    return `${stageLabel}已完成`
+  }
+  if (rawType === "progress") {
+    const stageProgress = asNumber(event["stage_progress"])
+    const overallProgress = asNumber(event["overall_progress"])
+    if (stageProgress !== null) {
+      return `${stageLabel}进度 ${Math.round(stageProgress)}%`
+    }
+    if (overallProgress !== null) {
+      return `任务总进度 ${Math.round(overallProgress)}%`
+    }
+  }
+  if (rawType === "log") {
+    return translateTaskLogMessage(asString(event.message))
+  }
+  if (rawType === "task_complete") {
+    return "任务已完成，所有结果已生成"
+  }
+  if (rawType === "task_cancelled") {
+    return "任务已取消"
+  }
+  return translateTaskLogMessage(asString(event.message || event.text || event.title))
+}
+
 export function TaskProcessingWorkbench({
   taskId,
   workflow,
@@ -233,7 +459,8 @@ export function TaskProcessingWorkbench({
   onTaskLoaded,
 }: TaskProcessingWorkbenchProps) {
   const [task, setTask] = React.useState<TaskDetailResponse | null>(null)
-  const [isLoading, setIsLoading] = React.useState(true)
+  const [isInitialLoading, setIsInitialLoading] = React.useState(true)
+  const [isRefreshing, setIsRefreshing] = React.useState(false)
   const [errorMessage, setErrorMessage] = React.useState("")
   const [currentTime, setCurrentTime] = React.useState(0)
   const [totalDuration, setTotalDuration] = React.useState(0)
@@ -257,19 +484,27 @@ export function TaskProcessingWorkbench({
   const [mindmapKey, setMindmapKey] = React.useState("")
   const [isMindmapLoading, setIsMindmapLoading] = React.useState(false)
   const [taskEvents, setTaskEvents] = React.useState<TaskStreamEvent[]>([])
+  const [liveTranscriptSegments, setLiveTranscriptSegments] = React.useState<TranscriptSegment[]>([])
   const [isCancelling, setIsCancelling] = React.useState(false)
   const [isRerunning, setIsRerunning] = React.useState(false)
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
   const refreshTimerRef = React.useRef<number | null>(null)
   const chatAbortRef = React.useRef<AbortController | null>(null)
+  const hasLoadedTaskRef = React.useRef(false)
 
   React.useEffect(() => {
+    hasLoadedTaskRef.current = false
+    setTask(null)
+    setErrorMessage("")
+    setIsInitialLoading(true)
+    setIsRefreshing(false)
     setChatHistory([])
     setQuestion("")
     setSelectedTraceId("")
     setTraceError("")
     setTraceCache({})
     setTaskEvents([])
+    setLiveTranscriptSegments([])
     setLeftTab("transcript")
     setNotesTab("notes")
     setVqaTab("chat")
@@ -287,12 +522,19 @@ export function TaskProcessingWorkbench({
   }, [])
 
   const loadTask = React.useCallback(
-    async (showToastOnError = true) => {
+    async (options?: { showToastOnError?: boolean; background?: boolean }) => {
+      const showToastOnError = options?.showToastOnError ?? true
+      const background = options?.background ?? hasLoadedTaskRef.current
       const perfMark = markPerfStart(`task.detail.${taskId}`)
-      setIsLoading(true)
+      if (background) {
+        setIsRefreshing(true)
+      } else {
+        setIsInitialLoading(true)
+      }
       try {
         const detail = await getTaskDetail(taskId)
         setTask(detail)
+        hasLoadedTaskRef.current = true
         setErrorMessage("")
         onTaskLoaded?.(detail)
         if (!isEditingNotes) {
@@ -306,7 +548,11 @@ export function TaskProcessingWorkbench({
         }
       } finally {
         logPerfSample(`task.detail.${taskId}`, perfMark)
-        setIsLoading(false)
+        if (background) {
+          setIsRefreshing(false)
+        } else {
+          setIsInitialLoading(false)
+        }
       }
     },
     [isEditingNotes, onTaskLoaded, taskId],
@@ -335,13 +581,19 @@ export function TaskProcessingWorkbench({
       return
     }
     const source = streamTaskEvents(task.id, (event) => {
-      setTaskEvents((current) => [event, ...current].slice(0, 120))
+      const streamedSegment = extractTranscriptSegmentFromEvent(event)
+      if (streamedSegment) {
+        setLiveTranscriptSegments((current) => mergeTranscriptSegments(current, [streamedSegment]))
+      }
+      if (shouldRecordTaskEvent(event)) {
+        setTaskEvents((current) => [event, ...current].slice(0, 80))
+      }
       if (refreshTimerRef.current !== null) {
         return
       }
       refreshTimerRef.current = window.setTimeout(() => {
         refreshTimerRef.current = null
-        void loadTask(false)
+        void loadTask({ showToastOnError: false, background: true })
       }, 280)
     })
     source.onerror = () => source.close()
@@ -384,7 +636,10 @@ export function TaskProcessingWorkbench({
   const effectiveTask = task
   const effectiveTitle = effectiveTask?.title || effectiveTask?.source_input || taskTitle
   const steps = effectiveTask?.steps.length ? effectiveTask.steps : buildFallbackSteps(workflow)
-  const transcriptSegments = effectiveTask?.transcript_segments ?? []
+  const transcriptSegments = React.useMemo(
+    () => mergeTranscriptSegments(effectiveTask?.transcript_segments ?? [], liveTranscriptSegments),
+    [effectiveTask?.transcript_segments, liveTranscriptSegments],
+  )
   const totalProgress = effectiveTask?.overall_progress ?? 0
   const videoUrl = toFileUrl(effectiveTask?.source_local_path)
   const canEditArtifacts = isTerminalTask(effectiveTask?.status)
@@ -611,7 +866,7 @@ export function TaskProcessingWorkbench({
     try {
       await cancelTask(taskId)
       toast.success("已发送取消任务请求")
-      await loadTask(false)
+      await loadTask({ showToastOnError: false })
     } catch (error) {
       toast.error(getApiErrorMessage(error, "取消任务失败"))
     } finally {
@@ -627,7 +882,7 @@ export function TaskProcessingWorkbench({
     try {
       await rerunTaskStageD(taskId)
       toast.success("已触发重跑 D 阶段")
-      await loadTask(false)
+      await loadTask({ showToastOnError: false })
     } catch (error) {
       toast.error(getApiErrorMessage(error, "重跑 D 阶段失败"))
     } finally {
@@ -729,7 +984,8 @@ export function TaskProcessingWorkbench({
             transcriptSegments={transcriptSegments}
             activeTranscriptId={activeTranscriptId}
             errorMessage={errorMessage}
-            isLoading={isLoading}
+            isInitialLoading={isInitialLoading}
+            isRefreshing={isRefreshing}
             onCopyTranscript={handleCopyTranscript}
             onDownloadTranscript={() => void handleDownloadArtifact("transcript")}
             onAddTranscriptToNotes={handleAddTranscriptToNotes}
@@ -924,7 +1180,8 @@ interface LeftWorkbenchPanelProps {
   transcriptSegments: TranscriptSegment[]
   activeTranscriptId: string
   errorMessage: string
-  isLoading: boolean
+  isInitialLoading: boolean
+  isRefreshing: boolean
   onCopyTranscript: () => void | Promise<void>
   onDownloadTranscript: () => void
   onAddTranscriptToNotes: (segment: TranscriptSegment) => void
@@ -965,7 +1222,8 @@ function LeftWorkbenchPanel({
   transcriptSegments,
   activeTranscriptId,
   errorMessage,
-  isLoading,
+  isInitialLoading,
+  isRefreshing,
   onCopyTranscript,
   onDownloadTranscript,
   onAddTranscriptToNotes,
@@ -1034,7 +1292,7 @@ function LeftWorkbenchPanel({
           <TabsTrigger value="stage" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">阶段输出</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="transcript" className="mt-0 min-h-0 flex-1">
+        <TabsContent value="transcript" className="mt-0 min-h-0 flex-1 overflow-hidden">
           <div className="flex h-full min-h-0 flex-col">
             <div className="flex items-center justify-between border-b px-4 py-3">
               <div>
@@ -1042,6 +1300,7 @@ function LeftWorkbenchPanel({
                 <p className="text-xs text-muted-foreground">支持定位视频、加入笔记与研究板。</p>
               </div>
               <div className="flex items-center gap-1">
+                {isRefreshing ? <Badge variant="secondary">同步中</Badge> : null}
                 <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => void onCopyTranscript()}>
                   <Copy className="mr-1.5 h-3.5 w-3.5" />
                   复制
@@ -1052,11 +1311,17 @@ function LeftWorkbenchPanel({
                 </Button>
               </div>
             </div>
-            <ScrollArea className="themed-thin-scrollbar flex-1">
+            <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
               <div className="space-y-3 p-4">
                 {errorMessage ? <div className="rounded-xl border border-destructive/30 bg-destructive/6 p-3 text-sm text-destructive">{errorMessage}</div> : null}
-                {isLoading && transcriptSegments.length === 0 ? <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">正在加载任务详情...</div> : null}
-                {!isLoading && transcriptSegments.length === 0 ? <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">当前还没有可展示的转写结果</div> : null}
+                {isInitialLoading && transcriptSegments.length === 0 ? <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">正在加载任务详情...</div> : null}
+                {!isInitialLoading && transcriptSegments.length === 0 ? (
+                  <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
+                    {taskStatus === "running" || taskStatus === "queued"
+                      ? "正在转写和整理内容，识别片段会实时出现在这里。"
+                      : "当前还没有可展示的转写结果。"}
+                  </div>
+                ) : null}
                 {transcriptSegments.map((segment) => {
                   const segmentId = `${segment.start}-${segment.end}`
                   return (
@@ -1098,8 +1363,8 @@ function LeftWorkbenchPanel({
           </div>
         </TabsContent>
 
-        <TabsContent value="evidence" className="mt-0 min-h-0 flex-1">
-          <ScrollArea className="themed-thin-scrollbar flex-1">
+        <TabsContent value="evidence" className="mt-0 min-h-0 flex-1 overflow-hidden">
+          <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
             <div className="space-y-3 p-4">
               {evidenceTimelineItems.length === 0 ? <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">{workflow === "notes" ? "当前还没有时间轴内容。" : "先发起一次视频问答，这里会自动汇总命中证据。"}</div> : null}
               {evidenceTimelineItems.map((item) => (
@@ -1124,8 +1389,8 @@ function LeftWorkbenchPanel({
           </ScrollArea>
         </TabsContent>
 
-        <TabsContent value="stage" className="mt-0 min-h-0 flex-1">
-          <ScrollArea className="themed-thin-scrollbar flex-1">
+        <TabsContent value="stage" className="mt-0 min-h-0 flex-1 overflow-hidden">
+          <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
             <div className="space-y-4 p-4">
               <div className="grid gap-3 md:grid-cols-3">
                 <div className="rounded-2xl border border-border/70 bg-card/65 p-4"><p className="text-xs text-muted-foreground">任务状态</p><p className="mt-2 text-sm font-semibold">{taskStatus}</p></div>
@@ -1157,18 +1422,23 @@ function LeftWorkbenchPanel({
                 })}
               </Accordion>
               <div className="rounded-2xl border border-border/70 bg-card/65 p-4">
-                <h4 className="text-sm font-medium">实时事件流</h4>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-medium">最近阶段动态</h4>
+                    <p className="mt-1 text-xs text-muted-foreground">仅保留关键阶段和进度更新，避免原始调试事件干扰阅读。</p>
+                  </div>
+                  {isRefreshing ? <Badge variant="secondary">同步中</Badge> : null}
+                </div>
                 <div className="mt-3 space-y-2">
                   {taskEvents.length > 0 ? taskEvents.map((event, index) => (
                     <div key={`${event.timestamp}-${index}`} className="rounded-xl border border-border/60 bg-background/55 px-3 py-2.5">
                       <div className="flex flex-wrap items-center gap-2 text-xs">
-                        <Badge variant="outline">{event.original_type || event.type}</Badge>
-                        {event.stage ? <Badge variant="secondary">{event.stage}</Badge> : null}
-                        <span className="text-muted-foreground">{event.timestamp}</span>
+                        <Badge variant="outline">{formatTaskEventBadge(event)}</Badge>
+                        {formatTaskEventTimestamp(event.timestamp) ? <span className="text-muted-foreground">{formatTaskEventTimestamp(event.timestamp)}</span> : null}
                       </div>
-                      <p className="mt-2 text-sm leading-6">{event.message || event.text || event.title || "当前事件没有额外说明。"}</p>
+                      <p className="mt-2 text-sm leading-6">{formatTaskEventMessage(event)}</p>
                     </div>
-                  )) : <p className="text-sm text-muted-foreground">当前还没有实时事件记录。</p>}
+                  )) : <p className="text-sm text-muted-foreground">当前还没有可展示的阶段动态。</p>}
                 </div>
               </div>
             </div>

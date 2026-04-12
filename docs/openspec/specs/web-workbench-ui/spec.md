@@ -270,6 +270,17 @@ Task processing workbench SHALL use a horizontal resizable split layout. The lef
 - **AND** Markdown timestamps can seek the video
 - **AND** transcript cards support quick actions such as `加入笔记` and `加入研究板`
 
+#### Scenario: Open a running task during transcript production
+- **WHEN** a running task has started streaming transcript chunks but task-detail polling is still refreshing in the background
+- **THEN** the transcript tab keeps a stable loading or processing hint instead of alternating between contradictory empty states
+- **AND** streamed transcript chunks appear in order before the next detail refresh completes
+- **AND** once persisted transcript segments arrive from the detail API, the renderer merges them with streamed chunks without duplicating cards
+
+#### Scenario: Read a long stage-output timeline
+- **WHEN** the stage-output tab contains more content than the available panel height
+- **THEN** the left workbench panel exposes an inner vertical scrollbar for that tab
+- **AND** recent stage activity is summarized with user-readable stage labels and business-language status text instead of raw backend event type names or opaque debug payloads
+
 #### Scenario: Open a VQA task and ask a question
 - **WHEN** user submits a question from the VQA workbench
 - **THEN** the renderer streams incremental answer chunks into the chat surface

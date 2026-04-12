@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -224,3 +225,66 @@ async def test_generate_replaces_mermaid_block_with_image_markdown(tmp_path: Pat
     assert "![Mermaid 图示 1](notes-images/mermaid-001.png)" in bundle.summary_markdown
     assert len(bundle.notes_image_assets) == 1
     assert bundle.notes_image_assets[0].relative_path == "notes-images/mermaid-001.png"
+
+
+@pytest.mark.asyncio
+async def test_correct_transcript_skips_long_rewrite_to_keep_pipeline_responsive(tmp_path: Path) -> None:
+    service = LLMService(
+        settings=_build_settings(tmp_path),
+        llm_config_store=_DummyLLMConfigStore(),
+        prompt_template_store=_DummyPromptTemplateStore(),
+    )
+
+    async def _rewrite_should_not_run(*args, **kwargs) -> str:  # type: ignore[no-untyped-def]
+        raise AssertionError("long rewrite should be skipped before invoking LLM")
+
+    service._rewrite_transcript_text = _rewrite_should_not_run  # type: ignore[method-assign]
+
+    long_text = ("这是很长的一段转写内容。\n" * 2200).strip()
+    bundle = await service.correct_transcript(
+        title="demo",
+        transcript_text=long_text,
+        segments=[{"start": 0.0, "end": 1.0, "text": "第一段"}],
+        llm_config_override={
+            "mode": "api",
+            "api_key": "demo-key",
+            "base_url": "https://example.invalid/v1",
+            "model": "qwen3.5-flash",
+            "correction_mode": "rewrite",
+        },
+    )
+
+    assert bundle.fallback_used is True
+    assert bundle.summary_input_text == long_text
+    assert "skipped for long transcript" in bundle.message
+
+
+@pytest.mark.asyncio
+async def test_correct_transcript_falls_back_when_strict_correction_times_out(tmp_path: Path) -> None:
+    service = LLMService(
+        settings=_build_settings(tmp_path),
+        llm_config_store=_DummyLLMConfigStore(),
+        prompt_template_store=_DummyPromptTemplateStore(),
+    )
+
+    async def _strict_timeout(*args, **kwargs) -> list[dict[str, float | str]]:  # type: ignore[no-untyped-def]
+        raise asyncio.TimeoutError()
+
+    service._correct_transcript_strict = _strict_timeout  # type: ignore[method-assign]
+
+    bundle = await service.correct_transcript(
+        title="demo",
+        transcript_text="第一句",
+        segments=[{"start": 0.0, "end": 1.0, "text": "第一句"}],
+        llm_config_override={
+            "mode": "api",
+            "api_key": "demo-key",
+            "base_url": "https://example.invalid/v1",
+            "model": "qwen3.5-flash",
+            "correction_mode": "strict",
+        },
+    )
+
+    assert bundle.fallback_used is True
+    assert bundle.summary_input_text == "第一句"
+    assert "timed out" in bundle.message

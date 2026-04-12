@@ -11,6 +11,21 @@ Stage-D generation SHALL use OpenAI-compatible completion APIs to produce struct
 - **WHEN** API request times out, returns non-2xx, or fails validation
 - **THEN** task transitions to `failed` with actionable error metadata
 
+### Requirement: Stage-D transcript optimization SHALL fail soft for long or slow jobs
+Before notes and mindmap generation, transcript optimization SHALL preserve pipeline responsiveness. Long full-transcript rewrite requests MAY be skipped, and timeout-bound optimization attempts SHALL fall back to the original transcript instead of leaving the task indefinitely stalled inside transcript optimization.
+
+#### Scenario: Rewrite correction encounters a long transcript
+- **WHEN** correction mode is `rewrite` and the transcript exceeds the renderer-safe full-rewrite threshold
+- **THEN** backend skips the full rewrite call
+- **AND** Stage D continues with the original transcript as summary input
+- **AND** the task stage message explains that the rewrite step was skipped to keep the pipeline responsive
+
+#### Scenario: Transcript optimization exceeds the operation timeout
+- **WHEN** strict or rewrite correction exceeds its bounded operation timeout
+- **THEN** backend falls back to the original transcript
+- **AND** Stage D continues into notes and mindmap generation without waiting indefinitely for correction output
+- **AND** the emitted correction status records that timeout fallback was applied
+
 ### Requirement: Prompt-template-driven generation SHALL be supported
 Summary and mindmap generation SHALL resolve prompts from persisted template records and active template selection.
 
