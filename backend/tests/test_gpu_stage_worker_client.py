@@ -12,6 +12,7 @@ class _FakePopen:
     def __init__(self, *args, **kwargs) -> None:
         _ = args
         _ = kwargs
+        self.stdin = io.BytesIO()
         self.stdout = io.BytesIO(
             b'@@VIDGNOST_GPU_WORKER@@ {"type":"chunk_start","chunk_index":0}\n'
             b'@@VIDGNOST_GPU_WORKER@@ {"type":"completed","result":{"task_id":"task-1","chunk_count":1}}\n'

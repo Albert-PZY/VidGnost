@@ -17,12 +17,11 @@ _WORKER_EVENT_PREFIX = "@@VIDGNOST_GPU_WORKER@@ "
 def main() -> int:
     enable_windows_utf8_stdio()
     parser = argparse.ArgumentParser(description="VidGnost GPU stage worker")
-    parser.add_argument("--request", required=True, help="Path to the worker request JSON file.")
+    parser.add_argument("--request", help="Path to the worker request JSON file.")
     args = parser.parse_args()
 
-    request_path = Path(args.request).expanduser().resolve()
     try:
-        request = _load_request(request_path)
+        request = _load_request(args.request)
         operation = str(request.get("operation", "") or "").strip().lower()
         if operation == "whisper_transcribe_stage":
             asyncio.run(_run_whisper_transcribe_stage(dict(request.get("payload") or {})))
@@ -39,10 +38,14 @@ def main() -> int:
         return 1
 
 
-def _load_request(path: Path) -> dict[str, object]:
-    if not path.exists():
-        raise FileNotFoundError(f"GPU worker request not found: {path}")
-    payload = orjson.loads(path.read_bytes())
+def _load_request(raw_path: str | None) -> dict[str, object]:
+    if raw_path:
+        path = Path(raw_path).expanduser().resolve()
+        if not path.exists():
+            raise FileNotFoundError(f"GPU worker request not found: {path}")
+        payload = orjson.loads(path.read_bytes())
+    else:
+        payload = orjson.loads(sys.stdin.buffer.read())
     if not isinstance(payload, dict):
         raise RuntimeError("GPU worker request payload is invalid.")
     return payload

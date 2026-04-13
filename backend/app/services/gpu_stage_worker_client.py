@@ -6,7 +6,6 @@ import os
 import subprocess
 import sys
 import threading
-import uuid
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
@@ -21,9 +20,6 @@ WorkerEventHandler = Callable[[dict[str, object]], Awaitable[None] | None]
 class GPUStageWorkerClient:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._backend_root = Path(__file__).resolve().parents[2]
-        self._request_dir = Path(settings.temp_dir) / "gpu-stage-worker"
-        self._request_dir.mkdir(parents=True, exist_ok=True)
 
     async def run(
         self,
@@ -31,10 +27,6 @@ class GPUStageWorkerClient:
         *,
         on_event: WorkerEventHandler | None = None,
     ) -> dict[str, object]:
-        request_id = uuid.uuid4().hex
-        request_path = self._request_dir / f"{request_id}.json"
-        request_path.write_bytes(orjson.dumps(request, option=orjson.OPT_INDENT_2))
-
         stderr_lines: list[str] = []
         event_queue: asyncio.Queue[dict[str, object]] = asyncio.Queue()
         process_holder: dict[str, subprocess.Popen[bytes] | None] = {"process": None}
@@ -43,6 +35,7 @@ class GPUStageWorkerClient:
         result: dict[str, object] | None = None
         worker_error: str | None = None
         loop = asyncio.get_running_loop()
+        request_payload = orjson.dumps(request)
 
         def push_event(event: dict[str, object]) -> None:
             loop.call_soon_threadsafe(event_queue.put_nowait, event)
@@ -56,10 +49,9 @@ class GPUStageWorkerClient:
                         sys.executable,
                         "-m",
                         "app.workers.gpu_stage_worker",
-                        "--request",
-                        str(request_path),
                     ],
-                    cwd=str(self._backend_root),
+                    cwd=str(Path(__file__).resolve().parents[2]),
+                    stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     env={
@@ -68,6 +60,10 @@ class GPUStageWorkerClient:
                     },
                 )
                 process_holder["process"] = process
+                if process.stdin is None:
+                    raise RuntimeError("GPU worker stdin pipe is unavailable.")
+                process.stdin.write(request_payload)
+                process.stdin.close()
                 stderr_thread = threading.Thread(
                     target=self._drain_stderr_sync,
                     args=(process.stderr, stderr_lines),
@@ -119,8 +115,6 @@ class GPUStageWorkerClient:
         finally:
             with contextlib.suppress(Exception):
                 await asyncio.to_thread(worker_thread.join, 5)
-            with contextlib.suppress(FileNotFoundError):
-                request_path.unlink()
 
         if thread_errors:
             raise RuntimeError(str(thread_errors[0])) from thread_errors[0]
