@@ -234,6 +234,7 @@ export function HistoryView({ onOpenTask, onTasksChanged }: HistoryViewProps) {
     setBusyTaskId(taskId)
     try {
       await downloadTaskArtifact(taskId, "bundle")
+      toast.success("结果包导出完成，文件已开始下载")
     } catch (error) {
       toast.error(getApiErrorMessage(error, "导出结果失败"))
     } finally {

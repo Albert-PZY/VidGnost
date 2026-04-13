@@ -1473,6 +1473,13 @@ export function TaskProcessingWorkbench({
     async (kind: "transcript" | "notes" | "mindmap" | "srt" | "vtt" | "bundle") => {
       try {
         await downloadTaskArtifact(taskId, kind)
+        if (kind === "notes") {
+          toast.success("Markdown 导出完成，文件已开始下载")
+          return
+        }
+        if (kind === "bundle") {
+          toast.success("结果包导出完成，文件已开始下载")
+        }
       } catch (error) {
         toast.error(getApiErrorMessage(error, "导出产物失败"))
       }

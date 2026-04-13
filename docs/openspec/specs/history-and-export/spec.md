@@ -67,6 +67,10 @@ System SHALL support transcript, notes, mindmap, subtitle, and bundle exports fo
 - **AND** `notes` export returns a `.md` file when the task has no generated note-image assets
 - **AND** `notes` export returns an archive containing the Markdown file plus `notes-images/**` assets when the task has generated note-image attachments
 
+#### Scenario: Show success confirmation after workbench notes or bundle export
+- **WHEN** user exports `notes` or `bundle` from the processing workbench and the renderer finishes downloading the response payload
+- **THEN** the renderer shows a non-blocking success toast confirming the export has completed and the file download has started
+
 #### Scenario: Export subtitles
 - **WHEN** client requests `srt` or `vtt`
 - **THEN** backend generates subtitles from persisted transcript segments
@@ -115,3 +119,4 @@ History view SHALL expose direct task bundle export and task-directory access fo
 #### Scenario: Export completed task from history view
 - **WHEN** user invokes bundle export for a completed task
 - **THEN** frontend downloads the deterministic artifact bundle using the same export endpoint family as the processing workbench
+- **AND** the renderer shows a non-blocking success toast after the response payload is prepared for download
