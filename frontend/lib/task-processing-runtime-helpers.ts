@@ -1,4 +1,12 @@
-import type { TaskStreamEvent, TranscriptSegment, VqaChatStreamEvent, VqaCitationItem } from "@/lib/types"
+import type {
+  TaskDetailResponse,
+  TaskStepItem,
+  TaskStreamEvent,
+  TranscriptSegment,
+  VqaChatStreamEvent,
+  VqaCitationItem,
+  WorkflowType,
+} from "@/lib/types"
 import type {
   RuntimeCorrectionPreviewMode,
   RuntimeCorrectionPreviewState,
@@ -28,6 +36,23 @@ export const DEFAULT_TASK_EVENT_NOISE_TYPES = new Set([
   "fusion_prompt_preview",
 ])
 
+const WORKFLOW_STEPS: Record<WorkflowType, Array<{ id: string; name: string }>> = {
+  notes: [
+    { id: "extract", name: "音频提取" },
+    { id: "transcribe", name: "语音转写" },
+    { id: "correct", name: "文本纠错" },
+    { id: "notes", name: "笔记生成" },
+  ],
+  vqa: [
+    { id: "extract", name: "音频提取" },
+    { id: "transcribe", name: "语音转写" },
+    { id: "correct", name: "文本纠错" },
+    { id: "embed", name: "向量化入库" },
+    { id: "frames", name: "帧画面分析" },
+    { id: "ready", name: "问答就绪" },
+  ],
+}
+
 export function asString(value: unknown): string {
   return typeof value === "string" ? value : value == null ? "" : String(value)
 }
@@ -43,6 +68,199 @@ export function clampPercentage(value: unknown): number {
     return 0
   }
   return Math.max(0, Math.min(100, Math.round(parsed)))
+}
+
+function buildFallbackSteps(workflow: WorkflowType): TaskStepItem[] {
+  return WORKFLOW_STEPS[workflow].map((step) => ({
+    id: step.id,
+    name: step.name,
+    status: "pending",
+    progress: 0,
+    duration: "",
+    logs: [],
+  }))
+}
+
+function isTerminalTask(status: string | undefined): boolean {
+  return Boolean(status && ["completed", "failed", "cancelled"].includes(status))
+}
+
+function cloneTaskSteps(task: TaskDetailResponse): TaskStepItem[] {
+  const sourceSteps = task.steps.length > 0 ? task.steps : buildFallbackSteps(task.workflow)
+  return sourceSteps.map((step) => ({
+    ...step,
+    logs: Array.isArray(step.logs) ? [...step.logs] : [],
+  }))
+}
+
+function getStreamStepId(
+  workflow: WorkflowType,
+  stage: string,
+  substage: string,
+  rawType: string,
+): string | null {
+  if (stage === "A" || stage === "B") {
+    return "extract"
+  }
+  if (stage === "C") {
+    return "transcribe"
+  }
+  if (substage === "transcript_optimize") {
+    return "correct"
+  }
+  if (substage === "fusion_delivery") {
+    return workflow === "notes" ? "notes" : "ready"
+  }
+  if (stage === "D" && rawType === "stage_complete") {
+    return workflow === "notes" ? "notes" : "ready"
+  }
+  return null
+}
+
+function deriveCurrentStepId(status: string, steps: TaskStepItem[]): string {
+  const activeStep = steps.find((step) => step.status === "processing")
+  if (activeStep) {
+    return activeStep.id
+  }
+  if (isTerminalTask(status)) {
+    const lastCompleted = [...steps].reverse().find((step) => step.status === "completed")
+    return lastCompleted?.id || ""
+  }
+  const nextStep = steps.find((step) => step.status !== "completed")
+  return nextStep?.id || ""
+}
+
+function updateStepProgress(
+  steps: TaskStepItem[],
+  stepId: string,
+  status: TaskStepItem["status"],
+  progress?: number | null,
+): TaskStepItem[] {
+  const targetIndex = steps.findIndex((step) => step.id === stepId)
+  if (targetIndex < 0) {
+    return steps
+  }
+
+  const normalizedProgress = progress == null ? null : clampPercentage(progress)
+  return steps.map((step, index) => {
+    if (index < targetIndex && status === "processing" && step.status !== "error") {
+      return { ...step, status: "completed", progress: 100 }
+    }
+    if (index !== targetIndex) {
+      if (status === "processing" && step.status === "processing") {
+        return { ...step, status: "pending", progress: 0 }
+      }
+      return step
+    }
+    if (status === "processing") {
+      return {
+        ...step,
+        status,
+        progress: normalizedProgress == null ? Math.max(step.progress, 1) : Math.max(step.progress, normalizedProgress),
+      }
+    }
+    if (status === "completed") {
+      return { ...step, status, progress: 100 }
+    }
+    if (status === "error") {
+      return {
+        ...step,
+        status,
+        progress: normalizedProgress == null ? step.progress : normalizedProgress,
+      }
+    }
+    return { ...step, status, progress: normalizedProgress ?? step.progress }
+  })
+}
+
+function updateVmPhaseMetrics(
+  currentMetrics: Record<string, Record<string, unknown>>,
+  event: TaskStreamEvent,
+  rawType: string,
+): Record<string, Record<string, unknown>> {
+  if (rawType === "task_complete" || rawType === "task_failed" || rawType === "task_cancelled") {
+    return currentMetrics
+  }
+
+  const stage = asString(event.stage).trim()
+  const substage = asString(event.substage).trim()
+  const timestamp = asString(event.timestamp).trim()
+  const nextMetrics: Record<string, Record<string, unknown>> = Object.fromEntries(
+    Object.entries(currentMetrics).map(([key, value]) => [key, { ...value }]),
+  )
+
+  const updateMetric = (key: string, patcher: (metric: Record<string, unknown>) => Record<string, unknown>) => {
+    const currentMetric = { ...(nextMetrics[key] ?? {}) }
+    nextMetrics[key] = patcher(currentMetric)
+  }
+
+  if (rawType === "progress" && (stage === "A" || stage === "B" || stage === "C")) {
+    updateMetric(stage, (metric) => ({
+      ...metric,
+      status: metric.status === "completed" ? "completed" : "running",
+      started_at: asString(metric.started_at) || timestamp,
+    }))
+    return nextMetrics
+  }
+
+  if (rawType === "stage_start" && (stage === "A" || stage === "B" || stage === "C" || stage === "D")) {
+    updateMetric(stage, (metric) => ({
+      ...metric,
+      status: "running",
+      started_at: timestamp || metric.started_at,
+      completed_at: null,
+      reason: null,
+    }))
+    return nextMetrics
+  }
+
+  if (rawType === "stage_complete" && (stage === "A" || stage === "B" || stage === "C" || stage === "D")) {
+    updateMetric(stage, (metric) => ({
+      ...metric,
+      status: "completed",
+      completed_at: timestamp || metric.completed_at,
+      reason: null,
+    }))
+    return nextMetrics
+  }
+
+  if (substage === "transcript_optimize" && (rawType === "substage_start" || rawType === "substage_complete")) {
+    updateMetric("transcript_optimize", (metric) => ({
+      ...metric,
+      status:
+        rawType === "substage_start"
+          ? "running"
+          : asString(event.status).trim().toLowerCase() === "failed"
+            ? "failed"
+            : asString(event.status).trim().toLowerCase() === "skipped"
+              ? "skipped"
+              : "completed",
+      started_at: rawType === "substage_start" ? (timestamp || metric.started_at) : metric.started_at,
+      completed_at: rawType === "substage_complete" ? (timestamp || metric.completed_at) : null,
+      reason: rawType === "substage_complete" ? asString(event.message).trim() || null : null,
+    }))
+    return nextMetrics
+  }
+
+  if (substage === "fusion_delivery" && (rawType === "substage_start" || rawType === "substage_complete")) {
+    updateMetric("D", (metric) => ({
+      ...metric,
+      status:
+        rawType === "substage_start"
+          ? "running"
+          : asString(event.status).trim().toLowerCase() === "failed"
+            ? "failed"
+            : asString(event.status).trim().toLowerCase() === "skipped"
+              ? "skipped"
+              : "completed",
+      started_at: asString(metric.started_at) || timestamp,
+      completed_at: rawType === "substage_complete" ? (timestamp || metric.completed_at) : null,
+      reason: rawType === "substage_complete" ? asString(event.message).trim() || null : null,
+    }))
+    return nextMetrics
+  }
+
+  return currentMetrics
 }
 
 export function normalizeTaskStreamEventType(event: TaskStreamEvent): string {
@@ -209,6 +427,79 @@ export function extractTranscriptSegmentFromTaskEvent(event: TaskStreamEvent): T
   return { start, end, text }
 }
 
+export function applyTaskStreamEvent(
+  current: TaskDetailResponse,
+  event: TaskStreamEvent,
+): TaskDetailResponse {
+  const rawType = normalizeTaskStreamEventType(event)
+  const stage = asString(event.stage).trim()
+  const substage = asString(event.substage).trim()
+  const overallProgress = asNumber(event["overall_progress"])
+  const stageProgress = asNumber(event["stage_progress"])
+  const nextSteps = cloneTaskSteps(current)
+  const stepId = getStreamStepId(current.workflow, stage, substage, rawType)
+
+  let nextStatus = current.status
+  let nextErrorMessage = current.error_message
+
+  if (rawType === "task_complete") {
+    nextStatus = "completed"
+    nextSteps.forEach((step, index) => {
+      nextSteps[index] = { ...step, status: "completed", progress: 100 }
+    })
+  } else if (rawType === "task_paused") {
+    nextStatus = "paused"
+  } else if (rawType === "task_cancelled") {
+    nextStatus = "cancelled"
+  } else if (rawType === "task_failed") {
+    nextStatus = "failed"
+    nextErrorMessage = asString(event.error || event.message).trim() || nextErrorMessage
+    const activeStep = nextSteps.find((step) => step.status === "processing")
+    if (activeStep) {
+      const failedSteps = updateStepProgress(nextSteps, activeStep.id, "error")
+      nextSteps.splice(0, nextSteps.length, ...failedSteps)
+    }
+  } else if (rawType === "progress") {
+    nextStatus = isTerminalTask(current.status) ? current.status : "running"
+    if (stepId) {
+      const progressedSteps = updateStepProgress(nextSteps, stepId, "processing", stageProgress)
+      nextSteps.splice(0, nextSteps.length, ...progressedSteps)
+    }
+  } else if (rawType === "stage_start" || rawType === "substage_start") {
+    nextStatus = isTerminalTask(current.status) ? current.status : "running"
+    if (stepId) {
+      const progressedSteps = updateStepProgress(nextSteps, stepId, "processing", stageProgress)
+      nextSteps.splice(0, nextSteps.length, ...progressedSteps)
+    }
+  } else if (rawType === "stage_complete" || rawType === "substage_complete") {
+    if (stepId) {
+      if (rawType === "stage_complete" && stage === "A") {
+        const progressedSteps = updateStepProgress(nextSteps, stepId, "processing", 100)
+        nextSteps.splice(0, nextSteps.length, ...progressedSteps)
+      } else {
+        const substageStatus = asString(event.status).trim().toLowerCase()
+        const targetStatus = substageStatus === "failed" ? "error" : "completed"
+        const progressedSteps = updateStepProgress(nextSteps, stepId, targetStatus, stageProgress ?? 100)
+        nextSteps.splice(0, nextSteps.length, ...progressedSteps)
+      }
+    }
+  }
+
+  const nextProgress = overallProgress == null ? current.progress : clampPercentage(overallProgress)
+  const nextVmPhaseMetrics = updateVmPhaseMetrics(current.vm_phase_metrics, event, rawType)
+
+  return {
+    ...current,
+    status: nextStatus,
+    error_message: nextErrorMessage,
+    progress: nextProgress,
+    overall_progress: nextProgress,
+    steps: nextSteps,
+    current_step_id: deriveCurrentStepId(nextStatus, nextSteps),
+    vm_phase_metrics: nextVmPhaseMetrics,
+  }
+}
+
 export function shouldRecordTaskEvent(event: TaskStreamEvent): boolean {
   return !DEFAULT_TASK_EVENT_NOISE_TYPES.has(normalizeTaskStreamEventType(event))
 }
@@ -370,3 +661,34 @@ export function createRuntimeAssistantPlaceholder(
   }
 }
 
+export function getVqaStreamStatusText(event: VqaChatStreamEvent): string {
+  switch (event.status) {
+    case "retrieving":
+      return "正在检索相关片段..."
+    case "generating":
+      return (event.hit_count ?? 0) > 0
+        ? "已完成证据检索，正在组织回答..."
+        : "未检索到直接证据，正在组织回答..."
+    case "fallback":
+      return "流式连接短暂中断，已切换稳定模式补全回答..."
+    default:
+      return event.message || event.status || ""
+  }
+}
+
+export function isRetryableVqaStreamError(rawMessage: string): boolean {
+  const lowered = rawMessage.trim().toLowerCase()
+  return lowered.includes("incomplete chunked read") || lowered.includes("peer closed connection")
+}
+
+export function getVqaStreamErrorText(event: VqaChatStreamEvent): string {
+  const rawMessage = event.error?.message || event.message || ""
+  const code = event.error?.code || ""
+  if (code === "LLM_DISABLED") {
+    return "LLM API Key 未配置，暂时无法执行问答。"
+  }
+  if (isRetryableVqaStreamError(rawMessage)) {
+    return "流式连接中途中断，请稍后重试。"
+  }
+  return rawMessage || "流式回答失败"
+}

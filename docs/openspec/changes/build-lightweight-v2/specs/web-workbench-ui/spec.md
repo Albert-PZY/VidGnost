@@ -313,6 +313,7 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 - **WHEN** user opens the `文本纠错` tab for a notes task
 - **THEN** `strict` mode shows per-timestamp comparison rows with original transcript on the left and corrected transcript on the right
 - **AND** the corrected side can fill in progressively while the correction stream is still running
+- **AND** long `strict` comparison lists render through a virtualized row surface so only the visible timestamp rows stay mounted
 - **AND** `rewrite` mode shows the rewritten transcript as a single streaming text surface instead of a per-segment diff
 - **AND** if correction is skipped or disabled, the tab explains that downstream notes generation is using the raw transcript directly
 
@@ -338,6 +339,8 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 - **THEN** the renderer appends transcript cards and updates the visible overall progress from stream data without forcing a full task-detail refresh on every delta
 - **AND** background task-detail refresh is reserved for stage transitions, milestone logs, and terminal events
 - **AND** stream-driven progress updates do not recreate the task SSE subscription or cancel already scheduled milestone refreshes
+- **AND** task runtime stream state is buffered in a dedicated Zustand workbench runtime store instead of staying in root-component local state
+- **AND** transcript, correction, stage-output, chat, and trace panels subscribe to their own selectors so high-frequency updates do not force the whole workbench shell to commit together
 - **AND** unchanged right-side Markdown or VQA workspaces remain stable while transcript deltas continue arriving, unless their own displayed artifact data has changed
 - **AND** the running-state badge summarizes the active workflow step in business language instead of showing a raw generic backend status string
 - **AND** recent stage activity omits repetitive raw progress spam and keeps milestone-focused readable updates
@@ -369,6 +372,7 @@ Frontend UI library SHALL provide a reusable virtual-list component under `front
 - **WHEN** user submits a question from the VQA workbench
 - **THEN** before retrieval hits or answer tokens arrive, the assistant bubble shows a temporary loading placeholder with business-language progress copy instead of a blank bubble
 - **THEN** the renderer streams incremental answer chunks into the chat surface
+- **AND** while answer chunks are still streaming, the assistant bubble keeps a lightweight plain-text surface instead of re-running full Markdown rendering on every chunk
 - **AND** streamed assistant answers render as Markdown instead of plain paragraph text
 - **AND** if the upstream LLM stream is interrupted after partial output, the renderer prefers a recovered full-answer replacement or a business-friendly retry hint instead of exposing raw transport errors such as incomplete chunked-read text
 - **AND** each answer may expose a retrieval trace identifier, citations, and citation jump actions

@@ -5,6 +5,7 @@ import type { TaskDetailResponse, TaskStreamEvent, TranscriptSegment, VqaTraceRe
 import {
   EMPTY_RUNTIME_CORRECTION_PREVIEW,
   EMPTY_RUNTIME_TRANSCRIPT_INDEX,
+  applyTaskStreamEvent,
   applyCorrectionPreviewStreamEvent,
   extractTranscriptSegmentFromTaskEvent,
   mergeTranscriptIndexState,
@@ -36,10 +37,13 @@ function buildInitialState(
     isRefreshing: false,
     taskEvents: [],
     liveTranscript: EMPTY_RUNTIME_TRANSCRIPT_INDEX,
+    rawTranscriptSegments: [],
+    persistedRawTranscriptSegments: [],
     correctionPreview: EMPTY_RUNTIME_CORRECTION_PREVIEW,
     persistedCorrectionMode: "unknown",
     persistedCorrectionText: "",
     persistedCorrectionFallbackUsed: false,
+    isCorrectionPreviewLoading: false,
     chatHistory: [],
     isChatStreaming: false,
     selectedTraceId: "",
@@ -65,6 +69,80 @@ function appendTaskEventsWithLimit(
   maxItems?: number,
 ): TaskStreamEvent[] {
   return prependTaskEventsBounded(current, incoming, maxItems ?? DEFAULT_TASK_EVENT_MAX_ITEMS)
+}
+
+function resolveTranscriptSegmentsUpdater(
+  current: TranscriptSegment[],
+  updater: TranscriptSegment[] | ((state: TranscriptSegment[]) => TranscriptSegment[]),
+): TranscriptSegment[] {
+  if (typeof updater === "function") {
+    return updater(current)
+  }
+  return updater
+}
+
+function applyBufferedTaskStreamEvents(
+  state: TaskProcessingRuntimeState,
+  events: TaskStreamEvent[],
+  options?: IngestTaskStreamEventOptions,
+) {
+  if (!events.length) {
+    return state
+  }
+
+  const maxItems = options?.maxTaskEvents ?? DEFAULT_TASK_EVENT_MAX_ITEMS
+  const shouldRecordEvent = options?.shouldRecordTaskEvent || shouldRecordTaskEvent
+
+  let nextTask = state.task
+  let nextLiveTranscript = state.liveTranscript
+  let nextCorrectionPreview = state.correctionPreview
+  let nextTaskEvents = state.taskEvents
+  let changed = false
+
+  for (const event of events) {
+    const streamedSegment = extractTranscriptSegmentFromTaskEvent(event)
+    if (streamedSegment) {
+      const mergedTranscript = mergeTranscriptIndexState(nextLiveTranscript, [streamedSegment])
+      if (mergedTranscript !== nextLiveTranscript) {
+        nextLiveTranscript = mergedTranscript
+        changed = true
+      }
+    }
+
+    const mergedCorrectionPreview = applyCorrectionPreviewStreamEvent(nextCorrectionPreview, event)
+    if (mergedCorrectionPreview !== nextCorrectionPreview) {
+      nextCorrectionPreview = mergedCorrectionPreview
+      changed = true
+    }
+
+    if (nextTask) {
+      const mergedTask = applyTaskStreamEvent(nextTask, event)
+      if (mergedTask !== nextTask) {
+        nextTask = mergedTask
+        changed = true
+      }
+    }
+
+    if (shouldRecordEvent(event)) {
+      const mergedEvents = appendTaskEventsWithLimit(nextTaskEvents, [event], maxItems)
+      if (mergedEvents !== nextTaskEvents) {
+        nextTaskEvents = mergedEvents
+        changed = true
+      }
+    }
+  }
+
+  if (!changed) {
+    return state
+  }
+
+  return {
+    ...state,
+    task: nextTask,
+    liveTranscript: nextLiveTranscript,
+    correctionPreview: nextCorrectionPreview,
+    taskEvents: nextTaskEvents,
+  }
 }
 
 function updateChatMessage(
@@ -134,31 +212,14 @@ export function createTaskProcessingRuntimeStore(
         taskEvents: appendTaskEventsWithLimit(state.taskEvents, events, maxItems),
       }))
     },
+    applyTaskEventBatch: (events, options) => {
+      if (!events.length) {
+        return
+      }
+      set((state) => applyBufferedTaskStreamEvents(state, events, options))
+    },
     ingestTaskStreamEvent: (event, options?: IngestTaskStreamEventOptions) => {
-      const maxItems = options?.maxTaskEvents ?? DEFAULT_TASK_EVENT_MAX_ITEMS
-      const shouldAppendEvent = (options?.shouldRecordTaskEvent || shouldRecordTaskEvent)(event)
-      const streamedSegment = extractTranscriptSegmentFromTaskEvent(event)
-      set((state) => {
-        const nextLiveTranscript = streamedSegment
-          ? mergeTranscriptIndexState(state.liveTranscript, [streamedSegment])
-          : state.liveTranscript
-        const nextCorrectionPreview = applyCorrectionPreviewStreamEvent(state.correctionPreview, event)
-        const nextTaskEvents = shouldAppendEvent
-          ? appendTaskEventsWithLimit(state.taskEvents, [event], maxItems)
-          : state.taskEvents
-        if (
-          nextLiveTranscript === state.liveTranscript &&
-          nextCorrectionPreview === state.correctionPreview &&
-          nextTaskEvents === state.taskEvents
-        ) {
-          return state
-        }
-        return {
-          liveTranscript: nextLiveTranscript,
-          correctionPreview: nextCorrectionPreview,
-          taskEvents: nextTaskEvents,
-        }
-      })
+      set((state) => applyBufferedTaskStreamEvents(state, [event], options))
     },
     clearTaskEvents: () => {
       set({ taskEvents: [] })
@@ -179,6 +240,14 @@ export function createTaskProcessingRuntimeStore(
     clearLiveTranscript: () => {
       set({ liveTranscript: EMPTY_RUNTIME_TRANSCRIPT_INDEX })
     },
+    setRawTranscriptSegments: (updater) => {
+      set((state) => ({
+        rawTranscriptSegments: resolveTranscriptSegmentsUpdater(state.rawTranscriptSegments, updater),
+      }))
+    },
+    setPersistedRawTranscriptSegments: (segments) => {
+      set({ persistedRawTranscriptSegments: segments })
+    },
     resetCorrectionPreview: () => {
       set({ correctionPreview: EMPTY_RUNTIME_CORRECTION_PREVIEW })
     },
@@ -191,6 +260,9 @@ export function createTaskProcessingRuntimeStore(
       set((state) => ({
         correctionPreview: applyCorrectionPreviewStreamEvent(state.correctionPreview, event),
       }))
+    },
+    setIsCorrectionPreviewLoading: (loading) => {
+      set({ isCorrectionPreviewLoading: loading })
     },
     setPersistedCorrectionArtifacts: ({ mode, text, fallbackUsed }) => {
       set((state) => ({
@@ -286,4 +358,3 @@ export function selectEffectiveCorrectionMode(
     ? state.correctionPreview.mode
     : state.persistedCorrectionMode
 }
-

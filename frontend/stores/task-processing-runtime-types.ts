@@ -50,10 +50,13 @@ export interface TaskProcessingRuntimeState {
   isRefreshing: boolean
   taskEvents: TaskStreamEvent[]
   liveTranscript: RuntimeTranscriptIndexState
+  rawTranscriptSegments: TranscriptSegment[]
+  persistedRawTranscriptSegments: TranscriptSegment[]
   correctionPreview: RuntimeCorrectionPreviewState
   persistedCorrectionMode: RuntimeCorrectionPreviewMode
   persistedCorrectionText: string
   persistedCorrectionFallbackUsed: boolean
+  isCorrectionPreviewLoading: boolean
   chatHistory: RuntimeChatMessage[]
   isChatStreaming: boolean
   selectedTraceId: string
@@ -76,11 +79,16 @@ export interface TaskProcessingRuntimeActions {
   setLoadingState: (next: { isInitialLoading?: boolean; isRefreshing?: boolean }) => void
   replaceTaskEvents: (events: TaskStreamEvent[]) => void
   appendTaskEvents: (events: TaskStreamEvent[], maxItems?: number) => void
+  applyTaskEventBatch: (events: TaskStreamEvent[], options?: IngestTaskStreamEventOptions) => void
   ingestTaskStreamEvent: (event: TaskStreamEvent, options?: IngestTaskStreamEventOptions) => void
   clearTaskEvents: () => void
   replaceLiveTranscript: (segments: TranscriptSegment[]) => void
   appendLiveTranscriptSegments: (segments: TranscriptSegment[]) => void
   clearLiveTranscript: () => void
+  setRawTranscriptSegments: (
+    updater: TranscriptSegment[] | ((current: TranscriptSegment[]) => TranscriptSegment[]),
+  ) => void
+  setPersistedRawTranscriptSegments: (segments: TranscriptSegment[]) => void
   resetCorrectionPreview: () => void
   setCorrectionPreview: (
     updater:
@@ -88,6 +96,7 @@ export interface TaskProcessingRuntimeActions {
       | ((current: RuntimeCorrectionPreviewState) => RuntimeCorrectionPreviewState),
   ) => void
   ingestCorrectionPreviewEvent: (event: TaskStreamEvent) => void
+  setIsCorrectionPreviewLoading: (loading: boolean) => void
   setPersistedCorrectionArtifacts: (payload: {
     mode?: RuntimeCorrectionPreviewMode
     text?: string
@@ -106,4 +115,3 @@ export interface TaskProcessingRuntimeActions {
 }
 
 export type TaskProcessingRuntimeStore = TaskProcessingRuntimeState & TaskProcessingRuntimeActions
-

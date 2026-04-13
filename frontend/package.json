@@ -23,6 +23,7 @@
     "@radix-ui/react-switch": "1.2.6",
     "@radix-ui/react-tabs": "1.1.13",
     "@radix-ui/react-tooltip": "1.2.8",
+    "@tanstack/react-virtual": "^3.13.23",
     "@uiw/react-markdown-preview": "^5.2.0",
     "@uiw/react-md-editor": "^4.1.0",
     "autoprefixer": "^10.4.20",
@@ -35,7 +36,8 @@
     "react-dom": "^19",
     "react-hot-toast": "^2.6.0",
     "react-resizable-panels": "^2.1.7",
-    "tailwind-merge": "^3.3.1"
+    "tailwind-merge": "^3.3.1",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.0",

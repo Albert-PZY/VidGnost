@@ -13,6 +13,7 @@ interface MarkdownArtifactViewerProps {
   emptyMessage?: string
   className?: string
   onSeek?: (seconds: number) => void
+  deferRendering?: boolean
 }
 
 const CODE_FENCE_PATTERN = /```[\s\S]*?```/g
@@ -58,14 +59,17 @@ export function MarkdownArtifactViewer({
   emptyMessage = "当前没有可展示的 Markdown 内容",
   className,
   onSeek,
+  deferRendering = true,
 }: MarkdownArtifactViewerProps) {
   const colorMode =
     typeof document !== "undefined" && document.documentElement.classList.contains("dark")
       ? "dark"
       : "light"
+  const deferredMarkdown = React.useDeferredValue(markdown)
+  const effectiveMarkdown = deferRendering ? deferredMarkdown : markdown
   const renderedMarkdown = React.useMemo(
-    () => decorateMarkdown(markdown || "", taskId),
-    [markdown, taskId],
+    () => decorateMarkdown(effectiveMarkdown || "", taskId),
+    [effectiveMarkdown, taskId],
   )
   const previewComponents = React.useMemo(
     () => ({
@@ -80,7 +84,7 @@ export function MarkdownArtifactViewer({
     [colorMode],
   )
 
-  if (!markdown?.trim()) {
+  if (!effectiveMarkdown?.trim()) {
     return <div className={className}>{emptyMessage}</div>
   }
 

@@ -43,6 +43,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { VirtualizedList } from "@/components/ui/virtualized-list"
 import { PromptMarkdownEditor } from "@/components/editors/prompt-markdown-editor"
 import { MarkdownArtifactViewer } from "@/components/ui/markdown-artifact-viewer"
 import { ResearchBoardPanel } from "@/components/views/research-board-panel"
@@ -67,6 +68,20 @@ import {
 import { formatBytes, formatDateTime, formatSecondsAsClock } from "@/lib/format"
 import { addResearchBoardItem } from "@/lib/research-board"
 import type { ResearchBoardItem } from "@/lib/research-board"
+import {
+  getVqaStreamErrorText,
+  getVqaStreamStatusText,
+  isRetryableVqaStreamError,
+  normalizeCorrectionPreviewMode,
+} from "@/lib/task-processing-runtime-helpers"
+import {
+  getTaskProcessingRuntimeState,
+  selectMergedTranscriptSegments,
+  useTaskProcessingRuntimeStore,
+} from "@/stores/task-processing-runtime-store"
+import type {
+  RuntimeCorrectionPreviewMode as CorrectionPreviewMode,
+} from "@/stores/task-processing-runtime-types"
 import type {
   TaskDetailResponse,
   TaskStepItem,
@@ -78,6 +93,7 @@ import type {
   WorkflowType,
 } from "@/lib/types"
 import { cn } from "@/lib/utils"
+import { useShallow } from "zustand/react/shallow"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface TaskProcessingWorkbenchProps {
@@ -87,31 +103,6 @@ interface TaskProcessingWorkbenchProps {
   onBack: () => void
   onTaskChanged: () => void
   onTaskLoaded?: (task: TaskDetailResponse) => void
-}
-
-type LeftTab = "transcript" | "correction" | "evidence" | "stage"
-type NotesTab = "notes" | "mindmap" | "research"
-type VqaTab = "chat" | "trace" | "research"
-type CorrectionPreviewMode = "unknown" | "off" | "strict" | "rewrite"
-
-interface ChatMessage {
-  id: string
-  role: "user" | "assistant"
-  content: string
-  status: "streaming" | "done" | "error"
-  citations: VqaCitationItem[]
-  traceId?: string
-  contextTokensApprox?: number
-  statusMessage?: string
-  errorMessage?: string
-}
-
-interface CorrectionPreviewState {
-  mode: CorrectionPreviewMode
-  text: string
-  segments: TranscriptSegment[]
-  done: boolean
-  fallbackUsed: boolean
 }
 
 interface StageChunkIndexEntry {
@@ -124,13 +115,9 @@ interface StageChunkIndexPayload {
   chunks?: StageChunkIndexEntry[]
 }
 
-const EMPTY_CORRECTION_PREVIEW: CorrectionPreviewState = {
-  mode: "unknown",
-  text: "",
-  segments: [],
-  done: false,
-  fallbackUsed: false,
-}
+type LeftTab = "transcript" | "correction" | "evidence" | "stage"
+type NotesTab = "notes" | "mindmap" | "research"
+type VqaTab = "chat" | "trace" | "research"
 
 const WORKFLOW_STEPS: Record<WorkflowType, Array<{ id: string; name: string }>> = {
   notes: [
@@ -305,36 +292,6 @@ function getTraceSectionHint(sectionKey: (typeof TRACE_SECTIONS)[number]["key"])
     default:
       return "这里展示当前阶段的去重候选。"
   }
-}
-
-function isRetryableVqaStreamError(rawMessage: string): boolean {
-  const lowered = rawMessage.trim().toLowerCase()
-  return lowered.includes("incomplete chunked read") || lowered.includes("peer closed connection")
-}
-
-function getVqaStreamStatusText(event: VqaChatStreamEvent): string {
-  switch (event.status) {
-    case "retrieving":
-      return "正在检索相关片段..."
-    case "generating":
-      return (event.hit_count ?? 0) > 0 ? "已完成证据检索，正在组织回答..." : "未检索到直接证据，正在组织回答..."
-    case "fallback":
-      return "流式连接短暂中断，已切换稳定模式补全回答..."
-    default:
-      return event.message || event.status || ""
-  }
-}
-
-function getVqaStreamErrorText(event: VqaChatStreamEvent): string {
-  const rawMessage = event.error?.message || event.message || ""
-  const code = event.error?.code || ""
-  if (code === "LLM_DISABLED") {
-    return "LLM API Key 未配置，暂时无法执行问答。"
-  }
-  if (isRetryableVqaStreamError(rawMessage)) {
-    return "流式连接中途中断，请稍后重试。"
-  }
-  return rawMessage || "流式回答失败"
 }
 
 function getVqaRequestFailureMessage(error: unknown): string {
@@ -924,14 +881,6 @@ function formatTaskEventMessage(event: TaskStreamEvent): string {
   return translateTaskLogMessage(asString(event.message || event.text || event.title))
 }
 
-function normalizeCorrectionPreviewMode(raw: unknown): CorrectionPreviewMode {
-  const normalized = asString(raw).trim().toLowerCase()
-  if (normalized === "off" || normalized === "strict" || normalized === "rewrite") {
-    return normalized
-  }
-  return "unknown"
-}
-
 function formatPreciseSecondsAsClock(seconds: number): string {
   const safeSeconds = Number.isFinite(seconds) ? Math.max(0, seconds) : 0
   const wholeSeconds = Math.floor(safeSeconds)
@@ -951,6 +900,150 @@ function extractChunkRelativePaths(payload: StageChunkIndexPayload | null): stri
     .filter(Boolean)
 }
 
+async function loadStageChunkSegments(
+  targetTaskId: string,
+  paths: string[],
+): Promise<TranscriptSegment[]> {
+  if (!paths.length) {
+    return []
+  }
+  const payloads = await Promise.all(
+    paths.map((relativePath) =>
+      getTaskArtifactFileJson<{ segments?: TranscriptSegment[] }>(targetTaskId, relativePath),
+    ),
+  )
+  return mergeTranscriptSegments(
+    [],
+    payloads.flatMap((payload) => (Array.isArray(payload.segments) ? payload.segments : [])),
+  )
+}
+
+const TaskProcessingNotesRuntimeEffects = React.memo(function TaskProcessingNotesRuntimeEffects({
+  workflow,
+  leftTab,
+  effectiveTask,
+  transcriptOptimizeStatus,
+}: {
+  workflow: WorkflowType
+  leftTab: LeftTab
+  effectiveTask: TaskDetailResponse | null
+  transcriptOptimizeStatus: string
+}) {
+  const {
+    transcriptSegments,
+    rawTranscriptSegments,
+    setRawTranscriptSegments,
+    setPersistedRawTranscriptSegments,
+    setPersistedCorrectionArtifacts,
+    setIsCorrectionPreviewLoading,
+  } = useTaskProcessingRuntimeStore(
+    useShallow((state) => ({
+      transcriptSegments: selectMergedTranscriptSegments(state),
+      rawTranscriptSegments: state.rawTranscriptSegments,
+      setRawTranscriptSegments: state.setRawTranscriptSegments,
+      setPersistedRawTranscriptSegments: state.setPersistedRawTranscriptSegments,
+      setPersistedCorrectionArtifacts: state.setPersistedCorrectionArtifacts,
+      setIsCorrectionPreviewLoading: state.setIsCorrectionPreviewLoading,
+    })),
+  )
+
+  React.useEffect(() => {
+    if (workflow !== "notes" || !effectiveTask) {
+      return
+    }
+    if (transcriptOptimizeStatus && transcriptOptimizeStatus !== "pending") {
+      return
+    }
+    setRawTranscriptSegments((current) => {
+      const next = mergeTranscriptSegments([], transcriptSegments)
+      if (
+        current.length === next.length &&
+        current.every(
+          (item, index) =>
+            item.start === next[index]?.start &&
+            item.end === next[index]?.end &&
+            item.text === next[index]?.text,
+        )
+      ) {
+        return current
+      }
+      return next
+    })
+  }, [
+    effectiveTask,
+    setRawTranscriptSegments,
+    transcriptOptimizeStatus,
+    transcriptSegments,
+    workflow,
+  ])
+
+  React.useEffect(() => {
+    if (workflow !== "notes" || leftTab !== "correction" || !effectiveTask) {
+      return
+    }
+    let cancelled = false
+    setIsCorrectionPreviewLoading(true)
+
+    const loadPersistedCorrectionArtifacts = async () => {
+      const taskIdValue = effectiveTask.id
+      const correctionIndexResult = await getTaskArtifactFileJson<StageChunkIndexPayload>(
+        taskIdValue,
+        "D/transcript-optimize/index.json",
+      ).catch(() => null)
+      const correctionTextResult = await getTaskArtifactFileText(
+        taskIdValue,
+        "D/transcript-optimize/full.txt",
+      ).catch(() => "")
+      const rawTranscriptIndexResult = await getTaskArtifactFileJson<StageChunkIndexPayload>(
+        taskIdValue,
+        "C/transcript/index.json",
+      ).catch(() => null)
+
+      if (cancelled) {
+        return
+      }
+
+      setPersistedCorrectionArtifacts({
+        mode: normalizeCorrectionPreviewMode(correctionIndexResult?.mode),
+        fallbackUsed: Boolean(correctionIndexResult?.fallback_used),
+        text: correctionTextResult,
+      })
+
+      if (rawTranscriptSegments.length > 0) {
+        setPersistedRawTranscriptSegments(rawTranscriptSegments)
+      } else {
+        const rawChunkPaths = extractChunkRelativePaths(rawTranscriptIndexResult)
+        if (rawChunkPaths.length > 0) {
+          const nextSegments = await loadStageChunkSegments(taskIdValue, rawChunkPaths).catch(() => [])
+          if (!cancelled) {
+            setPersistedRawTranscriptSegments(nextSegments)
+          }
+        }
+      }
+    }
+
+    void loadPersistedCorrectionArtifacts().finally(() => {
+      if (!cancelled) {
+        setIsCorrectionPreviewLoading(false)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    effectiveTask,
+    leftTab,
+    rawTranscriptSegments,
+    setIsCorrectionPreviewLoading,
+    setPersistedCorrectionArtifacts,
+    setPersistedRawTranscriptSegments,
+    workflow,
+  ])
+
+  return null
+})
+
 export function TaskProcessingWorkbench({
   taskId,
   workflow,
@@ -959,36 +1052,17 @@ export function TaskProcessingWorkbench({
   onTaskChanged,
   onTaskLoaded,
 }: TaskProcessingWorkbenchProps) {
-  const [task, setTask] = React.useState<TaskDetailResponse | null>(null)
-  const [isInitialLoading, setIsInitialLoading] = React.useState(true)
-  const [isRefreshing, setIsRefreshing] = React.useState(false)
-  const [errorMessage, setErrorMessage] = React.useState("")
   const [leftTab, setLeftTab] = React.useState<LeftTab>("transcript")
   const [notesTab, setNotesTab] = React.useState<NotesTab>("notes")
   const [vqaTab, setVqaTab] = React.useState<VqaTab>("chat")
   const [question, setQuestion] = React.useState("")
-  const [chatHistory, setChatHistory] = React.useState<ChatMessage[]>([])
-  const [isSearching, setIsSearching] = React.useState(false)
-  const [selectedTraceId, setSelectedTraceId] = React.useState("")
-  const [traceCache, setTraceCache] = React.useState<Record<string, VqaTraceResponse>>({})
-  const [traceLoadingId, setTraceLoadingId] = React.useState("")
-  const [traceError, setTraceError] = React.useState("")
+  const [videoLoadError, setVideoLoadError] = React.useState("")
   const [notesDraft, setNotesDraft] = React.useState("")
   const [isEditingNotes, setIsEditingNotes] = React.useState(false)
   const [isSavingNotes, setIsSavingNotes] = React.useState(false)
   const [mindmapHtml, setMindmapHtml] = React.useState("")
   const [mindmapKey, setMindmapKey] = React.useState("")
   const [isMindmapLoading, setIsMindmapLoading] = React.useState(false)
-  const [taskEvents, setTaskEvents] = React.useState<TaskStreamEvent[]>([])
-  const [liveTranscriptSegments, setLiveTranscriptSegments] = React.useState<TranscriptSegment[]>([])
-  const [rawTranscriptSegments, setRawTranscriptSegments] = React.useState<TranscriptSegment[]>([])
-  const [persistedRawTranscriptSegments, setPersistedRawTranscriptSegments] = React.useState<TranscriptSegment[]>([])
-  const [correctionPreview, setCorrectionPreview] = React.useState<CorrectionPreviewState>(EMPTY_CORRECTION_PREVIEW)
-  const [persistedCorrectionMode, setPersistedCorrectionMode] = React.useState<CorrectionPreviewMode>("unknown")
-  const [persistedCorrectionText, setPersistedCorrectionText] = React.useState("")
-  const [persistedCorrectionFallbackUsed, setPersistedCorrectionFallbackUsed] = React.useState(false)
-  const [isCorrectionPreviewLoading, setIsCorrectionPreviewLoading] = React.useState(false)
-  const [videoLoadError, setVideoLoadError] = React.useState("")
   const [isCancelling, setIsCancelling] = React.useState(false)
   const [isPausing, setIsPausing] = React.useState(false)
   const [isResuming, setIsResuming] = React.useState(false)
@@ -996,33 +1070,65 @@ export function TaskProcessingWorkbench({
   const refreshTimerRef = React.useRef<number | null>(null)
   const chatAbortRef = React.useRef<AbortController | null>(null)
   const hasLoadedTaskRef = React.useRef(false)
+  const eventQueueRef = React.useRef<TaskStreamEvent[]>([])
+  const eventFrameRef = React.useRef<number | null>(null)
+
+  const {
+    task,
+    isInitialLoading,
+    isRefreshing,
+    taskErrorMessage,
+    resetRuntime,
+    setLoadingState,
+    setTask,
+    setTaskErrorMessage,
+    updateTask,
+    applyTaskEventBatch,
+    appendChatMessages,
+    setChatStreaming,
+    upsertChatMessage,
+    setSelectedTraceId,
+    setTraceLoadingId,
+    setTraceError,
+    upsertTraceCache,
+  } = useTaskProcessingRuntimeStore(
+    useShallow((state) => ({
+      task: state.task,
+      isInitialLoading: state.isInitialLoading,
+      isRefreshing: state.isRefreshing,
+      taskErrorMessage: state.taskErrorMessage,
+      resetRuntime: state.resetRuntime,
+      setLoadingState: state.setLoadingState,
+      setTask: state.setTask,
+      setTaskErrorMessage: state.setTaskErrorMessage,
+      updateTask: state.updateTask,
+      applyTaskEventBatch: state.applyTaskEventBatch,
+      appendChatMessages: state.appendChatMessages,
+      setChatStreaming: state.setChatStreaming,
+      upsertChatMessage: state.upsertChatMessage,
+      setSelectedTraceId: state.setSelectedTraceId,
+      setTraceLoadingId: state.setTraceLoadingId,
+      setTraceError: state.setTraceError,
+      upsertTraceCache: state.upsertTraceCache,
+    })),
+  )
 
   React.useEffect(() => {
     hasLoadedTaskRef.current = false
-    setTask(null)
-    setErrorMessage("")
-    setIsInitialLoading(true)
-    setIsRefreshing(false)
-    setChatHistory([])
-    setQuestion("")
-    setSelectedTraceId("")
-    setTraceError("")
-    setTraceCache({})
-    setTaskEvents([])
-    setLiveTranscriptSegments([])
-    setRawTranscriptSegments([])
-    setPersistedRawTranscriptSegments([])
-    setCorrectionPreview(EMPTY_CORRECTION_PREVIEW)
-    setPersistedCorrectionMode("unknown")
-    setPersistedCorrectionText("")
-    setPersistedCorrectionFallbackUsed(false)
-    setIsCorrectionPreviewLoading(false)
-    setVideoLoadError("")
+    resetRuntime()
     setLeftTab("transcript")
     setNotesTab("notes")
     setVqaTab("chat")
+    setQuestion("")
+    setVideoLoadError("")
     setMindmapHtml("")
     setMindmapKey("")
+    setNotesDraft("")
+    if (eventFrameRef.current !== null) {
+      window.cancelAnimationFrame(eventFrameRef.current)
+      eventFrameRef.current = null
+    }
+    eventQueueRef.current = []
   }, [taskId, workflow])
 
   React.useEffect(() => {
@@ -1031,6 +1137,9 @@ export function TaskProcessingWorkbench({
       if (refreshTimerRef.current !== null) {
         window.clearTimeout(refreshTimerRef.current)
       }
+      if (eventFrameRef.current !== null) {
+        window.cancelAnimationFrame(eventFrameRef.current)
+      }
     }
   }, [])
 
@@ -1038,35 +1147,37 @@ export function TaskProcessingWorkbench({
     async (options?: { showToastOnError?: boolean; background?: boolean }) => {
       const showToastOnError = options?.showToastOnError ?? true
       const background = options?.background ?? hasLoadedTaskRef.current
-      if (background) {
-        setIsRefreshing(true)
-      } else {
-        setIsInitialLoading(true)
-      }
+      setLoadingState({
+        isInitialLoading: background ? isInitialLoading : true,
+        isRefreshing: background,
+      })
       try {
         const detail = await getTaskDetail(taskId)
         setTask(detail)
+        setTaskErrorMessage("")
         hasLoadedTaskRef.current = true
-        setErrorMessage("")
         onTaskLoaded?.(detail)
         if (!isEditingNotes) {
           setNotesDraft(detail.notes_markdown || "")
         }
       } catch (error) {
         const message = getApiErrorMessage(error, "加载任务详情失败")
-        setErrorMessage(message)
+        setTaskErrorMessage(message)
+        setLoadingState({
+          isInitialLoading: false,
+          isRefreshing: false,
+        })
         if (showToastOnError) {
           toast.error(message)
         }
-      } finally {
-        if (background) {
-          setIsRefreshing(false)
-        } else {
-          setIsInitialLoading(false)
-        }
+        return
       }
+      setLoadingState({
+        isInitialLoading: false,
+        isRefreshing: false,
+      })
     },
-    [isEditingNotes, onTaskLoaded, taskId],
+    [isEditingNotes, isInitialLoading, onTaskLoaded, setLoadingState, setTask, setTaskErrorMessage, taskId],
   )
 
   React.useEffect(() => {
@@ -1087,55 +1198,19 @@ export function TaskProcessingWorkbench({
     if (!liveTaskId || !isRunningTask(liveTaskStatus)) {
       return
     }
+    const flushQueuedEvents = () => {
+      eventFrameRef.current = null
+      if (eventQueueRef.current.length === 0) {
+        return
+      }
+      const batch = eventQueueRef.current.splice(0, eventQueueRef.current.length)
+      applyTaskEventBatch(batch)
+    }
     const source = streamTaskEvents(liveTaskId, (event) => {
       const rawType = getRawTaskEventType(event)
-      const streamedSegment = extractTranscriptSegmentFromEvent(event)
-      if (streamedSegment) {
-        setLiveTranscriptSegments((current) => mergeTranscriptSegments(current, [streamedSegment]))
-      }
-      if (rawType === "transcript_optimized_preview") {
-        setCorrectionPreview((current) => {
-          const explicitMode = normalizeCorrectionPreviewMode(event.mode)
-          if (Boolean(event.reset)) {
-            return {
-              ...EMPTY_CORRECTION_PREVIEW,
-              mode: explicitMode !== "unknown" ? explicitMode : current.mode,
-            }
-          }
-
-          const nextStart = asNumber(event.start)
-          const nextEnd = asNumber(event.end)
-          const nextText = asString(event.text).trim()
-          const nextMode =
-            explicitMode !== "unknown"
-              ? explicitMode
-              : nextStart !== null && nextEnd !== null
-                ? "strict"
-                : current.mode === "unknown"
-                  ? "rewrite"
-                  : current.mode
-
-          const appendedSegments =
-            nextStart !== null && nextEnd !== null && nextText
-              ? mergeTranscriptSegments(current.segments, [{ start: nextStart, end: nextEnd, text: nextText }])
-              : current.segments
-          const appendedText =
-            nextStart === null && nextEnd === null && nextText
-              ? `${current.text}${nextText}`
-              : current.text
-
-          return {
-            mode: nextMode,
-            text: appendedText,
-            segments: appendedSegments,
-            done: Boolean(event.done) || current.done,
-            fallbackUsed: current.fallbackUsed,
-          }
-        })
-      }
-      setTask((current) => (current ? applyTaskStreamEvent(current, event) : current))
-      if (shouldRecordTaskEvent(event)) {
-        setTaskEvents((current) => [event, ...current].slice(0, 80))
+      eventQueueRef.current.push(event)
+      if (eventFrameRef.current === null) {
+        eventFrameRef.current = window.requestAnimationFrame(flushQueuedEvents)
       }
       const shouldRefreshImmediately =
         rawType === "task_complete" ||
@@ -1143,6 +1218,7 @@ export function TaskProcessingWorkbench({
         rawType === "task_cancelled" ||
         rawType === "task_failed"
       if (shouldRefreshImmediately) {
+        flushQueuedEvents()
         if (refreshTimerRef.current !== null) {
           window.clearTimeout(refreshTimerRef.current)
           refreshTimerRef.current = null
@@ -1165,8 +1241,13 @@ export function TaskProcessingWorkbench({
         window.clearTimeout(refreshTimerRef.current)
         refreshTimerRef.current = null
       }
+      if (eventFrameRef.current !== null) {
+        window.cancelAnimationFrame(eventFrameRef.current)
+        eventFrameRef.current = null
+      }
+      eventQueueRef.current = []
     }
-  }, [liveTaskId, liveTaskStatus, loadTask])
+  }, [applyTaskEventBatch, liveTaskId, liveTaskStatus, loadTask])
 
   React.useEffect(() => {
     const loadMindmap = async () => {
@@ -1198,114 +1279,10 @@ export function TaskProcessingWorkbench({
   const effectiveTask = task
   const effectiveTitle = effectiveTask?.title || effectiveTask?.source_input || taskTitle
   const steps = effectiveTask?.steps.length ? effectiveTask.steps : buildFallbackSteps(workflow)
-  const transcriptSegments = React.useMemo(
-    () => mergeTranscriptSegments(effectiveTask?.transcript_segments ?? [], liveTranscriptSegments),
-    [effectiveTask?.transcript_segments, liveTranscriptSegments],
-  )
   const totalProgress = effectiveTask?.overall_progress ?? 0
   const videoUrl = effectiveTask?.source_local_path ? buildTaskSourceMediaUrl(effectiveTask.id) : ""
   const canEditArtifacts = isTerminalTask(effectiveTask?.status)
   const transcriptOptimizeStatus = asString(effectiveTask?.vm_phase_metrics?.transcript_optimize?.status).trim().toLowerCase()
-
-  const loadStageChunkSegments = React.useCallback(
-    async (targetTaskId: string, paths: string[]) => {
-      if (!paths.length) {
-        return []
-      }
-      const payloads = await Promise.all(
-        paths.map((relativePath) =>
-          getTaskArtifactFileJson<{ segments?: TranscriptSegment[] }>(targetTaskId, relativePath),
-        ),
-      )
-      return mergeTranscriptSegments(
-        [],
-        payloads.flatMap((payload) => (Array.isArray(payload.segments) ? payload.segments : [])),
-      )
-    },
-    [],
-  )
-
-  React.useEffect(() => {
-    if (workflow !== "notes" || !effectiveTask) {
-      return
-    }
-    if (transcriptOptimizeStatus && transcriptOptimizeStatus !== "pending") {
-      return
-    }
-    setRawTranscriptSegments((current) => {
-      const next = mergeTranscriptSegments(effectiveTask.transcript_segments ?? [], liveTranscriptSegments)
-      if (current.length === next.length && current.every((item, index) => item.start === next[index]?.start && item.end === next[index]?.end && item.text === next[index]?.text)) {
-        return current
-      }
-      return next
-    })
-  }, [
-    effectiveTask,
-    liveTranscriptSegments,
-    transcriptOptimizeStatus,
-    workflow,
-  ])
-
-  React.useEffect(() => {
-    if (workflow !== "notes" || leftTab !== "correction" || !effectiveTask) {
-      return
-    }
-    let cancelled = false
-    setIsCorrectionPreviewLoading(true)
-
-    const loadPersistedCorrectionArtifacts = async () => {
-      const taskIdValue = effectiveTask.id
-      const correctionIndexResult = await getTaskArtifactFileJson<StageChunkIndexPayload>(
-        taskIdValue,
-        "D/transcript-optimize/index.json",
-      ).catch(() => null)
-      const correctionTextResult = await getTaskArtifactFileText(
-        taskIdValue,
-        "D/transcript-optimize/full.txt",
-      ).catch(() => "")
-      const rawTranscriptIndexResult = await getTaskArtifactFileJson<StageChunkIndexPayload>(
-        taskIdValue,
-        "C/transcript/index.json",
-      ).catch(() => null)
-
-      if (cancelled) {
-        return
-      }
-
-      setPersistedCorrectionMode(normalizeCorrectionPreviewMode(correctionIndexResult?.mode))
-      setPersistedCorrectionFallbackUsed(Boolean(correctionIndexResult?.fallback_used))
-      setPersistedCorrectionText(correctionTextResult)
-
-      if (rawTranscriptSegments.length > 0) {
-        setPersistedRawTranscriptSegments(rawTranscriptSegments)
-      } else {
-        const rawChunkPaths = extractChunkRelativePaths(rawTranscriptIndexResult)
-        if (rawChunkPaths.length > 0) {
-          const nextSegments = await loadStageChunkSegments(taskIdValue, rawChunkPaths).catch(() => [])
-          if (!cancelled) {
-            setPersistedRawTranscriptSegments(nextSegments)
-          }
-        }
-      }
-    }
-
-    void loadPersistedCorrectionArtifacts().finally(() => {
-      if (!cancelled) {
-        setIsCorrectionPreviewLoading(false)
-      }
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [effectiveTask, leftTab, loadStageChunkSegments, rawTranscriptSegments, workflow])
-
-  const updateAssistantMessage = React.useCallback(
-    (messageId: string, updater: (current: ChatMessage) => ChatMessage) => {
-      setChatHistory((current) => current.map((item) => (item.id === messageId ? updater(item) : item)))
-    },
-    [],
-  )
 
   const jumpToTime = React.useCallback(
     (time: number) => {
@@ -1340,7 +1317,7 @@ export function TaskProcessingWorkbench({
 
   const handleAskQuestion = React.useCallback(async () => {
     const trimmedQuestion = question.trim()
-    if (!trimmedQuestion || isSearching || !effectiveTask) {
+    if (!trimmedQuestion || getTaskProcessingRuntimeState().isChatStreaming || !effectiveTask) {
       return
     }
     chatAbortRef.current?.abort()
@@ -1350,9 +1327,8 @@ export function TaskProcessingWorkbench({
     chatAbortRef.current = controller
     setQuestion("")
     setVqaTab("chat")
-    setIsSearching(true)
-    setChatHistory((current) => [
-      ...current,
+    setChatStreaming(true)
+    appendChatMessages([
       { id: userId, role: "user", content: trimmedQuestion, status: "done", citations: [] },
       {
         id: assistantId,
@@ -1369,7 +1345,7 @@ export function TaskProcessingWorkbench({
         {
           signal: controller.signal,
           onEvent: (event: VqaChatStreamEvent) => {
-            updateAssistantMessage(assistantId, (current) => {
+            upsertChatMessage(assistantId, (current) => {
               const next = { ...current }
               if (event.trace_id) next.traceId = event.trace_id
               if (event.type === "citations") {
@@ -1405,14 +1381,14 @@ export function TaskProcessingWorkbench({
           },
         },
       )
-      updateAssistantMessage(assistantId, (current) => ({
+      upsertChatMessage(assistantId, (current) => ({
         ...current,
         content: current.content.trim() || current.errorMessage || "未生成回答。",
         status: current.errorMessage ? "error" : "done",
       }))
     } catch (error) {
       if ((error as Error)?.name === "AbortError") {
-        updateAssistantMessage(assistantId, (current) => ({
+        upsertChatMessage(assistantId, (current) => ({
           ...current,
           content: current.content.trim() || "本次流式回答已停止。",
           status: "done",
@@ -1420,7 +1396,7 @@ export function TaskProcessingWorkbench({
         }))
       } else {
         const message = getVqaRequestFailureMessage(error)
-        updateAssistantMessage(assistantId, (current) => ({
+        upsertChatMessage(assistantId, (current) => ({
           ...current,
           content: current.content.trim() || message,
           status: "error",
@@ -1432,9 +1408,18 @@ export function TaskProcessingWorkbench({
       if (chatAbortRef.current === controller) {
         chatAbortRef.current = null
       }
-      setIsSearching(false)
+      setChatStreaming(false)
     }
-  }, [effectiveTask, isSearching, question, taskId, updateAssistantMessage])
+  }, [
+    appendChatMessages,
+    effectiveTask,
+    question,
+    setChatStreaming,
+    setQuestion,
+    setVqaTab,
+    taskId,
+    upsertChatMessage,
+  ])
 
   const handleLoadTrace = React.useCallback(
     async (traceId: string) => {
@@ -1444,20 +1429,20 @@ export function TaskProcessingWorkbench({
       setSelectedTraceId(traceId)
       setTraceError("")
       setVqaTab("trace")
-      if (traceCache[traceId]) {
+      if (getTaskProcessingRuntimeState().traceCache[traceId]) {
         return
       }
       setTraceLoadingId(traceId)
       try {
         const payload = await getChatTrace(traceId)
-        setTraceCache((current) => ({ ...current, [traceId]: payload }))
+        upsertTraceCache(traceId, payload)
       } catch (error) {
         setTraceError(getApiErrorMessage(error, "加载 Trace 明细失败"))
       } finally {
         setTraceLoadingId("")
       }
     },
-    [traceCache],
+    [setSelectedTraceId, setTraceError, setTraceLoadingId, setVqaTab, upsertTraceCache],
   )
 
   const handleCopyTranscript = React.useCallback(async () => {
@@ -1501,7 +1486,7 @@ export function TaskProcessingWorkbench({
 
   const handleVideoError = React.useCallback((message: string) => {
     setVideoLoadError(message)
-  }, [])
+  }, [setVideoLoadError])
 
   const handleSaveNotes = React.useCallback(async () => {
     if (!canEditArtifacts) {
@@ -1511,7 +1496,7 @@ export function TaskProcessingWorkbench({
     setIsSavingNotes(true)
     try {
       const updated = await updateTaskArtifacts(taskId, { notes_markdown: notesDraft })
-      setTask(updated)
+      updateTask(() => updated)
       setIsEditingNotes(false)
       toast.success("笔记已保存")
     } catch (error) {
@@ -1519,7 +1504,7 @@ export function TaskProcessingWorkbench({
     } finally {
       setIsSavingNotes(false)
     }
-  }, [canEditArtifacts, notesDraft, taskId])
+  }, [canEditArtifacts, notesDraft, taskId, updateTask])
 
   const handleAddTranscriptToNotes = React.useCallback((segment: TranscriptSegment) => {
     setNotesDraft((current) => appendMarkdownSection(current, "补充引用片段", buildTranscriptSnippet(segment)))
@@ -1640,60 +1625,14 @@ export function TaskProcessingWorkbench({
     toast.success("已设为提问草稿")
   }, [])
 
-  const evidenceTimelineItems = React.useMemo(() => {
-    if (workflow === "notes") {
-      return transcriptSegments.map((segment) => ({
-        id: `${segment.start}-${segment.end}`,
-        title: "转写片段",
-        content: segment.text,
-        start: segment.start,
-        end: segment.end,
-        source: segment.speaker || "transcript",
-        sourceSet: [] as string[],
-        taskTitle: effectiveTitle,
-        taskId,
-      }))
-    }
-    return chatHistory
-      .flatMap((message) =>
-        message.role === "assistant"
-          ? message.citations.map((citation, index) => ({
-              id: `${message.id}-${citation.doc_id}-${index}`,
-              title: citation.task_title || "问答证据",
-              content: citation.text,
-              start: citation.start,
-              end: citation.end,
-              source: citation.source,
-              sourceSet: citation.source_set || [],
-              taskTitle: citation.task_title || effectiveTitle,
-              taskId: citation.task_id,
-            }))
-          : [],
-      )
-      .sort((left, right) => left.start - right.start)
-  }, [chatHistory, effectiveTitle, taskId, transcriptSegments, workflow])
-
-  const correctionMode =
-    correctionPreview.mode !== "unknown" ? correctionPreview.mode : persistedCorrectionMode
-  const correctionSourceSegments =
-    rawTranscriptSegments.length > 0 ? rawTranscriptSegments : persistedRawTranscriptSegments
-  const correctionResultSegments =
-    correctionPreview.segments.length > 0
-      ? correctionPreview.segments
-      : correctionMode === "strict"
-        ? effectiveTask?.transcript_segments ?? []
-        : []
-  const correctionPreviewText = correctionPreview.text || persistedCorrectionText
-  const correctionFallbackUsed = correctionPreview.fallbackUsed || persistedCorrectionFallbackUsed
-
-  const selectedTrace = selectedTraceId ? traceCache[selectedTraceId] ?? null : null
-  const traceStartedPayload = React.useMemo(() => getTraceStagePayload(selectedTrace, "trace_started"), [selectedTrace])
-  const traceRetrievalPayload = React.useMemo(() => getTraceStagePayload(selectedTrace, "retrieval"), [selectedTrace])
-  const traceLlmPayload = React.useMemo(() => getTraceStagePayload(selectedTrace, "llm_stream"), [selectedTrace])
-  const traceFinishedPayload = React.useMemo(() => getTraceStagePayload(selectedTrace, "trace_finished"), [selectedTrace])
-
   return (
     <div className="task-processing-workbench-shell flex min-h-0 flex-1 flex-col overflow-hidden">
+      <TaskProcessingNotesRuntimeEffects
+        workflow={workflow}
+        leftTab={leftTab}
+        effectiveTask={effectiveTask}
+        transcriptOptimizeStatus={transcriptOptimizeStatus}
+      />
       <TaskWorkspaceHeader
         effectiveTitle={effectiveTitle}
         workflow={workflow}
@@ -1719,16 +1658,17 @@ export function TaskProcessingWorkbench({
         <ResizablePanel defaultSize={50} minSize={36}>
           <LeftWorkbenchPanel
             workflow={workflow}
+            taskId={taskId}
+            effectiveTitle={effectiveTitle}
             videoUrl={videoUrl}
             videoRef={videoRef}
             fallbackDurationSeconds={effectiveTask?.duration_seconds || 0}
             onSeek={jumpToTime}
             leftTab={leftTab}
             onLeftTabChange={setLeftTab}
-            transcriptSegments={transcriptSegments}
             videoErrorMessage={videoLoadError}
             onVideoError={handleVideoError}
-            errorMessage={errorMessage}
+            errorMessage={taskErrorMessage}
             isInitialLoading={isInitialLoading}
             isRefreshing={isRefreshing}
             onCopyTranscript={handleCopyTranscript}
@@ -1736,16 +1676,8 @@ export function TaskProcessingWorkbench({
             onAddTranscriptToNotes={handleAddTranscriptToNotes}
             onUseTranscriptAsQuestion={handleUseTranscriptAsQuestion}
             onAddTranscriptToResearch={handleAddTranscriptToResearch}
-            correctionMode={correctionMode}
-            correctionSourceSegments={correctionSourceSegments}
-            correctionResultSegments={correctionResultSegments}
-            correctionPreviewText={correctionPreviewText}
-            correctionFallbackUsed={correctionFallbackUsed}
             correctionStatus={transcriptOptimizeStatus}
-            isCorrectionPreviewLoading={isCorrectionPreviewLoading}
-            evidenceTimelineItems={evidenceTimelineItems}
             stageMetrics={effectiveTask?.vm_phase_metrics || {}}
-            taskEvents={taskEvents}
             artifactTotalBytes={effectiveTask?.artifact_total_bytes || 0}
             artifactCount={effectiveTask?.artifact_index.length || 0}
             taskStatus={effectiveTask?.status || "queued"}
@@ -1758,7 +1690,7 @@ export function TaskProcessingWorkbench({
           {isInitialLoading && !effectiveTask ? (
             <TaskWorkbenchDetailLoading workflow={workflow} />
           ) : !effectiveTask ? (
-            <TaskWorkbenchDetailState message={errorMessage || "任务详情暂时不可用，请稍后重试。"} />
+            <TaskWorkbenchDetailState message={taskErrorMessage || "任务详情暂时不可用，请稍后重试。"} />
           ) : workflow === "notes" ? (
             <NotesWorkbench
               taskId={taskId}
@@ -1786,22 +1718,12 @@ export function TaskProcessingWorkbench({
               effectiveTitle={effectiveTitle}
               vqaTab={vqaTab}
               onVqaTabChange={setVqaTab}
-              chatHistory={chatHistory}
               question={question}
               onQuestionChange={setQuestion}
-              isSearching={isSearching}
               onAskQuestion={handleAskQuestion}
               onStopAnswer={handleStopAnswer}
               onSeek={jumpToTime}
               onOpenTrace={handleLoadTrace}
-              selectedTrace={selectedTrace}
-              selectedTraceId={selectedTraceId}
-              traceLoadingId={traceLoadingId}
-              traceError={traceError}
-              traceStartedPayload={traceStartedPayload}
-              traceRetrievalPayload={traceRetrievalPayload}
-              traceLlmPayload={traceLlmPayload}
-              traceFinishedPayload={traceFinishedPayload}
               onAddCitationToResearch={handleAddCitationToResearch}
               onUseResearchItemAsQuestion={handleUseResearchItemAsQuestion}
             />
@@ -2276,6 +2198,7 @@ const TranscriptCorrectionPanel = React.memo(function TranscriptCorrectionPanel(
   const isSkipped = effectiveMode === "off" || normalizedStatus === "skipped"
   const isStrictMode = effectiveMode === "strict"
   const hasRewriteOutput = previewText.trim().length > 0
+  const usesVirtualizedStrictList = !isSkipped && isStrictMode && strictRows.length > 0
 
   const getRowTimestamp = React.useCallback((source: TranscriptSegment | null, result: TranscriptSegment | null) => {
     const reference = source ?? result
@@ -2295,8 +2218,52 @@ const TranscriptCorrectionPanel = React.memo(function TranscriptCorrectionPanel(
           {normalizedStatus === "running" ? <Badge variant="secondary">流式输出中</Badge> : null}
         </div>
       </div>
-      <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
-        <div className="space-y-4 p-4">
+      {usesVirtualizedStrictList ? (
+        <div className="min-h-0 flex-1 p-4">
+          <VirtualizedList
+            items={strictRows}
+            className="themed-thin-scrollbar h-full min-h-0"
+            estimateSize={() => 236}
+            overscan={5}
+            getItemKey={(row) => row.key}
+            renderItem={(row, index) => (
+              <div className={cn("pb-3", index === 0 && "pt-0")}>
+                <div className="rounded-xl border border-border/60 bg-card/35 p-3.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="transcript-segment-timestamp inline-flex items-center rounded-full border border-primary/20 bg-primary/[0.08] px-2.5 py-1 font-mono text-[11px] font-semibold leading-none tracking-[0.06em] text-primary">
+                      {getRowTimestamp(row.source, row.result) || "等待时间戳"}
+                    </span>
+                    {(row.result?.speaker || row.source?.speaker) ? (
+                      <Badge variant="secondary" className="text-[11px]">
+                        {row.result?.speaker || row.source?.speaker}
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <div className="mt-3 grid gap-3 xl:grid-cols-2">
+                    <CorrectionSegmentSurface
+                      label="原始转写"
+                      segment={row.source}
+                      placeholder="当前时间片的原始转写尚未载入。"
+                    />
+                    <CorrectionSegmentSurface
+                      label="纠错后文本"
+                      segment={row.result}
+                      placeholder={
+                        normalizedStatus === "running"
+                          ? "正在流式输出这一段的纠错结果..."
+                          : "当前时间片没有可展示的纠错文本。"
+                      }
+                      tone="accent"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          />
+        </div>
+      ) : (
+        <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
+          <div className="space-y-4 p-4">
           {isSkipped ? (
             <div className="rounded-xl border border-dashed border-border/60 px-4 py-5 text-sm text-muted-foreground">
               当前任务跳过了文本纠错阶段，后续笔记整理直接使用原始转写结果。
@@ -2309,47 +2276,11 @@ const TranscriptCorrectionPanel = React.memo(function TranscriptCorrectionPanel(
             </div>
           ) : null}
           {!isSkipped && isStrictMode ? (
-            strictRows.length > 0 ? (
-              <div className="space-y-3">
-                {strictRows.map((row) => (
-                  <div key={row.key} className="rounded-xl border border-border/60 bg-card/35 p-3.5">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="transcript-segment-timestamp inline-flex items-center rounded-full border border-primary/20 bg-primary/[0.08] px-2.5 py-1 font-mono text-[11px] font-semibold leading-none tracking-[0.06em] text-primary">
-                        {getRowTimestamp(row.source, row.result) || "等待时间戳"}
-                      </span>
-                      {(row.result?.speaker || row.source?.speaker) ? (
-                        <Badge variant="secondary" className="text-[11px]">
-                          {row.result?.speaker || row.source?.speaker}
-                        </Badge>
-                      ) : null}
-                    </div>
-                    <div className="mt-3 grid gap-3 xl:grid-cols-2">
-                      <CorrectionSegmentSurface
-                        label="原始转写"
-                        segment={row.source}
-                        placeholder="当前时间片的原始转写尚未载入。"
-                      />
-                      <CorrectionSegmentSurface
-                        label="纠错后文本"
-                        segment={row.result}
-                        placeholder={
-                          normalizedStatus === "running"
-                            ? "正在流式输出这一段的纠错结果..."
-                            : "当前时间片没有可展示的纠错文本。"
-                        }
-                        tone="accent"
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-xl border border-dashed border-border/60 px-4 py-5 text-sm text-muted-foreground">
-                {normalizedStatus === "running"
-                  ? "文本纠错已经开始，结果会按时间戳逐段出现在这里。"
-                  : "当前还没有可展示的文本纠错结果。"}
-              </div>
-            )
+            <div className="rounded-xl border border-dashed border-border/60 px-4 py-5 text-sm text-muted-foreground">
+              {normalizedStatus === "running"
+                ? "文本纠错已经开始，结果会按时间戳逐段出现在这里。"
+                : "当前还没有可展示的文本纠错结果。"}
+            </div>
           ) : null}
           {!isSkipped && !isStrictMode ? (
             hasRewriteOutput ? (
@@ -2363,21 +2294,23 @@ const TranscriptCorrectionPanel = React.memo(function TranscriptCorrectionPanel(
               </div>
             )
           ) : null}
-        </div>
-      </ScrollArea>
+          </div>
+        </ScrollArea>
+      )}
     </div>
   )
 })
 
 interface LeftWorkbenchPanelProps {
   workflow: WorkflowType
+  taskId: string
+  effectiveTitle: string
   videoUrl: string
   videoRef: React.RefObject<HTMLVideoElement | null>
   fallbackDurationSeconds: number
   onSeek: (seconds: number) => void
   leftTab: LeftTab
   onLeftTabChange: (value: LeftTab) => void
-  transcriptSegments: TranscriptSegment[]
   videoErrorMessage: string
   onVideoError: (message: string) => void
   errorMessage: string
@@ -2388,23 +2321,8 @@ interface LeftWorkbenchPanelProps {
   onAddTranscriptToNotes: (segment: TranscriptSegment) => void
   onUseTranscriptAsQuestion: (segment: TranscriptSegment) => void
   onAddTranscriptToResearch: (segment: TranscriptSegment) => void
-  correctionMode: CorrectionPreviewMode
-  correctionSourceSegments: TranscriptSegment[]
-  correctionResultSegments: TranscriptSegment[]
-  correctionPreviewText: string
-  correctionFallbackUsed: boolean
   correctionStatus: string
-  isCorrectionPreviewLoading: boolean
-  evidenceTimelineItems: Array<{
-    id: string
-    title: string
-    content: string
-    start: number
-    taskTitle: string
-    source?: string
-  }>
   stageMetrics: Record<string, Record<string, unknown>>
-  taskEvents: TaskStreamEvent[]
   artifactTotalBytes: number
   artifactCount: number
   taskStatus: string
@@ -2412,13 +2330,14 @@ interface LeftWorkbenchPanelProps {
 
 const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
   workflow,
+  taskId,
+  effectiveTitle,
   videoUrl,
   videoRef,
   fallbackDurationSeconds,
   onSeek,
   leftTab,
   onLeftTabChange,
-  transcriptSegments,
   videoErrorMessage,
   onVideoError,
   errorMessage,
@@ -2429,25 +2348,88 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
   onAddTranscriptToNotes,
   onUseTranscriptAsQuestion,
   onAddTranscriptToResearch,
-  correctionMode,
-  correctionSourceSegments,
-  correctionResultSegments,
-  correctionPreviewText,
-  correctionFallbackUsed,
   correctionStatus,
-  isCorrectionPreviewLoading,
-  evidenceTimelineItems,
   stageMetrics,
-  taskEvents,
   artifactTotalBytes,
   artifactCount,
   taskStatus,
 }: LeftWorkbenchPanelProps) {
+  const {
+    transcriptSegments,
+    rawTranscriptSegments,
+    persistedRawTranscriptSegments,
+    correctionPreview,
+    persistedCorrectionMode,
+    persistedCorrectionText,
+    persistedCorrectionFallbackUsed,
+    isCorrectionPreviewLoading,
+    taskEvents,
+    chatHistory,
+  } = useTaskProcessingRuntimeStore(
+    useShallow((state) => ({
+      transcriptSegments: selectMergedTranscriptSegments(state),
+      rawTranscriptSegments: state.rawTranscriptSegments,
+      persistedRawTranscriptSegments: state.persistedRawTranscriptSegments,
+      correctionPreview: state.correctionPreview,
+      persistedCorrectionMode: state.persistedCorrectionMode,
+      persistedCorrectionText: state.persistedCorrectionText,
+      persistedCorrectionFallbackUsed: state.persistedCorrectionFallbackUsed,
+      isCorrectionPreviewLoading: state.isCorrectionPreviewLoading,
+      taskEvents: state.taskEvents,
+      chatHistory: state.chatHistory,
+    })),
+  )
   const [activeTranscriptId, setActiveTranscriptId] = React.useState("")
 
   React.useEffect(() => {
     setActiveTranscriptId("")
   }, [videoUrl])
+
+  const evidenceTimelineItems = React.useMemo(() => {
+    if (workflow === "notes") {
+      return transcriptSegments.map((segment) => ({
+        id: `${segment.start}-${segment.end}`,
+        title: "转写片段",
+        content: segment.text,
+        start: segment.start,
+        end: segment.end,
+        source: segment.speaker || "transcript",
+        sourceSet: [] as string[],
+        taskTitle: effectiveTitle,
+        taskId,
+      }))
+    }
+    return chatHistory
+      .flatMap((message) =>
+        message.role === "assistant"
+          ? message.citations.map((citation, index) => ({
+              id: `${message.id}-${citation.doc_id}-${index}`,
+              title: citation.task_title || "问答证据",
+              content: citation.text,
+              start: citation.start,
+              end: citation.end,
+              source: citation.source,
+              sourceSet: citation.source_set || [],
+              taskTitle: citation.task_title || effectiveTitle,
+              taskId: citation.task_id,
+            }))
+          : [],
+      )
+      .sort((left, right) => left.start - right.start)
+  }, [chatHistory, effectiveTitle, taskId, transcriptSegments, workflow])
+
+  const correctionMode =
+    correctionPreview.mode !== "unknown" ? correctionPreview.mode : persistedCorrectionMode
+  const correctionSourceSegments =
+    rawTranscriptSegments.length > 0 ? rawTranscriptSegments : persistedRawTranscriptSegments
+  const correctionResultSegments =
+    correctionPreview.segments.length > 0
+      ? correctionPreview.segments
+      : correctionMode === "strict"
+        ? transcriptSegments
+        : []
+  const correctionPreviewText = correctionPreview.text || persistedCorrectionText
+  const correctionFallbackUsed = correctionPreview.fallbackUsed || persistedCorrectionFallbackUsed
 
   const handleActiveTranscriptChange = React.useCallback((nextActiveId: string) => {
     setActiveTranscriptId((current) => (current === nextActiveId ? current : nextActiveId))
@@ -2504,34 +2486,42 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
                 </Button>
               </div>
             </div>
-            <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
-              <div className="space-y-3 p-4">
-                {errorMessage ? <div className="rounded-xl border border-destructive/30 bg-destructive/6 p-3 text-sm text-destructive">{errorMessage}</div> : null}
-                {isInitialLoading && transcriptSegments.length === 0 ? <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">正在加载任务详情...</div> : null}
-                {!isInitialLoading && transcriptSegments.length === 0 ? (
-                  <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
-                    {taskStatus === "running" || taskStatus === "queued"
-                      ? "正在转写和整理内容，识别片段会实时出现在这里。"
-                      : "当前还没有可展示的转写结果。"}
-                  </div>
-                ) : null}
-                {transcriptSegments.map((segment) => {
-                  const segmentId = `${segment.start}-${segment.end}`
-                  return (
-                    <TranscriptSegmentCard
-                      key={segmentId}
-                      workflow={workflow}
-                      segment={segment}
-                      isActive={activeTranscriptId === segmentId}
-                      onSeek={handleSeekWithTranscriptSync}
-                      onAddTranscriptToNotes={onAddTranscriptToNotes}
-                      onUseTranscriptAsQuestion={onUseTranscriptAsQuestion}
-                      onAddTranscriptToResearch={onAddTranscriptToResearch}
-                    />
-                  )
-                })}
-              </div>
-            </ScrollArea>
+            <div className="flex min-h-0 flex-1 flex-col">
+              {errorMessage ? <div className="mx-4 mt-4 rounded-xl border border-destructive/30 bg-destructive/6 p-3 text-sm text-destructive">{errorMessage}</div> : null}
+              {isInitialLoading && transcriptSegments.length === 0 ? <div className="mx-4 mt-4 rounded-xl border border-dashed p-6 text-sm text-muted-foreground">正在加载任务详情...</div> : null}
+              {!isInitialLoading && transcriptSegments.length === 0 ? (
+                <div className="mx-4 mt-4 rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
+                  {taskStatus === "running" || taskStatus === "queued"
+                    ? "正在转写和整理内容，识别片段会实时出现在这里。"
+                    : "当前还没有可展示的转写结果。"}
+                </div>
+              ) : null}
+              {transcriptSegments.length > 0 ? (
+                <VirtualizedList
+                  items={transcriptSegments}
+                  className="themed-thin-scrollbar h-full min-h-0 flex-1"
+                  estimateSize={() => 148}
+                  overscan={10}
+                  getItemKey={(segment) => `${segment.start}-${segment.end}`}
+                  renderItem={(segment, index) => {
+                    const segmentId = `${segment.start}-${segment.end}`
+                    return (
+                      <div className={cn("px-4 pb-3", index === 0 && "pt-4")}>
+                        <TranscriptSegmentCard
+                          workflow={workflow}
+                          segment={segment}
+                          isActive={activeTranscriptId === segmentId}
+                          onSeek={handleSeekWithTranscriptSync}
+                          onAddTranscriptToNotes={onAddTranscriptToNotes}
+                          onUseTranscriptAsQuestion={onUseTranscriptAsQuestion}
+                          onAddTranscriptToResearch={onAddTranscriptToResearch}
+                        />
+                      </div>
+                    )
+                  }}
+                />
+              ) : null}
+            </div>
           </div>
         </TabsContent>
 
@@ -2550,29 +2540,36 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
         ) : null}
 
         <TabsContent value="evidence" className="mt-0 min-h-0 flex-1 overflow-hidden">
-          <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
-            <div className="space-y-3 p-4">
-              {evidenceTimelineItems.length === 0 ? <div className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">{workflow === "notes" ? "当前还没有时间轴内容。" : "先发起一次视频问答，这里会自动汇总命中证据。"}</div> : null}
-              {evidenceTimelineItems.map((item) => (
-                <div key={item.id} className="workbench-collection-item rounded-2xl border border-border/70 bg-card/65 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-medium">{item.title}</span>
-                        <Badge variant="outline">{item.source || "timeline"}</Badge>
+          {evidenceTimelineItems.length === 0 ? <div className="m-4 rounded-xl border border-dashed p-6 text-sm text-muted-foreground">{workflow === "notes" ? "当前还没有时间轴内容。" : "先发起一次视频问答，这里会自动汇总命中证据。"}</div> : null}
+          {evidenceTimelineItems.length > 0 ? (
+            <VirtualizedList
+              items={evidenceTimelineItems}
+              className="themed-thin-scrollbar h-full min-h-0 flex-1"
+              estimateSize={() => 156}
+              overscan={8}
+              getItemKey={(item) => item.id}
+              renderItem={(item, index) => (
+                <div className={cn("px-4 pb-3", index === 0 && "pt-4")}>
+                  <div className="workbench-collection-item rounded-2xl border border-border/70 bg-card/65 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm font-medium">{item.title}</span>
+                          <Badge variant="outline">{item.source || "timeline"}</Badge>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">{item.taskTitle}</p>
                       </div>
-                      <p className="mt-1 text-xs text-muted-foreground">{item.taskTitle}</p>
+                      <Button variant="outline" size="sm" className="evidence-timeline-seek-button" onClick={() => onSeek(item.start)}>
+                        <MapPin className="mr-1.5 h-3.5 w-3.5" />
+                        {formatSecondsAsClock(item.start)}
+                      </Button>
                     </div>
-                    <Button variant="outline" size="sm" className="evidence-timeline-seek-button" onClick={() => onSeek(item.start)}>
-                      <MapPin className="mr-1.5 h-3.5 w-3.5" />
-                      {formatSecondsAsClock(item.start)}
-                    </Button>
+                    <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{item.content}</p>
                   </div>
-                  <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{item.content}</p>
                 </div>
-              ))}
-            </div>
-          </ScrollArea>
+              )}
+            />
+          ) : null}
         </TabsContent>
 
         <TabsContent value="stage" className="mt-0 min-h-0 flex-1 overflow-hidden">
@@ -2615,16 +2612,27 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
                   </div>
                   {isRefreshing ? <Badge variant="secondary">同步中</Badge> : null}
                 </div>
-                <div className="mt-3 space-y-2">
-                  {taskEvents.length > 0 ? taskEvents.map((event, index) => (
-                    <div key={`${event.timestamp}-${index}`} className="workbench-collection-item rounded-xl border border-border/60 bg-background/55 px-3 py-2.5">
-                      <div className="flex flex-wrap items-center gap-2 text-xs">
-                        <Badge variant="outline">{formatTaskEventBadge(event)}</Badge>
-                        {formatTaskEventTimestamp(event.timestamp) ? <span className="text-muted-foreground">{formatTaskEventTimestamp(event.timestamp)}</span> : null}
-                      </div>
-                      <p className="mt-2 text-sm leading-6">{formatTaskEventMessage(event)}</p>
-                    </div>
-                  )) : <p className="text-sm text-muted-foreground">当前还没有可展示的阶段动态。</p>}
+                <div className="mt-3 min-h-[16rem]">
+                  {taskEvents.length > 0 ? (
+                    <VirtualizedList
+                      items={taskEvents}
+                      className="themed-thin-scrollbar h-64 min-h-0"
+                      estimateSize={() => 88}
+                      overscan={6}
+                      getItemKey={(event, index) => `${event.timestamp}-${index}`}
+                      renderItem={(event, index) => (
+                        <div className={cn("pb-2", index === 0 && "pt-0")}>
+                          <div className="workbench-collection-item rounded-xl border border-border/60 bg-background/55 px-3 py-2.5">
+                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                              <Badge variant="outline">{formatTaskEventBadge(event)}</Badge>
+                              {formatTaskEventTimestamp(event.timestamp) ? <span className="text-muted-foreground">{formatTaskEventTimestamp(event.timestamp)}</span> : null}
+                            </div>
+                            <p className="mt-2 text-sm leading-6">{formatTaskEventMessage(event)}</p>
+                          </div>
+                        </div>
+                      )}
+                    />
+                  ) : <p className="text-sm text-muted-foreground">当前还没有可展示的阶段动态。</p>}
                 </div>
               </div>
             </div>
@@ -2828,26 +2836,38 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
   effectiveTitle,
   vqaTab,
   onVqaTabChange,
-  chatHistory,
   question,
   onQuestionChange,
-  isSearching,
   onAskQuestion,
   onStopAnswer,
   onSeek,
   onOpenTrace,
-  selectedTrace,
-  selectedTraceId,
-  traceLoadingId,
-  traceError,
-  traceStartedPayload,
-  traceRetrievalPayload,
-  traceLlmPayload,
-  traceFinishedPayload,
   onAddCitationToResearch,
   onUseResearchItemAsQuestion,
 }: VqaWorkbenchProps) {
+  const {
+    chatHistory,
+    isSearching,
+    selectedTraceId,
+    traceCache,
+    traceLoadingId,
+    traceError,
+  } = useTaskProcessingRuntimeStore(
+    useShallow((state) => ({
+      chatHistory: state.chatHistory,
+      isSearching: state.isChatStreaming,
+      selectedTraceId: state.selectedTraceId,
+      traceCache: state.traceCache,
+      traceLoadingId: state.traceLoadingId,
+      traceError: state.traceError,
+    })),
+  )
   const [previewImage, setPreviewImage] = React.useState<{ src: string; title: string } | null>(null)
+  const selectedTrace = selectedTraceId ? traceCache[selectedTraceId] ?? null : null
+  const traceStartedPayload = React.useMemo(() => getTraceStagePayload(selectedTrace, "trace_started"), [selectedTrace])
+  const traceRetrievalPayload = React.useMemo(() => getTraceStagePayload(selectedTrace, "retrieval"), [selectedTrace])
+  const traceLlmPayload = React.useMemo(() => getTraceStagePayload(selectedTrace, "llm_stream"), [selectedTrace])
+  const traceFinishedPayload = React.useMemo(() => getTraceStagePayload(selectedTrace, "trace_finished"), [selectedTrace])
 
   return (
     <Tabs value={vqaTab} onValueChange={(value) => onVqaTabChange(value as VqaTab)} className="workbench-detail-pane vqa-workbench-pane flex h-full min-h-0 flex-col">
@@ -2859,108 +2879,117 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
 
       <TabsContent value="chat" className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="flex h-full min-h-0 flex-col">
-          <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
-            <div className="space-y-4 p-4">
-              {chatHistory.length === 0 ? <div className="workbench-pane-state rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">开始提问，系统会以流式方式输出回答和证据。</div> : null}
-              {chatHistory.map((message) => (
-                <div key={message.id} data-role={message.role} className={cn("vqa-chat-message workbench-collection-item flex gap-3", message.role === "user" && "justify-end")}>
-                  {message.role === "assistant" ? <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">{message.status === "streaming" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}</div> : null}
-                  <div className={cn("vqa-chat-bubble max-w-[88%] space-y-3 rounded-2xl p-4", message.role === "user" ? "bg-primary text-primary-foreground" : "border border-border/70 bg-card/70")}>
-                    {message.role === "assistant" ? (
-                      message.status === "streaming" && !message.content.trim() ? (
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                            <span>{message.statusMessage || "正在准备回答..."}</span>
-                          </div>
-                          <div className="space-y-2">
-                            <div className="h-2.5 w-32 rounded-full bg-muted/90 animate-pulse" />
-                            <div className="h-2.5 w-56 rounded-full bg-muted/70 animate-pulse" />
-                            <div className="flex items-center gap-1 pt-1">
-                              {[0, 1, 2].map((dot) => (
-                                <span
-                                  key={`${message.id}-dot-${dot}`}
-                                  className="h-1.5 w-1.5 rounded-full bg-primary/65 animate-pulse"
-                                  style={{ animationDelay: `${dot * 140}ms` }}
-                                />
-                              ))}
+          {chatHistory.length === 0 ? <div className="workbench-pane-state m-4 rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">开始提问，系统会以流式方式输出回答和证据。</div> : null}
+          {chatHistory.length > 0 ? (
+            <VirtualizedList
+              items={chatHistory}
+              className="themed-thin-scrollbar h-full min-h-0 flex-1"
+              estimateSize={() => 180}
+              overscan={6}
+              getItemKey={(message) => message.id}
+              renderItem={(message, index) => (
+                <div className={cn("px-4 pb-4", index === 0 && "pt-4")}>
+                  <div key={message.id} data-role={message.role} className={cn("vqa-chat-message workbench-collection-item flex gap-3", message.role === "user" && "justify-end")}>
+                    {message.role === "assistant" ? <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">{message.status === "streaming" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}</div> : null}
+                    <div className={cn("vqa-chat-bubble max-w-[88%] space-y-3 rounded-2xl p-4", message.role === "user" ? "bg-primary text-primary-foreground" : "border border-border/70 bg-card/70")}>
+                      {message.role === "assistant" ? (
+                        message.status === "streaming" && !message.content.trim() ? (
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                              <span>{message.statusMessage || "正在准备回答..."}</span>
+                            </div>
+                            <div className="space-y-2">
+                              <div className="h-2.5 w-32 rounded-full bg-muted/90 animate-pulse" />
+                              <div className="h-2.5 w-56 rounded-full bg-muted/70 animate-pulse" />
+                              <div className="flex items-center gap-1 pt-1">
+                                {[0, 1, 2].map((dot) => (
+                                  <span
+                                    key={`${message.id}-dot-${dot}`}
+                                    className="h-1.5 w-1.5 rounded-full bg-primary/65 animate-pulse"
+                                    style={{ animationDelay: `${dot * 140}ms` }}
+                                  />
+                                ))}
+                              </div>
                             </div>
                           </div>
-                        </div>
+                        ) : message.status === "streaming" ? (
+                          <p className="whitespace-pre-wrap text-sm leading-6">{message.content || message.statusMessage || "正在生成回答..."}</p>
+                        ) : (
+                          <MarkdownArtifactViewer
+                            taskId={taskId}
+                            markdown={message.content}
+                            emptyMessage=""
+                            className="min-w-0"
+                            onSeek={onSeek}
+                          />
+                        )
                       ) : (
-                        <MarkdownArtifactViewer
-                          taskId={taskId}
-                          markdown={message.content}
-                          emptyMessage=""
-                          className="min-w-0"
-                          onSeek={onSeek}
-                        />
-                      )
-                    ) : (
-                      <p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p>
-                    )}
-                    {message.role === "assistant" ? (
-                      <>
-                        <div className="flex flex-wrap items-center gap-2 text-xs">
-                          {message.traceId ? <Badge variant="outline">检索链路: {message.traceId}</Badge> : null}
-                          {message.contextTokensApprox ? <Badge variant="secondary">上下文约 {message.contextTokensApprox} tokens</Badge> : null}
-                          {message.statusMessage && !(message.status === "streaming" && !message.content.trim()) ? (
-                            <Badge variant="secondary">{message.statusMessage}</Badge>
-                          ) : null}
-                          {message.errorMessage ? <Badge variant="destructive">{message.errorMessage}</Badge> : null}
-                        </div>
-                        {message.traceId ? <Button variant="outline" size="sm" onClick={() => void onOpenTrace(message.traceId || "")}><Search className="mr-1.5 h-3.5 w-3.5" />查看检索链路</Button> : null}
-                        {message.citations.length > 0 ? (
-                          <div className="vqa-citation-list space-y-3">
-                            {message.citations.map((citation, index) => (
-                              <div key={`${message.id}-${citation.doc_id}-${index}`} className="workbench-collection-item rounded-xl border border-border/60 bg-background/55 p-3">
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="text-sm font-medium">{citation.task_title || effectiveTitle}</span>
-                                    <Badge variant="outline">{citation.source}</Badge>
-                                    <Badge variant="secondary">{formatSecondsAsClock(citation.start)} - {formatSecondsAsClock(citation.end)}</Badge>
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <Button variant="outline" size="sm" onClick={() => onSeek(citation.start)}><MapPin className="mr-1.5 h-3.5 w-3.5" />跳转</Button>
-                                    <Button variant="ghost" size="sm" onClick={() => onAddCitationToResearch(citation)}>
-                                      <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-                                      加入线索篮
-                                    </Button>
-                                  </div>
-                                </div>
-                                <div className="vqa-citation-layout mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_8rem]">
-                                  <p className="whitespace-pre-wrap text-sm leading-6">{citation.text}</p>
-                                  {citation.image_path ? (
-                                    <button
-                                      type="button"
-                                      className="group block overflow-hidden rounded-xl"
-                                      onClick={() =>
-                                        setPreviewImage({
-                                          src: buildTaskArtifactFileUrl(citation.task_id, citation.image_path),
-                                          title: `${citation.task_title || effectiveTitle} · ${formatSecondsAsClock(citation.start)}`,
-                                        })
-                                      }
-                                    >
-                                      <img
-                                        src={buildTaskArtifactFileUrl(citation.task_id, citation.image_path)}
-                                        alt={citation.task_title || effectiveTitle}
-                                        className="h-24 w-full rounded-xl border border-border/70 object-cover transition-transform duration-200 group-hover:scale-[1.02]"
-                                        loading="lazy"
-                                      />
-                                    </button>
-                                  ) : null}
-                                </div>
-                              </div>
-                            ))}
+                        <p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p>
+                      )}
+                      {message.role === "assistant" ? (
+                        <>
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            {message.traceId ? <Badge variant="outline">检索链路: {message.traceId}</Badge> : null}
+                            {message.contextTokensApprox ? <Badge variant="secondary">上下文约 {message.contextTokensApprox} tokens</Badge> : null}
+                            {message.statusMessage && !(message.status === "streaming" && !message.content.trim()) ? (
+                              <Badge variant="secondary">{message.statusMessage}</Badge>
+                            ) : null}
+                            {message.errorMessage ? <Badge variant="destructive">{message.errorMessage}</Badge> : null}
                           </div>
-                        ) : null}
-                      </>
-                    ) : null}
+                          {message.traceId ? <Button variant="outline" size="sm" onClick={() => void onOpenTrace(message.traceId || "")}><Search className="mr-1.5 h-3.5 w-3.5" />查看检索链路</Button> : null}
+                          {message.citations.length > 0 ? (
+                            <div className="vqa-citation-list space-y-3">
+                              {message.citations.map((citation, citationIndex) => (
+                                <div key={`${message.id}-${citation.doc_id}-${citationIndex}`} className="workbench-collection-item rounded-xl border border-border/60 bg-background/55 p-3">
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className="text-sm font-medium">{citation.task_title || effectiveTitle}</span>
+                                      <Badge variant="outline">{citation.source}</Badge>
+                                      <Badge variant="secondary">{formatSecondsAsClock(citation.start)} - {formatSecondsAsClock(citation.end)}</Badge>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <Button variant="outline" size="sm" onClick={() => onSeek(citation.start)}><MapPin className="mr-1.5 h-3.5 w-3.5" />跳转</Button>
+                                      <Button variant="ghost" size="sm" onClick={() => onAddCitationToResearch(citation)}>
+                                        <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                                        加入线索篮
+                                      </Button>
+                                    </div>
+                                  </div>
+                                  <div className="vqa-citation-layout mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_8rem]">
+                                    <p className="whitespace-pre-wrap text-sm leading-6">{citation.text}</p>
+                                    {citation.image_path ? (
+                                      <button
+                                        type="button"
+                                        className="group block overflow-hidden rounded-xl"
+                                        onClick={() =>
+                                          setPreviewImage({
+                                            src: buildTaskArtifactFileUrl(citation.task_id, citation.image_path),
+                                            title: `${citation.task_title || effectiveTitle} · ${formatSecondsAsClock(citation.start)}`,
+                                          })
+                                        }
+                                      >
+                                        <img
+                                          src={buildTaskArtifactFileUrl(citation.task_id, citation.image_path)}
+                                          alt={citation.task_title || effectiveTitle}
+                                          className="h-24 w-full rounded-xl border border-border/70 object-cover transition-transform duration-200 group-hover:scale-[1.02]"
+                                          loading="lazy"
+                                        />
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                        </>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          </ScrollArea>
+              )}
+            />
+          ) : null}
           <div className="border-t px-4 py-4">
             <div className="vqa-chat-composer-row flex gap-2">
               <Input value={question} onChange={(event) => onQuestionChange(event.target.value)} placeholder="输入你的问题，系统会实时输出回答..." onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void onAskQuestion() } }} />
@@ -3078,22 +3107,12 @@ interface VqaWorkbenchProps {
   effectiveTitle: string
   vqaTab: VqaTab
   onVqaTabChange: (value: VqaTab) => void
-  chatHistory: ChatMessage[]
   question: string
   onQuestionChange: (value: string) => void
-  isSearching: boolean
   onAskQuestion: () => void | Promise<void>
   onStopAnswer: () => void
   onSeek: (seconds: number) => void
   onOpenTrace: (traceId: string) => void | Promise<void>
-  selectedTrace: VqaTraceResponse | null
-  selectedTraceId: string
-  traceLoadingId: string
-  traceError: string
-  traceStartedPayload: Record<string, unknown>
-  traceRetrievalPayload: Record<string, unknown>
-  traceLlmPayload: Record<string, unknown>
-  traceFinishedPayload: Record<string, unknown>
   onAddCitationToResearch: (citation: VqaCitationItem) => void
   onUseResearchItemAsQuestion: (item: ResearchBoardItem) => void
 }

@@ -278,42 +278,42 @@ Markdown 装饰、Mermaid 解析、长文本预处理、次要日志整理应优
 
 ### P1 状态层重构
 
-- [ ] 基于 Zustand 为任务处理页建立 task-scoped runtime store。
-- [ ] 把 `task`、`transcript`、`correctionPreview`、`taskEvents`、`chatHistory`、`traceCache`、`notesDraft` 拆分为独立 slice。
-- [ ] 把 EventSource 回调从根组件本地 `setState` 迁移为写入 store 的 dispatch。
-- [ ] 为左侧工作区、右侧工作区、页头进度区提供 selector 订阅接口。
-- [ ] 保证非当前面板的数据更新不会牵连整页根组件 commit。
+- [x] 基于 Zustand 为任务处理页建立 task-scoped runtime store。
+- [x] 把 `task`、`transcript`、`correctionPreview`、`taskEvents`、`chatHistory`、`traceCache`、`notesDraft` 拆分为独立 slice。
+- [x] 把 EventSource 回调从根组件本地 `setState` 迁移为写入 store 的 dispatch。
+- [x] 为左侧工作区、右侧工作区、页头进度区提供 selector 订阅接口。
+- [x] 保证非当前面板的数据更新不会牵连整页根组件 commit。
 
 ### P2 流式更新合批
 
-- [ ] 为转写片段流建立事件缓冲队列。
-- [ ] 采用 `requestAnimationFrame` 或固定短节拍进行批量 flush。
-- [ ] 为纠错预览流采用同样的合批策略。
-- [ ] 为阶段动态与次要日志采用更低频的合并刷新节拍。
+- [x] 为转写片段流建立事件缓冲队列。
+- [x] 采用 `requestAnimationFrame` 或固定短节拍进行批量 flush。
+- [x] 为纠错预览流采用同样的合批策略。
+- [x] 为阶段动态与次要日志采用更低频的合并刷新节拍。
 - [ ] 对非关键 UI 刷新使用 `startTransition` 或等效的低优先级更新策略。
 
 ### P3 转写与证据数据结构重构
 
-- [ ] 用规范化结构管理转写片段，建立 `segmentMap + orderedKeys` 模型。
-- [ ] 让新增片段只执行局部 patch，不执行全量排序。
-- [ ] 为证据时间轴和问答引用建立稳定 ID 与稳定排序策略。
-- [ ] 为阶段动态建立定长缓冲与轻量摘要结构，避免每次直接拼接完整事件对象。
+- [x] 用规范化结构管理转写片段，建立 `segmentMap + orderedKeys` 模型。
+- [x] 让新增片段只执行局部 patch，不执行全量排序。
+- [x] 为证据时间轴和问答引用建立稳定 ID 与稳定排序策略。
+- [x] 为阶段动态建立定长缓冲与轻量摘要结构，避免每次直接拼接完整事件对象。
 
 ### P4 长列表虚拟化
 
-- [ ] 为转写片段接入动态高度虚拟列表。
-- [ ] 为证据时间轴接入动态高度虚拟列表。
-- [ ] 为阶段动态接入虚拟列表或分页窗口。
-- [ ] 为 VQA 引用区接入虚拟列表或折叠式窗口渲染。
+- [x] 为转写片段接入动态高度虚拟列表。
+- [x] 为证据时间轴接入动态高度虚拟列表。
+- [x] 为阶段动态接入虚拟列表或分页窗口。
+- [x] 为 VQA 引用区接入虚拟列表或折叠式窗口渲染。
 - [ ] 保留 `content-visibility` 与 `contain` 作为虚拟列表之上的辅助层。
 
 ### P5 Markdown 与 Mermaid 渲染优化
 
-- [ ] 为流式问答建立“流式纯文本展示 + 完成后 Markdown 渲染”的两阶段策略。
-- [ ] 为长回答设置最小渲染节拍，避免每个 chunk 即时触发完整预览。
-- [ ] 为 Markdown 编辑器建立“编辑实时、预览延迟”的双通道策略。
+- [x] 为流式问答建立“流式纯文本展示 + 完成后 Markdown 渲染”的两阶段策略。
+- [x] 为长回答设置最小渲染节拍，避免每个 chunk 即时触发完整预览。
+- [x] 为 Markdown 编辑器建立“编辑实时、预览延迟”的双通道策略。
 - [ ] 为 Mermaid 解析与重型 Markdown 预处理建立 Worker 侧执行链路。
-- [ ] 为图片路径转换、时间戳装饰等预处理逻辑建立缓存，避免同一内容重复计算。
+- [x] 为图片路径转换、时间戳装饰等预处理逻辑建立缓存，避免同一内容重复计算。
 
 ### P6 视觉合成优化
 
