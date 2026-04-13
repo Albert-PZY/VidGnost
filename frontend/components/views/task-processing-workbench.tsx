@@ -2678,36 +2678,42 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
 
       <TabsContent value="notes" className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden">
         <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
-          <div className="space-y-4 p-4">
-            <div className="notes-workbench-actions flex items-center justify-end gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="notes-workbench-primary-action"
-                disabled={!canEditArtifacts}
-                onClick={() => setIsEditingNotes(true)}
-              >
-                <Edit3 className="mr-1.5 h-4 w-4" />
-                编辑笔记
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="notes-workbench-primary-action"
-                disabled={!isTaskCompleted}
-                onClick={onDownloadNotes}
-              >
-                <Download className="mr-1.5 h-4 w-4" />
-                导出 Markdown
-              </Button>
+          <div className="p-4">
+            <div className="notes-workbench-reading-panel flex min-h-full flex-col overflow-hidden">
+              <div className="notes-workbench-reading-header border-b">
+                <div className="notes-workbench-actions flex items-center justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="notes-workbench-primary-action"
+                    disabled={!canEditArtifacts}
+                    onClick={() => setIsEditingNotes(true)}
+                  >
+                    <Edit3 className="mr-1.5 h-4 w-4" />
+                    编辑笔记
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="notes-workbench-primary-action"
+                    disabled={!isTaskCompleted}
+                    onClick={onDownloadNotes}
+                  >
+                    <Download className="mr-1.5 h-4 w-4" />
+                    导出 Markdown
+                  </Button>
+                </div>
+              </div>
+              <div className="notes-workbench-reading-body min-h-0 flex-1">
+                <MarkdownArtifactViewer
+                  taskId={taskId}
+                  markdown={notesMarkdown}
+                  emptyMessage="当前还没有生成笔记内容"
+                  className="artifact-markdown-viewer-shell notes-markdown-viewer-shell notes-workbench-viewer"
+                  onSeek={onSeek}
+                />
+              </div>
             </div>
-            <MarkdownArtifactViewer
-              taskId={taskId}
-              markdown={notesMarkdown}
-              emptyMessage="当前还没有生成笔记内容"
-              className="artifact-markdown-viewer-shell notes-markdown-viewer-shell notes-workbench-viewer"
-              onSeek={onSeek}
-            />
           </div>
         </ScrollArea>
       </TabsContent>

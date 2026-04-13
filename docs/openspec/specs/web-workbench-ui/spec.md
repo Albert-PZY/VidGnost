@@ -281,11 +281,13 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 - **THEN** the renderer shows the resizable video-and-artifact layout
 - **AND** the left workspace exposes an additional `文本纠错` tab dedicated to transcript correction output
 - **AND** the Markdown workspace renders a single notes Markdown surface instead of duplicating equivalent summary content beside it
+- **AND** the Markdown workspace wraps that notes surface inside a dedicated reading panel with a compact darker action header and a continuous reading body so wallpaper imagery stays atmospheric instead of competing with note readability
 - **AND** Markdown timestamps can seek the video
 - **AND** the Markdown workspace keeps an inner vertical scrollbar so long notes remain scrollable without moving the outer workbench shell
 - **AND** when the right workspace is resized narrow, Markdown, mindmap, clue-basket, and VQA panes reflow their tab chrome, actions, cards, and dense content within the available pane width instead of clipping the reading surface
 - **AND** entering note-edit mode opens a dedicated Markdown dialog with source editing on the left and live rendered preview on the right
 - **AND** in light theme with a custom skin active, the notes workspace tabs, action row, rendered Markdown, and empty states keep readable white foreground text
+- **AND** the clue-basket tab keeps a single collection shell with a separated header band and inner clue cards so saved evidence remains legible above custom-skin backgrounds instead of floating directly on the wallpaper
 - **AND** transcript cards render a precise timestamp chip at the top, keep only icon actions on the trailing edge, and expose action meaning through hover tooltips
 - **AND** in light theme with a custom skin active, transcript cards and correction surfaces keep white foreground text while timestamp chips and quick-action icons remain readable against the glass surface
 - **AND** transcript cards support quick actions such as `加入笔记` and `加入线索篮`

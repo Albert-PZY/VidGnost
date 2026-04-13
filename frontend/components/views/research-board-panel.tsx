@@ -52,83 +52,87 @@ export function ResearchBoardPanel({ onSeek, onUseAsQuestion, onAppendToNotes }:
 
   if (items.length === 0) {
     return (
-      <div className="research-board-pane flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-sm text-muted-foreground">
-        <ClipboardList className="h-10 w-10 text-primary/45" />
-        <p>线索篮还是空的。把值得继续追问、写进笔记或回跳视频的片段先收在这里，后面就不用反复翻找。</p>
+      <div className="research-board-pane flex h-full min-h-0 flex-col">
+        <div className="research-board-shell research-board-empty flex h-full min-h-0 flex-col items-center justify-center gap-3 px-6 text-center text-sm text-muted-foreground">
+          <ClipboardList className="h-10 w-10 text-primary/45" />
+          <p className="research-board-empty-copy">线索篮还是空的。把值得继续追问、写进笔记或回跳视频的片段先收在这里，后面就不用反复翻找。</p>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="research-board-pane flex h-full flex-col">
-      <div className="research-board-header flex items-center justify-between border-b px-4 py-3">
-        <div>
-          <h3 className="text-sm font-medium">跨任务线索篮</h3>
-          <p className="text-xs text-muted-foreground">统一收集证据、转写片段和笔记线索，方便继续提问、写回笔记或导出复盘。</p>
+    <div className="research-board-pane flex h-full min-h-0 flex-col">
+      <div className="research-board-shell flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="research-board-shell-header research-board-header flex items-center justify-between border-b px-4 py-3">
+          <div className="research-board-shell-copy">
+            <h3 className="text-sm font-medium">跨任务线索篮</h3>
+            <p className="text-xs text-muted-foreground">统一收集证据、转写片段和笔记线索，方便继续提问、写回笔记或导出复盘。</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="ghost" size="sm" className="research-board-shell-action" onClick={() => void handleCopyMarkdown()}>
+              <Copy className="mr-1.5 h-3.5 w-3.5" />
+              复制 Markdown
+            </Button>
+            <Button variant="ghost" size="sm" className="research-board-shell-action" onClick={handleDownloadMarkdown}>
+              <Download className="mr-1.5 h-3.5 w-3.5" />
+              导出
+            </Button>
+            <Button variant="ghost" size="sm" className="research-board-shell-action" onClick={() => clearResearchBoardItems()}>
+              <Eraser className="mr-1.5 h-3.5 w-3.5" />
+              清空
+            </Button>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => void handleCopyMarkdown()}>
-            <Copy className="mr-1.5 h-3.5 w-3.5" />
-            复制 Markdown
-          </Button>
-          <Button variant="ghost" size="sm" onClick={handleDownloadMarkdown}>
-            <Download className="mr-1.5 h-3.5 w-3.5" />
-            导出
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => clearResearchBoardItems()}>
-            <Eraser className="mr-1.5 h-3.5 w-3.5" />
-            清空
-          </Button>
-        </div>
-      </div>
-      <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
-        <div className="space-y-3 p-4">
-          {items.map((item) => (
-            <div key={item.id} className="workbench-collection-item rounded-2xl border border-border/70 bg-card/70 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium">{item.title}</span>
-                    <Badge variant="outline">{item.type}</Badge>
-                    <Badge variant="secondary">{item.workflow === "notes" ? "笔记整理" : "视频问答"}</Badge>
+        <ScrollArea className="research-board-shell-scroll themed-thin-scrollbar h-full min-h-0 flex-1">
+          <div className="research-board-list space-y-3 p-4">
+            {items.map((item) => (
+              <div key={item.id} className="research-board-item workbench-collection-item rounded-2xl border p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium">{item.title}</span>
+                      <Badge variant="outline">{item.type}</Badge>
+                      <Badge variant="secondary">{item.workflow === "notes" ? "笔记整理" : "视频问答"}</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{item.taskTitle}</p>
                   </div>
-                  <p className="text-xs text-muted-foreground">{item.taskTitle}</p>
+                  <Button variant="ghost" size="icon" className="research-board-item-icon-button h-8 w-8" onClick={() => removeResearchBoardItem(item.id)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeResearchBoardItem(item.id)}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{item.content}</p>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {typeof item.start === "number" && (
+                    <Button variant="outline" size="sm" className="research-board-item-action" onClick={() => onSeek?.(item.start || 0)}>
+                      <MapPin className="mr-1.5 h-3.5 w-3.5" />
+                      {formatSecondsAsClock(item.start)}
+                    </Button>
+                  )}
+                  {onAppendToNotes ? (
+                    <Button variant="outline" size="sm" className="research-board-item-action" onClick={() => onAppendToNotes(item)}>
+                      <NotebookPen className="mr-1.5 h-3.5 w-3.5" />
+                      写入笔记
+                    </Button>
+                  ) : null}
+                  {onUseAsQuestion ? (
+                    <Button variant="outline" size="sm" className="research-board-item-action" onClick={() => onUseAsQuestion(item)}>
+                      <MessageSquarePlus className="mr-1.5 h-3.5 w-3.5" />
+                      继续追问
+                    </Button>
+                  ) : null}
+                  {item.source ? <Badge variant="outline">{item.source}</Badge> : null}
+                  {item.sourceSet?.map((entry) => (
+                    <Badge key={`${item.id}-${entry}`} variant="secondary">
+                      {entry}
+                    </Badge>
+                  ))}
+                </div>
               </div>
-              <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{item.content}</p>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                {typeof item.start === "number" && (
-                  <Button variant="outline" size="sm" onClick={() => onSeek?.(item.start || 0)}>
-                    <MapPin className="mr-1.5 h-3.5 w-3.5" />
-                    {formatSecondsAsClock(item.start)}
-                  </Button>
-                )}
-                {onAppendToNotes ? (
-                  <Button variant="outline" size="sm" onClick={() => onAppendToNotes(item)}>
-                    <NotebookPen className="mr-1.5 h-3.5 w-3.5" />
-                    写入笔记
-                  </Button>
-                ) : null}
-                {onUseAsQuestion ? (
-                  <Button variant="outline" size="sm" onClick={() => onUseAsQuestion(item)}>
-                    <MessageSquarePlus className="mr-1.5 h-3.5 w-3.5" />
-                    继续追问
-                  </Button>
-                ) : null}
-                {item.source ? <Badge variant="outline">{item.source}</Badge> : null}
-                {item.sourceSet?.map((entry) => (
-                  <Badge key={`${item.id}-${entry}`} variant="secondary">
-                    {entry}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </ScrollArea>
+            ))}
+          </div>
+        </ScrollArea>
+      </div>
     </div>
   )
 }
