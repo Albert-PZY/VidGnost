@@ -247,6 +247,7 @@ Diagnostics view SHALL expose a dedicated developer-mode area below the runtime 
 - **WHEN** user enables developer mode in settings and then opens diagnostics
 - **THEN** the diagnostics page shows a developer-mode panel near the bottom of the page
 - **AND** the panel lists recent performance samples with readable operation labels, local timestamps, and duration values in milliseconds
+- **AND** when a performance label includes a task-detail task identifier, the panel preserves that full task identifier in the visible label instead of truncating it behind an ellipsis
 - **AND** the panel updates as new local samples are recorded during the same renderer session
 
 ### Requirement: Bootstrap surfaces SHALL provide startup progress and backend recovery actions
