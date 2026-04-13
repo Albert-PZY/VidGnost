@@ -66,7 +66,7 @@
   - Markdown 草稿 slice
 - EventSource 只负责写入 store，不直接驱动根组件本地状态。
 - UI 通过 selector 订阅局部数据，让左侧转写区、右侧问答区、页头进度区分别独立重渲。
-- 优先采用 `useSyncExternalStore` 或 Zustand 这类面向 selector 的方案，避免继续把任务流式状态堆在单个组件里。
+- 直接采用 Zustand 建立面向 selector 的任务处理页状态层，避免继续把任务流式状态堆在单个组件里。
 - 对低优先级的刷新采用 `startTransition` 或延迟订阅，优先保障输入、滚动、拖动、视频控制的响应优先级。
 
 ### 2. 转写片段数量增加后，流式更新的单位成本持续上升
@@ -278,7 +278,7 @@ Markdown 装饰、Mermaid 解析、长文本预处理、次要日志整理应优
 
 ### P1 状态层重构
 
-- [ ] 为任务处理页建立 task-scoped runtime store。
+- [ ] 基于 Zustand 为任务处理页建立 task-scoped runtime store。
 - [ ] 把 `task`、`transcript`、`correctionPreview`、`taskEvents`、`chatHistory`、`traceCache`、`notesDraft` 拆分为独立 slice。
 - [ ] 把 EventSource 回调从根组件本地 `setState` 迁移为写入 store 的 dispatch。
 - [ ] 为左侧工作区、右侧工作区、页头进度区提供 selector 订阅接口。
