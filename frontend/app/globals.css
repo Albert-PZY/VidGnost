@@ -241,6 +241,30 @@ html:not(.dark) body[data-app-background-active="true"] {
   --wallpaper-tint-fill-soft: color-mix(in oklch, var(--primary) 24%, transparent);
   --wallpaper-tint-fill: color-mix(in oklch, var(--primary) 34%, transparent);
   --wallpaper-tint-fill-strong: color-mix(in oklch, var(--primary) 46%, transparent);
+  --wallpaper-reading-panel-fill: linear-gradient(
+    180deg,
+    oklch(0.48 0.034 calc(var(--theme-hue) - 8) / 0.8) 0%,
+    oklch(0.54 0.028 calc(var(--theme-hue) + 2) / 0.72) 100%
+  );
+  --wallpaper-reading-header-fill: linear-gradient(
+    180deg,
+    oklch(0.42 0.036 calc(var(--theme-hue) - 10) / 0.84) 0%,
+    oklch(0.47 0.03 calc(var(--theme-hue) - 2) / 0.78) 100%
+  );
+  --wallpaper-reading-item-fill: linear-gradient(
+    180deg,
+    oklch(0.52 0.03 calc(var(--theme-hue) + 4) / 0.66) 0%,
+    oklch(0.58 0.024 calc(var(--theme-hue) + 8) / 0.56) 100%
+  );
+  --wallpaper-reading-panel-border: color-mix(in oklch, white 12%, transparent);
+  --wallpaper-reading-panel-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 22px 56px rgba(6, 10, 18, 0.18);
+  --wallpaper-reading-item-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 14px 32px rgba(6, 10, 18, 0.12);
+  --wallpaper-reading-button-fill: color-mix(in oklch, var(--primary) 22%, transparent);
+  --wallpaper-reading-button-fill-hover: color-mix(in oklch, var(--primary) 38%, transparent);
 }
 
 body[data-app-background-active="true"] [data-slot="card"] {
@@ -1609,6 +1633,44 @@ body[data-app-background-active="true"] :is(
     .research-board-item-icon-button
   ):is(:hover, :focus, :focus-visible, :active) {
   background: color-mix(in oklch, var(--primary) 28%, transparent);
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(.notes-workbench-reading-panel, .research-board-shell) {
+  background: var(--wallpaper-reading-panel-fill);
+  border-color: var(--wallpaper-reading-panel-border);
+  box-shadow: var(--wallpaper-reading-panel-shadow);
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(.notes-workbench-reading-header, .research-board-shell-header) {
+  background: var(--wallpaper-reading-header-fill);
+  border-bottom-color: color-mix(in oklch, white 10%, transparent);
+}
+
+html:not(.dark) body[data-app-background-active="true"] .research-board-item {
+  background: var(--wallpaper-reading-item-fill);
+  border-color: color-mix(in oklch, white 10%, transparent);
+  box-shadow: var(--wallpaper-reading-item-shadow);
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(
+    .research-board-shell-action,
+    .research-board-item-action,
+    .research-board-item-icon-button
+  ) {
+  border-color: transparent !important;
+  background: var(--wallpaper-reading-button-fill) !important;
+  color: white !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 10px 22px rgba(6, 10, 18, 0.1);
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(
+    .research-board-shell-action,
+    .research-board-item-action,
+    .research-board-item-icon-button
+  ):is(:hover, :focus, :focus-visible, :active) {
+  background: var(--wallpaper-reading-button-fill-hover) !important;
 }
 
 .notes-markdown-viewer-shell .artifact-markdown-viewer {

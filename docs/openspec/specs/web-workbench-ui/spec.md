@@ -287,6 +287,7 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 - **AND** when the right workspace is resized narrow, Markdown, mindmap, clue-basket, and VQA panes reflow their tab chrome, actions, cards, and dense content within the available pane width instead of clipping the reading surface
 - **AND** entering note-edit mode opens a dedicated Markdown dialog with source editing on the left and live rendered preview on the right
 - **AND** in light theme with a custom skin active, the notes workspace tabs, action row, rendered Markdown, and empty states keep readable white foreground text
+- **AND** in light theme with a custom skin active, the notes reading panel and clue-basket shell use theme-hue tinted translucent fills instead of near-black slabs so they remain consistent with the lighter wallpaper atmosphere
 - **AND** the clue-basket tab keeps a single collection shell with a separated header band and inner clue cards so saved evidence remains legible above custom-skin backgrounds instead of floating directly on the wallpaper
 - **AND** transcript cards render a precise timestamp chip at the top, keep only icon actions on the trailing edge, and expose action meaning through hover tooltips
 - **AND** in light theme with a custom skin active, transcript cards and correction surfaces keep white foreground text while timestamp chips and quick-action icons remain readable against the glass surface
