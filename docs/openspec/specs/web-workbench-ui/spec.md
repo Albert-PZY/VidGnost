@@ -90,6 +90,7 @@ The task-workbench Markdown notes editor dialog SHALL use a wide split layout th
 - **AND** task-relative Markdown images such as `notes-images/...` are resolved through the current task artifact file endpoint so generated note images remain visible inside the live preview
 - **AND** preview-side Markdown decoration such as task-relative image resolution and timestamp link rewriting runs through a background preprocessing path so typing stays responsive
 - **AND** Mermaid preview blocks wait until they enter the visible preview area before starting expensive rendering work and reuse cached SVG output when the same diagram appears again
+- **AND** the edit dialog preview uses the same Markdown enhancement contract as the read-only notes workspace so timestamps, task-relative images, tables, and Mermaid blocks stay behaviorally consistent across both surfaces
 
 ### Requirement: Desktop startup SHALL preload core workbench views before main window reveal
 Electron desktop startup SHALL open a dedicated splash window first, keep the main window hidden while renderer assets and core workbench views initialize, and reveal the main window only after bootstrap completes or enters degraded mode. Core workbench views such as `新建任务`, `历史记录`, `设置中心`, `系统自检`, `任务处理`, and the prompt-template Markdown editor SHALL be included in the initial renderer startup path instead of route-level or dialog-level lazy loading placeholders. The splash surface SHALL follow the same restrained professional dark-tool styling as the renderer shell, using the project logo, a centered vertical brand composition, a single thin progress bar, and a five-step startup checklist with per-step elapsed-time feedback. The checklist SHALL be bound to explicit startup task states emitted by the hidden main window and renderer instead of inferring stages from display copy. The dedicated splash window SHALL keep a compact fixed footprint around `420 x 480` logical pixels so the launch surface reads as a concise startup panel instead of a large poster-like frame.
@@ -295,6 +296,7 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 - **AND** the Markdown workspace wraps that notes surface inside a dedicated reading panel with a compact darker action header and a continuous reading body so wallpaper imagery stays atmospheric instead of competing with note readability
 - **AND** Markdown timestamps can seek the video
 - **AND** the Markdown workspace keeps an inner vertical scrollbar so long notes remain scrollable without moving the outer workbench shell
+- **AND** the read-only notes workspace uses the same Markdown enhancement contract as the edit-dialog preview so timestamp links, task-relative images, and Mermaid blocks stay consistent before and after editing
 - **AND** when the right workspace is resized narrow, Markdown, mindmap, clue-basket, and VQA panes reflow their tab chrome, actions, cards, and dense content within the available pane width instead of clipping the reading surface
 - **AND** entering note-edit mode opens a dedicated Markdown dialog with source editing on the left and live rendered preview on the right
 - **AND** in light theme with a custom skin active, the notes workspace tabs, action row, rendered Markdown, and empty states keep readable white foreground text
@@ -349,6 +351,7 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 - **AND** stream-driven progress updates do not recreate the task SSE subscription or cancel already scheduled milestone refreshes
 - **AND** task runtime stream state is buffered in a dedicated Zustand workbench runtime store instead of staying in root-component local state
 - **AND** transcript, correction, stage-output, chat, and trace panels subscribe to their own selectors so high-frequency updates do not force the whole workbench shell to commit together
+- **AND** streamed transcript segments and persisted transcript segments are merged through one stable runtime merge contract so transcript-driven panes do not need duplicate merge pipelines
 - **AND** unchanged right-side Markdown or VQA workspaces remain stable while transcript deltas continue arriving, unless their own displayed artifact data has changed
 - **AND** the running-state badge summarizes the active workflow step in business language instead of showing a raw generic backend status string
 - **AND** recent stage activity omits repetitive raw progress spam and keeps milestone-focused readable updates

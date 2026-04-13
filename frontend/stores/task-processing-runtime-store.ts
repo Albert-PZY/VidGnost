@@ -16,7 +16,6 @@ import {
 } from "@/lib/task-processing-runtime-helpers"
 import type {
   IngestTaskStreamEventOptions,
-  RuntimeCorrectionPreviewMode,
   RuntimeCorrectionPreviewState,
   RuntimeChatMessage,
   TaskProcessingRuntimeSession,
@@ -339,22 +338,9 @@ export function resetTaskProcessingRuntimeStore(): void {
   taskProcessingRuntimeStore.getState().resetRuntime()
 }
 
-export function selectLiveTranscriptSegments(
-  state: Pick<TaskProcessingRuntimeState, "liveTranscript">,
+export function mergeTaskAndLiveTranscriptSegments(
+  taskTranscriptSegments: TranscriptSegment[] | null | undefined,
+  liveTranscript: TaskProcessingRuntimeState["liveTranscript"],
 ): TranscriptSegment[] {
-  return transcriptIndexToSegments(state.liveTranscript)
-}
-
-export function selectMergedTranscriptSegments(
-  state: Pick<TaskProcessingRuntimeState, "task" | "liveTranscript">,
-): TranscriptSegment[] {
-  return mergeTranscriptSegments(state.task?.transcript_segments ?? [], transcriptIndexToSegments(state.liveTranscript))
-}
-
-export function selectEffectiveCorrectionMode(
-  state: Pick<TaskProcessingRuntimeState, "correctionPreview" | "persistedCorrectionMode">,
-): RuntimeCorrectionPreviewMode {
-  return state.correctionPreview.mode !== "unknown"
-    ? state.correctionPreview.mode
-    : state.persistedCorrectionMode
+  return mergeTranscriptSegments(taskTranscriptSegments ?? [], transcriptIndexToSegments(liveTranscript))
 }

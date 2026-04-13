@@ -76,7 +76,7 @@ import {
 } from "@/lib/task-processing-runtime-helpers"
 import {
   getTaskProcessingRuntimeState,
-  selectMergedTranscriptSegments,
+  mergeTaskAndLiveTranscriptSegments,
   useTaskProcessingRuntimeStore,
 } from "@/stores/task-processing-runtime-store"
 import type {
@@ -951,7 +951,7 @@ const TaskProcessingNotesRuntimeEffects = React.memo(function TaskProcessingNote
     })),
   )
   const transcriptSegments = React.useMemo(
-    () => selectMergedTranscriptSegments({ task: { transcript_segments: taskTranscriptSegments } as TaskDetailResponse, liveTranscript }),
+    () => mergeTaskAndLiveTranscriptSegments(taskTranscriptSegments, liveTranscript),
     [liveTranscript, taskTranscriptSegments],
   )
 
@@ -2396,7 +2396,7 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
     })),
   )
   const transcriptSegments = React.useMemo(
-    () => selectMergedTranscriptSegments({ task: { transcript_segments: taskTranscriptSegments } as TaskDetailResponse, liveTranscript }),
+    () => mergeTaskAndLiveTranscriptSegments(taskTranscriptSegments, liveTranscript),
     [liveTranscript, taskTranscriptSegments],
   )
   const [activeTranscriptId, setActiveTranscriptId] = React.useState("")

@@ -4,7 +4,7 @@ import * as React from "react"
 import MarkdownPreview from "@uiw/react-markdown-preview"
 import "@uiw/react-markdown-preview/markdown.css"
 
-import { renderMarkdownCodeBlock, renderMarkdownPreBlock } from "@/components/ui/mermaid-code-block"
+import { createMarkdownPreviewComponents } from "@/components/ui/mermaid-code-block"
 import { useDecoratedMarkdown } from "@/hooks/use-decorated-markdown"
 
 interface MarkdownArtifactViewerProps {
@@ -35,15 +35,7 @@ export function MarkdownArtifactViewer({
     delayMs: deferRendering ? 120 : 0,
   })
   const previewComponents = React.useMemo(
-    () => ({
-      code: (props: { className?: string; children?: React.ReactNode }) =>
-        renderMarkdownCodeBlock({
-          className: props.className,
-          children: props.children,
-          colorMode,
-        }),
-      pre: renderMarkdownPreBlock,
-    }),
+    () => createMarkdownPreviewComponents(colorMode),
     [colorMode],
   )
 

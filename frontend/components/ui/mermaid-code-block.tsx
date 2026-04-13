@@ -7,6 +7,7 @@ type MermaidColorMode = "light" | "dark"
 const MERMAID_BLOCK_MARKER = "data-mermaid-block"
 const MAX_MERMAID_CACHE_ITEMS = 48
 const mermaidSvgCache = new Map<string, string>()
+type MarkdownCodeRendererProps = { className?: string; children?: React.ReactNode }
 
 function extractTextContent(node: React.ReactNode): string {
   if (node == null || typeof node === "boolean") {
@@ -210,8 +211,8 @@ export function renderMarkdownCodeBlock({
   children,
   colorMode,
 }: {
-  className?: string
-  children?: React.ReactNode
+  className?: MarkdownCodeRendererProps["className"]
+  children?: MarkdownCodeRendererProps["children"]
   colorMode: MermaidColorMode
 }) {
   if (!isMermaidLanguage(className)) {
@@ -240,4 +241,16 @@ export function renderMarkdownPreBlock(props: React.HTMLAttributes<HTMLPreElemen
     return <>{props.children}</>
   }
   return <pre {...props} />
+}
+
+export function createMarkdownPreviewComponents(colorMode: MermaidColorMode) {
+  return {
+    code: (props: MarkdownCodeRendererProps) =>
+      renderMarkdownCodeBlock({
+        className: props.className,
+        children: props.children,
+        colorMode,
+      }),
+    pre: renderMarkdownPreBlock,
+  }
 }
