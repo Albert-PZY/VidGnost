@@ -23,6 +23,7 @@ class ModelEntry(TypedDict):
     quantization: str
     load_profile: str
     max_batch_size: int
+    rerank_top_n: int
     frame_interval_seconds: int
     enabled: bool
     size_bytes: int
@@ -44,6 +45,7 @@ DEFAULT_MODELS: list[ModelEntry] = [
         "quantization": "int8",
         "load_profile": "balanced",
         "max_batch_size": 1,
+        "rerank_top_n": 8,
         "frame_interval_seconds": 10,
         "enabled": True,
         "size_bytes": 0,
@@ -63,6 +65,7 @@ DEFAULT_MODELS: list[ModelEntry] = [
         "quantization": "",
         "load_profile": "balanced",
         "max_batch_size": 1,
+        "rerank_top_n": 8,
         "frame_interval_seconds": 10,
         "enabled": True,
         "size_bytes": 0,
@@ -82,6 +85,7 @@ DEFAULT_MODELS: list[ModelEntry] = [
         "quantization": "",
         "load_profile": "balanced",
         "max_batch_size": 16,
+        "rerank_top_n": 8,
         "frame_interval_seconds": 10,
         "enabled": True,
         "size_bytes": 0,
@@ -101,6 +105,7 @@ DEFAULT_MODELS: list[ModelEntry] = [
         "quantization": "4bit",
         "load_profile": "memory_first",
         "max_batch_size": 1,
+        "rerank_top_n": 8,
         "frame_interval_seconds": 10,
         "enabled": True,
         "size_bytes": 0,
@@ -120,6 +125,7 @@ DEFAULT_MODELS: list[ModelEntry] = [
         "quantization": "",
         "load_profile": "balanced",
         "max_batch_size": 8,
+        "rerank_top_n": 8,
         "frame_interval_seconds": 10,
         "enabled": True,
         "size_bytes": 0,
@@ -150,12 +156,14 @@ class ModelCatalogStore:
             target = next((item for item in models if item["id"] == model_id), None)
             if target is None:
                 raise ValueError("Model not found")
-            allowed_keys = {"path", "status", "load_profile", "quantization", "max_batch_size", "frame_interval_seconds", "enabled"}
+            allowed_keys = {"path", "status", "load_profile", "quantization", "max_batch_size", "rerank_top_n", "frame_interval_seconds", "enabled"}
             for key, value in updates.items():
                 if key not in allowed_keys or value is None:
                     continue
                 if key == "max_batch_size":
                     target[key] = max(1, min(64, int(value)))
+                elif key == "rerank_top_n":
+                    target[key] = max(1, min(20, int(value)))
                 elif key == "frame_interval_seconds":
                     target[key] = max(1, min(600, int(value)))
                 elif key == "enabled":
@@ -176,6 +184,13 @@ class ModelCatalogStore:
                 item["last_check_at"] = now
             self._write_sync(models)
             return self._hydrate_models(models)
+
+    def get_rerank_top_n(self) -> int:
+        models = self._read_sync()
+        rerank_model = next((item for item in models if item["component"] == "rerank"), None)
+        if rerank_model is None:
+            return 8
+        return max(1, min(20, int(rerank_model.get("rerank_top_n", 8) or 8)))
 
     def _ensure_file(self) -> None:
         if self._path.exists():
@@ -211,6 +226,7 @@ class ModelCatalogStore:
                     "quantization": str(item.get("quantization", "")),
                     "load_profile": str(item.get("load_profile", "balanced")),
                     "max_batch_size": max(1, min(64, int(item.get("max_batch_size", 1) or 1))),
+                    "rerank_top_n": max(1, min(20, int(item.get("rerank_top_n", 8) or 8))),
                     "frame_interval_seconds": max(1, min(600, int(item.get("frame_interval_seconds", 10) or 10))),
                     "enabled": bool(item.get("enabled", True)),
                     "size_bytes": max(0, int(item.get("size_bytes", 0) or 0)),

@@ -102,6 +102,7 @@ async def lifespan(app: FastAPI):
     vqa_runtime = VQARuntimeService(
         task_store=task_store,
         llm_config_store=llm_config_store,
+        model_catalog_store=model_catalog_store,
         storage_dir=settings.storage_dir,
     )
     runner = TaskRunner(

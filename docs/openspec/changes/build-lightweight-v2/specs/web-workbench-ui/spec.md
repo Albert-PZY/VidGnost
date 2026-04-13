@@ -285,7 +285,7 @@ Workbench bootstrap SHALL expose a desktop splash progress state before the main
 - **AND** the overlay is dismissed automatically once bootstrap reaches `ready`
 
 ### Requirement: Task processing workbench SHALL provide a resizable evidence-driven workspace
-Task processing workbench SHALL use a horizontal resizable split layout. For notes tasks, the left workspace SHALL provide `转写片段`, `文本纠错`, `证据时间轴`, and `阶段输出` tabs. For VQA tasks, the left workspace SHALL provide `转写片段`, `证据时间轴`, and `阶段输出` tabs. The right workspace SHALL switch between `Markdown 工作区 / 思维导图 / 线索篮` for notes tasks and `流式问答 / Trace Theater / 线索篮` for VQA tasks.
+Task processing workbench SHALL use a horizontal resizable split layout. For notes tasks, the left workspace SHALL provide `转写片段`, `文本纠错`, `证据时间轴`, and `阶段输出` tabs. For VQA tasks, the left workspace SHALL provide `转写片段`, `证据时间轴`, `阶段输出`, and a conditional `文本纠错` tab whenever transcript correction is enabled for that task. The right workspace SHALL switch between `Markdown 工作区 / 思维导图 / 线索篮` for notes tasks and `流式问答 / Trace Theater / 线索篮` for VQA tasks.
 
 #### Scenario: Open a completed notes task
 - **WHEN** user opens a notes task in the processing workbench
@@ -313,13 +313,20 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 - **THEN** the right workspace shows a compact loading placeholder surface before the final Markdown or VQA pane mounts
 - **AND** the placeholder is replaced only after detail data is ready, instead of rendering the final pane shell with incomplete content
 
-#### Scenario: Inspect transcript correction output in a notes task
-- **WHEN** user opens the `文本纠错` tab for a notes task
+#### Scenario: Inspect transcript correction output in a task with correction enabled
+- **WHEN** user opens the `文本纠错` tab for a task whose transcript-correction stage is enabled
 - **THEN** `strict` mode shows per-timestamp comparison rows with original transcript on the left and corrected transcript on the right
 - **AND** the corrected side can fill in progressively while the correction stream is still running
 - **AND** long `strict` comparison lists render through a virtualized row surface so only the visible timestamp rows stay mounted
 - **AND** `rewrite` mode shows the rewritten transcript as a single streaming text surface instead of a per-segment diff
 - **AND** if correction is skipped or disabled, the tab explains that downstream notes generation is using the raw transcript directly
+
+#### Scenario: Follow live transcript output while reviewing a running task
+- **WHEN** transcript cards continue streaming into the `转写片段` tab
+- **THEN** the transcript list keeps the viewport pinned to the bottom by default so the newest chunk stays visible
+- **AND** user can manually scroll upward without the renderer fighting that gesture immediately
+- **AND** once the user scrolls upward beyond a configured threshold, auto-follow is suspended
+- **AND** when the user scrolls back to the bottom threshold, auto-follow resumes automatically
 
 #### Scenario: Preview imported source media inside the workbench
 - **WHEN** user opens a task whose detail payload includes a persisted `source_local_path`
@@ -386,12 +393,16 @@ Frontend UI library SHALL provide a reusable virtual-list component under `front
 - **AND** while answer chunks are still streaming, the assistant bubble keeps a lightweight plain-text surface instead of re-running full Markdown rendering on every chunk
 - **AND** streamed assistant answers render as Markdown instead of plain paragraph text
 - **AND** if the upstream LLM stream is interrupted after partial output, the renderer prefers a recovered full-answer replacement or a business-friendly retry hint instead of exposing raw transport errors such as incomplete chunked-read text
+- **AND** user and assistant bubbles both use explicit avatar affordances instead of rendering the user side as an anonymous color block
 - **AND** each answer may expose a retrieval trace identifier, citations, and citation jump actions
+- **AND** retrieval-trace and citation actions use compact icon buttons with hover tooltips instead of long inline labels
 - **AND** citations prefer related frame thumbnails from the task video rather than Mermaid summary images
-- **AND** clicking a citation thumbnail opens a modal large-image preview
+- **AND** clicking a citation thumbnail opens a modal large-image preview with zoom and rotation controls
 - **AND** opening Trace Theater reveals Dense, Sparse, RRF, and final rerank panels with per-stage deduplicated candidates
 - **AND** Trace Theater states that retrieval uses the original user question directly without query expansion
 - **AND** Trace Theater shows human-readable normalized scores instead of raw backend magnitude values that collapse visually to zero
+- **AND** per-task VQA chat history is restored when the user leaves the workbench and later reopens the same task from history or recent tasks
+- **AND** once the chat reaches fifteen user turns, the sixteenth send action first asks for confirmation and explains that continuing will clear the existing conversation before starting a new one
 
 ### Requirement: Prompt settings SHALL include an experiment surface
 Prompt-template settings SHALL include a `Prompt Lab` surface that compares two templates under the same channel against the same sample title and transcript.

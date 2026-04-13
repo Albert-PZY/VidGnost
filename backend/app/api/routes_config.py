@@ -353,6 +353,7 @@ async def update_model_config(
                 "load_profile": payload.load_profile,
                 "quantization": payload.quantization,
                 "max_batch_size": payload.max_batch_size,
+                "rerank_top_n": payload.rerank_top_n,
                 "frame_interval_seconds": payload.frame_interval_seconds,
                 "enabled": payload.enabled,
             },

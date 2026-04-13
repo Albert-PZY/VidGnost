@@ -379,6 +379,7 @@ export function updateModel(
     load_profile?: string | null
     quantization?: string | null
     max_batch_size?: number | null
+    rerank_top_n?: number | null
     frame_interval_seconds?: number | null
     enabled?: boolean | null
   },
@@ -560,7 +561,7 @@ export async function streamChatWithTask(
     body: JSON.stringify({
       task_id: payload.task_id,
       question: payload.question,
-      top_k: payload.top_k ?? 5,
+      ...(typeof payload.top_k === "number" ? { top_k: payload.top_k } : {}),
       stream: true,
     }),
   })

@@ -111,6 +111,12 @@ The system SHALL expose `/config/models` and related model-management APIs with 
 - **AND** the field accepts values in the documented bounded runtime range
 - **AND** subsequent frame extraction for VQA evidence generation uses the persisted interval value instead of a hard-coded sampling cadence
 
+#### Scenario: Configure default rerank output count from settings
+- **WHEN** frontend loads or updates the `rerank-default` model entry through `/config/models`
+- **THEN** backend exposes `rerank_top_n` as an integer configuration field
+- **AND** the field accepts values in the documented bounded runtime range
+- **AND** VQA search, analysis, and streaming chat use the persisted `rerank_top_n` as the default final candidate count whenever the client request does not override `top_k`
+
 ### Requirement: Runtime config APIs SHALL ignore unsupported fields
 Runtime config APIs SHALL process documented fields and ignore unsupported extra fields in payloads.
 

@@ -17,6 +17,8 @@ interface VirtualizedListProps<TItem> {
   emptyState?: React.ReactNode
   paddingStart?: number
   paddingEnd?: number
+  viewportRef?: React.Ref<HTMLDivElement>
+  onViewportScroll?: React.UIEventHandler<HTMLDivElement>
 }
 
 export function VirtualizedList<TItem>({
@@ -31,8 +33,24 @@ export function VirtualizedList<TItem>({
   emptyState = null,
   paddingStart = 0,
   paddingEnd = 0,
+  viewportRef,
+  onViewportScroll,
 }: VirtualizedListProps<TItem>) {
   const parentRef = React.useRef<HTMLDivElement | null>(null)
+  const handleViewportRef = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      parentRef.current = node
+      if (!viewportRef) {
+        return
+      }
+      if (typeof viewportRef === "function") {
+        viewportRef(node)
+        return
+      }
+      ;(viewportRef as React.MutableRefObject<HTMLDivElement | null>).current = node
+    },
+    [viewportRef],
+  )
 
   const virtualizer = useVirtualizer({
     count: items.length,
@@ -54,7 +72,11 @@ export function VirtualizedList<TItem>({
   }
 
   return (
-    <div ref={parentRef} className={cn("h-full min-h-0 overflow-y-auto", className, viewportClassName)}>
+    <div
+      ref={handleViewportRef}
+      className={cn("h-full min-h-0 overflow-y-auto", className, viewportClassName)}
+      onScroll={onViewportScroll}
+    >
       <div
         className={cn("relative w-full", contentClassName)}
         style={{ height: virtualizer.getTotalSize() }}

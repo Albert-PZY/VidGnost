@@ -143,6 +143,7 @@ export interface ModelDescriptor {
   quantization: string
   load_profile: string
   max_batch_size: number
+  rerank_top_n: number
   frame_interval_seconds: number
   enabled: boolean
   size_bytes: number

@@ -322,6 +322,7 @@ class ModelDescriptor(BaseModel):
     quantization: str = ""
     load_profile: str = "balanced"
     max_batch_size: int = 1
+    rerank_top_n: int = Field(default=8, ge=1, le=20)
     frame_interval_seconds: int = Field(default=10, ge=1, le=600)
     enabled: bool = True
     size_bytes: int = 0
@@ -345,6 +346,7 @@ class ModelUpdateRequest(BaseModel):
     load_profile: str | None = None
     quantization: str | None = None
     max_batch_size: int | None = Field(default=None, ge=1, le=64)
+    rerank_top_n: int | None = Field(default=None, ge=1, le=20)
     frame_interval_seconds: int | None = Field(default=None, ge=1, le=600)
     enabled: bool | None = None
 

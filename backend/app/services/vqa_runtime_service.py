@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, AsyncIterator
 
 from app.services.llm_config_store import LLMConfigStore
+from app.services.model_catalog_store import ModelCatalogStore
 from app.services.task_store import TaskStore
 from app.services.vqa_chat_service import ChatResult, VQAChatService
 from app.services.vqa_retriever import VQAHybridRetriever
@@ -30,10 +31,12 @@ class VQARuntimeService:
         *,
         task_store: TaskStore,
         llm_config_store: LLMConfigStore,
+        model_catalog_store: ModelCatalogStore,
         storage_dir: str,
     ) -> None:
         self._retriever = VQAHybridRetriever(task_store=task_store, storage_dir=storage_dir)
         self._chat = VQAChatService(llm_config_store=llm_config_store)
+        self._model_catalog_store = model_catalog_store
         self._trace = VQATraceStore(log_dir=f"{storage_dir}/event-logs/traces")
 
     def read_trace(self, trace_id: str) -> list[dict[str, Any]]:
@@ -48,12 +51,13 @@ class VQARuntimeService:
         top_k: int | None = None,
         trace_id: str | None = None,
     ) -> SearchBundle:
+        resolved_top_k = max(1, int(top_k or self._model_catalog_store.get_rerank_top_n()))
         resolved_trace_id = trace_id or self._trace.new_trace(
             metadata={
                 "query_text": query_text,
                 "task_id": task_id,
                 "video_paths": video_paths or [],
-                "top_k": top_k,
+                "top_k": resolved_top_k,
             },
             config_snapshot={
                 "retrieval": {
@@ -62,6 +66,7 @@ class VQARuntimeService:
                     "rerank": True,
                     "query_expansion": False,
                     "dedupe": "same-task-same-text",
+                    "rerank_top_n": resolved_top_k,
                 }
             },
         )
@@ -69,7 +74,7 @@ class VQARuntimeService:
             query_text=query_text,
             task_id=task_id,
             video_paths=video_paths,
-            top_k=top_k,
+            top_k=resolved_top_k,
         )
         self._trace.write(
             trace_id=resolved_trace_id,
@@ -78,6 +83,7 @@ class VQARuntimeService:
                 "query_text": query_text,
                 "task_id": task_id,
                 "video_paths": video_paths or [],
+                "top_k": resolved_top_k,
                 "query_expansion": False,
                 "dedupe": "same-task-same-text",
                 "dense_hits": [item.to_dict() for item in result.dense_hits],

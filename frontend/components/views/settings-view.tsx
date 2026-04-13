@@ -151,6 +151,7 @@ type ModelConfigFormState = {
   load_profile: string
   quantization: string
   max_batch_size: string
+  rerank_top_n: string
   frame_interval_seconds: string
   enabled: boolean
 }
@@ -175,6 +176,7 @@ const EMPTY_MODEL_FORM: ModelConfigFormState = {
   load_profile: "balanced",
   quantization: "",
   max_batch_size: "1",
+  rerank_top_n: "8",
   frame_interval_seconds: "10",
   enabled: true,
 }
@@ -707,9 +709,9 @@ export function SettingsView({
 
     return {
       title: "重排序模型配置",
-      description: "控制 rerank 模型的本地目录和批处理规模。",
-      note: "重排序阶段主要受批大小影响，适合按吞吐逐步调高。",
-      fields: ["path", "max_batch_size", "enabled"],
+      description: "控制 rerank 模型的本地目录、批处理规模与最终返回条数。",
+      note: "建议先调最终返回条数，再根据机器负载逐步提高重排序批大小。",
+      fields: ["path", "max_batch_size", "rerank_top_n", "enabled"],
       pathLabel: "模型目录",
       pathPlaceholder: "可选：指定 rerank 模型目录",
       batchLabel: "重排序批大小",
@@ -732,6 +734,9 @@ export function SettingsView({
     }
     if (preset.fields.includes("max_batch_size")) {
       payload.max_batch_size = Number.parseInt(form.max_batch_size, 10) || 1
+    }
+    if (preset.fields.includes("rerank_top_n")) {
+      payload.rerank_top_n = Number.parseInt(form.rerank_top_n, 10) || 8
     }
     if (preset.fields.includes("frame_interval_seconds")) {
       payload.frame_interval_seconds = Number.parseInt(form.frame_interval_seconds, 10) || 10
@@ -823,6 +828,7 @@ export function SettingsView({
       load_profile: model.load_profile || "balanced",
       quantization: model.quantization || "",
       max_batch_size: String(model.max_batch_size || 1),
+      rerank_top_n: String(model.rerank_top_n || 8),
       frame_interval_seconds: String(model.frame_interval_seconds || 10),
       enabled: model.enabled,
     }
@@ -1284,6 +1290,7 @@ export function SettingsView({
   const activeModelPreset = editingModel ? getModelConfigPreset(editingModel) : null
   const modelDialogHasQuantization = Boolean(activeModelPreset?.fields.includes("quantization"))
   const modelDialogHasBatchSize = Boolean(activeModelPreset?.fields.includes("max_batch_size"))
+  const modelDialogHasRerankTopN = Boolean(activeModelPreset?.fields.includes("rerank_top_n"))
   const modelDialogHasFrameInterval = Boolean(activeModelPreset?.fields.includes("frame_interval_seconds"))
   const showOnlineLlmFields = Boolean(editingModel?.provider === "openai_compatible")
   const isWhisperDialog = editingModel?.component === "whisper"
@@ -1873,17 +1880,19 @@ export function SettingsView({
                                     </div>
                                     <div className="rounded-xl border bg-muted/30 p-4">
                                       <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                                        {modelDialogHasFrameInterval ? "抽帧间隔" : "批大小"}
+                                        {modelDialogHasFrameInterval ? "抽帧间隔" : modelDialogHasRerankTopN ? "返回条数 / 批大小" : "批大小"}
                                       </div>
                                       <div className="mt-2 text-base font-semibold leading-tight text-foreground">
                                         {modelDialogHasFrameInterval
                                           ? `${modelForm.frame_interval_seconds || "10"} 秒`
+                                          : modelDialogHasRerankTopN
+                                            ? `${modelForm.rerank_top_n || "8"} 条 / 批 ${modelForm.max_batch_size || "1"}`
                                           : modelDialogHasBatchSize
                                             ? modelForm.max_batch_size || "1"
                                             : "默认"}
                                       </div>
                                       <p className="mt-1 text-xs text-muted-foreground">
-                                        {modelDialogHasFrameInterval ? "影响证据帧密度" : "越高越吃资源"}
+                                        {modelDialogHasFrameInterval ? "影响证据帧密度" : modelDialogHasRerankTopN ? "控制最终候选数量与重排吞吐" : "越高越吃资源"}
                                       </p>
                                     </div>
                                   </div>
@@ -2055,6 +2064,36 @@ export function SettingsView({
                                     />
                                     <p className="text-xs text-muted-foreground">
                                       {activeModelPreset?.batchDescription || "影响同批次吞吐与资源占用。"}
+                                    </p>
+                                  </div>
+                                ) : null}
+
+                                {modelDialogHasRerankTopN ? (
+                                  <div
+                                    className={cn(
+                                      "space-y-2",
+                                      !activeModelPreset?.fields.includes("load_profile") && !modelDialogHasQuantization
+                                        ? "md:col-span-2"
+                                        : "",
+                                    )}
+                                  >
+                                    <Label htmlFor="model-rerank-top-n">最终返回条数</Label>
+                                    <Input
+                                      id="model-rerank-top-n"
+                                      className="bg-background/80"
+                                      type="number"
+                                      min={1}
+                                      max={20}
+                                      value={modelForm.rerank_top_n}
+                                      onChange={(event) =>
+                                        setModelForm((current) => ({
+                                          ...current,
+                                          rerank_top_n: event.target.value,
+                                        }))
+                                      }
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                      控制最终排序后交给问答模型的候选数量，前端问答界面会直接使用这里的默认值。
                                     </p>
                                   </div>
                                 ) : null}

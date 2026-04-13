@@ -23,9 +23,15 @@ import {
   SkipForward,
   Sparkles,
   Square,
+  RotateCcw,
+  RotateCw,
+  UserRound,
   Volume2,
   VolumeX,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react"
+import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch"
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
@@ -37,6 +43,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
@@ -81,6 +88,7 @@ import {
 } from "@/stores/task-processing-runtime-store"
 import type {
   RuntimeCorrectionPreviewMode as CorrectionPreviewMode,
+  RuntimeChatMessage,
 } from "@/stores/task-processing-runtime-types"
 import type {
   TaskDetailResponse,
@@ -157,6 +165,133 @@ const TRACE_SECTIONS = [
   { key: "rrf_hits", label: "RRF 融合结果", scoreKey: "rrf_score" },
   { key: "rerank_hits", label: "最终排序结果", scoreKey: "final_score" },
 ] as const
+
+const VQA_CHAT_SESSION_STORAGE_KEY_PREFIX = "vidgnost:vqa-chat-session:v1"
+const VQA_CHAT_MAX_TURNS = 15
+const TRANSCRIPT_SCROLL_BREAK_THRESHOLD_PX = 120
+const TRANSCRIPT_SCROLL_RESTORE_THRESHOLD_PX = 24
+
+interface PersistedVqaSession {
+  chatHistory: RuntimeChatMessage[]
+  selectedTraceId: string
+  traceCache: Record<string, VqaTraceResponse>
+}
+
+function canUseClientStorage(): boolean {
+  return typeof window !== "undefined" && typeof window.localStorage !== "undefined"
+}
+
+function buildVqaChatSessionStorageKey(taskId: string): string {
+  return `${VQA_CHAT_SESSION_STORAGE_KEY_PREFIX}:${taskId}`
+}
+
+function sanitizeVqaCitationItem(value: unknown): VqaCitationItem | null {
+  const payload = asObject(value)
+  const docId = asString(payload.doc_id).trim()
+  const taskId = asString(payload.task_id).trim()
+  if (!docId || !taskId) {
+    return null
+  }
+  return {
+    doc_id: docId,
+    task_id: taskId,
+    task_title: asString(payload.task_title),
+    source: asString(payload.source),
+    source_set: asStringArray(payload.source_set),
+    start: asNumber(payload.start) ?? 0,
+    end: asNumber(payload.end) ?? 0,
+    text: asString(payload.text),
+    image_path: asString(payload.image_path),
+  }
+}
+
+function sanitizeRuntimeChatMessage(value: unknown): RuntimeChatMessage | null {
+  const payload = asObject(value)
+  const id = asString(payload.id).trim()
+  const role = asString(payload.role).trim()
+  if (!id || (role !== "user" && role !== "assistant")) {
+    return null
+  }
+  const status = asString(payload.status).trim()
+  return {
+    id,
+    role,
+    content: asString(payload.content),
+    status: status === "streaming" || status === "error" ? status : "done",
+    citations: asRecordArray(payload.citations)
+      .map((item) => sanitizeVqaCitationItem(item))
+      .filter((item): item is VqaCitationItem => item !== null),
+    traceId: asString(payload.traceId).trim() || undefined,
+    contextTokensApprox: asNumber(payload.contextTokensApprox) ?? undefined,
+    statusMessage: asString(payload.statusMessage).trim() || undefined,
+    errorMessage: asString(payload.errorMessage).trim() || undefined,
+  }
+}
+
+function sanitizeVqaTraceResponse(value: unknown): VqaTraceResponse | null {
+  const payload = asObject(value)
+  const traceId = asString(payload.trace_id).trim()
+  if (!traceId) {
+    return null
+  }
+  return {
+    trace_id: traceId,
+    records: Array.isArray(payload.records)
+      ? payload.records.filter((item) => item && typeof item === "object") as VqaTraceResponse["records"]
+      : [],
+  }
+}
+
+function readPersistedVqaSession(taskId: string): PersistedVqaSession {
+  if (!canUseClientStorage()) {
+    return { chatHistory: [], selectedTraceId: "", traceCache: {} }
+  }
+  try {
+    const raw = window.localStorage.getItem(buildVqaChatSessionStorageKey(taskId))
+    if (!raw) {
+      return { chatHistory: [], selectedTraceId: "", traceCache: {} }
+    }
+    const parsed = JSON.parse(raw) as unknown
+    const payload = asObject(parsed)
+    const chatHistory = Array.isArray(payload.chatHistory)
+      ? payload.chatHistory
+        .map((item) => sanitizeRuntimeChatMessage(item))
+        .filter((item): item is RuntimeChatMessage => item !== null)
+      : []
+    const traceCache = Object.fromEntries(
+      Object.entries(asObject(payload.traceCache))
+        .map(([key, value]) => [key, sanitizeVqaTraceResponse(value)] as const)
+        .filter((entry): entry is readonly [string, VqaTraceResponse] => entry[1] !== null),
+    )
+    const selectedTraceId = asString(payload.selectedTraceId).trim()
+    return {
+      chatHistory,
+      selectedTraceId: selectedTraceId && traceCache[selectedTraceId] ? selectedTraceId : "",
+      traceCache,
+    }
+  } catch {
+    return { chatHistory: [], selectedTraceId: "", traceCache: {} }
+  }
+}
+
+function persistVqaSession(taskId: string, payload: PersistedVqaSession): void {
+  if (!canUseClientStorage()) {
+    return
+  }
+  try {
+    const hasContent =
+      payload.chatHistory.length > 0 ||
+      Boolean(payload.selectedTraceId) ||
+      Object.keys(payload.traceCache).length > 0
+    if (!hasContent) {
+      window.localStorage.removeItem(buildVqaChatSessionStorageKey(taskId))
+      return
+    }
+    window.localStorage.setItem(buildVqaChatSessionStorageKey(taskId), JSON.stringify(payload))
+  } catch {
+    return
+  }
+}
 
 function buildFallbackSteps(workflow: WorkflowType): TaskStepItem[] {
   return WORKFLOW_STEPS[workflow].map((step) => ({
@@ -921,12 +1056,10 @@ async function loadStageChunkSegments(
 }
 
 const TaskProcessingNotesRuntimeEffects = React.memo(function TaskProcessingNotesRuntimeEffects({
-  workflow,
   leftTab,
   effectiveTask,
   transcriptOptimizeStatus,
 }: {
-  workflow: WorkflowType
   leftTab: LeftTab
   effectiveTask: TaskDetailResponse | null
   transcriptOptimizeStatus: string
@@ -956,7 +1089,7 @@ const TaskProcessingNotesRuntimeEffects = React.memo(function TaskProcessingNote
   )
 
   React.useEffect(() => {
-    if (workflow !== "notes" || !effectiveTask) {
+    if (!effectiveTask) {
       return
     }
     if (transcriptOptimizeStatus && transcriptOptimizeStatus !== "pending") {
@@ -982,11 +1115,10 @@ const TaskProcessingNotesRuntimeEffects = React.memo(function TaskProcessingNote
     setRawTranscriptSegments,
     transcriptOptimizeStatus,
     transcriptSegments,
-    workflow,
   ])
 
   React.useEffect(() => {
-    if (workflow !== "notes" || leftTab !== "correction" || !effectiveTask) {
+    if (leftTab !== "correction" || !effectiveTask) {
       return
     }
     let cancelled = false
@@ -1046,7 +1178,6 @@ const TaskProcessingNotesRuntimeEffects = React.memo(function TaskProcessingNote
     setIsCorrectionPreviewLoading,
     setPersistedCorrectionArtifacts,
     setPersistedRawTranscriptSegments,
-    workflow,
   ])
 
   return null
@@ -1075,19 +1206,26 @@ export function TaskProcessingWorkbench({
   const [isPausing, setIsPausing] = React.useState(false)
   const [isResuming, setIsResuming] = React.useState(false)
   const [isWorkbenchResizing, setIsWorkbenchResizing] = React.useState(false)
+  const [isChatLimitConfirmOpen, setIsChatLimitConfirmOpen] = React.useState(false)
+  const [pendingQuestionAfterReset, setPendingQuestionAfterReset] = React.useState("")
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
   const refreshTimerRef = React.useRef<number | null>(null)
+  const persistVqaSessionTimerRef = React.useRef<number | null>(null)
   const chatAbortRef = React.useRef<AbortController | null>(null)
   const hasLoadedTaskRef = React.useRef(false)
+  const hasHydratedPersistedVqaSessionRef = React.useRef(false)
+  const latestPersistedVqaSessionRef = React.useRef<PersistedVqaSession | null>(null)
   const eventQueueRef = React.useRef<TaskStreamEvent[]>([])
   const eventFrameRef = React.useRef<number | null>(null)
 
   const {
     task,
+    chatHistory,
     isInitialLoading,
     isRefreshing,
     taskErrorMessage,
     resetRuntime,
+    resetChat,
     setLoadingState,
     setTask,
     setTaskErrorMessage,
@@ -1097,16 +1235,21 @@ export function TaskProcessingWorkbench({
     setChatStreaming,
     upsertChatMessage,
     setSelectedTraceId,
+    selectedTraceId,
     setTraceLoadingId,
     setTraceError,
+    traceCache,
     upsertTraceCache,
+    clearTraceCache,
   } = useTaskProcessingRuntimeStore(
     useShallow((state) => ({
       task: state.task,
+      chatHistory: state.chatHistory,
       isInitialLoading: state.isInitialLoading,
       isRefreshing: state.isRefreshing,
       taskErrorMessage: state.taskErrorMessage,
       resetRuntime: state.resetRuntime,
+      resetChat: state.resetChat,
       setLoadingState: state.setLoadingState,
       setTask: state.setTask,
       setTaskErrorMessage: state.setTaskErrorMessage,
@@ -1116,14 +1259,18 @@ export function TaskProcessingWorkbench({
       setChatStreaming: state.setChatStreaming,
       upsertChatMessage: state.upsertChatMessage,
       setSelectedTraceId: state.setSelectedTraceId,
+      selectedTraceId: state.selectedTraceId,
       setTraceLoadingId: state.setTraceLoadingId,
       setTraceError: state.setTraceError,
+      traceCache: state.traceCache,
       upsertTraceCache: state.upsertTraceCache,
+      clearTraceCache: state.clearTraceCache,
     })),
   )
 
   React.useEffect(() => {
     hasLoadedTaskRef.current = false
+    hasHydratedPersistedVqaSessionRef.current = false
     resetRuntime()
     setLeftTab("transcript")
     setNotesTab("notes")
@@ -1133,6 +1280,8 @@ export function TaskProcessingWorkbench({
     setMindmapHtml("")
     setMindmapKey("")
     setNotesDraft("")
+    setPendingQuestionAfterReset("")
+    setIsChatLimitConfirmOpen(false)
     if (eventFrameRef.current !== null) {
       window.cancelAnimationFrame(eventFrameRef.current)
       eventFrameRef.current = null
@@ -1146,11 +1295,18 @@ export function TaskProcessingWorkbench({
       if (refreshTimerRef.current !== null) {
         window.clearTimeout(refreshTimerRef.current)
       }
+      if (persistVqaSessionTimerRef.current !== null) {
+        window.clearTimeout(persistVqaSessionTimerRef.current)
+        persistVqaSessionTimerRef.current = null
+      }
+      if (workflow === "vqa" && latestPersistedVqaSessionRef.current) {
+        persistVqaSession(taskId, latestPersistedVqaSessionRef.current)
+      }
       if (eventFrameRef.current !== null) {
         window.cancelAnimationFrame(eventFrameRef.current)
       }
     }
-  }, [])
+  }, [taskId, workflow])
 
   const loadTask = React.useCallback(
     async (options?: { showToastOnError?: boolean; background?: boolean }) => {
@@ -1199,6 +1355,53 @@ export function TaskProcessingWorkbench({
     }
     void onTaskChanged()
   }, [onTaskChanged, task?.status, task?.updated_at])
+
+  React.useEffect(() => {
+    if (workflow !== "vqa") {
+      return
+    }
+    const persistedSession = readPersistedVqaSession(taskId)
+    resetChat()
+    clearTraceCache()
+    if (persistedSession.chatHistory.length > 0) {
+      appendChatMessages(persistedSession.chatHistory)
+    }
+    Object.entries(persistedSession.traceCache).forEach(([traceId, payload]) => {
+      upsertTraceCache(traceId, payload)
+    })
+    if (persistedSession.selectedTraceId) {
+      setSelectedTraceId(persistedSession.selectedTraceId)
+    }
+    hasHydratedPersistedVqaSessionRef.current = true
+  }, [appendChatMessages, clearTraceCache, resetChat, setSelectedTraceId, taskId, upsertTraceCache, workflow])
+
+  React.useEffect(() => {
+    if (workflow !== "vqa" || !hasHydratedPersistedVqaSessionRef.current) {
+      return
+    }
+    latestPersistedVqaSessionRef.current = {
+      chatHistory,
+      selectedTraceId,
+      traceCache,
+    }
+    if (persistVqaSessionTimerRef.current !== null) {
+      window.clearTimeout(persistVqaSessionTimerRef.current)
+    }
+    persistVqaSessionTimerRef.current = window.setTimeout(() => {
+      persistVqaSession(taskId, latestPersistedVqaSessionRef.current || {
+        chatHistory,
+        selectedTraceId,
+        traceCache,
+      })
+      persistVqaSessionTimerRef.current = null
+    }, 180)
+    return () => {
+      if (persistVqaSessionTimerRef.current !== null) {
+        window.clearTimeout(persistVqaSessionTimerRef.current)
+        persistVqaSessionTimerRef.current = null
+      }
+    }
+  }, [chatHistory, selectedTraceId, taskId, traceCache, workflow])
 
   const liveTaskId = task?.id || ""
   const liveTaskStatus = task?.status || ""
@@ -1326,10 +1529,17 @@ export function TaskProcessingWorkbench({
     [effectiveTitle, taskId, workflow],
   )
 
-  const handleAskQuestion = React.useCallback(async () => {
-    const trimmedQuestion = question.trim()
+  const executeAskQuestion = React.useCallback(async (
+    questionText: string,
+    options?: { resetBeforeSend?: boolean },
+  ) => {
+    const trimmedQuestion = questionText.trim()
     if (!trimmedQuestion || getTaskProcessingRuntimeState().isChatStreaming || !effectiveTask) {
       return
+    }
+    if (options?.resetBeforeSend) {
+      resetChat()
+      clearTraceCache()
     }
     chatAbortRef.current?.abort()
     const controller = new AbortController()
@@ -1386,7 +1596,9 @@ export function TaskProcessingWorkbench({
                 next.status = "error"
                 next.errorMessage = getVqaStreamErrorText(event)
               }
-              if (event.type === "done") next.status = next.errorMessage ? "error" : "done"
+              if (event.type === "done") {
+                next.status = next.errorMessage ? "error" : "done"
+              }
               return next
             })
           },
@@ -1423,14 +1635,39 @@ export function TaskProcessingWorkbench({
     }
   }, [
     appendChatMessages,
+    clearTraceCache,
     effectiveTask,
-    question,
+    resetChat,
     setChatStreaming,
     setQuestion,
     setVqaTab,
     taskId,
     upsertChatMessage,
   ])
+
+  const handleAskQuestion = React.useCallback(async () => {
+    const trimmedQuestion = question.trim()
+    if (!trimmedQuestion || getTaskProcessingRuntimeState().isChatStreaming || !effectiveTask) {
+      return
+    }
+    const userTurnCount = chatHistory.filter((message) => message.role === "user").length
+    if (userTurnCount >= VQA_CHAT_MAX_TURNS) {
+      setPendingQuestionAfterReset(trimmedQuestion)
+      setIsChatLimitConfirmOpen(true)
+      return
+    }
+    await executeAskQuestion(trimmedQuestion)
+  }, [chatHistory, effectiveTask, executeAskQuestion, question])
+
+  const handleConfirmChatResetAndContinue = React.useCallback(() => {
+    const nextQuestion = pendingQuestionAfterReset.trim()
+    setIsChatLimitConfirmOpen(false)
+    setPendingQuestionAfterReset("")
+    if (!nextQuestion) {
+      return
+    }
+    void executeAskQuestion(nextQuestion, { resetBeforeSend: true })
+  }, [executeAskQuestion, pendingQuestionAfterReset])
 
   const handleLoadTrace = React.useCallback(
     async (traceId: string) => {
@@ -1642,7 +1879,6 @@ export function TaskProcessingWorkbench({
       className="task-processing-workbench-shell flex min-h-0 flex-1 flex-col overflow-hidden"
     >
       <TaskProcessingNotesRuntimeEffects
-        workflow={workflow}
         leftTab={leftTab}
         effectiveTask={effectiveTask}
         transcriptOptimizeStatus={transcriptOptimizeStatus}
@@ -1744,6 +1980,20 @@ export function TaskProcessingWorkbench({
           )}
         </ResizablePanel>
       </ResizablePanelGroup>
+      <ConfirmDialog
+        open={isChatLimitConfirmOpen}
+        onOpenChange={(open) => {
+          setIsChatLimitConfirmOpen(open)
+          if (!open) {
+            setPendingQuestionAfterReset("")
+          }
+        }}
+        title="对话轮次即将重置"
+        description={`当前流式问答最多保留 ${VQA_CHAT_MAX_TURNS} 轮提问记录。继续发送后，将自动清空现有对话内容并开始新一轮会话，是否继续？`}
+        confirmLabel="继续并清空"
+        cancelLabel="取消"
+        onConfirm={handleConfirmChatResetAndContinue}
+      />
     </div>
   )
 }
@@ -2065,19 +2315,23 @@ interface TranscriptSegmentCardProps {
 function TranscriptActionIconButton({
   label,
   onClick,
+  variant = "ghost",
+  className,
   children,
 }: {
   label: string
   onClick: () => void
+  variant?: "ghost" | "outline"
+  className?: string
   children: React.ReactNode
 }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          variant="ghost"
+          variant={variant}
           size="icon"
-          className="transcript-segment-icon-button h-8 w-8 rounded-lg text-muted-foreground"
+          className={cn("transcript-segment-icon-button h-8 w-8 rounded-lg text-muted-foreground", className)}
           aria-label={label}
           onClick={onClick}
         >
@@ -2400,13 +2654,50 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
     [liveTranscript, taskTranscriptSegments],
   )
   const [activeTranscriptId, setActiveTranscriptId] = React.useState("")
+  const [isTranscriptAutoFollow, setIsTranscriptAutoFollow] = React.useState(true)
+  const transcriptViewportRef = React.useRef<HTMLDivElement | null>(null)
   const deferredTranscriptSegmentsForTimeline = React.useDeferredValue(transcriptSegments)
   const deferredChatHistoryForTimeline = React.useDeferredValue(chatHistory)
   const deferredTaskEvents = React.useDeferredValue(taskEvents)
+  const shouldShowCorrectionTab = workflow === "notes" || correctionStatus !== "skipped"
+  const lastTranscriptSignature = React.useMemo(() => {
+    const lastSegment = transcriptSegments[transcriptSegments.length - 1]
+    if (!lastSegment) {
+      return "empty"
+    }
+    return `${transcriptSegments.length}:${lastSegment.start}:${lastSegment.end}:${lastSegment.text}`
+  }, [transcriptSegments])
 
   React.useEffect(() => {
     setActiveTranscriptId("")
-  }, [videoUrl])
+    setIsTranscriptAutoFollow(true)
+  }, [taskId, videoUrl])
+
+  React.useEffect(() => {
+    if (shouldShowCorrectionTab || leftTab !== "correction") {
+      return
+    }
+    onLeftTabChange("transcript")
+  }, [leftTab, onLeftTabChange, shouldShowCorrectionTab])
+
+  React.useEffect(() => {
+    if (!isTranscriptAutoFollow || transcriptSegments.length === 0) {
+      return
+    }
+    const viewport = transcriptViewportRef.current
+    if (!viewport) {
+      return
+    }
+    const frameId = window.requestAnimationFrame(() => {
+      viewport.scrollTo({
+        top: viewport.scrollHeight,
+        behavior: "auto",
+      })
+    })
+    return () => {
+      window.cancelAnimationFrame(frameId)
+    }
+  }, [isTranscriptAutoFollow, lastTranscriptSignature, transcriptSegments.length])
 
   const evidenceTimelineItems = React.useMemo(() => {
     if (workflow === "notes") {
@@ -2470,6 +2761,18 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
     [onSeek, transcriptSegments],
   )
 
+  const handleTranscriptViewportScroll = React.useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    const target = event.currentTarget
+    const distanceToBottom = target.scrollHeight - target.scrollTop - target.clientHeight
+    if (distanceToBottom <= TRANSCRIPT_SCROLL_RESTORE_THRESHOLD_PX) {
+      setIsTranscriptAutoFollow((current) => (current ? current : true))
+      return
+    }
+    if (distanceToBottom >= TRANSCRIPT_SCROLL_BREAK_THRESHOLD_PX) {
+      setIsTranscriptAutoFollow((current) => (current ? false : current))
+    }
+  }, [])
+
   return (
     <div className="flex h-full min-h-0 flex-col border-r">
       <VideoPreviewPane
@@ -2486,7 +2789,7 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
       <Tabs value={leftTab} onValueChange={(value) => onLeftTabChange(value as LeftTab)} className="flex min-h-0 flex-1 flex-col">
         <TabsList className="workbench-tab-list w-full justify-start rounded-none border-b bg-transparent p-0">
           <TabsTrigger value="transcript" className="workbench-tab-trigger workbench-left-tab-trigger">转写片段</TabsTrigger>
-          {workflow === "notes" ? (
+          {shouldShowCorrectionTab ? (
             <TabsTrigger value="correction" className="workbench-tab-trigger workbench-left-tab-trigger">文本纠错</TabsTrigger>
           ) : null}
           <TabsTrigger value="evidence" className="workbench-tab-trigger workbench-left-tab-trigger">证据时间轴</TabsTrigger>
@@ -2525,6 +2828,8 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
                   className="themed-thin-scrollbar h-full min-h-0 flex-1"
                   estimateSize={() => 148}
                   overscan={10}
+                  viewportRef={transcriptViewportRef}
+                  onViewportScroll={handleTranscriptViewportScroll}
                   getItemKey={(segment) => `${segment.start}-${segment.end}`}
                   renderItem={(segment, index) => {
                     const segmentId = `${segment.start}-${segment.end}`
@@ -2548,7 +2853,7 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
           </div>
         </TabsContent>
 
-        {workflow === "notes" ? (
+        {shouldShowCorrectionTab ? (
           <TabsContent value="correction" className="mt-0 min-h-0 flex-1 overflow-hidden">
             <TranscriptCorrectionPanel
               mode={correctionMode}
@@ -2854,6 +3159,110 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
   )
 })
 
+function VqaMessageAvatar({ role }: { role: "user" | "assistant" }) {
+  return (
+    <div
+      className={cn(
+        "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+        role === "assistant" ? "bg-primary text-primary-foreground" : "bg-primary/15 text-primary",
+      )}
+    >
+      {role === "assistant" ? <Search className="h-4 w-4" /> : <UserRound className="h-4 w-4" />}
+    </div>
+  )
+}
+
+const EvidenceImagePreviewDialog = React.memo(function EvidenceImagePreviewDialog({
+  previewImage,
+  onPreviewImageChange,
+}: {
+  previewImage: { src: string; title: string } | null
+  onPreviewImageChange: (value: { src: string; title: string } | null) => void
+}) {
+  const [rotation, setRotation] = React.useState(0)
+
+  React.useEffect(() => {
+    if (!previewImage) {
+      return
+    }
+    setRotation(0)
+  }, [previewImage])
+
+  return (
+    <Dialog
+      open={Boolean(previewImage)}
+      onOpenChange={(open) => {
+        if (!open) {
+          onPreviewImageChange(null)
+        }
+      }}
+    >
+      <DialogContent className="max-w-[min(94vw,78rem)] gap-0 overflow-hidden p-0">
+        <DialogHeader className="border-b px-6 py-4">
+          <DialogTitle>证据画面预览</DialogTitle>
+          <DialogDescription>{previewImage?.title || "点击证据缩略图后可在这里查看大图。"}</DialogDescription>
+        </DialogHeader>
+        {previewImage ? (
+          <TransformWrapper
+            initialScale={1}
+            minScale={0.6}
+            maxScale={6}
+            centerOnInit
+            doubleClick={{ disabled: true }}
+            wheel={{ step: 0.12 }}
+          >
+            {({ zoomIn, zoomOut, resetTransform }) => (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-background/95 px-4 py-2.5">
+                  <div className="text-xs text-muted-foreground">支持拖拽平移、滚轮缩放与旋转查看</div>
+                  <div className="flex items-center gap-2">
+                    <TranscriptActionIconButton label="缩小" variant="outline" className="h-8 w-8" onClick={() => zoomOut()}>
+                      <ZoomOut className="h-4 w-4" />
+                    </TranscriptActionIconButton>
+                    <TranscriptActionIconButton label="放大" variant="outline" className="h-8 w-8" onClick={() => zoomIn()}>
+                      <ZoomIn className="h-4 w-4" />
+                    </TranscriptActionIconButton>
+                    <TranscriptActionIconButton label="逆时针旋转" variant="outline" className="h-8 w-8" onClick={() => setRotation((current) => current - 90)}>
+                      <RotateCcw className="h-4 w-4" />
+                    </TranscriptActionIconButton>
+                    <TranscriptActionIconButton label="顺时针旋转" variant="outline" className="h-8 w-8" onClick={() => setRotation((current) => current + 90)}>
+                      <RotateCw className="h-4 w-4" />
+                    </TranscriptActionIconButton>
+                    <TranscriptActionIconButton
+                      label="重置视图"
+                      variant="outline"
+                      className="h-8 w-8"
+                      onClick={() => {
+                        setRotation(0)
+                        resetTransform()
+                      }}
+                    >
+                      <Maximize className="h-4 w-4" />
+                    </TranscriptActionIconButton>
+                  </div>
+                </div>
+                <div className="bg-black/90 p-4">
+                  <TransformComponent
+                    wrapperClass="!h-[78vh] !w-full"
+                    contentClass="!flex !h-full !w-full !items-center !justify-center"
+                  >
+                    <img
+                      src={previewImage.src}
+                      alt={previewImage.title}
+                      className="max-h-[74vh] w-auto max-w-full rounded-xl object-contain shadow-2xl"
+                      style={{ transform: `rotate(${rotation}deg)` }}
+                    />
+                  </TransformComponent>
+                </div>
+              </>
+            )}
+          </TransformWrapper>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  )
+})
+
 const VqaWorkbench = React.memo(function VqaWorkbench({
   taskId,
   effectiveTitle,
@@ -2891,6 +3300,9 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
   const traceRetrievalPayload = React.useMemo(() => getTraceStagePayload(selectedTrace, "retrieval"), [selectedTrace])
   const traceLlmPayload = React.useMemo(() => getTraceStagePayload(selectedTrace, "llm_stream"), [selectedTrace])
   const traceFinishedPayload = React.useMemo(() => getTraceStagePayload(selectedTrace, "trace_finished"), [selectedTrace])
+  const openPreviewImage = React.useCallback((src: string, title: string) => {
+    setPreviewImage({ src, title })
+  }, [])
 
   return (
     <Tabs value={vqaTab} onValueChange={(value) => onVqaTabChange(value as VqaTab)} className="workbench-detail-pane vqa-workbench-pane flex h-full min-h-0 flex-col">
@@ -2912,15 +3324,19 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
               getItemKey={(message) => message.id}
               renderItem={(message, index) => (
                 <div className={cn("px-4 pb-4", index === 0 && "pt-4")}>
-                  <div key={message.id} data-role={message.role} className={cn("vqa-chat-message workbench-collection-item flex gap-3", message.role === "user" && "justify-end")}>
-                    {message.role === "assistant" ? <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">{message.status === "streaming" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}</div> : null}
+                  <div
+                    key={message.id}
+                    data-role={message.role}
+                    className={cn("vqa-chat-message workbench-collection-item flex items-start gap-3", message.role === "user" && "justify-end")}
+                  >
+                    {message.role === "assistant" ? <VqaMessageAvatar role="assistant" /> : null}
                     <div className={cn("vqa-chat-bubble max-w-[88%] space-y-3 rounded-2xl p-4", message.role === "user" ? "bg-primary text-primary-foreground" : "border border-border/70 bg-card/70")}>
                       {message.role === "assistant" ? (
                         message.status === "streaming" && !message.content.trim() ? (
                           <div className="space-y-3">
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                              <span>{message.statusMessage || "正在准备回答..."}</span>
+                              <Search className="h-4 w-4 text-primary" />
+                              <span>{message.statusMessage || "正在检索相关片段..."}</span>
                             </div>
                             <div className="space-y-2">
                               <div className="h-2.5 w-32 rounded-full bg-muted/90 animate-pulse" />
@@ -2953,14 +3369,23 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
                       {message.role === "assistant" ? (
                         <>
                           <div className="flex flex-wrap items-center gap-2 text-xs">
-                            {message.traceId ? <Badge variant="outline">检索链路: {message.traceId}</Badge> : null}
+                            {message.traceId ? <Badge variant="outline">链路 {message.traceId}</Badge> : null}
                             {message.contextTokensApprox ? <Badge variant="secondary">上下文约 {message.contextTokensApprox} tokens</Badge> : null}
                             {message.statusMessage && !(message.status === "streaming" && !message.content.trim()) ? (
                               <Badge variant="secondary">{message.statusMessage}</Badge>
                             ) : null}
                             {message.errorMessage ? <Badge variant="destructive">{message.errorMessage}</Badge> : null}
+                            {message.traceId ? (
+                              <TranscriptActionIconButton
+                                label="查看检索链路"
+                                variant="outline"
+                                className="h-7 w-7"
+                                onClick={() => void onOpenTrace(message.traceId || "")}
+                              >
+                                <Search className="h-3.5 w-3.5" />
+                              </TranscriptActionIconButton>
+                            ) : null}
                           </div>
-                          {message.traceId ? <Button variant="outline" size="sm" onClick={() => void onOpenTrace(message.traceId || "")}><Search className="mr-1.5 h-3.5 w-3.5" />查看检索链路</Button> : null}
                           {message.citations.length > 0 ? (
                             <div className="vqa-citation-list space-y-3">
                               {message.citations.map((citation, citationIndex) => (
@@ -2972,11 +3397,12 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
                                       <Badge variant="secondary">{formatSecondsAsClock(citation.start)} - {formatSecondsAsClock(citation.end)}</Badge>
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2">
-                                      <Button variant="outline" size="sm" onClick={() => onSeek(citation.start)}><MapPin className="mr-1.5 h-3.5 w-3.5" />跳转</Button>
-                                      <Button variant="ghost" size="sm" onClick={() => onAddCitationToResearch(citation)}>
-                                        <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-                                        加入线索篮
-                                      </Button>
+                                      <TranscriptActionIconButton label="跳转到证据时间点" variant="outline" className="h-8 w-8" onClick={() => onSeek(citation.start)}>
+                                        <MapPin className="h-4 w-4" />
+                                      </TranscriptActionIconButton>
+                                      <TranscriptActionIconButton label="加入线索篮" className="h-8 w-8" onClick={() => onAddCitationToResearch(citation)}>
+                                        <Sparkles className="h-4 w-4" />
+                                      </TranscriptActionIconButton>
                                     </div>
                                   </div>
                                   <div className="vqa-citation-layout mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_8rem]">
@@ -2986,10 +3412,10 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
                                         type="button"
                                         className="group block overflow-hidden rounded-xl"
                                         onClick={() =>
-                                          setPreviewImage({
-                                            src: buildTaskArtifactFileUrl(citation.task_id, citation.image_path),
-                                            title: `${citation.task_title || effectiveTitle} · ${formatSecondsAsClock(citation.start)}`,
-                                          })
+                                          openPreviewImage(
+                                            buildTaskArtifactFileUrl(citation.task_id, citation.image_path),
+                                            `${citation.task_title || effectiveTitle} · ${formatSecondsAsClock(citation.start)}`,
+                                          )
                                         }
                                       >
                                         <img
@@ -3008,13 +3434,15 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
                         </>
                       ) : null}
                     </div>
+                    {message.role === "user" ? <VqaMessageAvatar role="user" /> : null}
                   </div>
                 </div>
               )}
             />
           ) : null}
           <div className="border-t px-4 py-4">
-            <div className="vqa-chat-composer-row flex gap-2">
+            <div className="vqa-chat-composer-row flex items-center gap-2">
+              <VqaMessageAvatar role="user" />
               <Input value={question} onChange={(event) => onQuestionChange(event.target.value)} placeholder="输入你的问题，系统会实时输出回答..." onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void onAskQuestion() } }} />
               {isSearching ? <Button variant="outline" onClick={onStopAnswer}><Square className="h-4 w-4" /></Button> : <Button onClick={() => void onAskQuestion()} disabled={!question.trim()}><Send className="h-4 w-4" /></Button>}
             </div>
@@ -3073,10 +3501,10 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
                                       type="button"
                                       className="group block overflow-hidden rounded-xl"
                                       onClick={() =>
-                                        setPreviewImage({
-                                          src: buildTaskArtifactFileUrl(asString(hit.task_id) || taskId, asString(hit.image_path)),
-                                          title: `${asString(hit.task_title) || effectiveTitle} · ${formatSecondsAsClock(asNumber(hit.start) || 0)}`,
-                                        })
+                                        openPreviewImage(
+                                          buildTaskArtifactFileUrl(asString(hit.task_id) || taskId, asString(hit.image_path)),
+                                          `${asString(hit.task_title) || effectiveTitle} · ${formatSecondsAsClock(asNumber(hit.start) || 0)}`,
+                                        )
                                       }
                                     >
                                       <img
@@ -3110,17 +3538,7 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
       <TabsContent value="research" className="workbench-pane-padded mt-0 min-h-0 flex-1">
         <ResearchBoardPanel onSeek={onSeek} onUseAsQuestion={onUseResearchItemAsQuestion} />
       </TabsContent>
-      <Dialog open={Boolean(previewImage)} onOpenChange={(open) => { if (!open) { setPreviewImage(null) } }}>
-        <DialogContent className="max-w-[min(92vw,72rem)] p-0">
-          <DialogHeader className="border-b px-6 py-5">
-            <DialogTitle>证据画面预览</DialogTitle>
-            <DialogDescription>{previewImage?.title || "点击证据缩略图后可在这里查看大图。"}</DialogDescription>
-          </DialogHeader>
-          <div className="bg-black/90 p-4">
-            {previewImage ? <img src={previewImage.src} alt={previewImage.title} className="mx-auto max-h-[78vh] w-auto max-w-full rounded-xl object-contain" /> : null}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <EvidenceImagePreviewDialog previewImage={previewImage} onPreviewImageChange={setPreviewImage} />
     </Tabs>
   )
 })
