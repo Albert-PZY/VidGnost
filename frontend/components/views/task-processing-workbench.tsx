@@ -1532,7 +1532,6 @@ export function TaskProcessingWorkbench({
               effectiveTitle={effectiveTitle}
               notesTab={notesTab}
               onNotesTabChange={setNotesTab}
-              summaryMarkdown={effectiveTask?.summary_markdown || ""}
               notesMarkdown={effectiveTask?.notes_markdown || ""}
               notesDraft={notesDraft}
               isEditingNotes={isEditingNotes}
@@ -2192,7 +2191,6 @@ interface NotesWorkbenchProps {
   effectiveTitle: string
   notesTab: NotesTab
   onNotesTabChange: (value: NotesTab) => void
-  summaryMarkdown: string
   notesMarkdown: string
   notesDraft: string
   isEditingNotes: boolean
@@ -2214,7 +2212,6 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
   effectiveTitle,
   notesTab,
   onNotesTabChange,
-  summaryMarkdown,
   notesMarkdown,
   notesDraft,
   isEditingNotes,
@@ -2253,10 +2250,6 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
                 <Download className="mr-1.5 h-4 w-4" />
                 导出 Markdown
               </Button>
-            </div>
-            <div className="notes-workbench-section rounded-2xl border border-border/70 bg-card/65 p-4">
-              <h3 className="mb-3 text-sm font-medium">结构化摘要</h3>
-              <MarkdownArtifactViewer taskId={taskId} markdown={summaryMarkdown} emptyMessage="当前还没有生成摘要内容" className="artifact-markdown-viewer-shell" onSeek={onSeek} />
             </div>
             <div className="notes-workbench-section rounded-2xl border border-border/70 bg-card/65 p-4">
               <h3 className="mb-3 text-sm font-medium">笔记 Markdown</h3>

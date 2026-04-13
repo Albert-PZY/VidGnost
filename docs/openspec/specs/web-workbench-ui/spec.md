@@ -280,7 +280,7 @@ Task processing workbench SHALL use a horizontal resizable split layout. The lef
 #### Scenario: Open a completed notes task
 - **WHEN** user opens a notes task in the processing workbench
 - **THEN** the renderer shows the resizable video-and-artifact layout
-- **AND** summary and notes results render as Markdown instead of plain preformatted text
+- **AND** the Markdown workspace renders a single notes Markdown surface instead of duplicating equivalent summary content beside it
 - **AND** Markdown timestamps can seek the video
 - **AND** the Markdown workspace keeps an inner vertical scrollbar so long notes remain scrollable without moving the outer workbench shell
 - **AND** when the right workspace is resized narrow, Markdown, mindmap, clue-basket, and VQA panes reflow their tab chrome, actions, cards, and dense content within the available pane width instead of clipping the reading surface
