@@ -6,6 +6,7 @@ Backend SHALL persist task metadata, source info, phase logs, transcript, notes,
 #### Scenario: Query task list
 - **WHEN** client requests task listing endpoint
 - **THEN** backend returns tasks ordered by latest update time with total count
+- **AND** each task summary carries `duration_seconds` when persisted transcript segments or source media metadata can provide a reliable duration
 
 #### Scenario: Query task detail
 - **WHEN** client requests task detail by ID
@@ -63,6 +64,8 @@ System SHALL support transcript, notes, mindmap, subtitle, and bundle exports fo
 #### Scenario: Export transcript and notes
 - **WHEN** client calls transcript/notes export APIs on completed task
 - **THEN** backend returns UTF-8 payload with deterministic filename headers
+- **AND** `notes` export returns a `.md` file when the task has no generated note-image assets
+- **AND** `notes` export returns an archive containing the Markdown file plus `notes-images/**` assets when the task has generated note-image attachments
 
 #### Scenario: Export subtitles
 - **WHEN** client requests `srt` or `vtt`
@@ -95,6 +98,11 @@ History view SHALL support `workflow`, `status`, `query`, and `sort` filters tog
 #### Scenario: Navigate history pages
 - **WHEN** user moves between history pages in the renderer
 - **THEN** the renderer requests the next page from the backend instead of keeping an unbounded in-memory task list
+
+#### Scenario: Query recent-task sidebar summary
+- **WHEN** client requests the recent-task summary endpoint
+- **THEN** backend returns recent tasks ordered by latest update time
+- **AND** each recent-task item includes `workflow`, `updated_at`, and `duration_seconds` so the sidebar can render compact status context
 
 ### Requirement: History actions SHALL expose bundle export and task directory access
 History view SHALL expose direct task bundle export and task-directory access for each listed task.

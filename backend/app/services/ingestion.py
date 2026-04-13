@@ -83,7 +83,11 @@ def prepare_local_video(task_id: str, source_path: Path, target_dir: Path) -> In
         target_path.hardlink_to(source_path)
     except OSError:
         shutil.copy2(source_path, target_path)
-    return IngestionResult(media_path=target_path, title=source_path.stem, duration_seconds=None)
+    return IngestionResult(
+        media_path=target_path,
+        title=source_path.stem,
+        duration_seconds=probe_media_duration_seconds(target_path),
+    )
 
 
 def extract_audio_wav(media_path: Path, output_path: Path, channels: int = 1, sample_rate: int = 16000) -> Path:
@@ -95,6 +99,25 @@ def extract_audio_wav(media_path: Path, output_path: Path, channels: int = 1, sa
         .run(quiet=True)
     )
     return output_path
+
+
+def probe_media_duration_seconds(media_path: Path) -> float | None:
+    try:
+        probe = ffmpeg.probe(str(media_path))
+    except ffmpeg.Error:
+        return None
+    except OSError:
+        return None
+
+    format_info = probe.get("format") if isinstance(probe, dict) else None
+    if not isinstance(format_info, dict):
+        return None
+    raw_duration = format_info.get("duration")
+    try:
+        duration = float(raw_duration)
+    except (TypeError, ValueError):
+        return None
+    return duration if duration > 0 else None
 
 
 def split_audio_wav(audio_path: Path, output_dir: Path, chunk_seconds: int = 180) -> list[AudioChunk]:

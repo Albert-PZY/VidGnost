@@ -441,6 +441,7 @@ export default function VideoMindApp() {
             onWorkflowChange={setSelectedWorkflow}
             historyCount={taskStats.total}
             recentTasks={recentTasks}
+            activeRecentTaskId={viewState.type === "processing" ? viewState.taskId : ""}
             onOpenRecentTask={handleOpenTask}
           />
           <SidebarInset className="h-svh overflow-hidden">

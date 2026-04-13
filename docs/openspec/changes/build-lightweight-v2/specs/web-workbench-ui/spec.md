@@ -8,6 +8,12 @@ The Electron renderer SHALL present a fixed top title bar, a left navigation sid
 - **THEN** the title bar remains sticky at the top
 - **AND** the scrollbar appears only inside the page content region beneath the title bar
 
+#### Scenario: Highlight current recent task and workflow selection in the shell
+- **WHEN** the user opens the sidebar workflow menu or opens a task from the recent-task list
+- **THEN** the currently selected workflow option uses an explicit filled selected state instead of relying only on subtle hover contrast
+- **AND** the active recent-task entry uses an explicit selected state in the sidebar
+- **AND** recent-task rows include compact workflow and video-duration context when that duration is available
+
 ### Requirement: Settings center SHALL provide frontend-driven configuration sections
 Settings center SHALL provide `模型配置`, `提示词模板`, `外观设置`, and `语言设置` sections backed by persisted backend data.
 
@@ -21,6 +27,7 @@ The settings-center model surface SHALL expose a dedicated transcription CUDA ru
 #### Scenario: Configure transcription CUDA runtime from settings
 - **WHEN** user opens settings and visits `模型配置`
 - **THEN** the renderer shows a transcription CUDA runtime card near the GPU acceleration toggle
+- **AND** the user-facing card title and feedback copy describe the surface as `本地 GPU 加速运行库`, while still explaining that the current primary acceleration target is the transcription chain
 - **AND** the card allows editing the runtime install directory directly or by opening a native directory picker from Electron
 - **AND** the card allows toggling automatic user-environment-variable configuration
 - **AND** the card exposes `保存运行库配置`, an install action, a pause-or-resume action that changes with the current runtime install state, and `刷新状态`
@@ -193,6 +200,7 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **AND** in light theme with a custom skin active, the diagnostics `自动修复` action keeps white foreground text and icon color in resting, hover, focus, and disabled states
 - **AND** in light theme with a custom skin active, titlebar language/theme menus and the sidebar workflow menu use the shared glass dropdown surface, default to white text/icons, and express selected or hover state via neutral glass emphasis instead of theme-cyan fills
 - **AND** in light theme with a custom skin active, titlebar language/theme menu items and sidebar workflow options keep a neutral resting state and SHALL NOT inherit global accent background fills outside their explicit local hover, focus, highlight, or selected glass states
+- **AND** in dark theme with a custom skin active, tooltip surfaces switch to a light floating background with dark readable text so icon-only helper text remains legible over the darker shell
 - **AND** in light theme with a custom skin active, prompt-template list cards suppress hard white outline strokes in favor of translucent surface separation
 - **AND** the workspace shell does not add extra renderer-side blur or tint beyond the persisted skin blur and opacity values
 - **AND** wallpaper preview, blur, and transient feedback surfaces coalesce live renderer refreshes to frame cadence and release temporary GPU or audio resources when they close so long-running Electron sessions remain smooth
@@ -280,6 +288,7 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 - **WHEN** user opens a notes task in the processing workbench
 - **THEN** the renderer shows the resizable video-and-artifact layout
 - **AND** the left workspace exposes an additional `文本纠错` tab dedicated to transcript correction output
+- **AND** left and right workspace tab bars use a clear filled selected state instead of relying only on a thin bottom border
 - **AND** the Markdown workspace renders a single notes Markdown surface instead of duplicating equivalent summary content beside it
 - **AND** the Markdown workspace wraps that notes surface inside a dedicated reading panel with a compact darker action header and a continuous reading body so wallpaper imagery stays atmospheric instead of competing with note readability
 - **AND** Markdown timestamps can seek the video
@@ -287,11 +296,18 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 - **AND** when the right workspace is resized narrow, Markdown, mindmap, clue-basket, and VQA panes reflow their tab chrome, actions, cards, and dense content within the available pane width instead of clipping the reading surface
 - **AND** entering note-edit mode opens a dedicated Markdown dialog with source editing on the left and live rendered preview on the right
 - **AND** in light theme with a custom skin active, the notes workspace tabs, action row, rendered Markdown, and empty states keep readable white foreground text
+- **AND** in light theme with a custom skin active, the left-side workbench tab labels also keep readable white foreground text in resting state and use theme-hue filled emphasis in their selected state
 - **AND** in light theme with a custom skin active, the notes reading panel and clue-basket shell use theme-hue tinted translucent fills instead of near-black slabs so they remain consistent with the lighter wallpaper atmosphere
 - **AND** the clue-basket tab keeps a single collection shell with a separated header band and inner clue cards so saved evidence remains legible above custom-skin backgrounds instead of floating directly on the wallpaper
 - **AND** transcript cards render a precise timestamp chip at the top, keep only icon actions on the trailing edge, and expose action meaning through hover tooltips
 - **AND** in light theme with a custom skin active, transcript cards and correction surfaces keep white foreground text while timestamp chips and quick-action icons remain readable against the glass surface
 - **AND** transcript cards support quick actions such as `加入笔记` and `加入线索篮`
+- **AND** in light theme with a custom skin active, evidence-timeline seek buttons use the active theme hue family for their resting fill instead of falling back to neutral outline styling
+
+#### Scenario: Open task detail from history or recent tasks
+- **WHEN** user opens a task and the right-side artifact workspace still needs several seconds to load detail data
+- **THEN** the right workspace shows a compact loading placeholder surface before the final Markdown or VQA pane mounts
+- **AND** the placeholder is replaced only after detail data is ready, instead of rendering the final pane shell with incomplete content
 
 #### Scenario: Inspect transcript correction output in a notes task
 - **WHEN** user opens the `文本纠错` tab for a notes task

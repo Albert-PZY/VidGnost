@@ -1686,7 +1686,7 @@ export function TaskProcessingWorkbench({
   const traceFinishedPayload = React.useMemo(() => getTraceStagePayload(selectedTrace, "trace_finished"), [selectedTrace])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="task-processing-workbench-shell flex min-h-0 flex-1 flex-col overflow-hidden">
       <TaskWorkspaceHeader
         effectiveTitle={effectiveTitle}
         workflow={workflow}
@@ -1748,7 +1748,11 @@ export function TaskProcessingWorkbench({
         <ResizableHandle withHandle />
 
         <ResizablePanel defaultSize={50} minSize={34}>
-          {workflow === "notes" ? (
+          {isInitialLoading && !effectiveTask ? (
+            <TaskWorkbenchDetailLoading workflow={workflow} />
+          ) : !effectiveTask ? (
+            <TaskWorkbenchDetailState message={errorMessage || "任务详情暂时不可用，请稍后重试。"} />
+          ) : workflow === "notes" ? (
             <NotesWorkbench
               taskId={taskId}
               effectiveTitle={effectiveTitle}
@@ -2468,13 +2472,13 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
       />
 
       <Tabs value={leftTab} onValueChange={(value) => onLeftTabChange(value as LeftTab)} className="flex min-h-0 flex-1 flex-col">
-        <TabsList className="w-full justify-start rounded-none border-b bg-transparent p-0">
-          <TabsTrigger value="transcript" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">转写片段</TabsTrigger>
+        <TabsList className="workbench-tab-list w-full justify-start rounded-none border-b bg-transparent p-0">
+          <TabsTrigger value="transcript" className="workbench-tab-trigger workbench-left-tab-trigger">转写片段</TabsTrigger>
           {workflow === "notes" ? (
-            <TabsTrigger value="correction" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">文本纠错</TabsTrigger>
+            <TabsTrigger value="correction" className="workbench-tab-trigger workbench-left-tab-trigger">文本纠错</TabsTrigger>
           ) : null}
-          <TabsTrigger value="evidence" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">证据时间轴</TabsTrigger>
-          <TabsTrigger value="stage" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">阶段输出</TabsTrigger>
+          <TabsTrigger value="evidence" className="workbench-tab-trigger workbench-left-tab-trigger">证据时间轴</TabsTrigger>
+          <TabsTrigger value="stage" className="workbench-tab-trigger workbench-left-tab-trigger">阶段输出</TabsTrigger>
         </TabsList>
 
         <TabsContent value="transcript" className="mt-0 min-h-0 flex-1 overflow-hidden">
@@ -2552,7 +2556,7 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">{item.taskTitle}</p>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => onSeek(item.start)}>
+                    <Button variant="outline" size="sm" className="evidence-timeline-seek-button" onClick={() => onSeek(item.start)}>
                       <MapPin className="mr-1.5 h-3.5 w-3.5" />
                       {formatSecondsAsClock(item.start)}
                     </Button>
@@ -2645,6 +2649,48 @@ interface NotesWorkbenchProps {
   onAppendResearchItemToNotes: (item: ResearchBoardItem) => void
 }
 
+function TaskWorkbenchDetailLoading({ workflow }: { workflow: WorkflowType }) {
+  return (
+    <div className="workbench-detail-loading-shell flex h-full min-h-0 flex-col p-4">
+      <div className="workbench-detail-loading-card flex min-h-0 flex-1 flex-col overflow-hidden rounded-[calc(var(--radius)+0.45rem)] border border-border/70 bg-card/65">
+        <div className="flex items-center justify-between gap-3 border-b px-5 py-4">
+          <div className="space-y-2">
+            <div className="workbench-loading-pill h-3.5 w-24 rounded-full" />
+            <div className="workbench-loading-line h-4 w-40 rounded-full" />
+          </div>
+          <div className="workbench-loading-pill h-9 w-28 rounded-xl" />
+        </div>
+        <div className="grid min-h-0 flex-1 gap-4 p-5">
+          <div className="workbench-loading-block h-28 rounded-2xl" />
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="workbench-loading-block h-36 rounded-2xl" />
+            <div className="workbench-loading-block h-36 rounded-2xl" />
+          </div>
+          <div className="space-y-3">
+            <div className="workbench-loading-line h-4 w-44 rounded-full" />
+            <div className="workbench-loading-block h-24 rounded-2xl" />
+            <div className="workbench-loading-block h-24 rounded-2xl" />
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 flex items-center gap-2 px-1 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+        <span>{workflow === "notes" ? "正在载入笔记整理详情..." : "正在载入视频问答详情..."}</span>
+      </div>
+    </div>
+  )
+}
+
+function TaskWorkbenchDetailState({ message }: { message: string }) {
+  return (
+    <div className="workbench-detail-loading-shell flex h-full min-h-0 flex-col p-4">
+      <div className="workbench-pane-state flex min-h-0 flex-1 items-center justify-center rounded-[calc(var(--radius)+0.45rem)] border border-dashed p-8 text-center text-sm text-muted-foreground">
+        {message}
+      </div>
+    </div>
+  )
+}
+
 const NotesWorkbench = React.memo(function NotesWorkbench({
   taskId,
   effectiveTitle,
@@ -2670,10 +2716,10 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
 
   return (
     <Tabs value={notesTab} onValueChange={(value) => onNotesTabChange(value as NotesTab)} className="workbench-detail-pane notes-workbench-pane flex h-full min-h-0 flex-col">
-      <TabsList className="workbench-detail-tabs w-full justify-start rounded-none border-b bg-transparent p-0">
-        <TabsTrigger value="notes" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">Markdown 工作区</TabsTrigger>
-        <TabsTrigger value="mindmap" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">思维导图</TabsTrigger>
-        <TabsTrigger value="research" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">线索篮</TabsTrigger>
+      <TabsList className="workbench-detail-tabs workbench-tab-list w-full justify-start rounded-none border-b bg-transparent p-0">
+        <TabsTrigger value="notes" className="workbench-tab-trigger workbench-right-tab-trigger">Markdown 工作区</TabsTrigger>
+        <TabsTrigger value="mindmap" className="workbench-tab-trigger workbench-right-tab-trigger">思维导图</TabsTrigger>
+        <TabsTrigger value="research" className="workbench-tab-trigger workbench-right-tab-trigger">线索篮</TabsTrigger>
       </TabsList>
 
       <TabsContent value="notes" className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -2798,10 +2844,10 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
 
   return (
     <Tabs value={vqaTab} onValueChange={(value) => onVqaTabChange(value as VqaTab)} className="workbench-detail-pane vqa-workbench-pane flex h-full min-h-0 flex-col">
-      <TabsList className="workbench-detail-tabs w-full justify-start rounded-none border-b bg-transparent p-0">
-        <TabsTrigger value="chat" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">流式问答</TabsTrigger>
-        <TabsTrigger value="trace" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">Trace Theater</TabsTrigger>
-        <TabsTrigger value="research" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">线索篮</TabsTrigger>
+      <TabsList className="workbench-detail-tabs workbench-tab-list w-full justify-start rounded-none border-b bg-transparent p-0">
+        <TabsTrigger value="chat" className="workbench-tab-trigger workbench-right-tab-trigger">流式问答</TabsTrigger>
+        <TabsTrigger value="trace" className="workbench-tab-trigger workbench-right-tab-trigger">Trace Theater</TabsTrigger>
+        <TabsTrigger value="research" className="workbench-tab-trigger workbench-right-tab-trigger">线索篮</TabsTrigger>
       </TabsList>
 
       <TabsContent value="chat" className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden">

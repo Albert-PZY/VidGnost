@@ -32,6 +32,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
+import { formatDurationSeconds } from "@/lib/format"
 import type { TaskRecentItem, WorkflowType } from "@/lib/types"
 
 type NavigationItem = {
@@ -48,6 +49,7 @@ interface AppSidebarProps {
   onWorkflowChange: (workflow: WorkflowType) => void
   historyCount: number
   recentTasks: TaskRecentItem[]
+  activeRecentTaskId?: string
   onOpenRecentTask: (taskId: string, meta?: { title?: string; workflow?: WorkflowType }) => void
 }
 
@@ -99,6 +101,7 @@ export function AppSidebar({
   onWorkflowChange,
   historyCount,
   recentTasks,
+  activeRecentTaskId = "",
   onOpenRecentTask,
 }: AppSidebarProps) {
   const selectedWorkflowData = workflowOptions.find((w) => w.id === selectedWorkflow)
@@ -225,6 +228,8 @@ export function AppSidebar({
               {recentTasks.map((task) => (
                 <SidebarMenuItem key={task.id}>
                   <SidebarMenuButton
+                    isActive={task.id === activeRecentTaskId}
+                    className="recent-task-button h-auto min-h-12 items-start px-2.5 py-2.5"
                     tooltip={task.title}
                     onClick={() =>
                       onOpenRecentTask(task.id, {
@@ -233,8 +238,13 @@ export function AppSidebar({
                       })
                     }
                   >
-                    <FolderOpen className="h-4 w-4" />
-                    <span className="min-w-0 flex-1 truncate">{task.title}</span>
+                    <FolderOpen className="mt-0.5 h-4 w-4 shrink-0" />
+                    <div className="flex min-w-0 flex-1 flex-col items-start">
+                      <span className="w-full truncate">{task.title}</span>
+                      <span className="recent-task-meta w-full truncate text-[11px] text-muted-foreground group-data-[collapsible=icon]:hidden">
+                        {task.workflow === "notes" ? "笔记整理" : "视频问答"} · {formatDurationSeconds(task.duration_seconds)}
+                      </span>
+                    </div>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}

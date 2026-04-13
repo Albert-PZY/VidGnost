@@ -322,8 +322,22 @@ export async function downloadTaskArtifact(
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement("a")
   const disposition = response.headers.get("content-disposition") || ""
+  const contentType = response.headers.get("content-type") || ""
   const fileNameMatch = disposition.match(/filename\*=UTF-8''([^;]+)|filename=\"?([^\";]+)\"?/)
-  const fileName = decodeURIComponent(fileNameMatch?.[1] || fileNameMatch?.[2] || `${taskId}-${kind}`)
+  const fallbackName = ensureArtifactDownloadFileName({
+    taskId,
+    kind,
+    archive,
+    contentType,
+    fileName: `${taskId}-${kind}`,
+  })
+  const fileName = ensureArtifactDownloadFileName({
+    taskId,
+    kind,
+    archive,
+    contentType,
+    fileName: decodeURIComponent(fileNameMatch?.[1] || fileNameMatch?.[2] || fallbackName),
+  })
 
   anchor.href = url
   anchor.download = fileName
@@ -626,6 +640,60 @@ async function fetchJson<T>(url: string): Promise<T> {
   }
 
   return readJson<T>(response)
+}
+
+function ensureArtifactDownloadFileName(input: {
+  taskId: string
+  kind: "transcript" | "notes" | "mindmap" | "srt" | "vtt" | "bundle"
+  archive: "zip" | "tar"
+  contentType: string
+  fileName: string
+}): string {
+  const trimmed = input.fileName.trim() || `${input.taskId}-${input.kind}`
+  if (/\.[A-Za-z0-9]{2,5}$/.test(trimmed)) {
+    return trimmed
+  }
+  return `${trimmed}${resolveArtifactFileExtension(input.kind, input.archive, input.contentType)}`
+}
+
+function resolveArtifactFileExtension(
+  kind: "transcript" | "notes" | "mindmap" | "srt" | "vtt" | "bundle",
+  archive: "zip" | "tar",
+  contentType: string,
+): string {
+  const normalizedContentType = contentType.toLowerCase()
+  if (normalizedContentType.includes("application/zip")) {
+    return ".zip"
+  }
+  if (normalizedContentType.includes("application/x-tar")) {
+    return ".tar"
+  }
+  if (normalizedContentType.includes("text/markdown")) {
+    return ".md"
+  }
+  if (normalizedContentType.includes("text/html")) {
+    return ".html"
+  }
+  if (normalizedContentType.includes("text/vtt")) {
+    return ".vtt"
+  }
+
+  switch (kind) {
+    case "transcript":
+      return ".txt"
+    case "notes":
+      return ".md"
+    case "mindmap":
+      return ".html"
+    case "srt":
+      return ".srt"
+    case "vtt":
+      return ".vtt"
+    case "bundle":
+      return archive === "tar" ? ".tar" : ".zip"
+    default:
+      return ""
+  }
 }
 
 function drainSseBuffer(

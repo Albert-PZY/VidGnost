@@ -85,6 +85,7 @@ export interface TaskRecentItem {
   id: string
   title: string
   workflow: WorkflowType
+  duration_seconds: number | null
   updated_at: string
 }
 

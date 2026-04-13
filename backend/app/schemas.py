@@ -89,6 +89,7 @@ class TaskRecentItem(BaseModel):
     id: str
     title: str
     workflow: WorkflowType
+    duration_seconds: float | None = None
     updated_at: datetime
 
 

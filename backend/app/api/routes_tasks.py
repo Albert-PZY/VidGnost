@@ -38,7 +38,7 @@ from app.schemas import (
 )
 from app.services.events import EventBus
 from app.services.exporters import render_markmap_html
-from app.services.ingestion import ALLOWED_VIDEO_EXTENSIONS, sanitize_filename
+from app.services.ingestion import ALLOWED_VIDEO_EXTENSIONS, probe_media_duration_seconds, sanitize_filename
 from app.services.naming import generate_time_key
 from app.services.task_artifact_index import build_task_artifact_index, parse_task_artifact_index
 from app.services.task_preflight import TaskPreflightService
@@ -267,6 +267,7 @@ def get_recent_tasks(
                 id=row.id,
                 title=(row.title or row.source_input or row.id),
                 workflow=_normalize_workflow(row.workflow),
+                duration_seconds=_resolve_effective_duration_seconds(row),
                 updated_at=row.updated_at,
             )
             for row in rows
@@ -566,10 +567,20 @@ def export_task(
             headers={"Content-Disposition": _build_content_disposition(f"{title}-transcript.txt")},
         )
     if kind == "notes":
-        return PlainTextResponse(
-            record.notes_markdown or "",
-            media_type="text/markdown; charset=utf-8",
-            headers={"Content-Disposition": _build_content_disposition(f"{title}-notes.md")},
+        notes_files = _build_notes_export_files(record=record, title=title, storage_dir=str(request.app.state.settings.storage_dir))
+        if len(notes_files) == 1:
+            return PlainTextResponse(
+                record.notes_markdown or "",
+                media_type="text/markdown; charset=utf-8",
+                headers={"Content-Disposition": _build_content_disposition(f"{title}-notes.md")},
+            )
+        payload = _build_archive_payload(notes_files, archive=archive)
+        ext = "zip" if archive == "zip" else "tar"
+        media_type = "application/zip" if archive == "zip" else "application/x-tar"
+        return Response(
+            content=payload,
+            media_type=media_type,
+            headers={"Content-Disposition": _build_content_disposition(f"{title}-notes.{ext}")},
         )
     if kind == "mindmap":
         html = render_markmap_html(record.mindmap_markdown or "# Empty", title=record.title or task_id)
@@ -706,6 +717,14 @@ def _build_artifact_bundle(
     storage_dir: str,
 ) -> bytes:
     files = _build_artifact_files(record=record, title=title, storage_dir=storage_dir)
+    return _build_archive_payload(files, archive=archive)
+
+
+def _build_archive_payload(
+    files: dict[str, bytes],
+    *,
+    archive: Literal["zip", "tar"],
+) -> bytes:
     if archive == "zip":
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zip_file:
@@ -721,6 +740,12 @@ def _build_artifact_bundle(
             info.mtime = timestamp
             tar_file.addfile(info, io.BytesIO(content))
     return buffer.getvalue()
+
+
+def _build_notes_export_files(record: TaskRecord, title: str, *, storage_dir: str) -> dict[str, bytes]:
+    files = {f"{title}-notes.md": (record.notes_markdown or "").encode("utf-8")}
+    files.update(_load_notes_image_assets(task_id=record.id, storage_dir=storage_dir))
+    return files
 
 
 def _build_artifact_files(record: TaskRecord, title: str, *, storage_dir: str) -> dict[str, bytes]:
@@ -789,6 +814,27 @@ def _resolve_task_artifact_path(*, storage_dir: str, task_id: str, relative_path
     return target_path
 
 
+def _resolve_effective_duration_seconds(record: TaskRecord) -> float | None:
+    if record.duration_seconds and record.duration_seconds > 0:
+        return record.duration_seconds
+
+    transcript_segments = _parse_transcript_segments(record.transcript_segments_json)
+    if transcript_segments:
+        max_end = max((segment.end for segment in transcript_segments), default=0.0)
+        if max_end > 0:
+            return round(float(max_end), 2)
+
+    path_value = (record.source_local_path or "").strip()
+    if path_value:
+        media_path = Path(path_value).expanduser()
+        if media_path.exists() and media_path.is_file():
+            probed_duration = probe_media_duration_seconds(media_path)
+            if probed_duration and probed_duration > 0:
+                return probed_duration
+
+    return None
+
+
 def _to_summary_item(record: TaskRecord) -> TaskSummaryItem:
     return TaskSummaryItem(
         id=record.id,
@@ -799,7 +845,7 @@ def _to_summary_item(record: TaskRecord) -> TaskSummaryItem:
         status=_to_public_status(record.status),
         progress=max(0, min(100, int(record.progress))),
         file_size_bytes=max(0, int(record.file_size_bytes or 0)),
-        duration_seconds=record.duration_seconds,
+        duration_seconds=_resolve_effective_duration_seconds(record),
         created_at=record.created_at,
         updated_at=record.updated_at,
     )
@@ -844,7 +890,7 @@ def _to_detail(record: TaskRecord) -> TaskDetailResponse:
         current_step_id=current_step_id,
         steps=steps,
         error_message=record.error_message,
-        duration_seconds=record.duration_seconds,
+        duration_seconds=_resolve_effective_duration_seconds(record),
         transcript_text=record.transcript_text,
         transcript_segments=transcript_segments,
         summary_markdown=record.summary_markdown,
