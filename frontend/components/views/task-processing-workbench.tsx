@@ -2276,7 +2276,7 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
         }
         setIsEditingNotes(true)
       }}>
-        <DialogContent className="max-h-[80vh] w-[min(96vw,144rem)] max-w-[min(96vw,144rem)] overflow-hidden p-0">
+        <DialogContent className="max-h-[80vh] w-[min(96vw,144rem)] max-w-[min(96vw,144rem)] sm:max-w-[min(96vw,144rem)] overflow-hidden p-0">
           <DialogHeader className="border-b px-6 py-4">
             <DialogTitle>编辑 Markdown 笔记</DialogTitle>
             <DialogDescription>左侧修改内容，右侧实时预览。时间戳和图片链接会保持与工作区一致的渲染规则。</DialogDescription>
