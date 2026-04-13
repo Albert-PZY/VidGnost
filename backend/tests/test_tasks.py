@@ -413,6 +413,65 @@ def test_cancel_running_task() -> None:
         assert payload["status"] == TaskStatus.CANCELLED.value
 
 
+def test_pause_running_task() -> None:
+    with TestClient(app) as client:
+        async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
+            return
+
+        async def fake_pause(_task_id: str) -> bool:
+            return True
+
+        client.app.state.task_runner.submit = fake_submit
+        client.app.state.task_runner.pause = fake_pause
+        create_response = client.post(
+            "/api/tasks/url",
+            json={
+                "url": "BV1xx411c7mD",
+                "model_size": "small",
+                "language": "zh",
+                "workflow": "vqa",
+            },
+        )
+        assert create_response.status_code == 202
+        task_id = create_response.json()["task_id"]
+
+        pause_response = client.post(f"/api/tasks/{task_id}/pause")
+        assert pause_response.status_code == 202
+        payload = pause_response.json()
+        assert payload["task_id"] == task_id
+        assert payload["status"] == TaskStatus.PAUSED.value
+
+
+def test_resume_paused_task() -> None:
+    with TestClient(app) as client:
+        async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
+            return
+
+        async def fake_resume(_task_id: str) -> bool:
+            return True
+
+        client.app.state.task_runner.submit = fake_submit
+        client.app.state.task_runner.resume = fake_resume
+        create_response = client.post(
+            "/api/tasks/url",
+            json={
+                "url": "BV1xx411c7mD",
+                "model_size": "small",
+                "language": "zh",
+                "workflow": "notes",
+            },
+        )
+        assert create_response.status_code == 202
+        task_id = create_response.json()["task_id"]
+
+        client.app.state.task_store.update(task_id, status=TaskStatus.PAUSED.value)
+        resume_response = client.post(f"/api/tasks/{task_id}/resume")
+        assert resume_response.status_code == 202
+        payload = resume_response.json()
+        assert payload["task_id"] == task_id
+        assert payload["status"] == TaskStatus.QUEUED.value
+
+
 def test_rerun_stage_d_for_terminal_task() -> None:
     with TestClient(app) as client:
         async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]

@@ -135,6 +135,34 @@ def split_audio_wav(audio_path: Path, output_dir: Path, chunk_seconds: int = 180
     return chunks
 
 
+def extract_video_frames(
+    media_path: Path,
+    output_dir: Path,
+    *,
+    interval_seconds: float = 10.0,
+    quality: int = 4,
+) -> list[Path]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for existing in output_dir.glob("frame-*.jpg"):
+        existing.unlink(missing_ok=True)
+
+    safe_interval = max(1.0, float(interval_seconds))
+    safe_quality = max(2, min(10, int(quality)))
+    output_pattern = output_dir / "frame-%06d.jpg"
+    (
+        ffmpeg.input(str(media_path))
+        .output(
+            str(output_pattern),
+            vf=f"fps=1/{safe_interval}",
+            start_number=0,
+            **{"qscale:v": safe_quality, "vsync": "vfr"},
+        )
+        .overwrite_output()
+        .run(quiet=True)
+    )
+    return sorted(output_dir.glob("frame-*.jpg"))
+
+
 def _locate_downloaded_media(task_id: str, target_dir: Path) -> Path:
     matches = sorted(target_dir.glob(f"{task_id}.*"), key=lambda p: p.stat().st_mtime, reverse=True)
     if not matches:

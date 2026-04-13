@@ -271,6 +271,14 @@ export function cancelTask(taskId: string) {
   return apiFetch(`/tasks/${taskId}/cancel`, { method: "POST", body: JSON.stringify({}) })
 }
 
+export function pauseTask(taskId: string) {
+  return apiFetch(`/tasks/${taskId}/pause`, { method: "POST", body: JSON.stringify({}) })
+}
+
+export function resumeTask(taskId: string) {
+  return apiFetch(`/tasks/${taskId}/resume`, { method: "POST", body: JSON.stringify({}) })
+}
+
 export function rerunTaskStageD(taskId: string) {
   return apiFetch(`/tasks/${taskId}/rerun-stage-d`, { method: "POST", body: JSON.stringify({}) })
 }
@@ -357,6 +365,7 @@ export function updateModel(
     load_profile?: string | null
     quantization?: string | null
     max_batch_size?: number | null
+    frame_interval_seconds?: number | null
     enabled?: boolean | null
   },
 ): Promise<ModelListResponse> {

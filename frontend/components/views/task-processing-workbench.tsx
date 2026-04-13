@@ -16,7 +16,6 @@ import {
   MessageSquare,
   Pause,
   Play,
-  RefreshCw,
   Save,
   Search,
   Send,
@@ -31,13 +30,20 @@ import {
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Textarea } from "@/components/ui/textarea"
+import { PromptMarkdownEditor } from "@/components/editors/prompt-markdown-editor"
 import { MarkdownArtifactViewer } from "@/components/ui/markdown-artifact-viewer"
 import { ResearchBoardPanel } from "@/components/views/research-board-panel"
 import {
@@ -50,7 +56,8 @@ import {
   getChatTrace,
   getTaskArtifactText,
   getTaskDetail,
-  rerunTaskStageD,
+  pauseTask,
+  resumeTask,
   streamChatWithTask,
   streamTaskEvents,
   updateTaskArtifacts,
@@ -58,6 +65,7 @@ import {
 import { formatBytes, formatDateTime, formatSecondsAsClock } from "@/lib/format"
 import { logPerfSample, markPerfStart } from "@/lib/perf"
 import { addResearchBoardItem } from "@/lib/research-board"
+import type { ResearchBoardItem } from "@/lib/research-board"
 import type {
   TaskDetailResponse,
   TaskStepItem,
@@ -126,10 +134,10 @@ const TASK_EVENT_BADGE_LABELS: Record<string, string> = {
 }
 
 const TRACE_SECTIONS = [
-  { key: "dense_hits", label: "Dense 检索", scoreKey: "dense_score" },
-  { key: "sparse_hits", label: "Sparse 检索", scoreKey: "sparse_score" },
-  { key: "rrf_hits", label: "RRF 合并", scoreKey: "rrf_score" },
-  { key: "rerank_hits", label: "Rerank 结果", scoreKey: "final_score" },
+  { key: "dense_hits", label: "Dense 语义候选", scoreKey: "dense_score" },
+  { key: "sparse_hits", label: "Sparse 关键词候选", scoreKey: "sparse_score" },
+  { key: "rrf_hits", label: "RRF 融合结果", scoreKey: "rrf_score" },
+  { key: "rerank_hits", label: "最终排序结果", scoreKey: "final_score" },
 ] as const
 
 function buildFallbackSteps(workflow: WorkflowType): TaskStepItem[] {
@@ -161,6 +169,10 @@ function isRunningTask(status: string | undefined): boolean {
   return Boolean(status && ["queued", "running"].includes(status))
 }
 
+function isPausedTask(status: string | undefined): boolean {
+  return status === "paused"
+}
+
 function asObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -183,12 +195,87 @@ function asNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.map((item) => asString(item).trim()).filter(Boolean)
+}
+
 function getTraceStagePayload(trace: VqaTraceResponse | null, stage: string): Record<string, unknown> {
   if (!trace) {
     return {}
   }
   const record = trace.records.find((item) => item.stage === stage)
   return asObject(record?.payload)
+}
+
+function buildTraceHitKey(hit: Record<string, unknown>): string {
+  const taskId = asString(hit.task_id)
+  const text = asString(hit.text).trim().replace(/\s+/g, " ").toLowerCase()
+  if (text) {
+    return `${taskId}|${text}`
+  }
+  const imagePath = asString(hit.image_path).trim()
+  if (imagePath) {
+    return `${taskId}|image:${imagePath}`
+  }
+  const start = asNumber(hit.start) ?? 0
+  const end = asNumber(hit.end) ?? 0
+  return `${taskId}|${start.toFixed(2)}-${end.toFixed(2)}`
+}
+
+function mergeTraceSourceSets(...groups: unknown[]): string[] {
+  const merged: string[] = []
+  const seen = new Set<string>()
+  groups.forEach((group) => {
+    asStringArray(group).forEach((item) => {
+      if (seen.has(item)) {
+        return
+      }
+      seen.add(item)
+      merged.push(item)
+    })
+  })
+  return merged
+}
+
+function dedupeTraceHits(hits: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  const deduped = new Map<string, Record<string, unknown>>()
+  hits.forEach((hit) => {
+    const key = buildTraceHitKey(hit)
+    const current = deduped.get(key)
+    if (!current) {
+      deduped.set(key, { ...hit })
+      return
+    }
+    deduped.set(key, {
+      ...current,
+      dense_score: Math.max(asNumber(current.dense_score) ?? 0, asNumber(hit.dense_score) ?? 0),
+      sparse_score: Math.max(asNumber(current.sparse_score) ?? 0, asNumber(hit.sparse_score) ?? 0),
+      rrf_score: Math.max(asNumber(current.rrf_score) ?? 0, asNumber(hit.rrf_score) ?? 0),
+      rerank_score: Math.max(asNumber(current.rerank_score) ?? 0, asNumber(hit.rerank_score) ?? 0),
+      final_score: Math.max(asNumber(current.final_score) ?? 0, asNumber(hit.final_score) ?? 0),
+      source_set: mergeTraceSourceSets(current.source_set, hit.source_set),
+      image_path: asString(current.image_path) || asString(hit.image_path),
+    })
+  })
+  return Array.from(deduped.values())
+}
+
+function getTraceSectionHint(sectionKey: (typeof TRACE_SECTIONS)[number]["key"]): string {
+  switch (sectionKey) {
+    case "dense_hits":
+      return "按语义相似度召回，分数越高说明问题和片段语义越接近。"
+    case "sparse_hits":
+      return "按关键词命中召回，分数已做可读化归一，便于直接比较强弱。"
+    case "rrf_hits":
+      return "把 Dense 和 Sparse 候选融合后重新排序，同一片段已在阶段内去重。"
+    case "rerank_hits":
+      return "最终给模型使用的候选列表，默认不做查询扩展，只按原问题直搜。"
+    default:
+      return "这里展示当前阶段的去重候选。"
+  }
 }
 
 function getStepStatusIcon(status: TaskStepItem["status"]) {
@@ -210,6 +297,8 @@ function getVmPhaseStatusLabel(status: string): string {
       return "已完成"
     case "running":
       return "进行中"
+    case "paused":
+      return "已暂停"
     case "failed":
       return "失败"
     case "skipped":
@@ -429,6 +518,8 @@ function applyTaskStreamEvent(current: TaskDetailResponse, event: TaskStreamEven
     nextSteps.forEach((step, index) => {
       nextSteps[index] = { ...step, status: "completed", progress: 100 }
     })
+  } else if (rawType === "task_paused") {
+    nextStatus = "paused"
   } else if (rawType === "task_cancelled") {
     nextStatus = "cancelled"
   } else if (rawType === "task_failed") {
@@ -547,6 +638,7 @@ function shouldTriggerTaskRefresh(event: TaskStreamEvent): boolean {
     "substage_start",
     "substage_complete",
     "log",
+    "task_paused",
     "task_complete",
     "task_cancelled",
     "task_failed",
@@ -564,6 +656,9 @@ function getTaskStatusSummary(status: string, steps: TaskStepItem[]): string {
   }
   if (normalized === "cancelled") {
     return "已取消"
+  }
+  if (normalized === "paused") {
+    return "已暂停"
   }
   if (normalized === "queued") {
     return "排队中"
@@ -596,6 +691,24 @@ function formatTaskEventBadge(event: TaskStreamEvent): string {
     return VM_PHASE_LABELS[stage] || `阶段 ${stage}`
   }
   return "任务动态"
+}
+
+function formatTraceScore(value: unknown): string {
+  const score = asNumber(value)
+  if (score === null) {
+    return "-"
+  }
+  const absScore = Math.abs(score)
+  if (absScore >= 1) {
+    return score.toFixed(3)
+  }
+  if (absScore >= 0.01) {
+    return score.toFixed(4)
+  }
+  if (absScore > 0) {
+    return score.toExponential(2)
+  }
+  return "0"
 }
 
 function translateTaskLogMessage(message: string): string {
@@ -738,6 +851,9 @@ function formatTaskEventMessage(event: TaskStreamEvent): string {
   if (rawType === "task_cancelled") {
     return "任务已取消"
   }
+  if (rawType === "task_paused") {
+    return "任务已暂停，可随时继续"
+  }
   return translateTaskLogMessage(asString(event.message || event.text || event.title))
 }
 
@@ -773,7 +889,8 @@ export function TaskProcessingWorkbench({
   const [liveTranscriptSegments, setLiveTranscriptSegments] = React.useState<TranscriptSegment[]>([])
   const [videoLoadError, setVideoLoadError] = React.useState("")
   const [isCancelling, setIsCancelling] = React.useState(false)
-  const [isRerunning, setIsRerunning] = React.useState(false)
+  const [isPausing, setIsPausing] = React.useState(false)
+  const [isResuming, setIsResuming] = React.useState(false)
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
   const refreshTimerRef = React.useRef<number | null>(null)
   const chatAbortRef = React.useRef<AbortController | null>(null)
@@ -874,7 +991,11 @@ export function TaskProcessingWorkbench({
       if (shouldRecordTaskEvent(event)) {
         setTaskEvents((current) => [event, ...current].slice(0, 80))
       }
-      const shouldRefreshImmediately = rawType === "task_complete" || rawType === "task_cancelled" || rawType === "task_failed"
+      const shouldRefreshImmediately =
+        rawType === "task_complete" ||
+        rawType === "task_paused" ||
+        rawType === "task_cancelled" ||
+        rawType === "task_failed"
       if (shouldRefreshImmediately) {
         if (refreshTimerRef.current !== null) {
           window.clearTimeout(refreshTimerRef.current)
@@ -972,7 +1093,7 @@ export function TaskProcessingWorkbench({
         workflow,
         ...payload,
       })
-      toast.success("已加入研究板")
+      toast.success("已加入线索篮")
     },
     [effectiveTitle, taskId, workflow],
   )
@@ -1181,21 +1302,72 @@ export function TaskProcessingWorkbench({
     }
   }, [effectiveTask, loadTask, taskId])
 
-  const handleRerunStageD = React.useCallback(async () => {
-    if (!effectiveTask || !isTerminalTask(effectiveTask.status)) {
+  const handlePauseTask = React.useCallback(async () => {
+    if (!effectiveTask || !isRunningTask(effectiveTask.status)) {
       return
     }
-    setIsRerunning(true)
+    setIsPausing(true)
     try {
-      await rerunTaskStageD(taskId)
-      toast.success("已触发重跑 D 阶段")
+      await pauseTask(taskId)
+      toast.success("任务已暂停")
       await loadTask({ showToastOnError: false })
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "重跑 D 阶段失败"))
+      toast.error(getApiErrorMessage(error, "暂停任务失败"))
     } finally {
-      setIsRerunning(false)
+      setIsPausing(false)
     }
   }, [effectiveTask, loadTask, taskId])
+
+  const handleResumeTask = React.useCallback(async () => {
+    if (!effectiveTask || !isPausedTask(effectiveTask.status)) {
+      return
+    }
+    setIsResuming(true)
+    try {
+      await resumeTask(taskId)
+      toast.success("任务已继续执行")
+      await loadTask({ showToastOnError: false })
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "继续任务失败"))
+    } finally {
+      setIsResuming(false)
+    }
+  }, [effectiveTask, loadTask, taskId])
+
+  const handleAddCitationToResearch = React.useCallback(
+    (citation: VqaCitationItem) => {
+      addItemToResearchBoard({
+        type: "citation",
+        title: `证据片段 · ${formatSecondsAsClock(citation.start)}`,
+        content: citation.text,
+        start: citation.start,
+        end: citation.end,
+        source: citation.source,
+        sourceSet: citation.source_set || [],
+      })
+    },
+    [addItemToResearchBoard],
+  )
+
+  const handleAppendResearchItemToNotes = React.useCallback((item: ResearchBoardItem) => {
+    const timeRange =
+      typeof item.start === "number" && typeof item.end === "number"
+        ? `${formatSecondsAsClock(item.start)} - ${formatSecondsAsClock(item.end)}`
+        : typeof item.start === "number"
+          ? formatSecondsAsClock(item.start)
+          : "未记录时间点"
+    const line = `- ${timeRange} ${item.content}`
+    setNotesDraft((current) => appendMarkdownSection(current, "补充线索", line))
+    setNotesTab("notes")
+    setIsEditingNotes(true)
+    toast.success("已加入笔记草稿")
+  }, [])
+
+  const handleUseResearchItemAsQuestion = React.useCallback((item: ResearchBoardItem) => {
+    setQuestion(`请结合上下文解释这段线索：${item.content}`)
+    setVqaTab("chat")
+    toast.success("已设为提问草稿")
+  }, [])
 
   const evidenceTimelineItems = React.useMemo(() => {
     if (workflow === "notes") {
@@ -1248,11 +1420,13 @@ export function TaskProcessingWorkbench({
         steps={steps}
         onBack={onBack}
         isCancelling={isCancelling}
-        canCancel={isRunningTask(effectiveTask?.status)}
+        isPausing={isPausing}
+        isResuming={isResuming}
+        canPause={isRunningTask(effectiveTask?.status)}
+        canResume={isPausedTask(effectiveTask?.status)}
         onCancel={handleCancelTask}
-        isRerunning={isRerunning}
-        canRerun={isTerminalTask(effectiveTask?.status)}
-        onRerun={handleRerunStageD}
+        onPause={handlePauseTask}
+        onResume={handleResumeTask}
         canExportBundle={effectiveTask?.status === "completed"}
         onExportBundle={handleExportBundle}
       />
@@ -1310,9 +1484,11 @@ export function TaskProcessingWorkbench({
               mindmapHtml={mindmapHtml}
               isMindmapLoading={isMindmapLoading}
               isTaskCompleted={effectiveTask?.status === "completed"}
+              onAppendResearchItemToNotes={handleAppendResearchItemToNotes}
             />
           ) : (
             <VqaWorkbench
+              taskId={taskId}
               effectiveTitle={effectiveTitle}
               vqaTab={vqaTab}
               onVqaTabChange={setVqaTab}
@@ -1332,6 +1508,8 @@ export function TaskProcessingWorkbench({
               traceRetrievalPayload={traceRetrievalPayload}
               traceLlmPayload={traceLlmPayload}
               traceFinishedPayload={traceFinishedPayload}
+              onAddCitationToResearch={handleAddCitationToResearch}
+              onUseResearchItemAsQuestion={handleUseResearchItemAsQuestion}
             />
           )}
         </ResizablePanel>
@@ -1350,11 +1528,13 @@ interface TaskWorkspaceHeaderProps {
   steps: TaskStepItem[]
   onBack: () => void
   isCancelling: boolean
-  canCancel: boolean
+  isPausing: boolean
+  isResuming: boolean
+  canPause: boolean
+  canResume: boolean
   onCancel: () => void
-  isRerunning: boolean
-  canRerun: boolean
-  onRerun: () => void
+  onPause: () => void
+  onResume: () => void
   canExportBundle: boolean
   onExportBundle: () => void
 }
@@ -1369,11 +1549,13 @@ const TaskWorkspaceHeader = React.memo(function TaskWorkspaceHeader({
   steps,
   onBack,
   isCancelling,
-  canCancel,
+  isPausing,
+  isResuming,
+  canPause,
+  canResume,
   onCancel,
-  isRerunning,
-  canRerun,
-  onRerun,
+  onPause,
+  onResume,
   canExportBundle,
   onExportBundle,
 }: TaskWorkspaceHeaderProps) {
@@ -1400,16 +1582,22 @@ const TaskWorkspaceHeader = React.memo(function TaskWorkspaceHeader({
           <Badge variant={totalProgress >= 100 ? "default" : "secondary"}>
             {statusSummary} · {Math.round(totalProgress)}%
           </Badge>
-          {canCancel ? (
+          {canPause ? (
+            <Button variant="outline" size="sm" disabled={isPausing} onClick={onPause}>
+              {isPausing ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Pause className="mr-1.5 h-4 w-4" />}
+              暂停任务
+            </Button>
+          ) : null}
+          {canResume ? (
+            <Button variant="outline" size="sm" disabled={isResuming} onClick={onResume}>
+              {isResuming ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Play className="mr-1.5 h-4 w-4" />}
+              继续任务
+            </Button>
+          ) : null}
+          {canPause ? (
             <Button variant="outline" size="sm" disabled={isCancelling} onClick={onCancel}>
               {isCancelling ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Square className="mr-1.5 h-4 w-4" />}
               取消任务
-            </Button>
-          ) : null}
-          {canRerun ? (
-            <Button variant="outline" size="sm" disabled={isRerunning} onClick={onRerun}>
-              {isRerunning ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1.5 h-4 w-4" />}
-              重跑 D 阶段
             </Button>
           ) : null}
           {canExportBundle ? (
@@ -1690,7 +1878,7 @@ const TranscriptSegmentCard = React.memo(function TranscriptSegmentCard({
             )}
             <Button variant="ghost" size="sm" className="h-7 px-2.5 text-xs" onClick={() => onAddTranscriptToResearch(segment)}>
               <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-              加入研究板
+                加入线索篮
             </Button>
           </div>
         </div>
@@ -1806,7 +1994,7 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
             <div className="flex items-center justify-between border-b px-4 py-3">
               <div>
                 <h3 className="text-sm font-medium">转写文本</h3>
-                <p className="text-xs text-muted-foreground">支持定位视频、加入笔记与研究板。</p>
+                <p className="text-xs text-muted-foreground">支持定位视频、加入笔记与线索篮。</p>
               </div>
               <div className="flex items-center gap-1">
                 {isRefreshing ? <Badge variant="secondary">同步中</Badge> : null}
@@ -1881,7 +2069,7 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
           <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
             <div className="space-y-4 p-4">
               <div className="grid gap-3 md:grid-cols-3">
-                <div className="rounded-2xl border border-border/70 bg-card/65 p-4"><p className="text-xs text-muted-foreground">任务状态</p><p className="mt-2 text-sm font-semibold">{taskStatus}</p></div>
+                <div className="rounded-2xl border border-border/70 bg-card/65 p-4"><p className="text-xs text-muted-foreground">任务状态</p><p className="mt-2 text-sm font-semibold">{getTaskStatusSummary(taskStatus, [])}</p></div>
                 <div className="rounded-2xl border border-border/70 bg-card/65 p-4"><p className="text-xs text-muted-foreground">产物体积</p><p className="mt-2 text-sm font-semibold">{formatBytes(artifactTotalBytes)}</p></div>
                 <div className="rounded-2xl border border-border/70 bg-card/65 p-4"><p className="text-xs text-muted-foreground">产物索引</p><p className="mt-2 text-sm font-semibold">{artifactCount} 项</p></div>
               </div>
@@ -1956,6 +2144,7 @@ interface NotesWorkbenchProps {
   mindmapHtml: string
   isMindmapLoading: boolean
   isTaskCompleted: boolean
+  onAppendResearchItemToNotes: (item: ResearchBoardItem) => void
 }
 
 const NotesWorkbench = React.memo(function NotesWorkbench({
@@ -1977,56 +2166,27 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
   mindmapHtml,
   isMindmapLoading,
   isTaskCompleted,
+  onAppendResearchItemToNotes,
 }: NotesWorkbenchProps) {
-  const notesEditorRef = React.useRef<HTMLTextAreaElement | null>(null)
-
-  React.useEffect(() => {
-    if (!isEditingNotes) {
-      return
-    }
-    const frame = window.requestAnimationFrame(() => {
-      const node = notesEditorRef.current
-      if (!node) {
-        return
-      }
-      node.scrollIntoView({
-        block: "start",
-        inline: "nearest",
-        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-      })
-      node.focus({ preventScroll: true })
-      const end = node.value.length
-      node.setSelectionRange(end, end)
-    })
-    return () => window.cancelAnimationFrame(frame)
-  }, [isEditingNotes])
+  const markdownColorMode =
+    typeof document !== "undefined" && document.documentElement.classList.contains("dark") ? "dark" : "light"
 
   return (
     <Tabs value={notesTab} onValueChange={(value) => onNotesTabChange(value as NotesTab)} className="workbench-detail-pane notes-workbench-pane flex h-full min-h-0 flex-col">
       <TabsList className="workbench-detail-tabs w-full justify-start rounded-none border-b bg-transparent p-0">
         <TabsTrigger value="notes" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">Markdown 工作区</TabsTrigger>
         <TabsTrigger value="mindmap" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">思维导图</TabsTrigger>
-        <TabsTrigger value="research" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">研究板</TabsTrigger>
+        <TabsTrigger value="research" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">线索篮</TabsTrigger>
       </TabsList>
 
       <TabsContent value="notes" className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden">
         <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
           <div className="space-y-4 p-4">
             <div className="notes-workbench-actions flex items-center justify-end gap-2">
-              {isEditingNotes ? (
-                <>
-                  <Button variant="outline" size="sm" onClick={() => { setIsEditingNotes(false); setNotesDraft(notesMarkdown || "") }}>取消</Button>
-                  <Button size="sm" disabled={isSavingNotes} onClick={() => void onSaveNotes()}>
-                    {isSavingNotes ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}
-                    保存
-                  </Button>
-                </>
-              ) : (
-                <Button variant="outline" size="sm" disabled={!canEditArtifacts} onClick={() => setIsEditingNotes(true)}>
-                  <Edit3 className="mr-1.5 h-4 w-4" />
-                  编辑笔记
-                </Button>
-              )}
+              <Button variant="outline" size="sm" disabled={!canEditArtifacts} onClick={() => setIsEditingNotes(true)}>
+                <Edit3 className="mr-1.5 h-4 w-4" />
+                编辑笔记
+              </Button>
               <Button variant="outline" size="sm" disabled={!isTaskCompleted} onClick={onDownloadNotes}>
                 <Download className="mr-1.5 h-4 w-4" />
                 导出 Markdown
@@ -2038,11 +2198,7 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
             </div>
             <div className="notes-workbench-section rounded-2xl border border-border/70 bg-card/65 p-4">
               <h3 className="mb-3 text-sm font-medium">笔记 Markdown</h3>
-              {isEditingNotes ? (
-                <Textarea ref={notesEditorRef} className="min-h-[28rem] font-mono text-sm leading-6" value={notesDraft} onChange={(event) => setNotesDraft(event.target.value)} />
-              ) : (
-                <MarkdownArtifactViewer taskId={taskId} markdown={notesMarkdown} emptyMessage="当前还没有生成笔记内容" className="artifact-markdown-viewer-shell" onSeek={onSeek} />
-              )}
+              <MarkdownArtifactViewer taskId={taskId} markdown={notesMarkdown} emptyMessage="当前还没有生成笔记内容" className="artifact-markdown-viewer-shell" onSeek={onSeek} />
             </div>
           </div>
         </ScrollArea>
@@ -2055,13 +2211,53 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
       </TabsContent>
 
       <TabsContent value="research" className="workbench-pane-padded mt-0 min-h-0 flex-1">
-        <ResearchBoardPanel onSeek={onSeek} />
+        <ResearchBoardPanel onSeek={onSeek} onAppendToNotes={onAppendResearchItemToNotes} />
       </TabsContent>
+      <Dialog open={isEditingNotes} onOpenChange={(open) => {
+        if (!open) {
+          setIsEditingNotes(false)
+          setNotesDraft(notesMarkdown || "")
+          return
+        }
+        setIsEditingNotes(true)
+      }}>
+        <DialogContent className="max-w-[min(90vw,72rem)] p-0">
+          <DialogHeader className="border-b px-6 py-5">
+            <DialogTitle>编辑 Markdown 笔记</DialogTitle>
+            <DialogDescription>左侧修改内容，右侧实时预览。时间戳和图片链接会保持与工作区一致的渲染规则。</DialogDescription>
+          </DialogHeader>
+          <div className="px-6 pb-4 pt-5">
+            <PromptMarkdownEditor
+              value={notesDraft}
+              colorMode={markdownColorMode}
+              height={560}
+              placeholder="在这里编辑任务笔记..."
+              onChange={setNotesDraft}
+            />
+          </div>
+          <div className="flex items-center justify-end gap-2 border-t px-6 py-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setIsEditingNotes(false)
+                setNotesDraft(notesMarkdown || "")
+              }}
+            >
+              取消
+            </Button>
+            <Button disabled={isSavingNotes} onClick={() => void onSaveNotes()}>
+              {isSavingNotes ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}
+              保存
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Tabs>
   )
 })
 
 const VqaWorkbench = React.memo(function VqaWorkbench({
+  taskId,
   effectiveTitle,
   vqaTab,
   onVqaTabChange,
@@ -2081,13 +2277,17 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
   traceRetrievalPayload,
   traceLlmPayload,
   traceFinishedPayload,
+  onAddCitationToResearch,
+  onUseResearchItemAsQuestion,
 }: VqaWorkbenchProps) {
+  const [previewImage, setPreviewImage] = React.useState<{ src: string; title: string } | null>(null)
+
   return (
     <Tabs value={vqaTab} onValueChange={(value) => onVqaTabChange(value as VqaTab)} className="workbench-detail-pane vqa-workbench-pane flex h-full min-h-0 flex-col">
       <TabsList className="workbench-detail-tabs w-full justify-start rounded-none border-b bg-transparent p-0">
         <TabsTrigger value="chat" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">流式问答</TabsTrigger>
         <TabsTrigger value="trace" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">Trace Theater</TabsTrigger>
-        <TabsTrigger value="research" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">研究板</TabsTrigger>
+        <TabsTrigger value="research" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent">线索篮</TabsTrigger>
       </TabsList>
 
       <TabsContent value="chat" className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -2099,16 +2299,26 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
                 <div key={message.id} data-role={message.role} className={cn("vqa-chat-message workbench-collection-item flex gap-3", message.role === "user" && "justify-end")}>
                   {message.role === "assistant" ? <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">{message.status === "streaming" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}</div> : null}
                   <div className={cn("vqa-chat-bubble max-w-[88%] space-y-3 rounded-2xl p-4", message.role === "user" ? "bg-primary text-primary-foreground" : "border border-border/70 bg-card/70")}>
-                    <p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p>
+                    {message.role === "assistant" ? (
+                      <MarkdownArtifactViewer
+                        taskId={taskId}
+                        markdown={message.content}
+                        emptyMessage=""
+                        className="min-w-0"
+                        onSeek={onSeek}
+                      />
+                    ) : (
+                      <p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p>
+                    )}
                     {message.role === "assistant" ? (
                       <>
                         <div className="flex flex-wrap items-center gap-2 text-xs">
-                          {message.traceId ? <Badge variant="outline">trace_id: {message.traceId}</Badge> : null}
+                          {message.traceId ? <Badge variant="outline">检索链路: {message.traceId}</Badge> : null}
                           {message.contextTokensApprox ? <Badge variant="secondary">上下文约 {message.contextTokensApprox} tokens</Badge> : null}
                           {message.statusMessage ? <Badge variant="secondary">{message.statusMessage}</Badge> : null}
                           {message.errorMessage ? <Badge variant="destructive">{message.errorMessage}</Badge> : null}
                         </div>
-                        {message.traceId ? <Button variant="outline" size="sm" onClick={() => void onOpenTrace(message.traceId || "")}><Search className="mr-1.5 h-3.5 w-3.5" />打开 Trace Theater</Button> : null}
+                        {message.traceId ? <Button variant="outline" size="sm" onClick={() => void onOpenTrace(message.traceId || "")}><Search className="mr-1.5 h-3.5 w-3.5" />查看检索链路</Button> : null}
                         {message.citations.length > 0 ? (
                           <div className="vqa-citation-list space-y-3">
                             {message.citations.map((citation, index) => (
@@ -2119,11 +2329,35 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
                                     <Badge variant="outline">{citation.source}</Badge>
                                     <Badge variant="secondary">{formatSecondsAsClock(citation.start)} - {formatSecondsAsClock(citation.end)}</Badge>
                                   </div>
-                                  <Button variant="outline" size="sm" onClick={() => onSeek(citation.start)}><MapPin className="mr-1.5 h-3.5 w-3.5" />跳转</Button>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <Button variant="outline" size="sm" onClick={() => onSeek(citation.start)}><MapPin className="mr-1.5 h-3.5 w-3.5" />跳转</Button>
+                                    <Button variant="ghost" size="sm" onClick={() => onAddCitationToResearch(citation)}>
+                                      <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                                      加入线索篮
+                                    </Button>
+                                  </div>
                                 </div>
                                 <div className="vqa-citation-layout mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_8rem]">
                                   <p className="whitespace-pre-wrap text-sm leading-6">{citation.text}</p>
-                                  {citation.image_path ? <img src={buildTaskArtifactFileUrl(citation.task_id, citation.image_path)} alt={citation.task_title || effectiveTitle} className="h-24 w-full rounded-xl border border-border/70 object-cover" loading="lazy" /> : null}
+                                  {citation.image_path ? (
+                                    <button
+                                      type="button"
+                                      className="group block overflow-hidden rounded-xl"
+                                      onClick={() =>
+                                        setPreviewImage({
+                                          src: buildTaskArtifactFileUrl(citation.task_id, citation.image_path),
+                                          title: `${citation.task_title || effectiveTitle} · ${formatSecondsAsClock(citation.start)}`,
+                                        })
+                                      }
+                                    >
+                                      <img
+                                        src={buildTaskArtifactFileUrl(citation.task_id, citation.image_path)}
+                                        alt={citation.task_title || effectiveTitle}
+                                        className="h-24 w-full rounded-xl border border-border/70 object-cover transition-transform duration-200 group-hover:scale-[1.02]"
+                                        loading="lazy"
+                                      />
+                                    </button>
+                                  ) : null}
                                 </div>
                               </div>
                             ))}
@@ -2148,31 +2382,33 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
       <TabsContent value="trace" className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden">
         <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
           <div className="space-y-4 p-4">
-            {!selectedTraceId ? <div className="workbench-pane-state rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">先在问答卡片里选择一个 trace_id，这里会展示完整的检索与回答链路。</div> : null}
+            {!selectedTraceId ? <div className="workbench-pane-state rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">先在问答卡片里打开一条检索链路，这里会展示完整的召回、融合和回答过程。</div> : null}
             {traceError ? <div className="workbench-pane-state rounded-2xl border border-destructive/30 bg-destructive/6 p-4 text-sm text-destructive">{traceError}</div> : null}
             {selectedTraceId && traceLoadingId === selectedTraceId ? <div className="workbench-pane-state flex items-center justify-center rounded-2xl border border-border/70 bg-card/65 p-8 text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />正在加载 Trace 明细...</div> : null}
             {selectedTrace ? (
               <>
                 <div className="workbench-pane-section rounded-2xl border border-border/70 bg-card/65 p-4">
                   <h3 className="text-sm font-medium">Trace 摘要</h3>
-                  <p className="mt-2 text-xs text-muted-foreground">trace_id: {selectedTrace.trace_id}</p>
-                  <div className="vqa-trace-summary-grid mt-3 grid gap-3 md:grid-cols-2">
+                  <p className="mt-2 text-xs text-muted-foreground">链路 ID: {selectedTrace.trace_id}</p>
+                  <div className="vqa-trace-summary-grid mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     <div className="rounded-xl border border-border/60 bg-background/55 p-3"><p className="text-xs text-muted-foreground">问题</p><p className="mt-1 text-sm">{asString(asObject(traceStartedPayload.metadata).query_text) || "未记录问题文本"}</p></div>
-                    <div className="rounded-xl border border-border/60 bg-background/55 p-3"><p className="text-xs text-muted-foreground">完成状态</p><p className="mt-1 text-sm">{asString(traceFinishedPayload.ok) || "未记录"}</p></div>
+                    <div className="rounded-xl border border-border/60 bg-background/55 p-3"><p className="text-xs text-muted-foreground">检索策略</p><p className="mt-1 text-sm">原问题直搜，不做查询扩展</p></div>
+                    <div className="rounded-xl border border-border/60 bg-background/55 p-3"><p className="text-xs text-muted-foreground">候选处理</p><p className="mt-1 text-sm">阶段内同文片段已去重</p></div>
+                    <div className="rounded-xl border border-border/60 bg-background/55 p-3"><p className="text-xs text-muted-foreground">完成状态</p><p className="mt-1 text-sm">{asString(traceFinishedPayload.ok) === "True" || asString(traceFinishedPayload.ok) === "true" ? "已完成" : asString(traceFinishedPayload.ok) ? "执行异常" : "未记录"}</p></div>
                   </div>
                 </div>
                 <Accordion type="single" collapsible className="rounded-2xl border border-border/70 bg-card/65 px-4">
                   {TRACE_SECTIONS.map((section) => {
-                    const hits = asRecordArray(traceRetrievalPayload[section.key])
+                    const hits = dedupeTraceHits(asRecordArray(traceRetrievalPayload[section.key]))
                     return (
                       <AccordionItem key={section.key} value={section.key}>
                         <AccordionTrigger>
                           <div className="flex flex-1 items-center justify-between gap-3 text-left">
                             <div>
                               <p className="text-sm font-medium">{section.label}</p>
-                              <p className="text-xs text-muted-foreground">共 {hits.length} 条命中记录</p>
+                              <p className="text-xs text-muted-foreground">{getTraceSectionHint(section.key)} 当前共 {hits.length} 条去重候选。</p>
                             </div>
-                            <Badge variant="secondary">{section.scoreKey}</Badge>
+                            <Badge variant="secondary">分数越大越相关</Badge>
                           </div>
                         </AccordionTrigger>
                         <AccordionContent>
@@ -2182,9 +2418,33 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
                                 <div className="flex flex-wrap items-center gap-2">
                                   <span className="text-sm font-medium">{asString(hit.task_title) || "未命名任务"}</span>
                                   <Badge variant="outline">{asString(hit.source) || "evidence"}</Badge>
-                                  <Badge variant="secondary">分数 {asNumber(hit[section.scoreKey])?.toFixed(3) || "0.000"}</Badge>
+                                  <Badge variant="secondary">分数 {formatTraceScore(hit[section.scoreKey])}</Badge>
+                                  {asStringArray(hit.source_set).map((entry) => (
+                                    <Badge key={`${section.key}-${index}-${entry}`} variant="outline">{entry}</Badge>
+                                  ))}
                                 </div>
-                                <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{asString(hit.text)}</p>
+                                <div className="mt-2 grid gap-3 lg:grid-cols-[minmax(0,1fr)_9rem]">
+                                  <p className="whitespace-pre-wrap text-sm leading-6">{asString(hit.text)}</p>
+                                  {asString(hit.image_path) ? (
+                                    <button
+                                      type="button"
+                                      className="group block overflow-hidden rounded-xl"
+                                      onClick={() =>
+                                        setPreviewImage({
+                                          src: buildTaskArtifactFileUrl(asString(hit.task_id) || taskId, asString(hit.image_path)),
+                                          title: `${asString(hit.task_title) || effectiveTitle} · ${formatSecondsAsClock(asNumber(hit.start) || 0)}`,
+                                        })
+                                      }
+                                    >
+                                      <img
+                                        src={buildTaskArtifactFileUrl(asString(hit.task_id) || taskId, asString(hit.image_path))}
+                                        alt={asString(hit.task_title) || effectiveTitle}
+                                        className="h-24 w-full rounded-xl border border-border/70 object-cover transition-transform duration-200 group-hover:scale-[1.02]"
+                                        loading="lazy"
+                                      />
+                                    </button>
+                                  ) : null}
+                                </div>
                               </div>
                             ))}
                             {hits.length === 0 ? <p className="text-sm text-muted-foreground">这一阶段还没有可展示的命中记录。</p> : null}
@@ -2205,13 +2465,25 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
       </TabsContent>
 
       <TabsContent value="research" className="workbench-pane-padded mt-0 min-h-0 flex-1">
-        <ResearchBoardPanel onSeek={onSeek} />
+        <ResearchBoardPanel onSeek={onSeek} onUseAsQuestion={onUseResearchItemAsQuestion} />
       </TabsContent>
+      <Dialog open={Boolean(previewImage)} onOpenChange={(open) => { if (!open) { setPreviewImage(null) } }}>
+        <DialogContent className="max-w-[min(92vw,72rem)] p-0">
+          <DialogHeader className="border-b px-6 py-5">
+            <DialogTitle>证据画面预览</DialogTitle>
+            <DialogDescription>{previewImage?.title || "点击证据缩略图后可在这里查看大图。"}</DialogDescription>
+          </DialogHeader>
+          <div className="bg-black/90 p-4">
+            {previewImage ? <img src={previewImage.src} alt={previewImage.title} className="mx-auto max-h-[78vh] w-auto max-w-full rounded-xl object-contain" /> : null}
+          </div>
+        </DialogContent>
+      </Dialog>
     </Tabs>
   )
 })
 
 interface VqaWorkbenchProps {
+  taskId: string
   effectiveTitle: string
   vqaTab: VqaTab
   onVqaTabChange: (value: VqaTab) => void
@@ -2231,4 +2503,6 @@ interface VqaWorkbenchProps {
   traceRetrievalPayload: Record<string, unknown>
   traceLlmPayload: Record<string, unknown>
   traceFinishedPayload: Record<string, unknown>
+  onAddCitationToResearch: (citation: VqaCitationItem) => void
+  onUseResearchItemAsQuestion: (item: ResearchBoardItem) => void
 }

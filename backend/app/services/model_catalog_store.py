@@ -23,6 +23,7 @@ class ModelEntry(TypedDict):
     quantization: str
     load_profile: str
     max_batch_size: int
+    frame_interval_seconds: int
     enabled: bool
     size_bytes: int
     default_path: str
@@ -43,6 +44,7 @@ DEFAULT_MODELS: list[ModelEntry] = [
         "quantization": "int8",
         "load_profile": "balanced",
         "max_batch_size": 1,
+        "frame_interval_seconds": 10,
         "enabled": True,
         "size_bytes": 0,
         "default_path": "",
@@ -61,6 +63,7 @@ DEFAULT_MODELS: list[ModelEntry] = [
         "quantization": "",
         "load_profile": "balanced",
         "max_batch_size": 1,
+        "frame_interval_seconds": 10,
         "enabled": True,
         "size_bytes": 0,
         "default_path": "",
@@ -79,6 +82,7 @@ DEFAULT_MODELS: list[ModelEntry] = [
         "quantization": "",
         "load_profile": "balanced",
         "max_batch_size": 16,
+        "frame_interval_seconds": 10,
         "enabled": True,
         "size_bytes": 0,
         "default_path": "",
@@ -97,6 +101,7 @@ DEFAULT_MODELS: list[ModelEntry] = [
         "quantization": "4bit",
         "load_profile": "memory_first",
         "max_batch_size": 1,
+        "frame_interval_seconds": 10,
         "enabled": True,
         "size_bytes": 0,
         "default_path": "",
@@ -115,6 +120,7 @@ DEFAULT_MODELS: list[ModelEntry] = [
         "quantization": "",
         "load_profile": "balanced",
         "max_batch_size": 8,
+        "frame_interval_seconds": 10,
         "enabled": True,
         "size_bytes": 0,
         "default_path": "",
@@ -144,12 +150,14 @@ class ModelCatalogStore:
             target = next((item for item in models if item["id"] == model_id), None)
             if target is None:
                 raise ValueError("Model not found")
-            allowed_keys = {"path", "status", "load_profile", "quantization", "max_batch_size", "enabled"}
+            allowed_keys = {"path", "status", "load_profile", "quantization", "max_batch_size", "frame_interval_seconds", "enabled"}
             for key, value in updates.items():
                 if key not in allowed_keys or value is None:
                     continue
                 if key == "max_batch_size":
                     target[key] = max(1, min(64, int(value)))
+                elif key == "frame_interval_seconds":
+                    target[key] = max(1, min(600, int(value)))
                 elif key == "enabled":
                     target[key] = bool(value)
                 else:
@@ -203,6 +211,7 @@ class ModelCatalogStore:
                     "quantization": str(item.get("quantization", "")),
                     "load_profile": str(item.get("load_profile", "balanced")),
                     "max_batch_size": max(1, min(64, int(item.get("max_batch_size", 1) or 1))),
+                    "frame_interval_seconds": max(1, min(600, int(item.get("frame_interval_seconds", 10) or 10))),
                     "enabled": bool(item.get("enabled", True)),
                     "size_bytes": max(0, int(item.get("size_bytes", 0) or 0)),
                     "default_path": str(item.get("default_path", "")),

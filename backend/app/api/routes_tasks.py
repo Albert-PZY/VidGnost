@@ -395,7 +395,7 @@ def delete_task(
     task_store: TaskStore = Depends(get_task_store),
 ) -> Response:
     record = _require_task(task_store, task_id)
-    if record.status not in {TaskStatus.COMPLETED.value, TaskStatus.FAILED.value, TaskStatus.CANCELLED.value}:
+    if record.status not in {TaskStatus.COMPLETED.value, TaskStatus.FAILED.value, TaskStatus.CANCELLED.value, TaskStatus.PAUSED.value}:
         raise AppError.conflict("Running task cannot be deleted", code="TASK_DELETE_FORBIDDEN")
     task_store.delete(task_id)
     settings = request.app.state.settings
@@ -425,6 +425,55 @@ async def cancel_task(
     return TaskCreateResponse(
         task_id=task_id,
         status=_to_public_status(TaskStatus.CANCELLED.value),
+        workflow=workflow,
+        initial_steps=_build_initial_steps(workflow),
+    )
+
+
+@router.post("/{task_id}/pause", response_model=TaskCreateResponse, status_code=status.HTTP_202_ACCEPTED)
+async def pause_task(
+    task_id: str,
+    task_store: TaskStore = Depends(get_task_store),
+    runner: TaskRunner = Depends(get_runner),
+) -> TaskCreateResponse:
+    record = _require_task(task_store, task_id)
+    if record.status in {TaskStatus.COMPLETED.value, TaskStatus.FAILED.value, TaskStatus.CANCELLED.value}:
+        raise AppError.conflict("Task is already finished", code="TASK_ALREADY_FINISHED")
+    if record.status == TaskStatus.PAUSED.value:
+        raise AppError.conflict("Task is already paused", code="TASK_ALREADY_PAUSED")
+
+    paused = await runner.pause(task_id)
+    if not paused:
+        raise AppError.conflict("Task cannot be paused", code="TASK_PAUSE_FORBIDDEN")
+    workflow = _normalize_workflow(record.workflow)
+    return TaskCreateResponse(
+        task_id=task_id,
+        status=_to_public_status(TaskStatus.PAUSED.value),
+        workflow=workflow,
+        initial_steps=_build_initial_steps(workflow),
+    )
+
+
+@router.post("/{task_id}/resume", response_model=TaskCreateResponse, status_code=status.HTTP_202_ACCEPTED)
+async def resume_task(
+    task_id: str,
+    task_store: TaskStore = Depends(get_task_store),
+    runner: TaskRunner = Depends(get_runner),
+) -> TaskCreateResponse:
+    record = _require_task(task_store, task_id)
+    if record.status != TaskStatus.PAUSED.value:
+        raise AppError.conflict("Only paused tasks can resume", code="TASK_NOT_PAUSED")
+
+    try:
+        resumed = await runner.resume(task_id)
+    except ValueError as exc:
+        raise AppError.bad_request(str(exc), code="TASK_RESUME_INVALID") from exc
+    if not resumed:
+        raise AppError.conflict("Task is already running", code="TASK_ALREADY_RUNNING")
+    workflow = _normalize_workflow(record.workflow)
+    return TaskCreateResponse(
+        task_id=task_id,
+        status=_to_public_status(TaskStatus.QUEUED.value),
         workflow=workflow,
         initial_steps=_build_initial_steps(workflow),
     )
@@ -920,6 +969,8 @@ def _metric_to_step_status(metric: dict[str, object]) -> Literal["pending", "pro
     raw = str(metric.get("status", "") or "").strip().lower()
     if raw in {"failed", "error", "cancelled"}:
         return "error"
+    if raw == "paused":
+        return "processing"
     if raw in {"completed", "done", "success", "skipped"}:
         return "completed"
     if raw in {"running", "processing"}:
@@ -935,7 +986,7 @@ def _metric_to_step_status(metric: dict[str, object]) -> Literal["pending", "pro
 
 def _to_public_status(raw_status: str) -> str:
     status_lower = str(raw_status or "").strip().lower()
-    if status_lower in {"completed", "failed", "cancelled", "queued"}:
+    if status_lower in {"completed", "failed", "cancelled", "queued", "paused"}:
         return status_lower
     if status_lower in {"preparing", "transcribing", "summarizing", "running"}:
         return "running"
@@ -988,6 +1039,8 @@ def _normalize_stream_event(*, task_id: str, workflow: WorkflowType, event: dict
         mapped = "task_completed"
     elif raw_type == "task_cancelled":
         mapped = "task_failed"
+    elif raw_type == "task_paused":
+        mapped = "task_paused"
 
     normalized["type"] = mapped
     normalized["task_id"] = task_id
@@ -1079,7 +1132,7 @@ def _build_vm_phase_metrics(stage_metrics: dict[str, dict[str, object]]) -> dict
         explicit_status = str(metric.get("status", "") or "").strip().lower()
         if explicit_status == "cancelled":
             return "failed"
-        if explicit_status in {"pending", "running", "completed", "failed", "skipped"}:
+        if explicit_status in {"pending", "running", "paused", "completed", "failed", "skipped"}:
             return explicit_status
         completed_at = str(metric.get("completed_at", "") or "").strip()
         started_at = str(metric.get("started_at", "") or "").strip()

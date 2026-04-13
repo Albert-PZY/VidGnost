@@ -137,12 +137,13 @@ def _build_prompts(*, query_text: str, hits: list[RetrievalHit]) -> tuple[str, s
         "你是视频证据问答助手。"
         "回答必须基于证据上下文，不要编造。"
         "优先给出可验证结论，并在关键结论中体现时间锚点。"
+        "回答使用简洁的 Markdown。"
     )
     user_prompt = (
         f"用户问题：{query_text.strip()}\n\n"
         "证据上下文如下：\n"
         f"{context if context else '(无命中证据)'}\n\n"
-        "请输出中文回答，并在证据不足时明确说明。"
+        "请输出中文 Markdown 回答，并在证据不足时明确说明。"
     )
     return system_prompt, user_prompt
 

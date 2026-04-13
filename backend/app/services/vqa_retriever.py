@@ -11,10 +11,12 @@ from typing import Any, Iterable
 import orjson
 
 from app.models import TaskRecord, TaskStatus
+from app.services.ingestion import extract_video_frames
 from app.services.task_store import TaskStore
 from app.services.vqa_types import EvidenceDocument, RetrievalHit, SearchResult
 
 _TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_]+", re.UNICODE)
+_DEFAULT_FRAME_INTERVAL_SECONDS = 10.0
 
 
 class VQAHybridRetriever:
@@ -107,15 +109,31 @@ class VQAHybridRetriever:
         if not query:
             return SearchResult(query_text="", dense_hits=[], sparse_hits=[], rrf_hits=[], rerank_hits=[])
 
-        documents = self._collect_documents(task_id=task_id, video_paths=video_paths)
+        documents = self._collect_documents(
+            task_id=task_id,
+            video_paths=video_paths,
+            frame_interval_seconds=self._resolve_frame_interval_seconds(),
+        )
         if not documents:
             return SearchResult(query_text=query, dense_hits=[], sparse_hits=[], rrf_hits=[], rerank_hits=[])
 
         max_top_k = max(1, int(top_k or self._rerank_top_n))
-        dense_hits = self._dense_search(query, documents, top_k=max(self._dense_top_k, max_top_k))
-        sparse_hits = self._sparse_search(query, documents, top_k=max(self._sparse_top_k, max_top_k))
-        rrf_hits = self._rrf_fusion(dense_hits, sparse_hits, top_k=max(self._fused_top_k, max_top_k))
-        rerank_hits = self._rerank(query, rrf_hits, top_n=max_top_k)
+        dense_hits = self._dedupe_hits(
+            self._dense_search(query, documents, top_k=max(self._dense_top_k, max_top_k)),
+            primary_score_key="dense_score",
+        )
+        sparse_hits = self._dedupe_hits(
+            self._sparse_search(query, documents, top_k=max(self._sparse_top_k, max_top_k)),
+            primary_score_key="sparse_score",
+        )
+        rrf_hits = self._dedupe_hits(
+            self._rrf_fusion(dense_hits, sparse_hits, top_k=max(self._fused_top_k, max_top_k)),
+            primary_score_key="rrf_score",
+        )
+        rerank_hits = self._dedupe_hits(
+            self._rerank(query, rrf_hits, top_n=max_top_k),
+            primary_score_key="final_score",
+        )
         return SearchResult(
             query_text=query,
             dense_hits=dense_hits,
@@ -129,6 +147,7 @@ class VQAHybridRetriever:
         *,
         task_id: str | None,
         video_paths: list[str] | None,
+        frame_interval_seconds: float,
     ) -> list[EvidenceDocument]:
         records = self._task_store.list_all()
         selected_task_id = (task_id or "").strip()
@@ -151,10 +170,15 @@ class VQAHybridRetriever:
                 TaskStatus.CANCELLED.value,
             }:
                 continue
-            docs.extend(self._build_documents_from_task(record))
+            docs.extend(self._build_documents_from_task(record, frame_interval_seconds=frame_interval_seconds))
         return docs
 
-    def _build_documents_from_task(self, record: TaskRecord) -> list[EvidenceDocument]:
+    def _build_documents_from_task(
+        self,
+        record: TaskRecord,
+        *,
+        frame_interval_seconds: float,
+    ) -> list[EvidenceDocument]:
         segments = self._parse_transcript_segments(record)
         if not segments:
             return []
@@ -162,25 +186,32 @@ class VQAHybridRetriever:
         if max_end <= 0:
             return []
 
-        image_paths = self._list_notes_images(record.id)
+        window_seconds = max(2.0, float(frame_interval_seconds or self._window_seconds))
+        stride_seconds = max(1.0, float(frame_interval_seconds or self._stride_seconds))
+        frame_assets = self._ensure_frame_assets(record, frame_interval_seconds=frame_interval_seconds)
         documents: list[EvidenceDocument] = []
         cursor = 0.0
-        image_index = 0
-        while cursor <= max_end:
+        seen_text_keys: set[str] = set()
+        while cursor <= max_end + 1e-6:
             start = round(cursor, 3)
-            end = round(min(max_end, start + self._window_seconds), 3)
+            end = round(min(max_end, start + window_seconds), 3)
             window_parts = [
                 text.strip()
                 for seg_start, seg_end, text in segments
                 if text.strip() and seg_end > start and seg_start < end
             ]
             if not window_parts:
-                cursor += self._stride_seconds
+                cursor += stride_seconds
                 continue
             text = " ".join(window_parts).strip()
-            image_path = image_paths[image_index] if image_index < len(image_paths) else ""
-            if image_index < len(image_paths):
-                image_index += 1
+            text_key = _normalize_retrieval_text(text)
+            if text_key and text_key in seen_text_keys:
+                cursor += stride_seconds
+                continue
+            if text_key:
+                seen_text_keys.add(text_key)
+            frame_asset = self._select_frame_asset(frame_assets, start=start, end=end)
+            image_path = frame_asset["relative_path"] if frame_asset else ""
             source_set = ["audio"]
             if image_path:
                 source_set.append("visual")
@@ -208,22 +239,127 @@ class VQAHybridRetriever:
                     source_set=source_set,
                 )
             )
-            cursor += self._stride_seconds
+            cursor += stride_seconds
         return documents
 
-    def _list_notes_images(self, task_id: str) -> list[str]:
-        notes_dir = self._storage_dir / "tasks" / "stage-artifacts" / task_id / "D" / "fusion" / "notes-images"
-        if not notes_dir.exists() or not notes_dir.is_dir():
+    def _resolve_frame_interval_seconds(self) -> float:
+        catalog_path = self._storage_dir / "models" / "catalog.json"
+        if not catalog_path.exists():
+            return _DEFAULT_FRAME_INTERVAL_SECONDS
+        try:
+            payload = orjson.loads(catalog_path.read_bytes())
+        except (orjson.JSONDecodeError, OSError):
+            return _DEFAULT_FRAME_INTERVAL_SECONDS
+        if not isinstance(payload, list):
+            return _DEFAULT_FRAME_INTERVAL_SECONDS
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("id", "")).strip() != "vlm-default":
+                continue
+            return max(1.0, float(item.get("frame_interval_seconds", _DEFAULT_FRAME_INTERVAL_SECONDS) or _DEFAULT_FRAME_INTERVAL_SECONDS))
+        return _DEFAULT_FRAME_INTERVAL_SECONDS
+
+    def _frame_root(self, task_id: str) -> Path:
+        return self._storage_dir / "tasks" / "stage-artifacts" / task_id / "D" / "fusion" / "frames"
+
+    def _ensure_frame_assets(self, record: TaskRecord, *, frame_interval_seconds: float) -> list[dict[str, object]]:
+        media_path = Path(str(record.source_local_path or record.source_input or "")).expanduser()
+        if not media_path.exists() or not media_path.is_file():
             return []
-        paths: list[str] = []
-        for path in sorted(notes_dir.rglob("*.png")):
-            if not path.is_file():
+
+        frames_dir = self._frame_root(record.id)
+        manifest_path = frames_dir / "index.json"
+        manifest = self._load_frame_manifest(manifest_path, frame_interval_seconds=frame_interval_seconds)
+        if manifest:
+            return manifest
+
+        try:
+            extracted = extract_video_frames(
+                media_path,
+                frames_dir,
+                interval_seconds=frame_interval_seconds,
+            )
+        except Exception:  # noqa: BLE001
+            return []
+        assets: list[dict[str, object]] = []
+        for index, frame_path in enumerate(extracted):
+            if not frame_path.is_file():
                 continue
-            try:
-                paths.append(str(path.resolve()))
-            except OSError:
+            assets.append(
+                {
+                    "timestamp": round(index * frame_interval_seconds, 3),
+                    "relative_path": f"frames/{frame_path.name}",
+                }
+            )
+        if assets:
+            self._write_frame_manifest(manifest_path, frame_interval_seconds=frame_interval_seconds, assets=assets)
+        return assets
+
+    @staticmethod
+    def _load_frame_manifest(manifest_path: Path, *, frame_interval_seconds: float) -> list[dict[str, object]]:
+        if not manifest_path.exists():
+            return []
+        try:
+            payload = orjson.loads(manifest_path.read_bytes())
+        except (orjson.JSONDecodeError, OSError):
+            return []
+        if not isinstance(payload, dict):
+            return []
+        manifest_interval = _to_float(payload.get("frame_interval_seconds"))
+        if abs(manifest_interval - frame_interval_seconds) > 1e-6:
+            return []
+        raw_assets = payload.get("frames")
+        if not isinstance(raw_assets, list):
+            return []
+        assets: list[dict[str, object]] = []
+        for item in raw_assets:
+            if not isinstance(item, dict):
                 continue
-        return paths
+            relative_path = str(item.get("relative_path", "")).strip()
+            if not relative_path:
+                continue
+            assets.append(
+                {
+                    "timestamp": round(_to_float(item.get("timestamp")), 3),
+                    "relative_path": relative_path,
+                }
+            )
+        return assets
+
+    @staticmethod
+    def _write_frame_manifest(
+        manifest_path: Path,
+        *,
+        frame_interval_seconds: float,
+        assets: list[dict[str, object]],
+    ) -> None:
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path.write_bytes(
+            orjson.dumps(
+                {
+                    "frame_interval_seconds": round(frame_interval_seconds, 3),
+                    "frame_count": len(assets),
+                    "frames": assets,
+                },
+                option=orjson.OPT_INDENT_2,
+            )
+        )
+
+    @staticmethod
+    def _select_frame_asset(
+        assets: list[dict[str, object]],
+        *,
+        start: float,
+        end: float,
+    ) -> dict[str, object] | None:
+        if not assets:
+            return None
+        midpoint = (start + end) / 2.0
+        return min(
+            assets,
+            key=lambda item: abs(_to_float(item.get("timestamp")) - midpoint),
+        )
 
     @staticmethod
     def _doc_id(
@@ -316,7 +452,7 @@ class VQAHybridRetriever:
                 if doc is None:
                     continue
                 distance = float(distances[idx]) if idx < len(distances) else 1.0
-                score = max(0.0, min(1.0, 1.0 - distance))
+                score = 1.0 / (1.0 + max(0.0, distance))
                 hits.append(
                     RetrievalHit(
                         doc_id=doc.doc_id,
@@ -403,10 +539,11 @@ class VQAHybridRetriever:
                 """,
                 (match_query, max(1, top_k)),
             ).fetchall()
+        normalized_scores = _normalize_sparse_rank_scores(
+            [float(row[10] if row[10] is not None else 0.0) for row in rows]
+        )
         hits: list[RetrievalHit] = []
-        for row in rows:
-            raw_rank = float(row[10] if row[10] is not None else 0.0)
-            sparse_score = 1.0 / (1.0 + abs(raw_rank))
+        for row, sparse_score in zip(rows, normalized_scores, strict=False):
             source_set = _parse_source_set(row[7])
             hits.append(
                 RetrievalHit(
@@ -524,6 +661,37 @@ class VQAHybridRetriever:
         reranked.sort(key=lambda item: item.final_score, reverse=True)
         return reranked[: max(1, top_n)]
 
+    def _dedupe_hits(
+        self,
+        hits: list[RetrievalHit],
+        *,
+        primary_score_key: str,
+    ) -> list[RetrievalHit]:
+        deduped: list[RetrievalHit] = []
+        index_by_key: dict[str, int] = {}
+        for hit in hits:
+            key = _build_hit_dedupe_key(hit)
+            existing_index = index_by_key.get(key)
+            if existing_index is None:
+                deduped.append(_clone_hit(hit))
+                index_by_key[key] = len(deduped) - 1
+                continue
+
+            current = deduped[existing_index]
+            preferred = hit if _read_hit_score(hit, primary_score_key) > _read_hit_score(current, primary_score_key) else current
+            merged = _clone_hit(preferred)
+            merged.source_set = _merge_source_sets(current.source_set, hit.source_set)
+            merged.source = "+".join(merged.source_set)
+            if not merged.image_path:
+                merged.image_path = current.image_path or hit.image_path
+            merged.dense_score = max(current.dense_score, hit.dense_score)
+            merged.sparse_score = max(current.sparse_score, hit.sparse_score)
+            merged.rrf_score = max(current.rrf_score, hit.rrf_score)
+            merged.rerank_score = max(current.rerank_score, hit.rerank_score)
+            merged.final_score = max(current.final_score, hit.final_score)
+            deduped[existing_index] = merged
+        return deduped
+
     def _embed_text(self, text: str) -> list[float]:
         tokens = list(_tokenize(text))
         if not tokens:
@@ -560,6 +728,13 @@ def _clone_hit(hit: RetrievalHit) -> RetrievalHit:
     )
 
 
+def _read_hit_score(hit: RetrievalHit, score_key: str) -> float:
+    try:
+        return float(getattr(hit, score_key))
+    except (AttributeError, TypeError, ValueError):
+        return 0.0
+
+
 def _to_float(value: Any) -> float:
     try:
         return float(value)
@@ -590,6 +765,28 @@ def _parse_source_set(raw: object) -> list[str]:
     return parts or ["audio"]
 
 
+def _merge_source_sets(*source_sets: list[str]) -> list[str]:
+    merged: list[str] = []
+    seen: set[str] = set()
+    for source_values in source_sets:
+        for value in source_values:
+            candidate = str(value).strip()
+            if not candidate or candidate in seen:
+                continue
+            seen.add(candidate)
+            merged.append(candidate)
+    return merged or ["audio"]
+
+
+def _build_hit_dedupe_key(hit: RetrievalHit) -> str:
+    normalized_text = _normalize_retrieval_text(hit.text)
+    if normalized_text:
+        return f"{hit.task_id}|{normalized_text}"
+    if hit.image_path:
+        return f"{hit.task_id}|image:{hit.image_path}"
+    return f"{hit.task_id}|{hit.start:.2f}|{hit.end:.2f}"
+
+
 def _char_ngram_tf(text: str, n: int = 2) -> Counter[str]:
     normalized = "".join(ch for ch in text.lower() if not ch.isspace())
     if not normalized:
@@ -610,3 +807,21 @@ def _cosine_similarity(left: Counter[str], right: Counter[str]) -> float:
     if left_norm <= 0 or right_norm <= 0:
         return 0.0
     return max(0.0, min(1.0, numerator / (left_norm * right_norm)))
+
+
+def _normalize_retrieval_text(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "").strip().lower())
+
+
+def _normalize_sparse_rank_scores(raw_ranks: list[float]) -> list[float]:
+    if not raw_ranks:
+        return []
+    transformed = [
+        1.0 / (1.0 + math.log1p(max(0.0, abs(float(rank)))))
+        for rank in raw_ranks
+    ]
+    upper = max(transformed)
+    lower = min(transformed)
+    if abs(upper - lower) <= 1e-9:
+        return [1.0 for _ in transformed]
+    return [0.15 + 0.85 * ((score - lower) / (upper - lower)) for score in transformed]

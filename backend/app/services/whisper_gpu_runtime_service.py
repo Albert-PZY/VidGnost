@@ -921,10 +921,6 @@ class WhisperGpuRuntimeService:
         if install_dir:
             for bin_path in WhisperGpuRuntimeService._runtime_bin_dirs(install_dir):
                 append(bin_path)
-        for raw_entry in os.environ.get("PATH", "").split(os.pathsep):
-            if not raw_entry.strip():
-                continue
-            append(Path(raw_entry.strip()))
         return candidates
 
     @staticmethod

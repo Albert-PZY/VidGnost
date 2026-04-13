@@ -16,6 +16,12 @@ The backend SHALL process each task asynchronously and preserve explicit phase o
 - **THEN** task status becomes `cancelled`
 - **AND** per-task temporary workspace is cleaned while reusable model cache is retained
 
+#### Scenario: User pause and resume
+- **WHEN** user pauses a queued or running task
+- **THEN** task status becomes `paused`
+- **AND** already persisted transcript chunks, stage metrics, and stage artifacts remain available for subsequent resume
+- **AND** when user resumes the same task, backend continues from existing checkpoints instead of discarding completed work
+
 ### Requirement: Pipeline SHALL keep explicit phase responsibilities
 The pipeline SHALL keep these phase boundaries:
 - `A`: source ingestion and normalization
@@ -70,6 +76,11 @@ Phase `C` SHALL persist transcript progress after each completed audio chunk and
 - **AND** backend transcribes only missing chunks before entering phase `D`
 - **AND** phase `D` starts only after the recovered full transcript state is reassembled into the task record
 
+#### Scenario: Resume a paused task after transcription already finished
+- **WHEN** backend resumes a paused task whose transcript text and transcript segment checkpoints are already persisted and phase `D` is not yet complete
+- **THEN** backend MAY skip repeating phases `A` to `C`
+- **AND** backend continues directly from the remaining phase-`D` work using the persisted transcript artifacts
+
 ### Requirement: Local-source task records SHALL retain a previewable source path
 Tasks created from uploaded files or explicit local paths SHALL retain a stable source path that remains previewable until the task is deleted.
 
@@ -83,7 +94,7 @@ When persisted whisper device strategy is `auto` or `cuda`, backend SHALL config
 
 #### Scenario: Start transcription with ready GPU runtime
 - **WHEN** persisted whisper `device` is `auto` or `cuda`
-- **AND** required runtime DLLs such as `cublas64_12.dll` and `cudnn64*.dll` are discoverable and loadable from the configured runtime-library directory or current process `PATH`
+- **AND** required runtime DLLs such as `cublas64_12.dll` and `cudnn64*.dll` are discoverable and loadable from the configured managed runtime-library directory after backend applies that directory to the current process environment
 - **THEN** backend starts Faster-Whisper model loading with GPU-capable process environment already configured
 
 #### Scenario: Start transcription with missing GPU runtime

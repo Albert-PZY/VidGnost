@@ -84,6 +84,31 @@ export function clearResearchBoardItems(): void {
   writeItems([])
 }
 
+export function buildResearchBoardMarkdown(items: ResearchBoardItem[] = listResearchBoardItems()): string {
+  if (items.length === 0) {
+    return "# 线索篮\n\n当前还没有收集到任何线索。\n"
+  }
+  const lines = ["# 线索篮", ""]
+  items.forEach((item, index) => {
+    lines.push(`## ${index + 1}. ${item.title}`)
+    lines.push("")
+    lines.push(`- 任务：${item.taskTitle}`)
+    lines.push(`- 类型：${item.type}`)
+    lines.push(`- 工作流：${item.workflow === "notes" ? "笔记整理" : "视频问答"}`)
+    if (typeof item.start === "number") {
+      const endText = typeof item.end === "number" ? ` - ${item.end.toFixed(2)}s` : ""
+      lines.push(`- 时间：${item.start.toFixed(2)}s${endText}`)
+    }
+    if (item.source) {
+      lines.push(`- 来源：${item.source}`)
+    }
+    lines.push("")
+    lines.push(item.content.trim() || "（空内容）")
+    lines.push("")
+  })
+  return `${lines.join("\n").trim()}\n`
+}
+
 export function subscribeResearchBoard(listener: () => void): () => void {
   if (typeof window === "undefined") {
     return () => {}

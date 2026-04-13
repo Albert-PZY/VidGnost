@@ -55,7 +55,15 @@ class VQARuntimeService:
                 "video_paths": video_paths or [],
                 "top_k": top_k,
             },
-            config_snapshot={"retrieval": {"mode": "hybrid", "rrf": True, "rerank": True}},
+            config_snapshot={
+                "retrieval": {
+                    "mode": "hybrid",
+                    "rrf": True,
+                    "rerank": True,
+                    "query_expansion": False,
+                    "dedupe": "same-task-same-text",
+                }
+            },
         )
         result = self._retriever.search(
             query_text=query_text,
@@ -70,6 +78,8 @@ class VQARuntimeService:
                 "query_text": query_text,
                 "task_id": task_id,
                 "video_paths": video_paths or [],
+                "query_expansion": False,
+                "dedupe": "same-task-same-text",
                 "dense_hits": [item.to_dict() for item in result.dense_hits],
                 "sparse_hits": [item.to_dict() for item in result.sparse_hits],
                 "rrf_hits": [item.to_dict() for item in result.rrf_hits],

@@ -26,6 +26,7 @@ class TaskStatus(StrEnum):
     PREPARING = "preparing"
     TRANSCRIBING = "transcribing"
     SUMMARIZING = "summarizing"
+    PAUSED = "paused"
     CANCELLED = "cancelled"
     COMPLETED = "completed"
     FAILED = "failed"

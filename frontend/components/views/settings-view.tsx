@@ -152,6 +152,7 @@ type ModelConfigFormState = {
   load_profile: string
   quantization: string
   max_batch_size: string
+  frame_interval_seconds: string
   enabled: boolean
 }
 
@@ -175,6 +176,7 @@ const EMPTY_MODEL_FORM: ModelConfigFormState = {
   load_profile: "balanced",
   quantization: "",
   max_batch_size: "1",
+  frame_interval_seconds: "10",
   enabled: true,
 }
 
@@ -616,13 +618,15 @@ export function SettingsView({
     if (model.component === "vlm") {
       return {
         title: "视觉语言模型配置",
-        description: "控制关键帧语义识别模型的本地目录、量化方式和加载策略。",
-        note: "VLM 通常对显存最敏感，建议优先调低量化精度而不是提高并发。",
-        fields: ["path", "load_profile", "quantization", "enabled"],
+        description: "控制关键帧语义识别模型的本地目录、量化方式和抽帧节奏。",
+        note: "抽帧间隔会直接影响检索时附带的画面证据密度，数值越小越细，但生成和存储开销也越高。",
+        fields: ["path", "load_profile", "quantization", "frame_interval_seconds", "enabled"],
         pathLabel: "模型目录",
         pathPlaceholder: "可选：指定 VLM 模型目录",
         quantizationLabel: "权重量化",
         quantizationPlaceholder: "如 4bit / 8bit / fp16",
+        batchLabel: "抽帧间隔（秒）",
+        batchDescription: "用于控制问答证据图的抽帧频率，默认每 10 秒抽取一张。",
       }
     }
 
@@ -653,6 +657,9 @@ export function SettingsView({
     }
     if (preset.fields.includes("max_batch_size")) {
       payload.max_batch_size = Number.parseInt(form.max_batch_size, 10) || 1
+    }
+    if (preset.fields.includes("frame_interval_seconds")) {
+      payload.frame_interval_seconds = Number.parseInt(form.frame_interval_seconds, 10) || 10
     }
     if (preset.fields.includes("enabled")) {
       payload.enabled = form.enabled
@@ -739,6 +746,7 @@ export function SettingsView({
       load_profile: model.load_profile || "balanced",
       quantization: model.quantization || "",
       max_batch_size: String(model.max_batch_size || 1),
+      frame_interval_seconds: String(model.frame_interval_seconds || 10),
       enabled: model.enabled,
     })
     if (model.provider === "openai_compatible" && llmConfig) {
@@ -1188,6 +1196,7 @@ export function SettingsView({
   const activeModelPreset = editingModel ? getModelConfigPreset(editingModel) : null
   const modelDialogHasQuantization = Boolean(activeModelPreset?.fields.includes("quantization"))
   const modelDialogHasBatchSize = Boolean(activeModelPreset?.fields.includes("max_batch_size"))
+  const modelDialogHasFrameInterval = Boolean(activeModelPreset?.fields.includes("frame_interval_seconds"))
   const showOnlineLlmFields = Boolean(editingModel?.provider === "openai_compatible")
   const isWhisperDialog = editingModel?.component === "whisper"
   const hasSkinImage = Boolean(uiSettings.background_image)
@@ -1776,13 +1785,17 @@ export function SettingsView({
                                     </div>
                                     <div className="rounded-xl border bg-muted/30 p-4">
                                       <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                                        批大小
+                                        {modelDialogHasFrameInterval ? "抽帧间隔" : "批大小"}
                                       </div>
                                       <div className="mt-2 text-base font-semibold leading-tight text-foreground">
-                                        {modelDialogHasBatchSize ? modelForm.max_batch_size || "1" : "默认"}
+                                        {modelDialogHasFrameInterval
+                                          ? `${modelForm.frame_interval_seconds || "10"} 秒`
+                                          : modelDialogHasBatchSize
+                                            ? modelForm.max_batch_size || "1"
+                                            : "默认"}
                                       </div>
                                       <p className="mt-1 text-xs text-muted-foreground">
-                                        越高越吃资源
+                                        {modelDialogHasFrameInterval ? "影响证据帧密度" : "越高越吃资源"}
                                       </p>
                                     </div>
                                   </div>
@@ -1890,6 +1903,38 @@ export function SettingsView({
                                     />
                                     <p className="text-xs text-muted-foreground">
                                       推荐与当前模型文件实际格式保持一致，避免加载异常。
+                                    </p>
+                                  </div>
+                                ) : null}
+
+                                {modelDialogHasFrameInterval ? (
+                                  <div
+                                    className={cn(
+                                      "space-y-2",
+                                      !activeModelPreset?.fields.includes("load_profile") && !modelDialogHasQuantization
+                                        ? "md:col-span-2"
+                                        : "",
+                                    )}
+                                  >
+                                    <Label htmlFor="model-frame-interval">
+                                      {activeModelPreset?.batchLabel || "抽帧间隔（秒）"}
+                                    </Label>
+                                    <Input
+                                      id="model-frame-interval"
+                                      className="bg-background/80"
+                                      type="number"
+                                      min={1}
+                                      max={600}
+                                      value={modelForm.frame_interval_seconds}
+                                      onChange={(event) =>
+                                        setModelForm((current) => ({
+                                          ...current,
+                                          frame_interval_seconds: event.target.value,
+                                        }))
+                                      }
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                      {activeModelPreset?.batchDescription || "控制证据图抽帧频率。"}
                                     </p>
                                   </div>
                                 ) : null}

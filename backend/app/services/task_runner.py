@@ -108,6 +108,7 @@ class TaskRunner:
         self._api_mode_semaphore = asyncio.Semaphore(max(1, settings.max_api_mode_jobs))
         self._task_stage_started: dict[str, dict[StageType, float]] = {}
         self._task_stage_metrics: dict[str, dict[StageType, dict[str, object]]] = {}
+        self._pause_requests: set[str] = set()
 
     async def submit(self, submission: TaskSubmission) -> None:
         job = asyncio.create_task(self._run_pipeline(submission))
@@ -166,6 +167,46 @@ class TaskRunner:
             return True
 
         return await self._mark_cancelled(task_id, emit_event=True, cleanup_media_dir=True)
+
+    async def pause(self, task_id: str) -> bool:
+        job = self._jobs.get(task_id)
+        if job is not None and not job.done():
+            self._pause_requests.add(task_id)
+            job.cancel()
+            await asyncio.sleep(0)
+            if job.done():
+                await self._mark_paused(task_id, emit_event=True)
+            return True
+
+        return await self._mark_paused(task_id, emit_event=True)
+
+    async def resume(self, task_id: str) -> bool:
+        existing = self._jobs.get(task_id)
+        if existing is not None and not existing.done():
+            return False
+
+        record = await asyncio.to_thread(self._task_store.get, task_id)
+        if record is None:
+            raise ValueError(f"Task not found: {task_id}")
+        if record.status != TaskStatus.PAUSED.value:
+            return False
+
+        self._pause_requests.discard(task_id)
+        await self._event_bus.reset_task(task_id)
+        if self._should_resume_stage_d(record):
+            await asyncio.to_thread(self._prepare_stage_d_record, task_id, False)
+            job = asyncio.create_task(self._run_stage_d_retry(task_id))
+        else:
+            await asyncio.to_thread(
+                self._task_store.update,
+                task_id,
+                status=TaskStatus.QUEUED.value,
+                error_message=None,
+            )
+            job = asyncio.create_task(self._run_pipeline(self._build_submission_from_record(record)))
+        self._jobs[task_id] = job
+        job.add_done_callback(lambda _, resumed_task_id=task_id: self._jobs.pop(resumed_task_id, None))
+        return True
 
     async def shutdown(self) -> None:
         running_jobs = list(self._jobs.values())
@@ -958,23 +999,31 @@ class TaskRunner:
                 await self._stage_complete(task_id, "D", progress=_PROGRESS_TASK_DONE, stage_logs=stage_logs)
                 await self._event_bus.publish(task_id, {"type": "task_complete", "overall_progress": _PROGRESS_TASK_DONE})
             except asyncio.CancelledError:
-                await self._emit_log(task_id, active_stage, "Task cancelled", stage_logs)
-                self._mark_stage_failed(task_id, active_stage, "Task cancelled by user.")
+                pause_requested = self._consume_pause_request(task_id)
+                interruption_message = "Task paused by user." if pause_requested else "Task cancelled by user."
+                await self._emit_log(task_id, active_stage, "Task paused" if pause_requested else "Task cancelled", stage_logs)
+                if pause_requested:
+                    self._mark_stage_paused(task_id, active_stage, interruption_message)
+                else:
+                    self._mark_stage_failed(task_id, active_stage, interruption_message)
                 await self._persist_stage_metric(task_id, active_stage)
                 await self._persist_analysis_result(
                     task_id,
                     active_stage,
-                    status="cancelled",
+                    status="paused" if pause_requested else "cancelled",
                     progress=100,
-                    reason="Task cancelled by user.",
+                    reason=interruption_message,
                 )
                 await self._update_task(
                     task_id,
-                    status=TaskStatus.CANCELLED.value,
-                    error_message="Task cancelled by user.",
+                    status=TaskStatus.PAUSED.value if pause_requested else TaskStatus.CANCELLED.value,
+                    error_message=interruption_message,
                     stage_logs_json=_encode_stage_logs(stage_logs),
                 )
-                await self._event_bus.publish(task_id, {"type": "task_cancelled", "error": "Task cancelled by user."})
+                await self._event_bus.publish(
+                    task_id,
+                    {"type": "task_paused" if pause_requested else "task_cancelled", "error": interruption_message},
+                )
                 raise
             except Exception as exc:  # noqa: BLE001
                 await self._emit_log(task_id, active_stage, f"Task failed: {type(exc).__name__}: {exc}", stage_logs)
@@ -1334,23 +1383,31 @@ class TaskRunner:
                 await self._stage_complete(task_id, "D", progress=_PROGRESS_TASK_DONE, stage_logs=stage_logs)
                 await self._event_bus.publish(task_id, {"type": "task_complete", "overall_progress": _PROGRESS_TASK_DONE})
             except asyncio.CancelledError:
-                await self._emit_log(task_id, active_stage, "Task cancelled", stage_logs)
-                self._mark_stage_failed(task_id, active_stage, "Task cancelled by user.")
+                pause_requested = self._consume_pause_request(task_id)
+                interruption_message = "Task paused by user." if pause_requested else "Task cancelled by user."
+                await self._emit_log(task_id, active_stage, "Task paused" if pause_requested else "Task cancelled", stage_logs)
+                if pause_requested:
+                    self._mark_stage_paused(task_id, active_stage, interruption_message)
+                else:
+                    self._mark_stage_failed(task_id, active_stage, interruption_message)
                 await self._persist_stage_metric(task_id, active_stage)
                 await self._persist_analysis_result(
                     task_id,
                     active_stage,
-                    status="cancelled",
+                    status="paused" if pause_requested else "cancelled",
                     progress=100,
-                    reason="Task cancelled by user.",
+                    reason=interruption_message,
                 )
                 await self._update_task(
                     task_id,
-                    status=TaskStatus.CANCELLED.value,
-                    error_message="Task cancelled by user.",
+                    status=TaskStatus.PAUSED.value if pause_requested else TaskStatus.CANCELLED.value,
+                    error_message=interruption_message,
                     stage_logs_json=_encode_stage_logs(stage_logs),
                 )
-                await self._event_bus.publish(task_id, {"type": "task_cancelled", "error": "Task cancelled by user."})
+                await self._event_bus.publish(
+                    task_id,
+                    {"type": "task_paused" if pause_requested else "task_cancelled", "error": interruption_message},
+                )
                 raise
             except Exception as exc:  # noqa: BLE001
                 await self._emit_log(task_id, active_stage, f"Task failed: {type(exc).__name__}: {exc}", stage_logs)
@@ -1596,6 +1653,15 @@ class TaskRunner:
         stage_entry = self._ensure_task_stage_metric_entry(task_id, stage)
         now_iso = datetime.now(timezone.utc).isoformat()
         stage_entry["status"] = "failed"
+        stage_entry["completed_at"] = now_iso
+        elapsed_seconds = self._stage_elapsed_seconds(task_id, stage)
+        stage_entry["elapsed_seconds"] = round(elapsed_seconds, 2) if elapsed_seconds is not None else None
+        stage_entry["reason"] = reason
+
+    def _mark_stage_paused(self, task_id: str, stage: StageType, reason: str) -> None:
+        stage_entry = self._ensure_task_stage_metric_entry(task_id, stage)
+        now_iso = datetime.now(timezone.utc).isoformat()
+        stage_entry["status"] = "paused"
         stage_entry["completed_at"] = now_iso
         elapsed_seconds = self._stage_elapsed_seconds(task_id, stage)
         stage_entry["elapsed_seconds"] = round(elapsed_seconds, 2) if elapsed_seconds is not None else None
@@ -2240,6 +2306,36 @@ class TaskRunner:
 
         await asyncio.to_thread(_write)
 
+    def _consume_pause_request(self, task_id: str) -> bool:
+        if task_id not in self._pause_requests:
+            return False
+        self._pause_requests.discard(task_id)
+        return True
+
+    async def _mark_paused(self, task_id: str, *, emit_event: bool) -> bool:
+        def _write_paused() -> bool:
+            task = self._task_store.get(task_id)
+            if task is None:
+                raise ValueError(f"Task not found: {task_id}")
+            if task.status in {
+                TaskStatus.COMPLETED.value,
+                TaskStatus.FAILED.value,
+                TaskStatus.CANCELLED.value,
+                TaskStatus.PAUSED.value,
+            }:
+                return False
+            self._task_store.update(
+                task_id,
+                status=TaskStatus.PAUSED.value,
+                error_message="Task paused by user.",
+            )
+            return True
+
+        changed = await asyncio.to_thread(_write_paused)
+        if changed and emit_event:
+            await self._event_bus.publish(task_id, {"type": "task_paused", "error": "Task paused by user."})
+        return changed
+
     async def _mark_cancelled(self, task_id: str, *, emit_event: bool, cleanup_media_dir: bool) -> bool:
         def _write_cancelled() -> bool:
             task = self._task_store.get(task_id)
@@ -2259,6 +2355,7 @@ class TaskRunner:
             return True
 
         changed = await asyncio.to_thread(_write_cancelled)
+        self._pause_requests.discard(task_id)
         if changed and emit_event:
             await self._event_bus.publish(task_id, {"type": "task_cancelled", "error": "Task cancelled by user."})
         if cleanup_media_dir:

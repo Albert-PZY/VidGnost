@@ -261,7 +261,7 @@ Workbench bootstrap SHALL expose a desktop splash progress state before the main
 - **AND** the overlay is dismissed automatically once bootstrap reaches `ready`
 
 ### Requirement: Task processing workbench SHALL provide a resizable evidence-driven workspace
-Task processing workbench SHALL use a horizontal resizable split layout. The left workspace SHALL provide `转写片段`, `证据时间轴`, and `阶段输出` tabs. The right workspace SHALL switch between `Markdown 工作区 / 思维导图 / 研究板` for notes tasks and `流式问答 / Trace Theater / 研究板` for VQA tasks.
+Task processing workbench SHALL use a horizontal resizable split layout. The left workspace SHALL provide `转写片段`, `证据时间轴`, and `阶段输出` tabs. The right workspace SHALL switch between `Markdown 工作区 / 思维导图 / 线索篮` for notes tasks and `流式问答 / Trace Theater / 线索篮` for VQA tasks.
 
 #### Scenario: Open a completed notes task
 - **WHEN** user opens a notes task in the processing workbench
@@ -269,9 +269,9 @@ Task processing workbench SHALL use a horizontal resizable split layout. The lef
 - **AND** summary and notes results render as Markdown instead of plain preformatted text
 - **AND** Markdown timestamps can seek the video
 - **AND** the Markdown workspace keeps an inner vertical scrollbar so long notes remain scrollable without moving the outer workbench shell
-- **AND** when the right workspace is resized narrow, Markdown, mindmap, research-board, and VQA panes reflow their tab chrome, actions, cards, and dense content within the available pane width instead of clipping the reading surface
-- **AND** entering note-edit mode scrolls the visible workbench region to the editable note textarea and places focus inside it so long summaries do not hide the editor below the fold
-- **AND** transcript cards support quick actions such as `加入笔记` and `加入研究板`
+- **AND** when the right workspace is resized narrow, Markdown, mindmap, clue-basket, and VQA panes reflow their tab chrome, actions, cards, and dense content within the available pane width instead of clipping the reading surface
+- **AND** entering note-edit mode opens a dedicated Markdown dialog with source editing on the left and live rendered preview on the right
+- **AND** transcript cards support quick actions such as `加入笔记` and `加入线索篮`
 
 #### Scenario: Preview imported source media inside the workbench
 - **WHEN** user opens a task whose detail payload includes a persisted `source_local_path`
@@ -300,6 +300,12 @@ Task processing workbench SHALL use a horizontal resizable split layout. The lef
 - **AND** recent stage activity omits repetitive raw progress spam and keeps milestone-focused readable updates
 - **AND** terminal task events immediately retire the cancel action and trigger a background task-detail sync so the workbench does not remain visually stuck on an earlier phase after backend completion
 
+#### Scenario: Pause and resume a running task from the workbench header
+- **WHEN** user pauses a running task from the header action area
+- **THEN** the workbench updates the task summary to `已暂停`
+- **AND** the header swaps the running-state action set from `暂停任务 / 取消任务` to `继续任务`
+- **AND** after resume, the same workbench re-enters the running stream flow without requiring the user to reopen the task
+
 #### Scenario: Keep playback interactions smooth during task inspection
 - **WHEN** user plays, drags, or seeks the task video inside the left preview pane
 - **THEN** high-frequency playback state such as current time, duration, mute state, and play state stays isolated to the preview surface instead of invalidating the entire task workbench tree
@@ -309,8 +315,13 @@ Task processing workbench SHALL use a horizontal resizable split layout. The lef
 #### Scenario: Open a VQA task and ask a question
 - **WHEN** user submits a question from the VQA workbench
 - **THEN** the renderer streams incremental answer chunks into the chat surface
-- **AND** each answer may expose `trace_id`, citations, and citation jump actions
-- **AND** opening Trace Theater reveals retrieval-stage panels such as Dense, Sparse, RRF, and rerank results
+- **AND** streamed assistant answers render as Markdown instead of plain paragraph text
+- **AND** each answer may expose a retrieval trace identifier, citations, and citation jump actions
+- **AND** citations prefer related frame thumbnails from the task video rather than Mermaid summary images
+- **AND** clicking a citation thumbnail opens a modal large-image preview
+- **AND** opening Trace Theater reveals Dense, Sparse, RRF, and final rerank panels with per-stage deduplicated candidates
+- **AND** Trace Theater states that retrieval uses the original user question directly without query expansion
+- **AND** Trace Theater shows human-readable normalized scores instead of raw backend magnitude values that collapse visually to zero
 
 ### Requirement: Prompt settings SHALL include an experiment surface
 Prompt-template settings SHALL include a `Prompt Lab` surface that compares two templates under the same channel against the same sample title and transcript.

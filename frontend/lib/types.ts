@@ -1,6 +1,6 @@
 export type WorkflowType = "notes" | "vqa"
 
-export type TaskStatus = "queued" | "running" | "completed" | "failed" | "cancelled" | string
+export type TaskStatus = "queued" | "running" | "paused" | "completed" | "failed" | "cancelled" | string
 
 export type TaskStepStatus = "pending" | "processing" | "completed" | "error"
 
@@ -142,6 +142,7 @@ export interface ModelDescriptor {
   quantization: string
   load_profile: string
   max_batch_size: number
+  frame_interval_seconds: number
   enabled: boolean
   size_bytes: number
   is_installed: boolean

@@ -105,6 +105,12 @@ The system SHALL expose `/config/models` and related model-management APIs with 
 - **WHEN** frontend requests `/config/models`
 - **THEN** backend returns each model entry with `default_path`, `path`, `is_installed`, `supports_managed_download`, and optional `download` status
 
+#### Scenario: Configure VLM frame sampling interval from settings
+- **WHEN** frontend loads or updates the `vlm-default` model entry through `/config/models`
+- **THEN** backend exposes `frame_interval_seconds` as an integer configuration field
+- **AND** the field accepts values in the documented bounded runtime range
+- **AND** subsequent frame extraction for VQA evidence generation uses the persisted interval value instead of a hard-coded sampling cadence
+
 ### Requirement: Runtime config APIs SHALL ignore unsupported fields
 Runtime config APIs SHALL process documented fields and ignore unsupported extra fields in payloads.
 

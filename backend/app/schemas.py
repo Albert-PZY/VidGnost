@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 ModelSize = Literal["small", "medium"]
 WorkflowType = Literal["notes", "vqa"]
-TaskStatusPublic = Literal["queued", "running", "completed", "failed", "cancelled"]
+TaskStatusPublic = Literal["queued", "running", "paused", "completed", "failed", "cancelled"]
 SourceType = Literal["bilibili", "local_file", "local_path"]
 PromptTemplateChannel = Literal["correction", "notes", "mindmap", "vqa"]
 ModelComponentType = Literal["whisper", "llm", "embedding", "vlm", "rerank"]
@@ -321,6 +321,7 @@ class ModelDescriptor(BaseModel):
     quantization: str = ""
     load_profile: str = "balanced"
     max_batch_size: int = 1
+    frame_interval_seconds: int = Field(default=10, ge=1, le=600)
     enabled: bool = True
     size_bytes: int = 0
     is_installed: bool = False
@@ -343,6 +344,7 @@ class ModelUpdateRequest(BaseModel):
     load_profile: str | None = None
     quantization: str | None = None
     max_batch_size: int | None = Field(default=None, ge=1, le=64)
+    frame_interval_seconds: int | None = Field(default=None, ge=1, le=600)
     enabled: bool | None = None
 
 
