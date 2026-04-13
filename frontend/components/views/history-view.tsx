@@ -3,10 +3,12 @@
 import * as React from "react"
 import { toast } from "react-hot-toast"
 import {
+  CheckCircle2,
   Search,
   Filter,
   FileText,
   MessageSquareText,
+  Circle,
   Clock,
   MoreHorizontal,
   Play,
@@ -14,6 +16,7 @@ import {
   Download,
   FolderOpen,
   Calendar,
+  X,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -64,6 +67,12 @@ const EMPTY_STATS: TaskStatsResponse = {
   completed: 0,
 }
 
+const TASK_DELETABLE_STATUSES = new Set(["completed", "failed", "cancelled"])
+
+function isTaskDeletable(status: string) {
+  return TASK_DELETABLE_STATUSES.has(status)
+}
+
 const getStatusBadge = (status: string) => {
   switch (status) {
     case "completed":
@@ -93,7 +102,12 @@ export function HistoryView({ onOpenTask, onTasksChanged }: HistoryViewProps) {
   const [stats, setStats] = React.useState<TaskStatsResponse>(EMPTY_STATS)
   const [isLoading, setIsLoading] = React.useState(true)
   const [busyTaskId, setBusyTaskId] = React.useState<string>("")
-  const [pendingDeleteTask, setPendingDeleteTask] = React.useState<TaskSummaryItem | null>(null)
+  const [selectionMode, setSelectionMode] = React.useState(false)
+  const [selectedTaskIds, setSelectedTaskIds] = React.useState<string[]>([])
+  const [pendingDeleteRequest, setPendingDeleteRequest] = React.useState<{
+    ids: string[]
+    description: string
+  } | null>(null)
 
   const loadHistory = React.useCallback(async () => {
     setIsLoading(true)
@@ -127,22 +141,90 @@ export function HistoryView({ onOpenTask, onTasksChanged }: HistoryViewProps) {
     setPage(1)
   }, [deferredSearchQuery, sortBy, statusFilter, workflowFilter])
 
+  React.useEffect(() => {
+    const deletableIds = new Set(
+      tasks.filter((task) => isTaskDeletable(task.status)).map((task) => task.id),
+    )
+    setSelectedTaskIds((current) => current.filter((taskId) => deletableIds.has(taskId)))
+  }, [tasks])
+
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const selectedTaskIdSet = React.useMemo(() => new Set(selectedTaskIds), [selectedTaskIds])
+  const deletableTaskIdsOnPage = React.useMemo(
+    () => tasks.filter((task) => isTaskDeletable(task.status)).map((task) => task.id),
+    [tasks],
+  )
+  const hasDeletableTasksOnPage = deletableTaskIdsOnPage.length > 0
+  const allDeletableTasksSelected =
+    hasDeletableTasksOnPage &&
+    deletableTaskIdsOnPage.every((taskId) => selectedTaskIdSet.has(taskId))
+
+  const toggleSelectionMode = React.useCallback(() => {
+    setSelectionMode((current) => {
+      if (current) {
+        setSelectedTaskIds([])
+      }
+      return !current
+    })
+  }, [])
+
+  const clearSelection = React.useCallback(() => {
+    setSelectionMode(false)
+    setSelectedTaskIds([])
+  }, [])
+
+  const toggleTaskSelection = React.useCallback((taskId: string) => {
+    setSelectedTaskIds((current) =>
+      current.includes(taskId)
+        ? current.filter((id) => id !== taskId)
+        : [...current, taskId],
+    )
+  }, [])
+
+  const handleSelectAllVisible = React.useCallback(() => {
+    setSelectedTaskIds(allDeletableTasksSelected ? [] : deletableTaskIdsOnPage)
+  }, [allDeletableTasksSelected, deletableTaskIdsOnPage])
 
   const handleDeleteTask = async () => {
-    if (!pendingDeleteTask) {
+    if (!pendingDeleteRequest || pendingDeleteRequest.ids.length === 0) {
       return
     }
 
-    setBusyTaskId(pendingDeleteTask.id)
+    const taskIds = pendingDeleteRequest.ids
+    const deletedTaskIds = new Set<string>()
+    let failureCount = 0
+    let firstErrorMessage = ""
+
+    setBusyTaskId(taskIds.length === 1 ? taskIds[0] : "__history-batch-delete__")
     try {
-      await deleteTask(pendingDeleteTask.id)
-      setPendingDeleteTask(null)
-      toast.success("任务已删除")
-      await loadHistory()
-      await onTasksChanged?.()
-    } catch (error) {
-      toast.error(getApiErrorMessage(error, "删除任务失败"))
+      for (const taskId of taskIds) {
+        try {
+          await deleteTask(taskId)
+          deletedTaskIds.add(taskId)
+        } catch (error) {
+          failureCount += 1
+          if (!firstErrorMessage) {
+            firstErrorMessage = getApiErrorMessage(error, "删除任务失败")
+          }
+        }
+      }
+
+      setPendingDeleteRequest(null)
+      setSelectedTaskIds((current) => current.filter((taskId) => !deletedTaskIds.has(taskId)))
+
+      if (deletedTaskIds.size > 0) {
+        toast.success(deletedTaskIds.size === 1 ? "任务已删除" : `已删除 ${deletedTaskIds.size} 个任务`)
+        await loadHistory()
+        await onTasksChanged?.()
+      }
+
+      if (failureCount > 0) {
+        toast.error(
+          deletedTaskIds.size > 0
+            ? `有 ${failureCount} 个任务删除失败，请稍后重试`
+            : firstErrorMessage || "删除任务失败",
+        )
+      }
     } finally {
       setBusyTaskId("")
     }
@@ -179,6 +261,29 @@ export function HistoryView({ onOpenTask, onTasksChanged }: HistoryViewProps) {
       setBusyTaskId("")
     }
   }
+
+  const requestSingleDelete = React.useCallback((task: TaskSummaryItem) => {
+    setPendingDeleteRequest({
+      ids: [task.id],
+      description: `删除后将移除任务“${task.title || task.source_input}”及其分析产物。此操作无法恢复。`,
+    })
+  }, [])
+
+  const requestBatchDelete = React.useCallback(() => {
+    if (selectedTaskIds.length === 0) {
+      return
+    }
+    setPendingDeleteRequest({
+      ids: selectedTaskIds,
+      description: `删除后将移除所选 ${selectedTaskIds.length} 个任务及其分析产物。此操作无法恢复。`,
+    })
+  }, [selectedTaskIds])
+
+  React.useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages)
+    }
+  }, [page, totalPages])
 
   return (
     <div className="flex-1 overflow-auto">
@@ -297,93 +402,174 @@ export function HistoryView({ onOpenTask, onTasksChanged }: HistoryViewProps) {
         {/* 任务列表 */}
         <Card>
           <CardContent className="p-0">
+            <div className="history-selection-toolbar flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant={selectionMode ? "default" : "outline"} size="sm" onClick={toggleSelectionMode}>
+                  <Trash2 className="h-4 w-4" />
+                  多选删除
+                </Button>
+                {selectionMode ? (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleSelectAllVisible}
+                      disabled={!hasDeletableTasksOnPage || Boolean(busyTaskId)}
+                    >
+                      {allDeletableTasksSelected ? "取消全选" : "全选本页"}
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={clearSelection} disabled={Boolean(busyTaskId)}>
+                      <X className="h-4 w-4" />
+                      退出选择
+                    </Button>
+                  </>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {selectionMode ? (
+                  <>
+                    <span className="text-sm text-muted-foreground">
+                      已选 {selectedTaskIds.length} 项
+                    </span>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="history-batch-delete-button"
+                      disabled={selectedTaskIds.length === 0 || Boolean(busyTaskId)}
+                      onClick={requestBatchDelete}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      删除所选
+                    </Button>
+                  </>
+                ) : (
+                  <span className="text-sm text-muted-foreground">
+                    已完成、失败、已取消的任务支持多选和全选删除。
+                  </span>
+                )}
+              </div>
+            </div>
             <div className="divide-y">
               {tasks.length === 0 && !isLoading && (
                 <div className="p-8 text-center text-sm text-muted-foreground">
                   暂无匹配的历史任务
                 </div>
               )}
-              {tasks.map((task) => (
-                <div
-                  key={task.id}
-                  className="flex items-center gap-4 p-4 hover:bg-muted/50 transition-colors"
-                >
-                  {/* 图标 */}
-                  <div className={cn(
-                    "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
-                    task.workflow === "notes" ? "bg-primary/10" : "bg-accent"
-                  )}>
-                    {task.workflow === "notes" ? (
-                      <FileText className="h-5 w-5 text-primary" />
-                    ) : (
-                      <MessageSquareText className="h-5 w-5 text-accent-foreground" />
+              {tasks.map((task) => {
+                const canDeleteTask = isTaskDeletable(task.status)
+                const isSelected = selectedTaskIdSet.has(task.id)
+
+                return (
+                  <div
+                    key={task.id}
+                    className={cn(
+                      "flex items-center gap-4 p-4 transition-colors hover:bg-muted/50",
+                      selectionMode && isSelected && "bg-primary/5",
                     )}
-                  </div>
-
-                  {/* 信息 */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium truncate">{task.title || task.source_input}</span>
-                      {getStatusBadge(task.status)}
-                    </div>
-                    <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        {formatDateTime(task.created_at)}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {formatDurationSeconds(task.duration_seconds)}
-                      </span>
-                      <span>{formatBytes(task.file_size_bytes)}</span>
-                    </div>
-                  </div>
-
-                  {/* 操作 */}
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        onOpenTask(task.id, {
-                          title: task.title || task.source_input,
-                          workflow: task.workflow,
-                        })
-                      }
-                      disabled={task.status !== "completed" && task.status !== "running" && task.status !== "queued"}
+                  >
+                    {selectionMode ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className={cn(
+                          "history-selection-toggle shrink-0 rounded-full",
+                          isSelected && "text-primary",
+                        )}
+                        aria-pressed={isSelected}
+                        title={
+                          canDeleteTask
+                            ? isSelected
+                              ? "取消选择"
+                              : "选择任务"
+                            : "仅已完成、失败、已取消的任务可删除"
+                        }
+                        disabled={!canDeleteTask || Boolean(busyTaskId)}
+                        onClick={() => toggleTaskSelection(task.id)}
+                      >
+                        {isSelected ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+                      </Button>
+                    ) : null}
+                    {/* 图标 */}
+                    <div
+                      className={cn(
+                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+                        task.workflow === "notes" ? "bg-primary/10" : "bg-accent",
+                      )}
                     >
-                      <Play className="h-4 w-4 mr-1" />
-                      查看
-                    </Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" disabled={busyTaskId === task.id}>
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => void handleExportTask(task.id)} disabled={task.status !== "completed"}>
-                          <Download className="h-4 w-4 mr-2" />
-                          导出结果
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => void handleOpenLocation(task.id)}>
-                          <FolderOpen className="h-4 w-4 mr-2" />
-                          打开文件位置
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          disabled={!["completed", "failed", "cancelled"].includes(task.status)}
-                          onClick={() => setPendingDeleteTask(task)}
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          删除
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                      {task.workflow === "notes" ? (
+                        <FileText className="h-5 w-5 text-primary" />
+                      ) : (
+                        <MessageSquareText className="h-5 w-5 text-accent-foreground" />
+                      )}
+                    </div>
+
+                    {/* 信息 */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium truncate">{task.title || task.source_input}</span>
+                        {getStatusBadge(task.status)}
+                      </div>
+                      <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          {formatDateTime(task.created_at)}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {formatDurationSeconds(task.duration_seconds)}
+                        </span>
+                        <span>{formatBytes(task.file_size_bytes)}</span>
+                      </div>
+                    </div>
+
+                    {/* 操作 */}
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="history-open-button"
+                        onClick={() =>
+                          onOpenTask(task.id, {
+                            title: task.title || task.source_input,
+                            workflow: task.workflow,
+                          })
+                        }
+                        disabled={task.status !== "completed" && task.status !== "running" && task.status !== "queued"}
+                      >
+                        <Play className="h-4 w-4 mr-1" />
+                        查看
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" disabled={busyTaskId === task.id}>
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => void handleExportTask(task.id)} disabled={task.status !== "completed"}>
+                            <Download className="h-4 w-4 mr-2" />
+                            导出结果
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => void handleOpenLocation(task.id)}>
+                            <FolderOpen className="h-4 w-4 mr-2" />
+                            打开文件位置
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            disabled={!canDeleteTask}
+                            onClick={() => requestSingleDelete(task)}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            删除
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
             <div className="flex items-center justify-between border-t px-4 py-3 text-sm">
               <span className="text-muted-foreground">
@@ -410,21 +596,17 @@ export function HistoryView({ onOpenTask, onTasksChanged }: HistoryViewProps) {
                 </Button>
               </div>
             </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
         <ConfirmDialog
-          open={Boolean(pendingDeleteTask)}
+          open={Boolean(pendingDeleteRequest)}
           onOpenChange={(open) => {
             if (!open) {
-              setPendingDeleteTask(null)
+              setPendingDeleteRequest(null)
             }
           }}
           title="确认删除任务？"
-          description={
-            pendingDeleteTask
-              ? `删除后将移除任务“${pendingDeleteTask.title || pendingDeleteTask.source_input}”及其分析产物。此操作无法恢复。`
-              : "删除后无法恢复。"
-          }
+          description={pendingDeleteRequest?.description || "删除后无法恢复。"}
           confirmLabel="确认删除"
           confirmVariant="destructive"
           isPending={Boolean(busyTaskId)}

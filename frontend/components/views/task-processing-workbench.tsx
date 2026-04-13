@@ -1884,7 +1884,7 @@ const TaskWorkspaceHeader = React.memo(function TaskWorkspaceHeader({
             </Button>
           ) : null}
           {canExportBundle ? (
-            <Button variant="outline" size="sm" onClick={onExportBundle}>
+            <Button variant="outline" size="sm" className="task-workbench-primary-action" onClick={onExportBundle}>
               <Download className="mr-1.5 h-4 w-4" />
               导出结果包
             </Button>
@@ -2680,11 +2680,23 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
         <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
           <div className="space-y-4 p-4">
             <div className="notes-workbench-actions flex items-center justify-end gap-2">
-              <Button variant="outline" size="sm" disabled={!canEditArtifacts} onClick={() => setIsEditingNotes(true)}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="notes-workbench-primary-action"
+                disabled={!canEditArtifacts}
+                onClick={() => setIsEditingNotes(true)}
+              >
                 <Edit3 className="mr-1.5 h-4 w-4" />
                 编辑笔记
               </Button>
-              <Button variant="outline" size="sm" disabled={!isTaskCompleted} onClick={onDownloadNotes}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="notes-workbench-primary-action"
+                disabled={!isTaskCompleted}
+                onClick={onDownloadNotes}
+              >
                 <Download className="mr-1.5 h-4 w-4" />
                 导出 Markdown
               </Button>
@@ -2693,7 +2705,7 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
               taskId={taskId}
               markdown={notesMarkdown}
               emptyMessage="当前还没有生成笔记内容"
-              className="artifact-markdown-viewer-shell notes-markdown-viewer-shell"
+              className="artifact-markdown-viewer-shell notes-markdown-viewer-shell notes-workbench-viewer"
               onSeek={onSeek}
             />
           </div>
@@ -2717,7 +2729,7 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
         }
         setIsEditingNotes(true)
       }}>
-        <DialogContent className="prompt-config-dialog flex w-[min(96vw,88rem)] max-h-[min(90vh,60rem)] max-w-[88rem] flex-col gap-0 overflow-hidden p-0 sm:max-w-[88rem]">
+        <DialogContent className="prompt-config-dialog notes-editor-dialog flex w-[min(96vw,88rem)] max-h-[min(90vh,60rem)] max-w-[88rem] flex-col gap-0 overflow-hidden p-0 sm:max-w-[88rem]">
           <DialogHeader className="prompt-config-dialog-header shrink-0 border-b px-6 py-2.5 pr-10">
             <DialogTitle className="text-base font-semibold leading-tight">编辑 Markdown 笔记</DialogTitle>
           </DialogHeader>

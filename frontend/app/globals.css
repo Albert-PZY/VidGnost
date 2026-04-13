@@ -857,6 +857,16 @@ html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .p
   caret-color: var(--wallpaper-shell-text) !important;
 }
 
+html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell :is(
+    .w-md-editor-text-pre,
+    .w-md-editor-text-pre > code,
+    .w-md-editor-text-pre > code *,
+    .w-md-editor-text-pre .token
+  ) {
+  color: var(--wallpaper-shell-text) !important;
+  -webkit-text-fill-color: var(--wallpaper-shell-text) !important;
+}
+
 html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell :is(.wmde-markdown, .wmde-markdown-var) {
   background: transparent !important;
   color: var(--wallpaper-shell-text) !important;
@@ -908,6 +918,74 @@ html:not(.dark) body[data-app-background-active="true"] .history-pagination-butt
 }
 
 html:not(.dark) body[data-app-background-active="true"] .history-pagination-button svg {
+  color: white !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(
+    .history-open-button,
+    .task-workbench-primary-action,
+    .notes-workbench-primary-action
+  ) {
+  background: var(--wallpaper-tint-fill-strong) !important;
+  color: white !important;
+  border-color: transparent !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 10px 22px rgba(6, 10, 18, 0.12);
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(
+    .history-open-button,
+    .task-workbench-primary-action,
+    .notes-workbench-primary-action
+  ):is(:hover, :focus, :focus-visible, :active) {
+  background: color-mix(in oklch, var(--primary) 56%, transparent) !important;
+  color: white !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(
+    .history-open-button,
+    .task-workbench-primary-action,
+    .notes-workbench-primary-action
+  ):disabled {
+  background: color-mix(in oklch, var(--primary) 24%, transparent) !important;
+  color: rgba(255, 255, 255, 0.74) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(
+    .history-open-button,
+    .task-workbench-primary-action,
+    .notes-workbench-primary-action,
+    .history-selection-toolbar [data-slot="button"]
+  ) svg {
+  color: inherit !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .history-selection-toolbar {
+  color: var(--wallpaper-shell-text) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .history-selection-toolbar .text-muted-foreground {
+  color: var(--wallpaper-shell-text-muted) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .history-selection-toolbar [data-slot="button"][class*="border"] {
+  background: color-mix(in oklch, white 8%, transparent) !important;
+  color: var(--wallpaper-shell-text) !important;
+  border-color: transparent !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .history-selection-toolbar [data-slot="button"][class*="border"]:is(:hover, :focus, :focus-visible, :active) {
+  background: var(--wallpaper-tint-fill-soft) !important;
+  color: white !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .history-selection-toggle {
+  color: var(--wallpaper-shell-text-muted) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .history-selection-toggle[aria-pressed="true"] {
+  background: var(--wallpaper-tint-fill-soft) !important;
   color: white !important;
 }
 
@@ -1030,6 +1108,18 @@ html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option
   color: color-mix(in oklch, white 84%, transparent) !important;
 }
 
+html:not(.dark) body[data-app-background-active="true"] [data-slot="sidebar-inner"] :is(
+    [data-slot="sidebar-group-label"],
+    [data-slot="sidebar-menu-button"],
+    [data-slot="sidebar-menu-button"] span,
+    [data-slot="sidebar-menu-button"] svg,
+    [data-slot="sidebar-header"] h1,
+    [data-slot="sidebar-header"] p,
+    [data-slot="sidebar-footer"] span
+  ) {
+  color: var(--wallpaper-shell-text) !important;
+}
+
 html:not(.dark) body[data-app-background-active="true"] [data-slot="card"] :is(
     h1,
     h2,
@@ -1053,6 +1143,88 @@ html:not(.dark) body[data-app-background-active="true"] [data-slot="card"] :is(
 html:not(.dark) body[data-app-background-active="true"] [data-slot="card"] .text-muted-foreground,
 html:not(.dark) body[data-app-background-active="true"] [data-slot="card"] .text-foreground {
   color: var(--wallpaper-shell-text) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .notes-workbench-pane {
+  color: var(--wallpaper-shell-text);
+}
+
+html:not(.dark) body[data-app-background-active="true"] .notes-workbench-pane .workbench-detail-tabs [data-slot="tabs-trigger"] {
+  color: var(--wallpaper-shell-text-muted) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .notes-workbench-pane .workbench-detail-tabs [data-slot="tabs-trigger"]:is(
+    [data-state="active"],
+    :hover,
+    :focus,
+    :focus-visible
+  ) {
+  color: white !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .notes-workbench-pane :is(
+    .notes-workbench-actions,
+    .notes-workbench-viewer,
+    .artifact-markdown-viewer-shell,
+    .artifact-markdown-viewer,
+    .artifact-markdown-viewer :is(h1, h2, h3, h4, p, li, blockquote, code, pre, td, th, a, strong, em),
+    .mermaid-preview-label,
+    .mermaid-preview-fallback,
+    .workbench-pane-state
+  ) {
+  color: var(--wallpaper-shell-text) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .notes-workbench-pane :is(
+    .artifact-markdown-viewer pre,
+    .artifact-markdown-viewer code,
+    .artifact-markdown-viewer th,
+    .artifact-markdown-viewer blockquote,
+    .mermaid-preview-shell
+  ) {
+  border-color: transparent !important;
+  background: color-mix(in oklch, black 18%, transparent) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(.transcript-segment-card, .transcript-correction-surface) {
+  color: var(--wallpaper-shell-text) !important;
+  border-color: transparent !important;
+  background: color-mix(in oklch, white 8%, transparent) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 12px 28px rgba(6, 10, 18, 0.1);
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(.transcript-segment-card, .transcript-correction-surface) :is(
+    p,
+    span,
+    div,
+    strong,
+    small,
+    svg,
+    button
+  ) {
+  color: inherit !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] :is(.transcript-segment-card, .transcript-correction-surface) .text-muted-foreground {
+  color: var(--wallpaper-shell-text-muted) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .transcript-segment-timestamp {
+  background: var(--wallpaper-tint-fill) !important;
+  border-color: transparent !important;
+  color: white !important;
+  box-shadow: none;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .transcript-segment-icon-button {
+  color: var(--wallpaper-shell-text) !important;
+}
+
+html:not(.dark) body[data-app-background-active="true"] .transcript-segment-icon-button:is(:hover, :focus-visible) {
+  background: var(--wallpaper-tint-fill-soft) !important;
+  color: white !important;
 }
 
 body[data-app-background-active="true"] [data-slot="card"] *,

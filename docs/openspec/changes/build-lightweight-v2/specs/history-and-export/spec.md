@@ -40,6 +40,12 @@ Backend SHALL allow title update and task deletion only for terminal tasks.
 - **THEN** the history list removes that task immediately after the delete request succeeds
 - **AND** the application shell refreshes the recent-task summary so deleted tasks no longer remain in the sidebar
 
+#### Scenario: Delete multiple terminal tasks from the current history page
+- **WHEN** user enters multi-select mode in the renderer history view
+- **THEN** the current page exposes per-row selection toggles together with `全选本页` and `删除所选`
+- **AND** only terminal tasks are selectable for batch deletion
+- **AND** after batch deletion succeeds, the history list refreshes, the recent-task summary no longer shows deleted tasks, and pagination stays within the new valid page range
+
 ### Requirement: Artifact markdown edits SHALL be supported after terminal status
 Backend SHALL allow notes/mindmap markdown update only after task reaches terminal state.
 

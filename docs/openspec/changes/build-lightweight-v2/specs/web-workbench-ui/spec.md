@@ -79,6 +79,7 @@ The task-workbench Markdown notes editor dialog SHALL use a wide split layout th
 - **AND** the wide layout stays bounded rather than expanding to an oversized ultra-wide sheet on desktop
 - **AND** the header and footer chrome stay compact and omit redundant helper copy so the editor keeps the dominant share of vertical space
 - **AND** the editor viewport height remains intentionally lower than the previous tall layout so the dialog reads as a compact work surface instead of a vertically stretched sheet
+- **AND** in light theme with a custom skin active, the source editor pane keeps readable light foreground text instead of falling back to low-contrast overlay token colors
 
 ### Requirement: Desktop startup SHALL preload core workbench views before main window reveal
 Electron desktop startup SHALL open a dedicated splash window first, keep the main window hidden while renderer assets and core workbench views initialize, and reveal the main window only after bootstrap completes or enters degraded mode. Core workbench views such as `新建任务`, `历史记录`, `设置中心`, `系统自检`, `任务处理`, and the prompt-template Markdown editor SHALL be included in the initial renderer startup path instead of route-level or dialog-level lazy loading placeholders. The splash surface SHALL follow the same restrained professional dark-tool styling as the renderer shell, using the project logo, a centered vertical brand composition, a single thin progress bar, and a five-step startup checklist with per-step elapsed-time feedback. The checklist SHALL be bound to explicit startup task states emitted by the hidden main window and renderer instead of inferring stages from display copy. The dedicated splash window SHALL keep a compact fixed footprint around `420 x 480` logical pixels so the launch surface reads as a concise startup panel instead of a large poster-like frame.
@@ -180,11 +181,14 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **AND** in light theme with a custom skin active, model-configuration and prompt-template dialogs reuse the custom-skin dialog's deep glass surface, preserve light foreground text, suppress hard borders, use thinner themed scrollbars, and keep header/footer chrome visually compact
 - **AND** in light theme with a custom skin active, the prompt-template Markdown editor preview SHALL NOT fall back to the library default white canvas and instead keeps a tinted dark translucent reading surface with readable light foreground text
 - **AND** in light theme with a custom skin active, the prompt-template Markdown editor input pane and preview pane use the same thin themed scrollbar styling
+- **AND** in light theme with a custom skin active, the notes-workbench Markdown editor input pane also keeps readable light source text and SHALL NOT render invisible overlay tokens
 - **AND** sidebar separators stay clipped to the sidebar content width in every theme and SHALL NOT visually protrude past the container edge
 - **AND** in light theme with a custom skin active, generic select and dropdown controls across the workbench keep white foreground text and icons by default and SHALL NOT fall back to dark typography inside glass popup surfaces
 - **AND** in light theme with a custom skin active, new-task intake mode tabs and intake panels use theme-hue translucent fills with white foreground text and explicit hover or active emphasis
 - **AND** in light theme with a custom skin active, selected upload-file rows use the active theme hue family for their video icon shells while keeping the glyphs readable
 - **AND** in light theme with a custom skin active, history pagination controls keep white foreground text
+- **AND** in light theme with a custom skin active, sidebar section labels, navigation text, and recent-task labels keep high-contrast white foreground text in their resting state
+- **AND** in light theme with a custom skin active, history-view `查看` plus workbench `编辑笔记` / `导出 Markdown` / `导出结果包` actions use theme-hue filled resting surfaces with white label text
 - **AND** in light theme with a custom skin active, the diagnostics `自动修复` action keeps white foreground text and icon color in resting, hover, focus, and disabled states
 - **AND** in light theme with a custom skin active, titlebar language/theme menus and the sidebar workflow menu use the shared glass dropdown surface, default to white text/icons, and express selected or hover state via neutral glass emphasis instead of theme-cyan fills
 - **AND** in light theme with a custom skin active, titlebar language/theme menu items and sidebar workflow options keep a neutral resting state and SHALL NOT inherit global accent background fills outside their explicit local hover, focus, highlight, or selected glass states
@@ -280,7 +284,9 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 - **AND** the Markdown workspace keeps an inner vertical scrollbar so long notes remain scrollable without moving the outer workbench shell
 - **AND** when the right workspace is resized narrow, Markdown, mindmap, clue-basket, and VQA panes reflow their tab chrome, actions, cards, and dense content within the available pane width instead of clipping the reading surface
 - **AND** entering note-edit mode opens a dedicated Markdown dialog with source editing on the left and live rendered preview on the right
+- **AND** in light theme with a custom skin active, the notes workspace tabs, action row, rendered Markdown, and empty states keep readable white foreground text
 - **AND** transcript cards render a precise timestamp chip at the top, keep only icon actions on the trailing edge, and expose action meaning through hover tooltips
+- **AND** in light theme with a custom skin active, transcript cards and correction surfaces keep white foreground text while timestamp chips and quick-action icons remain readable against the glass surface
 - **AND** transcript cards support quick actions such as `加入笔记` and `加入线索篮`
 
 #### Scenario: Inspect transcript correction output in a notes task
