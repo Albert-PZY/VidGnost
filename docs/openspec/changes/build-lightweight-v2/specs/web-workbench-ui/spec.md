@@ -75,6 +75,8 @@ The task-workbench Markdown notes editor dialog SHALL use a wide split layout th
 - **WHEN** user opens `编辑 Markdown 笔记`
 - **THEN** the dialog uses a wide landscape layout suited for side-by-side source and preview panes
 - **AND** desktop responsive breakpoints keep that wide layout instead of falling back to the generic small dialog max-width token
+- **AND** the wide layout stays bounded rather than expanding to an oversized ultra-wide sheet on desktop
+- **AND** the header and footer chrome stay compact and omit redundant helper copy so the editor keeps the dominant share of vertical space
 - **AND** the editor viewport height remains intentionally lower than the previous tall layout so the dialog reads as a compact work surface instead of a vertically stretched sheet
 
 ### Requirement: Desktop startup SHALL preload core workbench views before main window reveal
