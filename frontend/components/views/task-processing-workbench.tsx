@@ -2737,6 +2737,7 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
             <PromptMarkdownEditor
               value={notesDraft}
               colorMode={markdownColorMode}
+              taskId={taskId}
               height={520}
               placeholder="在这里编辑任务笔记..."
               onChange={setNotesDraft}
