@@ -355,6 +355,16 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 - **AND** unrelated surfaces such as the right-side Markdown workspace, VQA panes, and top summary header do not rerender on every video `timeupdate`
 - **AND** transcript-row highlighting updates with the active segment while unchanged transcript rows remain stable
 
+### Requirement: UI library SHALL provide a reusable virtual-list primitive for long evidence surfaces
+Frontend UI library SHALL provide a reusable virtual-list component under `frontend/components/ui` implemented with `@tanstack/react-virtual`. The primitive SHALL support dynamic item-height measurement, configurable `overscan`, caller-supplied stable `itemKey`, and customizable empty-state rendering so transcript and evidence surfaces can share one virtualization contract.
+
+#### Scenario: Render a large transcript or evidence collection
+- **WHEN** a workbench surface renders hundreds of transcript or evidence rows
+- **THEN** the surface can mount the shared virtual-list primitive and keep only visible rows in the DOM
+- **AND** row height can be measured dynamically to support mixed-content cards
+- **AND** list overscan can be tuned per usage context
+- **AND** callers can provide stable item keys and a custom empty-state node
+
 #### Scenario: Open a VQA task and ask a question
 - **WHEN** user submits a question from the VQA workbench
 - **THEN** before retrieval hits or answer tokens arrive, the assistant bubble shows a temporary loading placeholder with business-language progress copy instead of a blank bubble
