@@ -49,7 +49,7 @@ The system SHALL expose `/config/whisper` read/update endpoints and persist effe
 #### Scenario: Read Whisper config
 - **WHEN** client requests `/config/whisper`
 - **THEN** backend returns current persisted config or normalized defaults
-- **AND** the response includes nested Whisper GPU runtime-library status, install directory, environment-configuration flag, missing-file diagnostics, and current install progress snapshot when available
+- **AND** the response includes nested transcription CUDA runtime-library status, install directory, environment-configuration flag, missing-file diagnostics, and current install progress snapshot when available
 
 #### Scenario: Save Whisper config
 - **WHEN** client updates whisper runtime fields
@@ -71,28 +71,28 @@ Whisper config SHALL include `model_default`, `language`, `device`, `compute_typ
 - **WHEN** client submits unsupported whisper `compute_type`
 - **THEN** backend persists normalized `compute_type=int8`
 
-### Requirement: Whisper GPU runtime management SHALL expose editable install config and managed install actions
+### Requirement: Transcription CUDA runtime management SHALL expose editable install config and managed install actions
 The system SHALL expose `/config/whisper/runtime-libraries`, `/config/whisper/runtime-libraries/install`, `/config/whisper/runtime-libraries/pause`, and `/config/whisper/runtime-libraries/resume` so frontend settings can persist an install directory, toggle environment-variable configuration, inspect runtime readiness, and control a managed install of the bundled NVIDIA runtime set.
 
-#### Scenario: Save Whisper GPU runtime config
-- **WHEN** frontend saves a Whisper GPU runtime-library configuration
+#### Scenario: Save transcription CUDA runtime config
+- **WHEN** frontend saves a transcription CUDA runtime-library configuration
 - **THEN** backend persists `install_dir` and `auto_configure_env` into `backend/storage/config.toml`
 - **AND** backend applies the configured install directory to the current backend process environment when the runtime directory exists
 
-#### Scenario: Start managed Whisper GPU runtime install
+#### Scenario: Start managed transcription CUDA runtime install
 - **WHEN** frontend requests `/config/whisper/runtime-libraries/install`
 - **THEN** backend resolves the CUDA and cuDNN package list from NVIDIA official redist manifests
 - **AND** backend downloads package archives through an internal `httpx` async pipeline with package-level concurrency and range-based segment concurrency when the upstream supports byte ranges
 - **AND** backend persists install progress, current package label, transfer speed, resumable state, and partial download artifacts under the selected install directory so interrupted sessions can continue from completed bytes
 - **AND** backend assembles archives directly into the managed runtime `bin` / `lib` / `include` layout and returns final readiness diagnostics
 
-#### Scenario: Pause managed Whisper GPU runtime install
+#### Scenario: Pause managed transcription CUDA runtime install
 - **WHEN** frontend requests `/config/whisper/runtime-libraries/pause`
 - **THEN** backend stops active archive transfer loops after the current buffered chunk boundary
 - **AND** backend keeps completed archives, partial segments, and progress state on disk
 - **AND** the returned runtime-library status reports `progress.state=paused` and marks the install as resumable
 
-#### Scenario: Resume managed Whisper GPU runtime install
+#### Scenario: Resume managed transcription CUDA runtime install
 - **WHEN** frontend requests `/config/whisper/runtime-libraries/resume`
 - **THEN** backend continues downloading from existing partial archive bytes or completed range segments when available
 - **AND** already completed package archives are reused without being downloaded again

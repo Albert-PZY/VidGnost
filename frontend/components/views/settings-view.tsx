@@ -1031,7 +1031,7 @@ export function SettingsView({
       toast("当前环境不支持目录选择，请直接手动填写安装目录。")
       return
     }
-    const picked = await window.vidGnostDesktop.pickDirectory("选择 Whisper GPU 运行库安装目录")
+    const picked = await window.vidGnostDesktop.pickDirectory("选择转写 CUDA 运行库安装目录")
     if (picked.canceled || !picked.path) {
       return
     }
@@ -1046,15 +1046,15 @@ export function SettingsView({
     try {
       const response = await getWhisperConfig()
       setWhisperConfig(response)
-      toast.success("Whisper GPU 运行库状态已刷新")
+      toast.success("转写 CUDA 运行库状态已刷新")
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "刷新 Whisper GPU 运行库状态失败"))
+      toast.error(getApiErrorMessage(error, "刷新转写 CUDA 运行库状态失败"))
     }
   }
 
   const handleSaveWhisperRuntimeConfig = async () => {
     if (!whisperRuntimeForm.install_dir.trim()) {
-      toast.error("请先填写 Whisper GPU 运行库安装目录")
+      toast.error("请先填写转写 CUDA 运行库安装目录")
       return
     }
     setIsUpdatingWhisperRuntime(true)
@@ -1069,9 +1069,9 @@ export function SettingsView({
         auto_configure_env: runtimeLibraries.auto_configure_env,
       })
       setWhisperRuntimeDirty(false)
-      toast.success("Whisper GPU 运行库配置已保存")
+      toast.success("转写 CUDA 运行库配置已保存")
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "保存 Whisper GPU 运行库配置失败"))
+      toast.error(getApiErrorMessage(error, "保存转写 CUDA 运行库配置失败"))
     } finally {
       setIsUpdatingWhisperRuntime(false)
     }
@@ -1079,7 +1079,7 @@ export function SettingsView({
 
   const handleInstallWhisperRuntime = async () => {
     if (!whisperRuntimeForm.install_dir.trim()) {
-      toast.error("请先填写 Whisper GPU 运行库安装目录")
+      toast.error("请先填写转写 CUDA 运行库安装目录")
       return
     }
     setIsUpdatingWhisperRuntime(true)
@@ -1094,9 +1094,9 @@ export function SettingsView({
         auto_configure_env: runtimeLibraries.auto_configure_env,
       })
       setWhisperRuntimeDirty(false)
-      toast.success("已开始安装 Whisper GPU 运行库")
+      toast.success("已开始安装转写 CUDA 运行库")
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "启动 Whisper GPU 运行库安装失败"))
+      toast.error(getApiErrorMessage(error, "启动转写 CUDA 运行库安装失败"))
     } finally {
       setIsUpdatingWhisperRuntime(false)
     }
@@ -1107,9 +1107,9 @@ export function SettingsView({
     try {
       const runtimeLibraries = await pauseWhisperRuntimeLibraries()
       mergeWhisperRuntimeLibraries(runtimeLibraries)
-      toast.success("Whisper GPU 运行库下载已暂停")
+      toast.success("转写 CUDA 运行库下载已暂停")
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "暂停 Whisper GPU 运行库下载失败"))
+      toast.error(getApiErrorMessage(error, "暂停转写 CUDA 运行库下载失败"))
     } finally {
       setIsUpdatingWhisperRuntime(false)
     }
@@ -1125,9 +1125,9 @@ export function SettingsView({
         auto_configure_env: runtimeLibraries.auto_configure_env,
       })
       setWhisperRuntimeDirty(false)
-      toast.success("Whisper GPU 运行库安装已继续")
+      toast.success("转写 CUDA 运行库安装已继续")
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "继续 Whisper GPU 运行库安装失败"))
+      toast.error(getApiErrorMessage(error, "继续转写 CUDA 运行库安装失败"))
     } finally {
       setIsUpdatingWhisperRuntime(false)
     }
@@ -1139,7 +1139,7 @@ export function SettingsView({
     }
 
     if (checked && !whisperConfig.runtime_libraries.ready) {
-      toast.error("请先安装并校验完整 Whisper GPU 运行库，再启用 GPU 加速。")
+      toast.error("请先安装并校验完整转写 CUDA 运行库，再启用 GPU 加速。")
       return
     }
 
@@ -1175,11 +1175,7 @@ export function SettingsView({
   const whisperRuntimePaused = whisperRuntimeLibraries?.progress.state === "paused"
   const whisperRuntimeCanResume = Boolean(whisperRuntimeLibraries?.progress.resumable || whisperRuntimePaused)
   const whisperRuntimeShowProgress = Boolean(
-    whisperRuntimeLibraries &&
-      (whisperRuntimeInstalling ||
-        whisperRuntimePaused ||
-        whisperRuntimeLibraries.progress.total_bytes > 0 ||
-        whisperRuntimeLibraries.status === "failed"),
+    whisperRuntimeLibraries && (whisperRuntimeInstalling || whisperRuntimePaused),
   )
   const whisperRuntimeHeadline = whisperRuntimeLibraries ? getWhisperRuntimeHeadline(whisperRuntimeLibraries) : ""
   const whisperRuntimeNextStep = whisperRuntimeLibraries ? getWhisperRuntimeNextStep(whisperRuntimeLibraries) : ""
@@ -1286,7 +1282,7 @@ export function SettingsView({
                       <div>
                         <div className="font-medium">GPU 加速</div>
                         <div className="text-sm text-muted-foreground">
-                          通过 Whisper 运行设备配置控制 GPU/CPU 推理
+                          通过 Faster-Whisper 设备配置控制本地转写使用 GPU 或 CPU
                         </div>
                         {whisperConfig ? (
                           <div className="mt-1 text-xs text-muted-foreground">
@@ -1308,9 +1304,9 @@ export function SettingsView({
                     <div className="settings-models-panel rounded-lg border p-4">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="space-y-1">
-                          <div className="font-medium">Whisper GPU 运行库</div>
+                          <div className="font-medium">转写 CUDA 运行库</div>
                           <div className="text-sm text-muted-foreground">
-                            使用 NVIDIA 官方 CUDA/cuDNN redist 包自动下载并解压到指定目录。
+                            自动下载并整理 NVIDIA 官方 CUDA/cuDNN redist 包，当前用于 Faster-Whisper 本地转写加速。
                           </div>
                         </div>
                         {getWhisperRuntimeBadge(whisperRuntimeLibraries)}
@@ -1354,7 +1350,7 @@ export function SettingsView({
                                     install_dir: event.target.value,
                                   }))
                                 }}
-                                placeholder="如 D:\\AI\\VidGnost\\whisper-gpu-runtime"
+                                placeholder="如 D:\\AI\\VidGnost\\transcription-cuda-runtime"
                               />
                               <Button
                                 variant="outline"

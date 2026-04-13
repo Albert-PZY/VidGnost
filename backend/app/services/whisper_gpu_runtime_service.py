@@ -211,7 +211,7 @@ class WhisperGpuRuntimeService:
 
         if not self._is_windows():
             raise AppError.bad_request(
-                "当前平台不支持自动安装 Whisper GPU 运行库。",
+                "当前平台不支持自动安装转写 CUDA 运行库。",
                 code="WHISPER_GPU_RUNTIME_UNSUPPORTED",
                 hint="当前自动安装流程仅支持 Windows 桌面环境。",
             )
@@ -226,7 +226,7 @@ class WhisperGpuRuntimeService:
             self._pause_requested = False
             self._snapshot = _build_snapshot(
                 state="installing",
-                message="检测到未完成下载，正在继续安装。" if resumable else "准备下载并安装 Whisper GPU 运行库。",
+                message="检测到未完成下载，正在继续安装。" if resumable else "准备下载并安装转写 CUDA 运行库。",
                 resumable=resumable,
             )
             self._persist_snapshot(install_path, self._snapshot)
@@ -273,7 +273,7 @@ class WhisperGpuRuntimeService:
             return
 
         hint_parts = [
-            "请先在设置中心的语音转写模型区域安装完整 Whisper GPU 运行库，或切换回 CPU 模式。",
+            "请先在设置中心的语音转写模型区域安装完整转写 CUDA 运行库，或切换回 CPU 模式。",
         ]
         if status["install_dir"]:
             hint_parts.append(f"当前安装目录：{status['install_dir']}")
@@ -285,7 +285,7 @@ class WhisperGpuRuntimeService:
             hint_parts.append("当前下载已暂停，可在设置中心继续安装。")
 
         raise AppError.conflict(
-            "运行前检查失败：Whisper GPU 运行库未就绪。",
+            "运行前检查失败：转写 CUDA 运行库未就绪。",
             code="TASK_PRECHECK_WHISPER_GPU_RUNTIME_MISSING",
             hint=" ".join(hint_parts),
         )
@@ -324,7 +324,7 @@ class WhisperGpuRuntimeService:
                     current_package="",
                     message="检测到未完成下载，正在继续拉取运行库组件..."
                     if initial_bytes > 0
-                    else "正在下载 Whisper GPU 运行库组件...",
+                    else "正在下载转写 CUDA 运行库组件...",
                     force=True,
                 )
                 await self._download_archives(client=client, install_dir=install_dir, packages=packages, tracker=tracker)
@@ -349,7 +349,7 @@ class WhisperGpuRuntimeService:
 
             final_snapshot = _build_snapshot(
                 state="completed",
-                message="Whisper GPU 运行库已安装并完成环境配置。",
+                message="转写 CUDA 运行库已安装并完成环境配置。",
                 downloaded_bytes=tracker.total_bytes,
                 total_bytes=tracker.total_bytes,
                 percent=100.0,
@@ -394,7 +394,7 @@ class WhisperGpuRuntimeService:
             await self._set_snapshot(
                 _build_snapshot(
                     state="failed",
-                    message=f"Whisper GPU 运行库安装失败：{exc}",
+                    message=f"转写 CUDA 运行库安装失败：{exc}",
                     current_package=current["current_package"],
                     downloaded_bytes=current["downloaded_bytes"],
                     total_bytes=current["total_bytes"],
@@ -768,7 +768,7 @@ class WhisperGpuRuntimeService:
                 "platform_supported": False,
                 "ready": False,
                 "status": "unsupported",
-                "message": "当前平台不支持自动安装 Whisper GPU 运行库。",
+                "message": "当前平台不支持自动安装转写 CUDA 运行库。",
                 "bin_dir": bin_dir,
                 "missing_files": list(_REQUIRED_DLLS) + [_NVJITLINK_GLOB, _CUDNN_GLOB],
                 "discovered_files": {},
@@ -808,7 +808,7 @@ class WhisperGpuRuntimeService:
         if ready and snapshot["state"] != "installing":
             snapshot = _build_snapshot(
                 state="completed",
-                message="Whisper GPU 运行库已安装并完成环境配置。",
+                message="转写 CUDA 运行库已安装并完成环境配置。",
                 current_package=snapshot["current_package"],
                 downloaded_bytes=max(snapshot["downloaded_bytes"], snapshot["total_bytes"]),
                 total_bytes=max(snapshot["total_bytes"], snapshot["downloaded_bytes"]),
@@ -973,16 +973,16 @@ class WhisperGpuRuntimeService:
         snapshot: RuntimeInstallSnapshot,
     ) -> str:
         if ready:
-            return "Whisper GPU 运行库已就绪。"
+            return "转写 CUDA 运行库已就绪。"
         if status == "installing":
-            return snapshot["message"] or "正在安装 Whisper GPU 运行库。"
+            return snapshot["message"] or "正在安装转写 CUDA 运行库。"
         if status == "paused":
-            return snapshot["message"] or "Whisper GPU 运行库下载已暂停。"
+            return snapshot["message"] or "转写 CUDA 运行库下载已暂停。"
         if load_error:
             return f"运行库文件已找到，但加载失败：{load_error}"
         if missing_files:
             return f"缺少运行库文件：{', '.join(missing_files)}"
-        return "Whisper GPU 运行库未就绪。"
+        return "转写 CUDA 运行库未就绪。"
 
     @staticmethod
     def _path_contains(bin_dirs: list[Path]) -> bool:

@@ -78,8 +78,8 @@ Tasks created from uploaded files or explicit local paths SHALL retain a stable 
 - **THEN** task detail keeps `source_local_path` pointed at the retained source asset rather than a per-run temporary workspace copy
 - **AND** per-run temporary workspaces are cleaned after execution without deleting the retained source asset
 
-### Requirement: Whisper GPU runtime SHALL be prepared before GPU transcription begins
-When persisted whisper device strategy is `auto` or `cuda`, backend SHALL configure the current process environment from the persisted Whisper GPU runtime-library install directory and SHALL only enter Faster-Whisper GPU loading after required runtime DLLs pass readiness validation.
+### Requirement: Transcription CUDA runtime SHALL be prepared before GPU transcription begins
+When persisted whisper device strategy is `auto` or `cuda`, backend SHALL configure the current process environment from the persisted transcription CUDA runtime-library install directory and SHALL only enter Faster-Whisper GPU loading after required runtime DLLs pass readiness validation.
 
 #### Scenario: Start transcription with ready GPU runtime
 - **WHEN** persisted whisper `device` is `auto` or `cuda`
@@ -88,7 +88,7 @@ When persisted whisper device strategy is `auto` or `cuda`, backend SHALL config
 
 #### Scenario: Start transcription with missing GPU runtime
 - **WHEN** persisted whisper `device` is `auto` or `cuda`
-- **AND** the configured Whisper GPU runtime-library bundle is missing files or cannot be loaded
+- **AND** the configured transcription CUDA runtime-library bundle is missing files or cannot be loaded
 - **THEN** backend reports the runtime as not ready
 - **AND** the task-runtime preflight blocks task execution before transcription starts
 

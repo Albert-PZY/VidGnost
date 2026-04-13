@@ -15,18 +15,18 @@ Settings center SHALL provide `模型配置`, `提示词模板`, `外观设置`,
 - **WHEN** user opens settings from the application shell
 - **THEN** the renderer shows the four sections with current persisted values from backend config APIs
 
-### Requirement: Settings center SHALL expose managed Whisper GPU runtime controls
-The settings-center model surface SHALL expose a dedicated Whisper GPU runtime area above the model list. That area SHALL show install status, install directory, runtime version label, missing-file diagnostics, environment-configuration state, and install progress, and SHALL allow saving runtime-library config plus starting a one-click managed install.
+### Requirement: Settings center SHALL expose managed transcription CUDA runtime controls
+The settings-center model surface SHALL expose a dedicated transcription CUDA runtime area above the model list. That area SHALL show install status, install directory, runtime version label, missing-file diagnostics, environment-configuration state, and install progress, and SHALL allow saving runtime-library config plus starting a one-click managed install.
 
-#### Scenario: Configure Whisper GPU runtime from settings
+#### Scenario: Configure transcription CUDA runtime from settings
 - **WHEN** user opens settings and visits `模型配置`
-- **THEN** the renderer shows a Whisper GPU runtime card near the GPU acceleration toggle
+- **THEN** the renderer shows a transcription CUDA runtime card near the GPU acceleration toggle
 - **AND** the card allows editing the runtime install directory directly or by opening a native directory picker from Electron
 - **AND** the card allows toggling automatic user-environment-variable configuration
 - **AND** the card exposes `保存运行库配置`, an install action, a pause-or-resume action that changes with the current runtime install state, and `刷新状态`
 - **AND** the card condenses runtime information into a current-status summary, a next-step guidance block, and a single issue summary so users can act without first parsing low-level diagnostics fields
 - **AND** managed-runtime readiness detection accepts the versioned `nvJitLink*.dll` naming used by current CUDA 12 redist bundles and also searches managed subdirectories such as `bin/x64` when the official package layout keeps cuDNN DLLs there
-- **AND** when installation is active, paused, or resumable, the card renders a compact progress surface with current package label, percent, downloaded bytes, and transfer speed or paused-state text
+- **AND** when installation is active or paused, the card renders a compact progress surface with current package label, percent, downloaded bytes, and transfer speed or paused-state text
 - **AND** when installation is in progress, the card polls backend runtime-library status until the backend leaves the active install state
 
 ### Requirement: Configuration dialogs SHALL stay within viewport with fixed chrome
@@ -214,7 +214,7 @@ Frontend SHALL only render backend-provided data and call the Python backend ove
 - **THEN** Electron opens the native file picker for image files
 - **AND** the renderer receives the selected image payload through the preload bridge without changing the backend transport model
 
-#### Scenario: Pick a Whisper GPU runtime install directory from Electron
+#### Scenario: Pick a transcription CUDA runtime install directory from Electron
 - **WHEN** user clicks the runtime install-directory browse action inside settings
 - **THEN** Electron opens the native directory picker
 - **AND** the renderer receives the selected absolute directory path through the preload bridge without changing backend transport contracts
@@ -337,8 +337,8 @@ Diagnostics view SHALL provide a direct autofix action when the backend marks is
 - **AND** it only reports success when the `/models` response is a valid model list and the configured `model` is present in that remote list
 - **AND** the diagnostics issue summary reports the concrete connectivity result instead of only checking whether the config file exists
 
-#### Scenario: Diagnostics self-check validates Whisper GPU runtime
-- **WHEN** the backend runs the `Whisper GPU 运行库` self-check step
+#### Scenario: Diagnostics self-check validates transcription CUDA runtime
+- **WHEN** the backend runs the `转写 CUDA 运行库` self-check step
 - **THEN** it reports the configured install directory, effective runtime-library directory, and environment-variable state
 - **AND** it treats versioned `nvJitLink*.dll` files and managed `bin/x64` cuDNN locations as valid parts of the installed bundle when the NVIDIA package layout uses those forms
 - **AND** it lists missing runtime DLLs or load errors when the bundle is not ready
