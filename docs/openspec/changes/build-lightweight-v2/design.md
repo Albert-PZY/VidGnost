@@ -51,6 +51,8 @@ VidGnost 当前以 Electron 桌面工作台形态交付：
 - 运行链路仍保持 `A -> B -> C -> D` 四阶段模型。
 - `D` 阶段固定执行 `transcript_optimize -> fusion_delivery` 子链路。
 - SSE 与任务详情共同承担运行态可观测与回放职责。
+- `C` 阶段的 Whisper 转写通过独立 worker 进程执行，主进程只负责调度、事件消费和 chunk 级持久化。
+- GPU 重计算阶段使用统一的独占执行租约，不再以组件级 LRU 驱逐作为主显存管理策略。
 
 ### 8. Brand application
 - 项目品牌资源统一使用 `frontend/public/light.svg`。

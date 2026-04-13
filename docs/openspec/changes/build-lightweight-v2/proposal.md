@@ -7,7 +7,7 @@ VidGnost defines a practical video-analysis workbench for local execution plus o
 - Build a decoupled architecture with `FastAPI + React`.
 - Support three ingestion paths: Bilibili URL, local path, and file upload.
 - Implement asynchronous `A/B/C/D` runtime phases with explicit phase boundaries.
-- Use local `Systran/faster-whisper-small` transcription on CPU.
+- Use local `Systran/faster-whisper-small` transcription through an isolated worker process, with persisted runtime preferences controlling CPU/GPU execution.
 - Auto-prepare Whisper `small` model files at task start when cache is missing, with realtime progress events.
 - Run stage-`D` as ordered subchain: `transcript_optimize -> fusion_delivery`.
 - Generate notes and mindmap through OpenAI-compatible online API.
@@ -26,7 +26,7 @@ VidGnost defines a practical video-analysis workbench for local execution plus o
 
 ### Core Capabilities
 - `video-ingestion`: create tasks from URL/path/upload sources.
-- `transcription-pipeline`: async phase pipeline with CPU Whisper transcription.
+- `transcription-pipeline`: async phase pipeline with isolated Whisper worker transcription.
 - `llm-summary-mindmap`: online generation for notes and markmap markdown.
 - `sse-runtime-stream`: realtime task stream and self-check stream.
 - `llm-runtime-config`: editable runtime config persisted in local storage files.

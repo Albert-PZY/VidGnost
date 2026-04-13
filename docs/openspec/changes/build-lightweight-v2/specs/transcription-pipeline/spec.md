@@ -59,7 +59,21 @@ Transcription runtime SHALL apply persisted whisper `device` and `compute_type` 
 #### Scenario: Run transcription with persisted runtime config
 - **WHEN** phase `C` starts
 - **THEN** backend uses effective whisper `device=auto|cpu|cuda` and `compute_type=int8|float32`
-- **AND** runtime model caching keys are derived from the effective device and compute type
+- **AND** the isolated transcription worker receives those effective runtime preferences as its execution payload
+
+### Requirement: Phase C SHALL execute inside an isolated worker process
+Phase `C` SHALL run Faster-Whisper transcription inside a dedicated worker process rather than holding the runtime in the main orchestration process.
+
+#### Scenario: Start isolated transcription worker
+- **WHEN** phase `C` begins and at least one transcript chunk still needs transcription
+- **THEN** backend acquires the heavy-model execution lease
+- **AND** backend starts a dedicated Whisper worker process for the remaining chunk set
+- **AND** the main orchestration process consumes structured worker events and persists checkpoints from those events
+
+#### Scenario: Finish isolated transcription worker
+- **WHEN** the final missing transcript chunk finishes
+- **THEN** the worker process exits after returning completion status
+- **AND** the main process continues into phase `D` using the persisted transcript state
 
 ### Requirement: Phase C SHALL persist chunk checkpoints and resume from persisted transcription state
 Phase `C` SHALL persist transcript progress after each completed audio chunk and SHALL resume from persisted chunk checkpoints when an unfinished task is recovered.
@@ -90,7 +104,7 @@ Tasks created from uploaded files or explicit local paths SHALL retain a stable 
 - **AND** per-run temporary workspaces are cleaned after execution without deleting the retained source asset
 
 ### Requirement: Transcription CUDA runtime SHALL be prepared before GPU transcription begins
-When persisted whisper device strategy is `auto` or `cuda`, backend SHALL configure the current process environment from the persisted transcription CUDA runtime-library install directory and SHALL only enter Faster-Whisper GPU loading after required runtime DLLs pass readiness validation.
+When persisted whisper device strategy is `auto` or `cuda`, backend SHALL configure the current process environment from the persisted transcription CUDA runtime-library install directory and SHALL only enter Faster-Whisper GPU loading after required runtime DLLs pass readiness validation. The isolated transcription worker SHALL inherit that prepared environment before loading the GPU runtime.
 
 #### Scenario: Start transcription with ready GPU runtime
 - **WHEN** persisted whisper `device` is `auto` or `cuda`

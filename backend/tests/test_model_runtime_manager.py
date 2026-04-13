@@ -1,36 +1,51 @@
+import asyncio
+
 import pytest
 
 from app.services.model_runtime_manager import ModelRuntimeManager
 
 
 @pytest.mark.asyncio
-async def test_component_lru_eviction() -> None:
-    manager = ModelRuntimeManager(max_cached_models_by_component={"llm": 1})
+async def test_runtime_manager_reports_active_snapshot_for_current_lease() -> None:
+    manager = ModelRuntimeManager(max_cached_models_by_component={"asr": 1})
 
-    async with manager.reserve(task_id="t1", stage="D", component="llm", model_id="llm:a") as lease_a:
-        assert lease_a.evictions == ()
+    async with manager.reserve(task_id="t1", stage="C", component="asr", model_id="faster-whisper:small") as lease:
+        assert lease.wait_seconds >= 0
+        snapshot = await manager.active_snapshot()
+        assert snapshot is not None
+        assert snapshot["task_id"] == "t1"
+        assert snapshot["stage"] == "C"
+        assert snapshot["component"] == "asr"
+        assert snapshot["model_id"] == "faster-whisper:small"
+        assert snapshot["lease_strategy"] == "exclusive_process"
 
-    async with manager.reserve(task_id="t2", stage="D", component="llm", model_id="llm:b") as lease_b:
-        assert len(lease_b.evictions) == 1
-        assert lease_b.evictions[0].component == "llm"
-        assert lease_b.evictions[0].model_id == "llm:a"
-        assert lease_b.evictions[0].reason == "component_lru"
+    assert await manager.active_snapshot() is None
 
 
 @pytest.mark.asyncio
-async def test_cross_component_eviction_when_switching_runtime() -> None:
-    manager = ModelRuntimeManager(
-        max_cached_models_by_component={
-            "asr": 2,
-            "llm": 1,
-        }
-    )
+async def test_runtime_manager_serializes_heavy_gpu_leases() -> None:
+    manager = ModelRuntimeManager(max_cached_models_by_component={"asr": 1, "llm": 1})
+    first_acquired = asyncio.Event()
+    release_first = asyncio.Event()
+    second_wait: dict[str, float] = {}
 
-    async with manager.reserve(task_id="t1", stage="C", component="asr", model_id="faster-whisper:small") as asr_lease:
-        assert asr_lease.evictions == ()
+    async def hold_first() -> None:
+        async with manager.reserve(task_id="t1", stage="C", component="asr", model_id="faster-whisper:small"):
+            first_acquired.set()
+            await release_first.wait()
 
-    async with manager.reserve(task_id="t2", stage="D", component="llm", model_id="llm:qwen") as llm_lease:
-        assert len(llm_lease.evictions) == 1
-        assert llm_lease.evictions[0].component == "asr"
-        assert llm_lease.evictions[0].model_id == "faster-whisper:small"
-        assert llm_lease.evictions[0].reason == "cross_component_lru"
+    async def acquire_second() -> None:
+        async with manager.reserve(task_id="t2", stage="D", component="llm", model_id="llm:qwen") as lease:
+            second_wait["seconds"] = lease.wait_seconds
+
+    first_task = asyncio.create_task(hold_first())
+    await first_acquired.wait()
+
+    second_task = asyncio.create_task(acquire_second())
+    await asyncio.sleep(0.05)
+    assert not second_task.done()
+
+    release_first.set()
+    await asyncio.gather(first_task, second_task)
+
+    assert second_wait["seconds"] >= 0.04

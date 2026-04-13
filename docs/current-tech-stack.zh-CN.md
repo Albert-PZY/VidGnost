@@ -80,6 +80,10 @@
   - 任务事件流：`/api/tasks/{task_id}/events`
   - 问答流：`/api/chat/stream`
   - 自检流：`/api/self-check/{session_id}/events`
+- GPU 重计算执行模型：
+  - 主进程只负责任务编排、checkpoint 持久化、SSE 分发
+  - 阶段 C Whisper 转写通过独立 Python worker 进程执行
+  - 阶段完成后通过 worker 进程退出回收运行时资源
 
 ## 4. 检索与问答（RAG）栈
 

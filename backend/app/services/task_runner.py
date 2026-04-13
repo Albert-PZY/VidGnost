@@ -13,6 +13,7 @@ import orjson
 from app.config import Settings
 from app.models import TaskStatus
 from app.services.events import EventBus
+from app.services.gpu_stage_worker_client import GPUStageWorkerClient
 from app.services.ingestion import (
     AudioChunk,
     IngestionResult,
@@ -22,7 +23,7 @@ from app.services.ingestion import (
     split_audio_wav,
 )
 from app.services.llm_config_store import LLMConfigStore
-from app.services.model_runtime_manager import ModelRuntimeManager, RuntimeEviction
+from app.services.model_runtime_manager import ModelRuntimeManager
 from app.services.prompt_template_store import PromptTemplateStore
 from app.services.resource_guard import ResourceGuard
 from app.services.runtime_config_store import RuntimeConfigStore
@@ -102,6 +103,7 @@ class TaskRunner:
             llm_config_store=llm_config_store,
             prompt_template_store=prompt_template_store,
         )
+        self._gpu_stage_worker_client = GPUStageWorkerClient(settings)
         self._stage_artifact_store = StageArtifactStore(settings.storage_dir)
         self._jobs: dict[str, asyncio.Task[None]] = {}
         self._semaphore = asyncio.Semaphore(settings.max_concurrent_jobs)
@@ -578,7 +580,6 @@ class TaskRunner:
                         ),
                     ) as asr_lease:
                         self._record_runtime_lease(task_id, "C", asr_lease.wait_seconds)
-                        await self._handle_runtime_evictions(task_id, "C", asr_lease.evictions, stage_logs)
                         if asr_lease.wait_seconds > 0:
                             await self._emit_log(
                                 task_id,
@@ -587,133 +588,29 @@ class TaskRunner:
                                 stage_logs,
                                 substage="runtime",
                             )
-                        for chunk_index, chunk in enumerate(audio_chunks):
-                            if chunk_index in transcript_chunks_by_index:
-                                await self._emit_log(
-                                    task_id,
-                                    "C",
-                                    f"Reusing persisted transcript chunk {chunk_index + 1}/{total_chunks}: {chunk.path.name}",
-                                    stage_logs,
-                                )
-                                continue
-                            await self._emit_log(
-                                task_id,
-                                "C",
-                                f"Transcribing chunk {chunk_index + 1}/{total_chunks}: {chunk.path.name}",
-                                stage_logs,
-                            )
-
-                            segment_queue: asyncio.Queue[dict | None] = asyncio.Queue(maxsize=256)
-                            last_overall_progress = -1
-
-                            async def consume_segment_queue() -> None:
-                                nonlocal last_overall_progress
-                                while True:
-                                    item = await segment_queue.get()
-                                    if item is None:
-                                        break
-                                    segment = item["segment"]
-                                    overall_progress = int(item["overall_progress"])
-                                    stage_progress = int(item["stage_progress"])
-                                    await self._event_bus.publish(task_id, {"type": "transcript_delta", "stage": "C", **segment})
-                                    if overall_progress != last_overall_progress:
-                                        last_overall_progress = overall_progress
-                                        await self._event_bus.publish(
-                                            task_id,
-                                            {
-                                                "type": "progress",
-                                                "stage": "C",
-                                                "stage_progress": stage_progress,
-                                                "overall_progress": overall_progress,
-                                            },
-                                        )
-
-                            consumer_task = asyncio.create_task(consume_segment_queue())
-
-                            def on_segment(raw_segment: dict[str, float | str]) -> None:
-                                relative_end = max(0.0, float(raw_segment["end"]) - chunk.start_seconds)
-                                progress_ratio = (
-                                    (chunk_index + min(relative_end / max(chunk.duration_seconds, 1.0), 1.0))
-                                    / total_chunks
-                                )
-                                overall_progress = _interpolate_progress(
-                                    _PROGRESS_STAGE_C_START,
-                                    _PROGRESS_STAGE_C_DONE,
-                                    progress_ratio,
-                                )
-                                payload = {
-                                    "segment": raw_segment,
-                                    "overall_progress": max(_PROGRESS_STAGE_C_START, min(_PROGRESS_STAGE_C_DONE, overall_progress)),
-                                    "stage_progress": max(0, min(100, int(progress_ratio * 100))),
-                                }
-
-                                def enqueue_from_loop() -> None:
-                                    if segment_queue.full():
-                                        try:
-                                            _ = segment_queue.get_nowait()
-                                        except asyncio.QueueEmpty:
-                                            pass
-                                    try:
-                                        segment_queue.put_nowait(payload)
-                                    except asyncio.QueueFull:
-                                        pass
-
-                                event_loop.call_soon_threadsafe(enqueue_from_loop)
-
-                            try:
-                                result = await self._transcriber.transcribe(
-                                    audio_path=chunk.path,
-                                    model_size=selected_model,
-                                    language=selected_language,
-                                    model_default=whisper_config["model_default"],
-                                    device=whisper_config["device"],
-                                    compute_type=whisper_config["compute_type"],
-                                    beam_size=whisper_config["beam_size"],
-                                    vad_filter=whisper_config["vad_filter"],
-                                    model_load_profile=whisper_config.get("model_load_profile", "balanced"),
-                                    timestamp_offset_seconds=chunk.start_seconds,
-                                    on_segment=on_segment,
-                                )
-                            finally:
-                                await segment_queue.put(None)
-                                await consumer_task
-                            transcript_chunks_by_index[chunk_index] = result.segments
-                            await self._persist_stage_artifact_chunk_json(
-                                task_id,
-                                "C",
-                                "transcript",
-                                chunk_index,
-                                {
-                                    "task_id": task_id,
-                                    "chunk_index": chunk_index + 1,
-                                    "chunk_total": total_chunks,
-                                    "file_name": chunk.path.name,
-                                    "start_seconds": round(chunk.start_seconds, 2),
-                                    "duration_seconds": round(chunk.duration_seconds, 2),
-                                    "end_seconds": round(chunk.start_seconds + max(0.0, chunk.duration_seconds), 2),
-                                    "segment_count": len(result.segments),
-                                    "segments": result.segments,
-                                    "updated_at": datetime.now(timezone.utc).isoformat(),
-                                },
-                            )
-                            chunk_progress = _interpolate_progress(
-                                _PROGRESS_STAGE_C_START,
-                                _PROGRESS_STAGE_C_DONE,
-                                len(transcript_chunks_by_index) / total_chunks,
-                            )
-                            await self._emit_log(
-                                task_id,
-                                "C",
-                                f"Chunk {chunk_index + 1}/{total_chunks} transcription completed",
-                                stage_logs,
-                            )
-                            await self._persist_transcript_progress(
-                                task_id=task_id,
-                                stage_logs=stage_logs,
-                                audio_chunks=audio_chunks,
-                                transcript_chunks_by_index=transcript_chunks_by_index,
-                                progress=chunk_progress,
-                            )
+                        await self._emit_log(
+                            task_id,
+                            "C",
+                            "Starting isolated Whisper worker process for remaining transcript chunks...",
+                            stage_logs,
+                            substage="runtime",
+                        )
+                        await self._run_whisper_stage_worker(
+                            task_id=task_id,
+                            stage_logs=stage_logs,
+                            audio_chunks=audio_chunks,
+                            transcript_chunks_by_index=transcript_chunks_by_index,
+                            selected_model=selected_model,
+                            selected_language=selected_language,
+                            whisper_config=whisper_config,
+                        )
+                        await self._emit_log(
+                            task_id,
+                            "C",
+                            "Whisper worker process exited and released runtime resources.",
+                            stage_logs,
+                            substage="runtime",
+                        )
 
                 all_segments = self._flatten_transcript_chunk_segments(
                     transcript_chunks_by_index=transcript_chunks_by_index,
@@ -807,7 +704,6 @@ class TaskRunner:
                                 model_id=f"llm:{llm_model_id}",
                             ) as llm_correction_lease:
                                 self._record_runtime_lease(task_id, "D", llm_correction_lease.wait_seconds)
-                                await self._handle_runtime_evictions(task_id, "D", llm_correction_lease.evictions, stage_logs)
                                 if llm_correction_lease.wait_seconds > 0:
                                     await self._emit_log(
                                         task_id,
@@ -924,7 +820,6 @@ class TaskRunner:
                             model_id=f"llm:{llm_model_id}",
                         ) as llm_generate_lease:
                             self._record_runtime_lease(task_id, "D", llm_generate_lease.wait_seconds)
-                            await self._handle_runtime_evictions(task_id, "D", llm_generate_lease.evictions, stage_logs)
                             if llm_generate_lease.wait_seconds > 0:
                                 await self._emit_log(
                                     task_id,
@@ -1208,7 +1103,6 @@ class TaskRunner:
                                 model_id=f"llm:{llm_model_id}",
                             ) as llm_correction_lease:
                                 self._record_runtime_lease(task_id, "D", llm_correction_lease.wait_seconds)
-                                await self._handle_runtime_evictions(task_id, "D", llm_correction_lease.evictions, stage_logs)
                                 if llm_correction_lease.wait_seconds > 0:
                                     await self._emit_log(
                                         task_id,
@@ -1322,7 +1216,6 @@ class TaskRunner:
                             model_id=f"llm:{llm_model_id}",
                         ) as llm_generate_lease:
                             self._record_runtime_lease(task_id, "D", llm_generate_lease.wait_seconds)
-                            await self._handle_runtime_evictions(task_id, "D", llm_generate_lease.evictions, stage_logs)
                             if llm_generate_lease.wait_seconds > 0:
                                 await self._emit_log(
                                     task_id,
@@ -1744,44 +1637,153 @@ class TaskRunner:
         current_lock_count = int(stage_entry.get("runtime_lock_count", 0) or 0)
         stage_entry["runtime_lock_count"] = current_lock_count + 1
 
-    async def _handle_runtime_evictions(
+    async def _run_whisper_stage_worker(
         self,
+        *,
         task_id: str,
-        stage: StageType,
-        evictions: tuple[RuntimeEviction, ...],
         stage_logs: dict[str, list[str]],
+        audio_chunks: list[AudioChunk],
+        transcript_chunks_by_index: dict[int, list[dict[str, float | str]]],
+        selected_model: str,
+        selected_language: str,
+        whisper_config: dict[str, object],
     ) -> None:
-        if not evictions:
+        pending_chunks = [
+            (chunk_index, chunk)
+            for chunk_index, chunk in enumerate(audio_chunks)
+            if chunk_index not in transcript_chunks_by_index
+        ]
+        if not pending_chunks:
             return
-        stage_entry = self._ensure_task_stage_metric_entry(task_id, stage)
-        current_eviction_count = int(stage_entry.get("runtime_eviction_count", 0) or 0)
-        stage_entry["runtime_eviction_count"] = current_eviction_count + len(evictions)
-        for eviction in evictions:
-            # ctranslate2-backed Whisper models can abort the process when their
-            # native runtime is released from a different worker thread than the
-            # one orchestrating the pipeline transition. Keep eviction on the
-            # current task thread to avoid cross-thread native teardown.
-            released = self._evict_runtime_model(eviction)
-            suffix = "released" if released else "release skipped"
+
+        total_chunks = max(1, len(audio_chunks))
+        last_overall_progress = -1
+
+        async def on_worker_event(event: dict[str, object]) -> None:
+            nonlocal last_overall_progress
+            event_type = str(event.get("type", "") or "").strip().lower()
+
+            if event_type == "chunk_start":
+                chunk_index = int(event.get("chunk_index", 0) or 0)
+                chunk = audio_chunks[chunk_index]
+                await self._emit_log(
+                    task_id,
+                    "C",
+                    f"Transcribing chunk {chunk_index + 1}/{total_chunks}: {chunk.path.name}",
+                    stage_logs,
+                )
+                return
+
+            if event_type == "segment":
+                chunk_index = int(event.get("chunk_index", 0) or 0)
+                if chunk_index < 0 or chunk_index >= len(audio_chunks):
+                    return
+                chunk = audio_chunks[chunk_index]
+                raw_segment = event.get("segment")
+                if not isinstance(raw_segment, dict):
+                    return
+                segment = {
+                    "start": round(_to_float(raw_segment.get("start")), 2),
+                    "end": round(max(_to_float(raw_segment.get("start")), _to_float(raw_segment.get("end"))), 2),
+                    "text": str(raw_segment.get("text", "") or "").strip(),
+                }
+                if not str(segment["text"]).strip():
+                    return
+                await self._event_bus.publish(task_id, {"type": "transcript_delta", "stage": "C", **segment})
+                relative_end = max(0.0, _to_float(segment["end"]) - chunk.start_seconds)
+                progress_ratio = (
+                    (chunk_index + min(relative_end / max(chunk.duration_seconds, 1.0), 1.0))
+                    / total_chunks
+                )
+                overall_progress = _interpolate_progress(
+                    _PROGRESS_STAGE_C_START,
+                    _PROGRESS_STAGE_C_DONE,
+                    progress_ratio,
+                )
+                if overall_progress != last_overall_progress:
+                    last_overall_progress = overall_progress
+                    await self._event_bus.publish(
+                        task_id,
+                        {
+                            "type": "progress",
+                            "stage": "C",
+                            "stage_progress": max(0, min(100, int(progress_ratio * 100))),
+                            "overall_progress": max(
+                                _PROGRESS_STAGE_C_START,
+                                min(_PROGRESS_STAGE_C_DONE, overall_progress),
+                            ),
+                        },
+                    )
+                return
+
+            if event_type != "chunk_complete":
+                return
+
+            chunk_index = int(event.get("chunk_index", 0) or 0)
+            if chunk_index < 0 or chunk_index >= len(audio_chunks):
+                return
+            chunk = audio_chunks[chunk_index]
+            segments = _normalize_transcript_segments_payload(event.get("segments"))
+            transcript_chunks_by_index[chunk_index] = segments
+            await self._persist_stage_artifact_chunk_json(
+                task_id,
+                "C",
+                "transcript",
+                chunk_index,
+                {
+                    "task_id": task_id,
+                    "chunk_index": chunk_index + 1,
+                    "chunk_total": total_chunks,
+                    "file_name": chunk.path.name,
+                    "start_seconds": round(chunk.start_seconds, 2),
+                    "duration_seconds": round(chunk.duration_seconds, 2),
+                    "end_seconds": round(chunk.start_seconds + max(0.0, chunk.duration_seconds), 2),
+                    "segment_count": len(segments),
+                    "segments": segments,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+            chunk_progress = _interpolate_progress(
+                _PROGRESS_STAGE_C_START,
+                _PROGRESS_STAGE_C_DONE,
+                len(transcript_chunks_by_index) / total_chunks,
+            )
             await self._emit_log(
                 task_id,
-                stage,
-                (
-                    f"Runtime eviction ({eviction.reason}): "
-                    f"{eviction.component}:{eviction.model_id} ({suffix})"
-                ),
+                "C",
+                f"Chunk {chunk_index + 1}/{total_chunks} transcription completed",
                 stage_logs,
-                substage="runtime",
+            )
+            await self._persist_transcript_progress(
+                task_id=task_id,
+                stage_logs=stage_logs,
+                audio_chunks=audio_chunks,
+                transcript_chunks_by_index=transcript_chunks_by_index,
+                progress=chunk_progress,
             )
 
-    def _evict_runtime_model(self, eviction: RuntimeEviction) -> bool:
-        if eviction.component == "asr":
-            self._transcriber.release_runtime_models()
-            return True
-        if eviction.component == "llm":
-            self._summarizer.release_runtime_models()
-            return True
-        return False
+        await self._gpu_stage_worker_client.run(
+            {
+                "operation": "whisper_transcribe_stage",
+                "payload": {
+                    "task_id": task_id,
+                    "selected_model": selected_model,
+                    "selected_language": selected_language,
+                    "whisper_config": whisper_config,
+                    "chunks": [
+                        {
+                            "chunk_index": chunk_index,
+                            "path": str(chunk.path),
+                            "file_name": chunk.path.name,
+                            "start_seconds": round(chunk.start_seconds, 2),
+                            "duration_seconds": round(chunk.duration_seconds, 2),
+                        }
+                        for chunk_index, chunk in pending_chunks
+                    ],
+                },
+            },
+            on_event=on_worker_event,
+        )
 
     def _select_mode_semaphore(self, mode: ExecutionMode) -> asyncio.Semaphore:
         _ = mode
@@ -1802,7 +1804,6 @@ class TaskRunner:
                 "scheduler_wait_seconds": 0.0,
                 "runtime_wait_seconds": 0.0,
                 "runtime_lock_count": 0,
-                "runtime_eviction_count": 0,
             },
         )
 
@@ -1822,7 +1823,6 @@ class TaskRunner:
             "scheduler_wait_seconds": float(stage_entry.get("scheduler_wait_seconds", 0.0) or 0.0),
             "runtime_wait_seconds": float(stage_entry.get("runtime_wait_seconds", 0.0) or 0.0),
             "runtime_lock_count": int(stage_entry.get("runtime_lock_count", 0) or 0),
-            "runtime_eviction_count": int(stage_entry.get("runtime_eviction_count", 0) or 0),
             "metrics_json": orjson.dumps(stage_entry).decode("utf-8"),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -2462,7 +2462,6 @@ def _empty_stage_metrics() -> dict[StageType, dict[str, object]]:
             "scheduler_wait_seconds": 0.0,
             "runtime_wait_seconds": 0.0,
             "runtime_lock_count": 0,
-            "runtime_eviction_count": 0,
         }
         for stage in _STAGE_KEYS
     }
