@@ -5,6 +5,7 @@ import MarkdownPreview from "@uiw/react-markdown-preview"
 import "@uiw/react-markdown-preview/markdown.css"
 
 import { buildTaskArtifactFileUrl } from "@/lib/api"
+import { renderMarkdownCodeBlock, renderMarkdownPreBlock } from "@/components/ui/mermaid-code-block"
 
 interface MarkdownArtifactViewerProps {
   taskId: string
@@ -58,9 +59,25 @@ export function MarkdownArtifactViewer({
   className,
   onSeek,
 }: MarkdownArtifactViewerProps) {
+  const colorMode =
+    typeof document !== "undefined" && document.documentElement.classList.contains("dark")
+      ? "dark"
+      : "light"
   const renderedMarkdown = React.useMemo(
     () => decorateMarkdown(markdown || "", taskId),
     [markdown, taskId],
+  )
+  const previewComponents = React.useMemo(
+    () => ({
+      code: (props: { className?: string; children?: React.ReactNode }) =>
+        renderMarkdownCodeBlock({
+          className: props.className,
+          children: props.children,
+          colorMode,
+        }),
+      pre: renderMarkdownPreBlock,
+    }),
+    [colorMode],
   )
 
   if (!markdown?.trim()) {
@@ -80,7 +97,11 @@ export function MarkdownArtifactViewer({
         onSeek?.(Number(href.split("/").pop() || 0))
       }}
     >
-      <MarkdownPreview source={renderedMarkdown} className="artifact-markdown-viewer wmde-markdown-var" />
+      <MarkdownPreview
+        source={renderedMarkdown}
+        className="artifact-markdown-viewer wmde-markdown-var"
+        components={previewComponents}
+      />
     </div>
   )
 }

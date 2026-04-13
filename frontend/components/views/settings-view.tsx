@@ -74,7 +74,6 @@ import {
   updateWhisperRuntimeLibrariesConfig,
 } from "@/lib/api"
 import { formatBytes } from "@/lib/format"
-import { isPerfLoggingEnabled, setPerfLoggingEnabled } from "@/lib/perf"
 import { getImageLayout } from "@/lib/ui-skin"
 import type {
   LLMConfigResponse,
@@ -379,7 +378,6 @@ export function SettingsView({
   const [whisperRuntimeDirty, setWhisperRuntimeDirty] = React.useState(false)
   const [pendingDeletePrompt, setPendingDeletePrompt] = React.useState<PromptTemplateItem | null>(null)
   const [isDeletingPrompt, setIsDeletingPrompt] = React.useState(false)
-  const [perfLoggingEnabled, setPerfLoggingState] = React.useState(false)
   const markdownColorMode = resolvedTheme === "dark" ? "dark" : "light"
   const backgroundFileInputRef = React.useRef<HTMLInputElement | null>(null)
   const backgroundFileResolverRef = React.useRef<((image: PickedSkinImage | null) => void) | null>(null)
@@ -408,10 +406,6 @@ export function SettingsView({
       onUiSettingsPreviewChange(null)
     }
   }, [onUiSettingsPreviewChange])
-
-  React.useEffect(() => {
-    setPerfLoggingState(isPerfLoggingEnabled())
-  }, [])
 
   React.useEffect(() => {
     if (activeSection !== "appearance" || !skinPreviewRef.current) {
@@ -2700,22 +2694,6 @@ export function SettingsView({
                     </p>
                   </div>
                   <Separator />
-                  <div className="flex items-center justify-between gap-4 rounded-xl border border-border/70 bg-muted/15 px-4 py-3">
-                    <div className="space-y-1">
-                      <Label>开发者模式</Label>
-                      <p className="text-sm text-muted-foreground">
-                        开启后会记录关键视图和重型操作的耗时采样，并在系统自检界面底部展示最近的数据。
-                      </p>
-                    </div>
-                    <Switch
-                      checked={perfLoggingEnabled}
-                      onCheckedChange={(checked) => {
-                        setPerfLoggingEnabled(checked)
-                        setPerfLoggingState(checked)
-                        toast.success(checked ? "已开启开发者模式" : "已关闭开发者模式")
-                      }}
-                    />
-                  </div>
                 </CardContent>
               </Card>
             )}

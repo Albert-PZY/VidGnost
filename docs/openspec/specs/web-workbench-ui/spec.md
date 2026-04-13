@@ -74,6 +74,7 @@ The task-workbench Markdown notes editor dialog SHALL use a wide split layout th
 #### Scenario: Open the Markdown notes editor from the task workbench
 - **WHEN** user opens `编辑 Markdown 笔记`
 - **THEN** the dialog uses a wide landscape layout suited for side-by-side source and preview panes
+- **AND** the dialog reuses the same bounded desktop width contract as the prompt-template configuration dialog, with a maximum visual width around `88rem`
 - **AND** desktop responsive breakpoints keep that wide layout instead of falling back to the generic small dialog max-width token
 - **AND** the wide layout stays bounded rather than expanding to an oversized ultra-wide sheet on desktop
 - **AND** the header and footer chrome stay compact and omit redundant helper copy so the editor keeps the dominant share of vertical space
@@ -256,16 +257,6 @@ New-task view SHALL expose `Upload`, `URL`, and `Path` intake modes inside the s
 - **AND** upload helper copy keeps a higher-contrast foreground treatment in dark theme so the prompt remains readable during idle and importing states
 - **AND** the user can switch to URL or absolute local-path input without leaving the page
 
-### Requirement: Diagnostics view SHALL surface developer-mode samples when enabled
-Diagnostics view SHALL expose a dedicated developer-mode area below the runtime strip and issue summary. When developer mode is enabled from settings, the area SHALL list recent local frontend performance samples captured from critical views or heavy actions; when developer mode is disabled, the same area SHALL explain how to enable it.
-
-#### Scenario: Open diagnostics view with developer mode enabled
-- **WHEN** user enables developer mode in settings and then opens diagnostics
-- **THEN** the diagnostics page shows a developer-mode panel near the bottom of the page
-- **AND** the panel lists recent performance samples with readable operation labels, local timestamps, and duration values in milliseconds
-- **AND** when a performance label includes a task-detail task identifier, the panel preserves that full task identifier in the visible label instead of truncating it behind an ellipsis
-- **AND** the panel updates as new local samples are recorded during the same renderer session
-
 ### Requirement: Bootstrap surfaces SHALL provide startup progress and backend recovery actions
 Workbench bootstrap SHALL expose a desktop splash progress state before the main window reveal and a renderer overlay state machine for `initializing`, `connecting`, `degraded`, and `ready` after the main window becomes visible. Degraded states SHALL provide direct recovery actions.
 
@@ -278,17 +269,26 @@ Workbench bootstrap SHALL expose a desktop splash progress state before the main
 - **AND** the overlay is dismissed automatically once bootstrap reaches `ready`
 
 ### Requirement: Task processing workbench SHALL provide a resizable evidence-driven workspace
-Task processing workbench SHALL use a horizontal resizable split layout. The left workspace SHALL provide `转写片段`, `证据时间轴`, and `阶段输出` tabs. The right workspace SHALL switch between `Markdown 工作区 / 思维导图 / 线索篮` for notes tasks and `流式问答 / Trace Theater / 线索篮` for VQA tasks.
+Task processing workbench SHALL use a horizontal resizable split layout. For notes tasks, the left workspace SHALL provide `转写片段`, `文本纠错`, `证据时间轴`, and `阶段输出` tabs. For VQA tasks, the left workspace SHALL provide `转写片段`, `证据时间轴`, and `阶段输出` tabs. The right workspace SHALL switch between `Markdown 工作区 / 思维导图 / 线索篮` for notes tasks and `流式问答 / Trace Theater / 线索篮` for VQA tasks.
 
 #### Scenario: Open a completed notes task
 - **WHEN** user opens a notes task in the processing workbench
 - **THEN** the renderer shows the resizable video-and-artifact layout
+- **AND** the left workspace exposes an additional `文本纠错` tab dedicated to transcript correction output
 - **AND** the Markdown workspace renders a single notes Markdown surface instead of duplicating equivalent summary content beside it
 - **AND** Markdown timestamps can seek the video
 - **AND** the Markdown workspace keeps an inner vertical scrollbar so long notes remain scrollable without moving the outer workbench shell
 - **AND** when the right workspace is resized narrow, Markdown, mindmap, clue-basket, and VQA panes reflow their tab chrome, actions, cards, and dense content within the available pane width instead of clipping the reading surface
 - **AND** entering note-edit mode opens a dedicated Markdown dialog with source editing on the left and live rendered preview on the right
+- **AND** transcript cards render a precise timestamp chip at the top, keep only icon actions on the trailing edge, and expose action meaning through hover tooltips
 - **AND** transcript cards support quick actions such as `加入笔记` and `加入线索篮`
+
+#### Scenario: Inspect transcript correction output in a notes task
+- **WHEN** user opens the `文本纠错` tab for a notes task
+- **THEN** `strict` mode shows per-timestamp comparison rows with original transcript on the left and corrected transcript on the right
+- **AND** the corrected side can fill in progressively while the correction stream is still running
+- **AND** `rewrite` mode shows the rewritten transcript as a single streaming text surface instead of a per-segment diff
+- **AND** if correction is skipped or disabled, the tab explains that downstream notes generation is using the raw transcript directly
 
 #### Scenario: Preview imported source media inside the workbench
 - **WHEN** user opens a task whose detail payload includes a persisted `source_local_path`

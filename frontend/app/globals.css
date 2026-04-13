@@ -1324,6 +1324,17 @@ body[data-app-background-active="true"] .custom-skin-dialog-surface * {
   container-type: inline-size;
 }
 
+.notes-markdown-viewer-shell {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.notes-markdown-viewer-shell .artifact-markdown-viewer {
+  padding: 0 !important;
+}
+
 .artifact-markdown-viewer {
   max-width: none !important;
   min-width: 0;
@@ -1488,6 +1499,76 @@ body[data-app-background-active="true"] .custom-skin-dialog-surface * {
 .artifact-markdown-viewer pre::-webkit-scrollbar-thumb:hover,
 .artifact-markdown-viewer table::-webkit-scrollbar-thumb:hover {
   background: color-mix(in oklch, var(--primary) 68%, var(--foreground) 8%);
+}
+
+.mermaid-preview-shell {
+  margin-top: 0.95rem;
+  overflow: auto;
+  border: 1px solid color-mix(in oklch, var(--border) 76%, transparent);
+  border-radius: calc(var(--radius) + 0.125rem);
+  background: color-mix(in oklch, var(--background) 96%, var(--muted) 4%);
+}
+
+.mermaid-preview-surface {
+  display: flex;
+  min-width: fit-content;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.mermaid-preview-surface svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-preview-surface :is(text, span, tspan) {
+  font-family: "Geist", "Geist Fallback", system-ui, sans-serif !important;
+}
+
+.mermaid-preview-label {
+  padding: 0.7rem 1rem 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.mermaid-preview-fallback {
+  margin: 0;
+  padding: 0.9rem 1rem 0.35rem;
+  white-space: pre-wrap;
+  color: var(--foreground);
+}
+
+.mermaid-preview-error-text {
+  margin: 0;
+  padding: 0 1rem 1rem;
+  font-size: 0.8rem;
+  color: var(--destructive);
+}
+
+.mermaid-preview-shell-loading {
+  min-height: 8rem;
+}
+
+.transcript-segment-card {
+  backdrop-filter: blur(6px);
+}
+
+.transcript-segment-timestamp {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.transcript-segment-icon-button:hover,
+.transcript-segment-icon-button:focus-visible {
+  background: color-mix(in oklch, var(--accent) 72%, transparent);
+  color: var(--foreground);
+}
+
+.transcript-correction-surface {
+  min-height: 100%;
 }
 
 .workbench-detail-pane {

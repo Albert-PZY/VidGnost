@@ -596,6 +596,26 @@ export async function getTaskArtifactText(
   return response.text()
 }
 
+export async function getTaskArtifactFileText(
+  taskId: string,
+  relativePath: string,
+): Promise<string> {
+  const response = await fetch(buildTaskArtifactFileUrl(taskId, relativePath), {
+    headers: { Accept: "text/plain, text/markdown, text/html, application/json" },
+  })
+  if (!response.ok) {
+    throw new ApiError(response.status, await readErrorPayload(response))
+  }
+  return response.text()
+}
+
+export async function getTaskArtifactFileJson<T>(
+  taskId: string,
+  relativePath: string,
+): Promise<T> {
+  return fetchJson<T>(buildTaskArtifactFileUrl(taskId, relativePath))
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
   const response = await fetch(url, {
     headers: { Accept: "application/json" },

@@ -25,7 +25,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
-import { getPerfSamples, isPerfLoggingEnabled, subscribePerfSamples, type PerfSample } from "@/lib/perf"
 import { cn } from "@/lib/utils"
 import {
   autoFixSelfCheck,
@@ -113,41 +112,6 @@ function formatUsagePercent(usedBytes: number, totalBytes: number): string {
   return `${Math.round((usedBytes / totalBytes) * 100)}% 已用`
 }
 
-function formatPerfLabel(label: string): string {
-  return label
-    .replace(/^task\./, "任务 / ")
-    .replace(/^view\./, "视图 / ")
-    .replace(/\./g, " / ")
-}
-
-function formatPerfLabelDisplay(label: string): { title: string; detail: string | null } {
-  const taskDetailMatch = label.match(/^task\.detail\.(.+)$/)
-  if (taskDetailMatch) {
-    return {
-      title: "任务 / detail",
-      detail: taskDetailMatch[1] ?? null,
-    }
-  }
-
-  return {
-    title: formatPerfLabel(label),
-    detail: null,
-  }
-}
-
-function formatPerfSeverity(durationMs: number): string {
-  if (durationMs >= 1200) {
-    return "重度"
-  }
-  if (durationMs >= 400) {
-    return "明显"
-  }
-  if (durationMs >= 160) {
-    return "轻度"
-  }
-  return "正常"
-}
-
 function mapStepStatus(status: string): CheckStatus {
   switch (status) {
     case "passed":
@@ -212,8 +176,6 @@ function buildChecks(report: SelfCheckReportResponse | null): DiagnosticCheck[] 
 export function DiagnosticsView() {
   const [report, setReport] = React.useState<SelfCheckReportResponse | null>(null)
   const [runtimeMetrics, setRuntimeMetrics] = React.useState<RuntimeMetricsResponse>(EMPTY_METRICS)
-  const [perfSamples, setPerfSamples] = React.useState<PerfSample[]>([])
-  const [developerModeEnabled, setDeveloperModeEnabled] = React.useState(false)
   const [activeSessionId, setActiveSessionId] = React.useState("")
   const [isStarting, setIsStarting] = React.useState(false)
   const [isFixing, setIsFixing] = React.useState(false)
@@ -245,18 +207,6 @@ export function DiagnosticsView() {
     }, 5000)
     return () => window.clearInterval(interval)
   }, [loadRuntimeMetrics])
-
-  React.useEffect(() => {
-    setDeveloperModeEnabled(isPerfLoggingEnabled())
-    setPerfSamples(getPerfSamples())
-
-    const unsubscribe = subscribePerfSamples((samples) => {
-      setPerfSamples(samples)
-      setDeveloperModeEnabled(isPerfLoggingEnabled())
-    })
-
-    return unsubscribe
-  }, [])
 
   React.useEffect(() => {
     if (!activeSessionId) {
@@ -361,52 +311,6 @@ export function DiagnosticsView() {
     ],
     [runtimeMetrics],
   )
-
-  const perfGroups = React.useMemo(() => {
-    const grouped = new Map<
-      string,
-      {
-        label: string
-        count: number
-        total: number
-        max: number
-        last: number
-        lastRecordedAt: string
-      }
-    >()
-    perfSamples.forEach((sample) => {
-      const current = grouped.get(sample.label) ?? {
-        label: sample.label,
-        count: 0,
-        total: 0,
-        max: 0,
-        last: 0,
-        lastRecordedAt: "",
-      }
-      current.count += 1
-      current.total += sample.durationMs
-      current.max = Math.max(current.max, sample.durationMs)
-      current.last = sample.durationMs
-      current.lastRecordedAt = sample.recordedAt
-      grouped.set(sample.label, current)
-    })
-    return Array.from(grouped.values())
-      .map((item) => ({
-        ...item,
-        avg: item.count > 0 ? item.total / item.count : 0,
-      }))
-      .sort((left, right) => right.max - left.max)
-  }, [perfSamples])
-
-  const perfOverview = React.useMemo(() => {
-    const slowest = perfGroups[0] ?? null
-    return {
-      trackedActions: perfGroups.length,
-      sampleCount: perfSamples.length,
-      slowest,
-    }
-  }, [perfGroups, perfSamples.length])
-  const slowestPerfLabel = perfOverview.slowest ? formatPerfLabelDisplay(perfOverview.slowest.label) : null
 
   return (
     <div className="flex-1 overflow-auto">
@@ -608,120 +512,6 @@ export function DiagnosticsView() {
           </Card>
         ) : null}
 
-        <Card className="gap-0 rounded-md border-border/70 bg-card/75 py-0 shadow-none">
-          <CardContent className="space-y-3 px-4 py-3">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <CardTitle className="text-sm font-medium">开发者模式</CardTitle>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  这里展示关键视图和重型操作的最近耗时采样，便于在本机排查卡顿、预热和渲染开销。
-                </p>
-              </div>
-              <Badge variant={developerModeEnabled ? "default" : "secondary"}>
-                {developerModeEnabled ? "已开启" : "未开启"}
-              </Badge>
-            </div>
-
-            {developerModeEnabled ? (
-              perfSamples.length > 0 ? (
-                <div className="space-y-3">
-                  <div className="grid gap-3 md:grid-cols-3">
-                    <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
-                      <p className="text-xs text-muted-foreground">已跟踪动作</p>
-                      <p className="mt-1 text-lg font-semibold">{perfOverview.trackedActions}</p>
-                    </div>
-                    <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
-                      <p className="text-xs text-muted-foreground">累计采样</p>
-                      <p className="mt-1 text-lg font-semibold">{perfOverview.sampleCount}</p>
-                    </div>
-                    <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
-                      <p className="text-xs text-muted-foreground">当前最慢热点</p>
-                      {slowestPerfLabel ? (
-                        <div className="mt-1 space-y-1">
-                          <p className="text-sm font-semibold">{slowestPerfLabel.title}</p>
-                          {slowestPerfLabel.detail ? (
-                            <p className="break-all font-mono text-[11px] text-muted-foreground/90">
-                              {slowestPerfLabel.detail}
-                            </p>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <p className="mt-1 text-sm font-semibold">暂无</p>
-                      )}
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {perfOverview.slowest ? `${perfOverview.slowest.max.toFixed(1)}ms 峰值` : "等待采样"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="dialog-ultra-thin-scrollbar max-h-64 overflow-auto rounded-xl border border-border/60 bg-muted/20">
-                    <div className="divide-y divide-border/50">
-                      {perfGroups.slice(0, 12).map((group) => {
-                        const labelDisplay = formatPerfLabelDisplay(group.label)
-                        return (
-                          <div key={group.label} className="flex items-center justify-between gap-3 px-3 py-3">
-                            <div className="min-w-0">
-                              <div className="text-sm font-medium">{labelDisplay.title}</div>
-                              {labelDisplay.detail ? (
-                                <div className="mt-1 break-all font-mono text-[11px] text-muted-foreground/90">
-                                  {labelDisplay.detail}
-                                </div>
-                              ) : null}
-                              <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                                <span>平均 {group.avg.toFixed(1)}ms</span>
-                                <span>峰值 {group.max.toFixed(1)}ms</span>
-                                <span>最近 {group.last.toFixed(1)}ms</span>
-                                <span>共 {group.count} 次</span>
-                              </div>
-                            </div>
-                            <Badge variant={group.max >= 400 ? "destructive" : group.max >= 160 ? "secondary" : "outline"}>
-                              {formatPerfSeverity(group.max)}
-                            </Badge>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="dialog-ultra-thin-scrollbar max-h-64 overflow-auto rounded-xl border border-border/60 bg-muted/20">
-                    <div className="divide-y divide-border/50">
-                      {perfSamples.slice(0, 24).map((sample) => {
-                        const labelDisplay = formatPerfLabelDisplay(sample.label)
-                        return (
-                          <div key={sample.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
-                            <div className="min-w-0">
-                              <div className="text-sm font-medium">{labelDisplay.title}</div>
-                              {labelDisplay.detail ? (
-                                <div className="mt-1 break-all font-mono text-[11px] text-muted-foreground/90">
-                                  {labelDisplay.detail}
-                                </div>
-                              ) : null}
-                              <div className="mt-1 text-[11px] text-muted-foreground">
-                                记录时间 {formatSampledAt(sample.recordedAt)}
-                              </div>
-                            </div>
-                            <div className="shrink-0 text-right">
-                              <div className="text-sm font-semibold tabular-nums">{sample.durationMs.toFixed(1)}ms</div>
-                              <div className="text-[11px] text-muted-foreground">{formatPerfSeverity(sample.durationMs)}</div>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-dashed border-border/60 bg-muted/12 px-4 py-5 text-sm text-muted-foreground">
-                  开发者模式已开启，当前还没有采样记录。打开任务处理页并执行实际操作后，这里会开始累积最近的耗时数据。
-                </div>
-              )
-            ) : (
-              <div className="rounded-xl border border-dashed border-border/60 bg-muted/12 px-4 py-5 text-sm text-muted-foreground">
-                你可以在设置中心开启“开发者模式”，然后回到这里查看最近的性能采样数据。
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </div>
     </div>
   )
