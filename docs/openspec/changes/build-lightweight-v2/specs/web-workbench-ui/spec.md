@@ -46,6 +46,11 @@ Model configuration dialog SHALL use a responsive split layout with a left overv
 - **AND** the right side groups editable runtime parameters into dedicated cards
 - **AND** path fields span the full row while regular scalar fields follow a responsive two-column grid
 
+#### Scenario: Recover unsaved model-dialog draft after renderer reload
+- **WHEN** user edits a model configuration dialog and the renderer reloads before the user saves
+- **THEN** reopening the same model restores the locally cached unsaved form draft for that model
+- **AND** an explicit successful save or explicit dialog close clears that local draft
+
 ### Requirement: Prompt template UI SHALL distinguish channels visually
 Prompt template list and editor SHALL use channel-specific labels for `correction`, `notes`, `mindmap`, and `vqa`, while avoiding duplicated explanatory copy inside the editor sidebar.
 

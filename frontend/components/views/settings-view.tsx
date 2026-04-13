@@ -208,6 +208,16 @@ const EMPTY_WHISPER_RUNTIME_FORM: WhisperRuntimeFormState = {
   auto_configure_env: true,
 }
 
+const MODEL_CONFIG_DRAFT_STORAGE_KEY = "vidgnost:model-config-draft:v1"
+
+type ModelConfigDraftEntry = {
+  model_id: string
+  provider: string
+  component: string
+  model_form: ModelConfigFormState
+  llm_form: LLMConfigFormState
+}
+
 const modelVisuals: Record<
   ModelDescriptor["component"],
   {
@@ -270,6 +280,64 @@ async function readFileAsDataUrl(file: File): Promise<string> {
     }
     reader.readAsDataURL(file)
   })
+}
+
+function canUseStorage(): boolean {
+  return typeof window !== "undefined" && typeof window.localStorage !== "undefined"
+}
+
+function readModelConfigDraftMap(): Record<string, ModelConfigDraftEntry> {
+  if (!canUseStorage()) {
+    return {}
+  }
+  try {
+    const raw = window.localStorage.getItem(MODEL_CONFIG_DRAFT_STORAGE_KEY)
+    if (!raw) {
+      return {}
+    }
+    const parsed = JSON.parse(raw) as unknown
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {}
+    }
+    return parsed as Record<string, ModelConfigDraftEntry>
+  } catch {
+    return {}
+  }
+}
+
+function writeModelConfigDraftMap(nextMap: Record<string, ModelConfigDraftEntry>): void {
+  if (!canUseStorage()) {
+    return
+  }
+  try {
+    if (Object.keys(nextMap).length === 0) {
+      window.localStorage.removeItem(MODEL_CONFIG_DRAFT_STORAGE_KEY)
+      return
+    }
+    window.localStorage.setItem(MODEL_CONFIG_DRAFT_STORAGE_KEY, JSON.stringify(nextMap))
+  } catch {
+    return
+  }
+}
+
+function readModelConfigDraft(modelId: string): ModelConfigDraftEntry | null {
+  const draftMap = readModelConfigDraftMap()
+  return draftMap[modelId] ?? null
+}
+
+function saveModelConfigDraft(entry: ModelConfigDraftEntry): void {
+  const draftMap = readModelConfigDraftMap()
+  draftMap[entry.model_id] = entry
+  writeModelConfigDraftMap(draftMap)
+}
+
+function clearModelConfigDraft(modelId: string): void {
+  const draftMap = readModelConfigDraftMap()
+  if (!(modelId in draftMap)) {
+    return
+  }
+  delete draftMap[modelId]
+  writeModelConfigDraftMap(draftMap)
 }
 
 type PickedSkinImage = {
@@ -458,6 +526,19 @@ export function SettingsView({
       auto_configure_env: whisperConfig.runtime_libraries.auto_configure_env,
     })
   }, [whisperConfig, whisperRuntimeDirty])
+
+  React.useEffect(() => {
+    if (!isModelDialogOpen || !editingModel) {
+      return
+    }
+    saveModelConfigDraft({
+      model_id: editingModel.id,
+      provider: editingModel.provider,
+      component: editingModel.component,
+      model_form: modelForm,
+      llm_form: llmForm,
+    })
+  }, [editingModel, isModelDialogOpen, llmForm, modelForm])
 
   React.useEffect(() => {
     if (!models.some((model) => model.download?.state === "downloading")) {
@@ -733,6 +814,9 @@ export function SettingsView({
   const handleModelDialogChange = (open: boolean) => {
     setIsModelDialogOpen(open)
     if (!open) {
+      if (editingModel) {
+        clearModelConfigDraft(editingModel.id)
+      }
       setEditingModel(null)
       setModelForm(EMPTY_MODEL_FORM)
       setLlmForm(EMPTY_LLM_FORM)
@@ -740,26 +824,35 @@ export function SettingsView({
   }
 
   const handleConfigureModel = (model: ModelDescriptor) => {
-    setEditingModel(model)
-    setModelForm({
+    const nextModelForm: ModelConfigFormState = {
       path: model.default_path || model.path || "",
       load_profile: model.load_profile || "balanced",
       quantization: model.quantization || "",
       max_batch_size: String(model.max_batch_size || 1),
       frame_interval_seconds: String(model.frame_interval_seconds || 10),
       enabled: model.enabled,
-    })
-    if (model.provider === "openai_compatible" && llmConfig) {
-      setLlmForm({
-        base_url: llmConfig.base_url,
-        api_key: llmConfig.api_key,
-        model: llmConfig.model,
-        correction_mode: llmConfig.correction_mode,
-        correction_batch_size: String(llmConfig.correction_batch_size),
-        correction_overlap: String(llmConfig.correction_overlap),
-      })
+    }
+    const nextLlmForm: LLMConfigFormState =
+      model.provider === "openai_compatible" && llmConfig
+        ? {
+            base_url: llmConfig.base_url,
+            api_key: llmConfig.api_key,
+            model: llmConfig.model,
+            correction_mode: llmConfig.correction_mode,
+            correction_batch_size: String(llmConfig.correction_batch_size),
+            correction_overlap: String(llmConfig.correction_overlap),
+          }
+        : EMPTY_LLM_FORM
+    const draft = readModelConfigDraft(model.id)
+
+    setEditingModel(model)
+    if (draft && draft.provider === model.provider && draft.component === model.component) {
+      setModelForm(draft.model_form)
+      setLlmForm(draft.llm_form)
+      toast("已恢复上次未保存的模型配置草稿")
     } else {
-      setLlmForm(EMPTY_LLM_FORM)
+      setModelForm(nextModelForm)
+      setLlmForm(nextLlmForm)
     }
     setIsModelDialogOpen(true)
   }
@@ -787,6 +880,7 @@ export function SettingsView({
         const response = await updateModel(editingModel.id, buildModelUpdatePayload(editingModel, modelForm))
         setModels(response.items)
       }
+      clearModelConfigDraft(editingModel.id)
       handleModelDialogChange(false)
       toast.success("模型配置已更新")
     } catch (error) {
