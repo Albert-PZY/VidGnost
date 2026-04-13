@@ -68,7 +68,7 @@ Phase `C` SHALL run Faster-Whisper transcription inside a dedicated worker proce
 - **WHEN** phase `C` begins and at least one transcript chunk still needs transcription
 - **THEN** backend acquires the heavy-model execution lease
 - **AND** backend starts a dedicated Whisper worker process for the remaining chunk set
-- **AND** the main orchestration process consumes structured worker events and persists checkpoints from those events
+- **AND** the main orchestration process consumes structured worker events through a runtime-compatible bridge and persists checkpoints from those events
 
 #### Scenario: Finish isolated transcription worker
 - **WHEN** the final missing transcript chunk finishes
