@@ -285,7 +285,7 @@ Workbench bootstrap SHALL expose a desktop splash progress state before the main
 - **AND** the overlay is dismissed automatically once bootstrap reaches `ready`
 
 ### Requirement: Task processing workbench SHALL provide a resizable evidence-driven workspace
-Task processing workbench SHALL use a horizontal resizable split layout. For notes tasks, the left workspace SHALL provide `转写片段`, `文本纠错`, `证据时间轴`, and `阶段输出` tabs. For VQA tasks, the left workspace SHALL provide `转写片段`, `证据时间轴`, `阶段输出`, and a conditional `文本纠错` tab whenever transcript correction is enabled for that task. The right workspace SHALL switch between `Markdown 工作区 / 思维导图 / 线索篮` for notes tasks and `流式问答 / Trace Theater / 线索篮` for VQA tasks.
+Task processing workbench SHALL use a horizontal resizable split layout. For notes tasks, the left workspace SHALL provide `转写片段`, `文本纠错`, `证据时间轴`, and `阶段输出` tabs. For VQA tasks, the left workspace SHALL provide `转写片段`, `证据时间轴`, `阶段输出`, and a conditional `文本纠错` tab whenever transcript correction is enabled for that task. The right workspace SHALL switch between `Markdown 工作区 / 思维导图` for notes tasks and `流式问答 / Trace Theater` for VQA tasks.
 
 #### Scenario: Open a completed notes task
 - **WHEN** user opens a notes task in the processing workbench
@@ -297,15 +297,14 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 - **AND** Markdown timestamps can seek the video
 - **AND** the Markdown workspace keeps an inner vertical scrollbar so long notes remain scrollable without moving the outer workbench shell
 - **AND** the read-only notes workspace uses the same Markdown enhancement contract as the edit-dialog preview so timestamp links, task-relative images, and Mermaid blocks stay consistent before and after editing
-- **AND** when the right workspace is resized narrow, Markdown, mindmap, clue-basket, and VQA panes reflow their tab chrome, actions, cards, and dense content within the available pane width instead of clipping the reading surface
+- **AND** when the right workspace is resized narrow, Markdown, mindmap, and VQA panes reflow their tab chrome, actions, cards, and dense content within the available pane width instead of clipping the reading surface
 - **AND** entering note-edit mode opens a dedicated Markdown dialog with source editing on the left and live rendered preview on the right
 - **AND** in light theme with a custom skin active, the notes workspace tabs, action row, rendered Markdown, and empty states keep readable white foreground text
 - **AND** in light theme with a custom skin active, the left-side workbench tab labels also keep readable white foreground text in resting state and use theme-hue filled emphasis in their selected state
-- **AND** in light theme with a custom skin active, the notes reading panel and clue-basket shell use theme-hue tinted translucent fills instead of near-black slabs so they remain consistent with the lighter wallpaper atmosphere
-- **AND** the clue-basket tab keeps a single collection shell with a separated header band and inner clue cards so saved evidence remains legible above custom-skin backgrounds instead of floating directly on the wallpaper
+- **AND** in light theme with a custom skin active, the notes reading panel uses theme-hue tinted translucent fills instead of near-black slabs so it remains consistent with the lighter wallpaper atmosphere
 - **AND** transcript cards render a precise timestamp chip at the top, keep only icon actions on the trailing edge, and expose action meaning through hover tooltips
 - **AND** in light theme with a custom skin active, transcript cards and correction surfaces keep white foreground text while timestamp chips and quick-action icons remain readable against the glass surface
-- **AND** transcript cards support quick actions such as `加入笔记` and `加入线索篮`
+- **AND** transcript cards support workflow-specific quick actions such as `加入笔记草稿` for notes tasks and `设为问答问题` for VQA tasks
 - **AND** in light theme with a custom skin active, evidence-timeline seek buttons use the active theme hue family for their resting fill instead of falling back to neutral outline styling
 
 #### Scenario: Open task detail from history or recent tasks

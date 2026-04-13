@@ -14,7 +14,6 @@
 - `frontend/components/views/task-processing-workbench.tsx`
 - `frontend/components/editors/prompt-markdown-editor.tsx`
 - `frontend/components/ui/markdown-artifact-viewer.tsx`
-- `frontend/components/views/research-board-panel.tsx`
 - `frontend/app/globals.css`
 
 ## 当前问题总览
@@ -178,11 +177,11 @@
 
 - 浏览器环境中效果还能接受，但 Electron 中掉帧更明显。
 - 壁纸态下任务处理页比普通纯色背景状态更卡。
-- 阅读区、线索篮、列表卡片叠加后，滚动和更新更容易不稳定。
+- 阅读区、问答区与高频列表卡片叠加后，滚动和更新更容易不稳定。
 
 **原因**
 
-- `frontend/app/globals.css:1804-1825` 为阅读面板、线索篮、线索卡片叠加了多层：
+- `frontend/app/globals.css:1804-1825` 为阅读面板与高频内容卡片叠加了多层：
   - 半透明背景
   - `backdrop-filter`
   - 阴影
@@ -197,7 +196,7 @@
 - 任务处理页采用“单层玻璃外壳 + 内层低成本实体面板”策略：
   - 外层工作台壳体保留品牌氛围
   - 内层高频交互区域使用半透明纯色或低成本渐变
-- 对滚动区、转写区、问答区、线索篮卡片统一使用轻量背景，不让每个局部面板再承担实时模糊合成。
+- 对滚动区、转写区、问答区和列表卡片统一使用轻量背景，不让每个局部面板再承担实时模糊合成。
 - 将视觉重点从高频模糊效果转为：
   - 清晰层级
   - 稳定边界
@@ -319,7 +318,7 @@ Markdown 装饰、Mermaid 解析、长文本预处理、次要日志整理应优
 ### P6 视觉合成优化
 
 - [x] 为任务处理页定义“高频交互区低成本视觉层”规范。
-- [x] 让工作台外层保留统一氛围层，内层阅读区、问答区、线索篮、列表卡片采用轻量背景。
+- [x] 让工作台外层保留统一氛围层，内层阅读区、问答区和列表卡片采用轻量背景。
 - [x] 控制滚动区和高频更新区的 `backdrop-filter` 使用范围。
 - [x] 统一高频区域的阴影、边框、透明度方案，避免多层叠加合成。
 

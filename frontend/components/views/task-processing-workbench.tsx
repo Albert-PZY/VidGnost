@@ -21,7 +21,6 @@ import {
   Send,
   SkipBack,
   SkipForward,
-  Sparkles,
   Square,
   RotateCcw,
   RotateCw,
@@ -53,7 +52,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { VirtualizedList } from "@/components/ui/virtualized-list"
 import { PromptMarkdownEditor } from "@/components/editors/prompt-markdown-editor"
 import { MarkdownArtifactViewer } from "@/components/ui/markdown-artifact-viewer"
-import { ResearchBoardPanel } from "@/components/views/research-board-panel"
 import {
   ApiError,
   buildTaskArtifactFileUrl,
@@ -73,8 +71,6 @@ import {
   updateTaskArtifacts,
 } from "@/lib/api"
 import { formatBytes, formatDateTime, formatSecondsAsClock } from "@/lib/format"
-import { addResearchBoardItem } from "@/lib/research-board"
-import type { ResearchBoardItem } from "@/lib/research-board"
 import {
   getVqaStreamErrorText,
   getVqaStreamStatusText,
@@ -124,8 +120,8 @@ interface StageChunkIndexPayload {
 }
 
 type LeftTab = "transcript" | "correction" | "evidence" | "stage"
-type NotesTab = "notes" | "mindmap" | "research"
-type VqaTab = "chat" | "trace" | "research"
+type NotesTab = "notes" | "mindmap"
+type VqaTab = "chat" | "trace"
 
 const EMPTY_TRANSCRIPT_SEGMENTS: TranscriptSegment[] = []
 
@@ -1508,27 +1504,6 @@ export function TaskProcessingWorkbench({
     [],
   )
 
-  const addItemToResearchBoard = React.useCallback(
-    (payload: {
-      type: "transcript" | "citation" | "note"
-      title: string
-      content: string
-      start?: number
-      end?: number
-      source?: string
-      sourceSet?: string[]
-    }) => {
-      addResearchBoardItem({
-        taskId,
-        taskTitle: effectiveTitle,
-        workflow,
-        ...payload,
-      })
-      toast.success("已加入线索篮")
-    },
-    [effectiveTitle, taskId, workflow],
-  )
-
   const executeAskQuestion = React.useCallback(async (
     questionText: string,
     options?: { resetBeforeSend?: boolean },
@@ -1761,20 +1736,6 @@ export function TaskProcessingWorkbench({
     toast.success("已加入笔记草稿")
   }, [])
 
-  const handleAddTranscriptToResearch = React.useCallback(
-    (segment: TranscriptSegment) => {
-      addItemToResearchBoard({
-        type: "transcript",
-        title: `转写片段 · ${formatSecondsAsClock(segment.start)}`,
-        content: segment.text,
-        start: segment.start,
-        end: segment.end,
-        source: segment.speaker || "transcript",
-      })
-    },
-    [addItemToResearchBoard],
-  )
-
   const handleUseTranscriptAsQuestion = React.useCallback((segment: TranscriptSegment) => {
     setQuestion(`请结合上下文解释这段内容的重点：${segment.text}`)
     setVqaTab("chat")
@@ -1838,41 +1799,6 @@ export function TaskProcessingWorkbench({
     }
   }, [effectiveTask, loadTask, taskId])
 
-  const handleAddCitationToResearch = React.useCallback(
-    (citation: VqaCitationItem) => {
-      addItemToResearchBoard({
-        type: "citation",
-        title: `证据片段 · ${formatSecondsAsClock(citation.start)}`,
-        content: citation.text,
-        start: citation.start,
-        end: citation.end,
-        source: citation.source,
-        sourceSet: citation.source_set || [],
-      })
-    },
-    [addItemToResearchBoard],
-  )
-
-  const handleAppendResearchItemToNotes = React.useCallback((item: ResearchBoardItem) => {
-    const timeRange =
-      typeof item.start === "number" && typeof item.end === "number"
-        ? `${formatSecondsAsClock(item.start)} - ${formatSecondsAsClock(item.end)}`
-        : typeof item.start === "number"
-          ? formatSecondsAsClock(item.start)
-          : "未记录时间点"
-    const line = `- ${timeRange} ${item.content}`
-    setNotesDraft((current) => appendMarkdownSection(current, "补充线索", line))
-    setNotesTab("notes")
-    setIsEditingNotes(true)
-    toast.success("已加入笔记草稿")
-  }, [])
-
-  const handleUseResearchItemAsQuestion = React.useCallback((item: ResearchBoardItem) => {
-    setQuestion(`请结合上下文解释这段线索：${item.content}`)
-    setVqaTab("chat")
-    toast.success("已设为提问草稿")
-  }, [])
-
   return (
     <div
       data-layout-interacting={isWorkbenchResizing ? "true" : "false"}
@@ -1925,7 +1851,6 @@ export function TaskProcessingWorkbench({
             onDownloadTranscript={handleDownloadTranscript}
             onAddTranscriptToNotes={handleAddTranscriptToNotes}
             onUseTranscriptAsQuestion={handleUseTranscriptAsQuestion}
-            onAddTranscriptToResearch={handleAddTranscriptToResearch}
             correctionStatus={transcriptOptimizeStatus}
             stageMetrics={effectiveTask?.vm_phase_metrics || {}}
             artifactTotalBytes={effectiveTask?.artifact_total_bytes || 0}
@@ -1960,7 +1885,6 @@ export function TaskProcessingWorkbench({
               mindmapHtml={mindmapHtml}
               isMindmapLoading={isMindmapLoading}
               isTaskCompleted={effectiveTask?.status === "completed"}
-              onAppendResearchItemToNotes={handleAppendResearchItemToNotes}
             />
           ) : (
             <VqaWorkbench
@@ -1974,8 +1898,6 @@ export function TaskProcessingWorkbench({
               onStopAnswer={handleStopAnswer}
               onSeek={jumpToTime}
               onOpenTrace={handleLoadTrace}
-              onAddCitationToResearch={handleAddCitationToResearch}
-              onUseResearchItemAsQuestion={handleUseResearchItemAsQuestion}
             />
           )}
         </ResizablePanel>
@@ -2309,7 +2231,6 @@ interface TranscriptSegmentCardProps {
   onSeek: (seconds: number) => void
   onAddTranscriptToNotes: (segment: TranscriptSegment) => void
   onUseTranscriptAsQuestion: (segment: TranscriptSegment) => void
-  onAddTranscriptToResearch: (segment: TranscriptSegment) => void
 }
 
 function TranscriptActionIconButton({
@@ -2352,7 +2273,6 @@ const TranscriptSegmentCard = React.memo(function TranscriptSegmentCard({
   onSeek,
   onAddTranscriptToNotes,
   onUseTranscriptAsQuestion,
-  onAddTranscriptToResearch,
 }: TranscriptSegmentCardProps) {
   return (
     <div
@@ -2386,9 +2306,6 @@ const TranscriptSegmentCard = React.memo(function TranscriptSegmentCard({
               <MessageSquare className="h-4 w-4" />
             </TranscriptActionIconButton>
           )}
-          <TranscriptActionIconButton label="加入线索篮" onClick={() => onAddTranscriptToResearch(segment)}>
-            <Sparkles className="h-4 w-4" />
-          </TranscriptActionIconButton>
         </div>
       </div>
     </div>
@@ -2588,7 +2505,6 @@ interface LeftWorkbenchPanelProps {
   onDownloadTranscript: () => void
   onAddTranscriptToNotes: (segment: TranscriptSegment) => void
   onUseTranscriptAsQuestion: (segment: TranscriptSegment) => void
-  onAddTranscriptToResearch: (segment: TranscriptSegment) => void
   correctionStatus: string
   stageMetrics: Record<string, Record<string, unknown>>
   artifactTotalBytes: number
@@ -2615,7 +2531,6 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
   onDownloadTranscript,
   onAddTranscriptToNotes,
   onUseTranscriptAsQuestion,
-  onAddTranscriptToResearch,
   correctionStatus,
   stageMetrics,
   artifactTotalBytes,
@@ -2842,7 +2757,6 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
                           onSeek={handleSeekWithTranscriptSync}
                           onAddTranscriptToNotes={onAddTranscriptToNotes}
                           onUseTranscriptAsQuestion={onUseTranscriptAsQuestion}
-                          onAddTranscriptToResearch={onAddTranscriptToResearch}
                         />
                       </div>
                     )
@@ -2989,7 +2903,6 @@ interface NotesWorkbenchProps {
   mindmapHtml: string
   isMindmapLoading: boolean
   isTaskCompleted: boolean
-  onAppendResearchItemToNotes: (item: ResearchBoardItem) => void
 }
 
 function TaskWorkbenchDetailLoading({ workflow }: { workflow: WorkflowType }) {
@@ -3052,7 +2965,6 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
   mindmapHtml,
   isMindmapLoading,
   isTaskCompleted,
-  onAppendResearchItemToNotes,
 }: NotesWorkbenchProps) {
   const markdownColorMode =
     typeof document !== "undefined" && document.documentElement.classList.contains("dark") ? "dark" : "light"
@@ -3062,7 +2974,6 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
       <TabsList className="workbench-detail-tabs workbench-tab-list w-full justify-start rounded-none border-b bg-transparent p-0">
         <TabsTrigger value="notes" className="workbench-tab-trigger workbench-right-tab-trigger">Markdown 工作区</TabsTrigger>
         <TabsTrigger value="mindmap" className="workbench-tab-trigger workbench-right-tab-trigger">思维导图</TabsTrigger>
-        <TabsTrigger value="research" className="workbench-tab-trigger workbench-right-tab-trigger">线索篮</TabsTrigger>
       </TabsList>
 
       <TabsContent value="notes" className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -3111,10 +3022,6 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
         {isMindmapLoading ? <div className="workbench-pane-state flex h-full items-center justify-center rounded-2xl border border-border/70 bg-card/65 text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />正在载入思维导图...</div> : null}
         {!isMindmapLoading && mindmapHtml ? <iframe title={`${effectiveTitle}-mindmap`} srcDoc={mindmapHtml} className="workbench-pane-frame h-full w-full rounded-2xl border border-border/70 bg-background" /> : null}
         {!isMindmapLoading && !mindmapHtml ? <div className="workbench-pane-state flex h-full items-center justify-center rounded-2xl border border-dashed text-sm text-muted-foreground">{isTaskCompleted ? "当前没有可展示的思维导图结果。" : "请等待任务完成后再预览思维导图。"}</div> : null}
-      </TabsContent>
-
-      <TabsContent value="research" className="workbench-pane-padded mt-0 min-h-0 flex-1">
-        <ResearchBoardPanel onSeek={onSeek} onAppendToNotes={onAppendResearchItemToNotes} />
       </TabsContent>
       <Dialog open={isEditingNotes} onOpenChange={(open) => {
         if (!open) {
@@ -3274,8 +3181,6 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
   onStopAnswer,
   onSeek,
   onOpenTrace,
-  onAddCitationToResearch,
-  onUseResearchItemAsQuestion,
 }: VqaWorkbenchProps) {
   const {
     chatHistory,
@@ -3309,7 +3214,6 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
       <TabsList className="workbench-detail-tabs workbench-tab-list w-full justify-start rounded-none border-b bg-transparent p-0">
         <TabsTrigger value="chat" className="workbench-tab-trigger workbench-right-tab-trigger">流式问答</TabsTrigger>
         <TabsTrigger value="trace" className="workbench-tab-trigger workbench-right-tab-trigger">Trace Theater</TabsTrigger>
-        <TabsTrigger value="research" className="workbench-tab-trigger workbench-right-tab-trigger">线索篮</TabsTrigger>
       </TabsList>
 
       <TabsContent value="chat" className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -3399,9 +3303,6 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
                                     <div className="flex flex-wrap items-center gap-2">
                                       <TranscriptActionIconButton label="跳转到证据时间点" variant="outline" className="h-8 w-8" onClick={() => onSeek(citation.start)}>
                                         <MapPin className="h-4 w-4" />
-                                      </TranscriptActionIconButton>
-                                      <TranscriptActionIconButton label="加入线索篮" className="h-8 w-8" onClick={() => onAddCitationToResearch(citation)}>
-                                        <Sparkles className="h-4 w-4" />
                                       </TranscriptActionIconButton>
                                     </div>
                                   </div>
@@ -3534,10 +3435,6 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
           </div>
         </ScrollArea>
       </TabsContent>
-
-      <TabsContent value="research" className="workbench-pane-padded mt-0 min-h-0 flex-1">
-        <ResearchBoardPanel onSeek={onSeek} onUseAsQuestion={onUseResearchItemAsQuestion} />
-      </TabsContent>
       <EvidenceImagePreviewDialog previewImage={previewImage} onPreviewImageChange={setPreviewImage} />
     </Tabs>
   )
@@ -3554,6 +3451,4 @@ interface VqaWorkbenchProps {
   onStopAnswer: () => void
   onSeek: (seconds: number) => void
   onOpenTrace: (traceId: string) => void | Promise<void>
-  onAddCitationToResearch: (citation: VqaCitationItem) => void
-  onUseResearchItemAsQuestion: (item: ResearchBoardItem) => void
 }
