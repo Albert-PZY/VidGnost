@@ -88,6 +88,8 @@ The task-workbench Markdown notes editor dialog SHALL use a wide split layout th
 - **AND** the editor viewport height remains intentionally lower than the previous tall layout so the dialog reads as a compact work surface instead of a vertically stretched sheet
 - **AND** in light theme with a custom skin active, the source editor pane keeps readable light foreground text instead of falling back to low-contrast overlay token colors
 - **AND** task-relative Markdown images such as `notes-images/...` are resolved through the current task artifact file endpoint so generated note images remain visible inside the live preview
+- **AND** preview-side Markdown decoration such as task-relative image resolution and timestamp link rewriting runs through a background preprocessing path so typing stays responsive
+- **AND** Mermaid preview blocks wait until they enter the visible preview area before starting expensive rendering work and reuse cached SVG output when the same diagram appears again
 
 ### Requirement: Desktop startup SHALL preload core workbench views before main window reveal
 Electron desktop startup SHALL open a dedicated splash window first, keep the main window hidden while renderer assets and core workbench views initialize, and reveal the main window only after bootstrap completes or enters degraded mode. Core workbench views such as `新建任务`, `历史记录`, `设置中心`, `系统自检`, `任务处理`, and the prompt-template Markdown editor SHALL be included in the initial renderer startup path instead of route-level or dialog-level lazy loading placeholders. The splash surface SHALL follow the same restrained professional dark-tool styling as the renderer shell, using the project logo, a centered vertical brand composition, a single thin progress bar, and a five-step startup checklist with per-step elapsed-time feedback. The checklist SHALL be bound to explicit startup task states emitted by the hidden main window and renderer instead of inferring stages from display copy. The dedicated splash window SHALL keep a compact fixed footprint around `420 x 480` logical pixels so the launch surface reads as a concise startup panel instead of a large poster-like frame.
@@ -333,6 +335,12 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 - **WHEN** the stage-output tab contains more content than the available panel height
 - **THEN** the left workbench panel exposes an inner vertical scrollbar for that tab
 - **AND** recent stage activity is summarized with user-readable stage labels and business-language status text instead of raw backend event type names or opaque debug payloads
+
+#### Scenario: Drag the workbench split while dense note content is visible
+- **WHEN** user drags the horizontal split handle while long Markdown notes, note images, or Mermaid previews are mounted
+- **THEN** transcript scrolling, video controls, tab switching, and split dragging remain responsive
+- **AND** non-critical note imagery or Mermaid preview paint MAY defer until the drag interaction completes
+- **AND** the workbench uses a lower-cost visual mode for high-frequency surfaces during the drag interaction instead of keeping every decorative layer live
 
 #### Scenario: Render a high-frequency transcription stream without workspace flicker
 - **WHEN** phase `C` emits frequent `transcript_delta` and `progress` events

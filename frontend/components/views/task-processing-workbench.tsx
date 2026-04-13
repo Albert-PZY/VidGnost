@@ -119,6 +119,8 @@ type LeftTab = "transcript" | "correction" | "evidence" | "stage"
 type NotesTab = "notes" | "mindmap" | "research"
 type VqaTab = "chat" | "trace" | "research"
 
+const EMPTY_TRANSCRIPT_SEGMENTS: TranscriptSegment[] = []
+
 const WORKFLOW_STEPS: Record<WorkflowType, Array<{ id: string; name: string }>> = {
   notes: [
     { id: "extract", name: "音频提取" },
@@ -930,7 +932,8 @@ const TaskProcessingNotesRuntimeEffects = React.memo(function TaskProcessingNote
   transcriptOptimizeStatus: string
 }) {
   const {
-    transcriptSegments,
+    taskTranscriptSegments,
+    liveTranscript,
     rawTranscriptSegments,
     setRawTranscriptSegments,
     setPersistedRawTranscriptSegments,
@@ -938,13 +941,18 @@ const TaskProcessingNotesRuntimeEffects = React.memo(function TaskProcessingNote
     setIsCorrectionPreviewLoading,
   } = useTaskProcessingRuntimeStore(
     useShallow((state) => ({
-      transcriptSegments: selectMergedTranscriptSegments(state),
+      taskTranscriptSegments: state.task?.transcript_segments ?? EMPTY_TRANSCRIPT_SEGMENTS,
+      liveTranscript: state.liveTranscript,
       rawTranscriptSegments: state.rawTranscriptSegments,
       setRawTranscriptSegments: state.setRawTranscriptSegments,
       setPersistedRawTranscriptSegments: state.setPersistedRawTranscriptSegments,
       setPersistedCorrectionArtifacts: state.setPersistedCorrectionArtifacts,
       setIsCorrectionPreviewLoading: state.setIsCorrectionPreviewLoading,
     })),
+  )
+  const transcriptSegments = React.useMemo(
+    () => selectMergedTranscriptSegments({ task: { transcript_segments: taskTranscriptSegments } as TaskDetailResponse, liveTranscript }),
+    [liveTranscript, taskTranscriptSegments],
   )
 
   React.useEffect(() => {
@@ -1066,6 +1074,7 @@ export function TaskProcessingWorkbench({
   const [isCancelling, setIsCancelling] = React.useState(false)
   const [isPausing, setIsPausing] = React.useState(false)
   const [isResuming, setIsResuming] = React.useState(false)
+  const [isWorkbenchResizing, setIsWorkbenchResizing] = React.useState(false)
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
   const refreshTimerRef = React.useRef<number | null>(null)
   const chatAbortRef = React.useRef<AbortController | null>(null)
@@ -1204,7 +1213,9 @@ export function TaskProcessingWorkbench({
         return
       }
       const batch = eventQueueRef.current.splice(0, eventQueueRef.current.length)
-      applyTaskEventBatch(batch)
+      React.startTransition(() => {
+        applyTaskEventBatch(batch)
+      })
     }
     const source = streamTaskEvents(liveTaskId, (event) => {
       const rawType = getRawTaskEventType(event)
@@ -1626,7 +1637,10 @@ export function TaskProcessingWorkbench({
   }, [])
 
   return (
-    <div className="task-processing-workbench-shell flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div
+      data-layout-interacting={isWorkbenchResizing ? "true" : "false"}
+      className="task-processing-workbench-shell flex min-h-0 flex-1 flex-col overflow-hidden"
+    >
       <TaskProcessingNotesRuntimeEffects
         workflow={workflow}
         leftTab={leftTab}
@@ -1684,7 +1698,7 @@ export function TaskProcessingWorkbench({
           />
         </ResizablePanel>
 
-        <ResizableHandle withHandle />
+        <ResizableHandle withHandle onDragging={setIsWorkbenchResizing} />
 
         <ResizablePanel defaultSize={50} minSize={34}>
           {isInitialLoading && !effectiveTask ? (
@@ -2355,7 +2369,8 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
   taskStatus,
 }: LeftWorkbenchPanelProps) {
   const {
-    transcriptSegments,
+    taskTranscriptSegments,
+    liveTranscript,
     rawTranscriptSegments,
     persistedRawTranscriptSegments,
     correctionPreview,
@@ -2367,7 +2382,8 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
     chatHistory,
   } = useTaskProcessingRuntimeStore(
     useShallow((state) => ({
-      transcriptSegments: selectMergedTranscriptSegments(state),
+      taskTranscriptSegments: state.task?.transcript_segments ?? EMPTY_TRANSCRIPT_SEGMENTS,
+      liveTranscript: state.liveTranscript,
       rawTranscriptSegments: state.rawTranscriptSegments,
       persistedRawTranscriptSegments: state.persistedRawTranscriptSegments,
       correctionPreview: state.correctionPreview,
@@ -2379,7 +2395,14 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
       chatHistory: state.chatHistory,
     })),
   )
+  const transcriptSegments = React.useMemo(
+    () => selectMergedTranscriptSegments({ task: { transcript_segments: taskTranscriptSegments } as TaskDetailResponse, liveTranscript }),
+    [liveTranscript, taskTranscriptSegments],
+  )
   const [activeTranscriptId, setActiveTranscriptId] = React.useState("")
+  const deferredTranscriptSegmentsForTimeline = React.useDeferredValue(transcriptSegments)
+  const deferredChatHistoryForTimeline = React.useDeferredValue(chatHistory)
+  const deferredTaskEvents = React.useDeferredValue(taskEvents)
 
   React.useEffect(() => {
     setActiveTranscriptId("")
@@ -2387,7 +2410,7 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
 
   const evidenceTimelineItems = React.useMemo(() => {
     if (workflow === "notes") {
-      return transcriptSegments.map((segment) => ({
+      return deferredTranscriptSegmentsForTimeline.map((segment) => ({
         id: `${segment.start}-${segment.end}`,
         title: "转写片段",
         content: segment.text,
@@ -2399,7 +2422,7 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
         taskId,
       }))
     }
-    return chatHistory
+    return deferredChatHistoryForTimeline
       .flatMap((message) =>
         message.role === "assistant"
           ? message.citations.map((citation, index) => ({
@@ -2416,7 +2439,7 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
           : [],
       )
       .sort((left, right) => left.start - right.start)
-  }, [chatHistory, effectiveTitle, taskId, transcriptSegments, workflow])
+  }, [deferredChatHistoryForTimeline, deferredTranscriptSegmentsForTimeline, effectiveTitle, taskId, workflow])
 
   const correctionMode =
     correctionPreview.mode !== "unknown" ? correctionPreview.mode : persistedCorrectionMode
@@ -2613,9 +2636,9 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
                   {isRefreshing ? <Badge variant="secondary">同步中</Badge> : null}
                 </div>
                 <div className="mt-3 min-h-[16rem]">
-                  {taskEvents.length > 0 ? (
+                  {deferredTaskEvents.length > 0 ? (
                     <VirtualizedList
-                      items={taskEvents}
+                      items={deferredTaskEvents}
                       className="themed-thin-scrollbar h-64 min-h-0"
                       estimateSize={() => 88}
                       overscan={6}

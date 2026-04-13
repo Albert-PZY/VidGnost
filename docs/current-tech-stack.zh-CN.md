@@ -1,6 +1,6 @@
 # VidGnost 当前完整技术栈（前后端）
 
-更新时间：2026-04-12
+更新时间：2026-04-13
 
 ## 1. 架构边界（已收敛）
 
@@ -29,6 +29,8 @@
 - next-themes（主题切换，仅前端主题管理，不依赖 Next SSR）
 - react-hot-toast（通知）
 - react-resizable-panels（可拖拽工作区分栏）
+- Zustand 5（任务处理页 task-scoped runtime store）
+- @tanstack/react-virtual（长列表虚拟化）
 - @uiw/react-md-editor + @uiw/react-markdown-preview（提示词编辑与 Markdown 结果渲染）
 
 ## 2.3 前端工程事实
@@ -38,6 +40,9 @@
 - Electron 启动链路采用独立 splash 窗口，主窗口默认隐藏，前端通过 preload IPC 上报启动阶段进度后再显示主界面
 - 启动阶段一次性预热核心页面与提示词 Markdown 编辑器，不使用页面级或编辑器级懒加载骨架屏占位
 - 主界面显示后仍保留降级启动覆盖层，用于后端不可用时承接诊断、重试和日志目录打开动作
+- 任务处理页将转写、纠错、阶段动态、问答、Trace 等高频运行态数据收拢到 task-scoped Zustand store，并通过 selector 订阅隔离重渲染范围
+- 任务处理页中的转写片段、证据时间轴、阶段动态、VQA 消息与引用列表使用虚拟化列表，避免长任务期间 DOM 持续膨胀
+- Markdown 时间戳装饰、任务相对图片路径改写等预处理通过独立 Web Worker 执行，Mermaid 预览采用可视区惰性渲染、空闲调度与 SVG 缓存
 - 前端入口：
   - `frontend/index.html`
   - `frontend/src/main.tsx`
@@ -109,8 +114,10 @@
 
 - 后端测试：`pytest` + `pytest-asyncio`
 - 前端构建验证：`vite build`
+- 前端类型验证：`pnpm exec tsc --noEmit`
 - 已验证状态：
   - 后端：`61 passed`
+  - 前端：`pnpm exec tsc --noEmit` 成功
   - 前端：`vite build` 成功
 
 ## 7. 结论

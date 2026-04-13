@@ -2,11 +2,12 @@
 
 import * as React from "react"
 import MDEditor from "@uiw/react-md-editor"
+import MarkdownPreview from "@uiw/react-markdown-preview"
 import "@uiw/react-md-editor/markdown-editor.css"
 import "@uiw/react-markdown-preview/markdown.css"
 
-import { buildTaskArtifactFileUrl } from "@/lib/api"
 import { renderMarkdownCodeBlock, renderMarkdownPreBlock } from "@/components/ui/mermaid-code-block"
+import { useDecoratedMarkdown } from "@/hooks/use-decorated-markdown"
 
 interface PromptMarkdownEditorProps {
   value: string
@@ -17,17 +18,6 @@ interface PromptMarkdownEditorProps {
   onChange: (value: string) => void
 }
 
-function resolvePreviewImageSource(src: string, taskId?: string): string {
-  const normalized = src.trim()
-  if (!normalized || !taskId) {
-    return normalized
-  }
-  if (/^(?:https?:|data:|file:|blob:)/i.test(normalized)) {
-    return normalized
-  }
-  return buildTaskArtifactFileUrl(taskId, normalized.replace(/^(?:\.\/)+/, ""))
-}
-
 export function PromptMarkdownEditor({
   value,
   colorMode,
@@ -36,6 +26,12 @@ export function PromptMarkdownEditor({
   placeholder,
   onChange,
 }: PromptMarkdownEditorProps) {
+  const previewMarkdown = useDecoratedMarkdown({
+    markdown: value,
+    taskId,
+    defer: true,
+    delayMs: 120,
+  })
   const previewComponents = React.useMemo(
     () => ({
       code: (props: { className?: string; children?: React.ReactNode }) =>
@@ -45,21 +41,8 @@ export function PromptMarkdownEditor({
           colorMode,
         }),
       pre: renderMarkdownPreBlock,
-      img: ({
-        node: _node,
-        src,
-        alt,
-        ...props
-      }: React.ImgHTMLAttributes<HTMLImageElement> & { node?: unknown }) => (
-        // Route task-relative Markdown images through the backend artifact endpoint
-        <img
-          {...props}
-          src={resolvePreviewImageSource(src || "", taskId)}
-          alt={alt || ""}
-        />
-      ),
     }),
-    [colorMode, taskId],
+    [colorMode],
   )
 
   return (
@@ -75,6 +58,15 @@ export function PromptMarkdownEditor({
         height={height}
         data-color-mode={colorMode}
         extraCommands={[]}
+        components={{
+          preview: () => (
+            <MarkdownPreview
+              source={previewMarkdown}
+              className="wmde-markdown wmde-markdown-color"
+              components={previewComponents}
+            />
+          ),
+        }}
         previewOptions={{ components: previewComponents }}
         textareaProps={{
           placeholder,

@@ -1440,6 +1440,92 @@ body[data-app-background-active="true"] .custom-skin-dialog-surface * {
   contain-intrinsic-size: 220px;
 }
 
+.task-processing-workbench-shell {
+  --task-workbench-surface-fill: color-mix(in oklch, var(--background) 95%, var(--muted) 5%);
+  --task-workbench-surface-fill-soft: color-mix(in oklch, var(--background) 97%, var(--muted) 3%);
+  --task-workbench-surface-border: color-mix(in oklch, var(--border) 76%, var(--foreground) 6%);
+  --task-workbench-surface-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+  --task-workbench-panel-fill: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--background) 97%, var(--muted) 3%) 0%,
+    color-mix(in oklch, var(--background) 92%, var(--muted) 8%) 100%
+  );
+  --task-workbench-panel-header-fill: color-mix(in oklch, var(--muted) 72%, var(--background) 28%);
+}
+
+body[data-app-background-active="true"] .task-processing-workbench-shell {
+  --task-workbench-surface-fill: color-mix(in oklch, var(--background) 32%, transparent);
+  --task-workbench-surface-fill-soft: color-mix(in oklch, var(--background) 24%, transparent);
+  --task-workbench-surface-border: color-mix(in oklch, white 8%, transparent);
+  --task-workbench-surface-shadow: 0 14px 32px rgba(6, 10, 18, 0.12);
+  --task-workbench-panel-fill: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--background) 34%, transparent) 0%,
+    color-mix(in oklch, var(--background) 24%, transparent) 100%
+  );
+  --task-workbench-panel-header-fill: color-mix(in oklch, var(--background) 42%, transparent);
+}
+
+.task-processing-workbench-shell :is(
+    .workbench-pane-state,
+    .workbench-pane-section,
+    .workbench-collection-item,
+    .vqa-chat-bubble
+  ) {
+  border-color: var(--task-workbench-surface-border);
+  box-shadow: var(--task-workbench-surface-shadow);
+  backdrop-filter: none !important;
+}
+
+.task-processing-workbench-shell :is(.workbench-pane-state, .workbench-pane-section, .workbench-collection-item) {
+  background: var(--task-workbench-surface-fill);
+}
+
+.task-processing-workbench-shell .vqa-chat-message[data-role="assistant"] .vqa-chat-bubble {
+  background: var(--task-workbench-surface-fill-soft);
+}
+
+.task-processing-workbench-shell :is(.notes-workbench-reading-panel, .research-board-shell) {
+  background: var(--task-workbench-panel-fill);
+  border-color: var(--task-workbench-surface-border);
+  box-shadow: var(--task-workbench-surface-shadow);
+  backdrop-filter: none !important;
+}
+
+.task-processing-workbench-shell :is(.notes-workbench-reading-header, .research-board-shell-header) {
+  background: var(--task-workbench-panel-header-fill);
+  border-bottom-color: var(--task-workbench-surface-border);
+  backdrop-filter: none !important;
+}
+
+.task-processing-workbench-shell .research-board-item {
+  background: var(--task-workbench-surface-fill-soft);
+  border-color: var(--task-workbench-surface-border);
+  box-shadow: var(--task-workbench-surface-shadow);
+  backdrop-filter: none !important;
+}
+
+.task-processing-workbench-shell[data-layout-interacting="true"] {
+  --task-workbench-surface-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+}
+
+.task-processing-workbench-shell[data-layout-interacting="true"] :is(
+    .workbench-pane-state,
+    .workbench-pane-section,
+    .workbench-collection-item,
+    .artifact-markdown-viewer-shell,
+    .vqa-chat-bubble,
+    .mermaid-preview-shell,
+    .workbench-pane-frame
+  ) {
+  transition: none !important;
+  animation: none !important;
+}
+
+.task-processing-workbench-shell[data-layout-interacting="true"] :is(.mermaid-preview-shell, .artifact-markdown-viewer img) {
+  visibility: hidden;
+}
+
 .workbench-tab-list {
   gap: 0.35rem;
   min-height: auto;
@@ -2103,7 +2189,7 @@ html:not(.dark) body[data-app-background-active="true"] :is(
 }
 
 .transcript-segment-card {
-  backdrop-filter: blur(6px);
+  backdrop-filter: none;
 }
 
 .transcript-segment-timestamp {
