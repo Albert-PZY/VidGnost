@@ -108,14 +108,25 @@ async def chat_stream(
     query_text = _resolve_query_text(payload.query_text, payload.question)
 
     async def event_generator():
-        async for event in runtime.stream_chat(
-            query_text=query_text,
-            task_id=(payload.task_id or "").strip() or None,
-            video_paths=payload.video_paths,
-            top_k=payload.top_k,
-        ):
-            yield f"data: {orjson.dumps(event).decode('utf-8')}\n\n"
-        yield "data: [DONE]\n\n"
+        try:
+            async for event in runtime.stream_chat(
+                query_text=query_text,
+                task_id=(payload.task_id or "").strip() or None,
+                video_paths=payload.video_paths,
+                top_k=payload.top_k,
+            ):
+                yield f"data: {orjson.dumps(event).decode('utf-8')}\n\n"
+        except Exception:  # noqa: BLE001
+            error_event = {
+                "type": "error",
+                "error": {
+                    "code": "VQA_STREAM_TRANSPORT_ERROR",
+                    "message": "流式连接意外中断，请稍后重试。",
+                },
+            }
+            yield f"data: {orjson.dumps(error_event).decode('utf-8')}\n\n"
+        finally:
+            yield "data: [DONE]\n\n"
 
     return StreamingResponse(
         event_generator(),

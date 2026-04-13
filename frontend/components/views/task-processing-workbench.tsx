@@ -278,6 +278,44 @@ function getTraceSectionHint(sectionKey: (typeof TRACE_SECTIONS)[number]["key"])
   }
 }
 
+function isRetryableVqaStreamError(rawMessage: string): boolean {
+  const lowered = rawMessage.trim().toLowerCase()
+  return lowered.includes("incomplete chunked read") || lowered.includes("peer closed connection")
+}
+
+function getVqaStreamStatusText(event: VqaChatStreamEvent): string {
+  switch (event.status) {
+    case "retrieving":
+      return "正在检索相关片段..."
+    case "generating":
+      return (event.hit_count ?? 0) > 0 ? "已完成证据检索，正在组织回答..." : "未检索到直接证据，正在组织回答..."
+    case "fallback":
+      return "流式连接短暂中断，已切换稳定模式补全回答..."
+    default:
+      return event.message || event.status || ""
+  }
+}
+
+function getVqaStreamErrorText(event: VqaChatStreamEvent): string {
+  const rawMessage = event.error?.message || event.message || ""
+  const code = event.error?.code || ""
+  if (code === "LLM_DISABLED") {
+    return "LLM API Key 未配置，暂时无法执行问答。"
+  }
+  if (isRetryableVqaStreamError(rawMessage)) {
+    return "流式连接中途中断，请稍后重试。"
+  }
+  return rawMessage || "流式回答失败"
+}
+
+function getVqaRequestFailureMessage(error: unknown): string {
+  const message = getApiErrorMessage(error, "执行视频问答失败")
+  if (isRetryableVqaStreamError(message)) {
+    return "流式连接意外中断，请稍后重试。"
+  }
+  return message
+}
+
 function getStepStatusIcon(status: TaskStepItem["status"]) {
   switch (status) {
     case "completed":
@@ -1114,7 +1152,14 @@ export function TaskProcessingWorkbench({
     setChatHistory((current) => [
       ...current,
       { id: userId, role: "user", content: trimmedQuestion, status: "done", citations: [] },
-      { id: assistantId, role: "assistant", content: "", status: "streaming", citations: [] },
+      {
+        id: assistantId,
+        role: "assistant",
+        content: "",
+        status: "streaming",
+        citations: [],
+        statusMessage: "正在检索相关片段...",
+      },
     ])
     try {
       await streamChatWithTask(
@@ -1129,11 +1174,28 @@ export function TaskProcessingWorkbench({
                 next.citations = event.citations ?? []
                 next.contextTokensApprox = event.context_tokens_approx
               }
-              if (event.type === "chunk" && event.delta) next.content += event.delta
-              if (event.type === "status") next.statusMessage = event.message || event.status || ""
+              if (event.type === "chunk" && event.delta) {
+                next.content += event.delta
+                if (!current.content.trim()) {
+                  next.statusMessage = ""
+                }
+              }
+              if (event.type === "replace") {
+                next.content = event.content || ""
+                next.statusMessage = ""
+                next.errorMessage = ""
+                next.status = "streaming"
+              }
+              if (event.type === "status") {
+                next.statusMessage = getVqaStreamStatusText(event)
+                if (event.status === "fallback") {
+                  next.errorMessage = ""
+                  next.status = "streaming"
+                }
+              }
               if (event.type === "error") {
                 next.status = "error"
-                next.errorMessage = event.error?.message || event.message || "流式回答失败"
+                next.errorMessage = getVqaStreamErrorText(event)
               }
               if (event.type === "done") next.status = next.errorMessage ? "error" : "done"
               return next
@@ -1155,7 +1217,7 @@ export function TaskProcessingWorkbench({
           statusMessage: "已手动停止",
         }))
       } else {
-        const message = getApiErrorMessage(error, "执行视频问答失败")
+        const message = getVqaRequestFailureMessage(error)
         updateAssistantMessage(assistantId, (current) => ({
           ...current,
           content: current.content.trim() || message,
@@ -2300,13 +2362,35 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
                   {message.role === "assistant" ? <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">{message.status === "streaming" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}</div> : null}
                   <div className={cn("vqa-chat-bubble max-w-[88%] space-y-3 rounded-2xl p-4", message.role === "user" ? "bg-primary text-primary-foreground" : "border border-border/70 bg-card/70")}>
                     {message.role === "assistant" ? (
-                      <MarkdownArtifactViewer
-                        taskId={taskId}
-                        markdown={message.content}
-                        emptyMessage=""
-                        className="min-w-0"
-                        onSeek={onSeek}
-                      />
+                      message.status === "streaming" && !message.content.trim() ? (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                            <span>{message.statusMessage || "正在准备回答..."}</span>
+                          </div>
+                          <div className="space-y-2">
+                            <div className="h-2.5 w-32 rounded-full bg-muted/90 animate-pulse" />
+                            <div className="h-2.5 w-56 rounded-full bg-muted/70 animate-pulse" />
+                            <div className="flex items-center gap-1 pt-1">
+                              {[0, 1, 2].map((dot) => (
+                                <span
+                                  key={`${message.id}-dot-${dot}`}
+                                  className="h-1.5 w-1.5 rounded-full bg-primary/65 animate-pulse"
+                                  style={{ animationDelay: `${dot * 140}ms` }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <MarkdownArtifactViewer
+                          taskId={taskId}
+                          markdown={message.content}
+                          emptyMessage=""
+                          className="min-w-0"
+                          onSeek={onSeek}
+                        />
+                      )
                     ) : (
                       <p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p>
                     )}
@@ -2315,7 +2399,9 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
                         <div className="flex flex-wrap items-center gap-2 text-xs">
                           {message.traceId ? <Badge variant="outline">检索链路: {message.traceId}</Badge> : null}
                           {message.contextTokensApprox ? <Badge variant="secondary">上下文约 {message.contextTokensApprox} tokens</Badge> : null}
-                          {message.statusMessage ? <Badge variant="secondary">{message.statusMessage}</Badge> : null}
+                          {message.statusMessage && !(message.status === "streaming" && !message.content.trim()) ? (
+                            <Badge variant="secondary">{message.statusMessage}</Badge>
+                          ) : null}
                           {message.errorMessage ? <Badge variant="destructive">{message.errorMessage}</Badge> : null}
                         </div>
                         {message.traceId ? <Button variant="outline" size="sm" onClick={() => void onOpenTrace(message.traceId || "")}><Search className="mr-1.5 h-3.5 w-3.5" />查看检索链路</Button> : null}

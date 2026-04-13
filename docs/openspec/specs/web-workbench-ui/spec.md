@@ -320,8 +320,10 @@ Task processing workbench SHALL use a horizontal resizable split layout. The lef
 
 #### Scenario: Open a VQA task and ask a question
 - **WHEN** user submits a question from the VQA workbench
+- **THEN** before retrieval hits or answer tokens arrive, the assistant bubble shows a temporary loading placeholder with business-language progress copy instead of a blank bubble
 - **THEN** the renderer streams incremental answer chunks into the chat surface
 - **AND** streamed assistant answers render as Markdown instead of plain paragraph text
+- **AND** if the upstream LLM stream is interrupted after partial output, the renderer prefers a recovered full-answer replacement or a business-friendly retry hint instead of exposing raw transport errors such as incomplete chunked-read text
 - **AND** each answer may expose a retrieval trace identifier, citations, and citation jump actions
 - **AND** citations prefer related frame thumbnails from the task video rather than Mermaid summary images
 - **AND** clicking a citation thumbnail opens a modal large-image preview

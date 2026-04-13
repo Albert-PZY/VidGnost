@@ -131,12 +131,19 @@ class VQARuntimeService:
         video_paths: list[str] | None = None,
         top_k: int | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
+        yield {"type": "status", "status": "retrieving"}
         search_bundle = self.search(
             query_text=query_text,
             task_id=task_id,
             video_paths=video_paths,
             top_k=top_k,
         )
+        yield {
+            "trace_id": search_bundle.trace_id,
+            "type": "status",
+            "status": "generating",
+            "hit_count": len(search_bundle.result.rerank_hits),
+        }
         full_answer: list[str] = []
         stream_error: dict[str, str] | None = None
         async for event in self._chat.stream_answer(query_text=query_text, hits=search_bundle.result.rerank_hits):
@@ -151,6 +158,7 @@ class VQARuntimeService:
                         "code": str(payload.get("code", "LLM_STREAM_ERROR")),
                         "message": str(payload.get("message", "stream failed")),
                     }
+                continue
             outbound = {"trace_id": search_bundle.trace_id, **event}
             yield outbound
 
@@ -162,15 +170,22 @@ class VQARuntimeService:
                     "trace_id": search_bundle.trace_id,
                     "type": "status",
                     "status": "fallback",
-                    "message": "stream-failed-auto-fallback",
+                    "hit_count": len(search_bundle.result.rerank_hits),
                 }
                 yield {
                     "trace_id": search_bundle.trace_id,
-                    "type": "chunk",
-                    "delta": fallback.answer,
+                    "type": "replace",
+                    "content": fallback.answer,
                 }
                 full_answer = [fallback.answer]
                 stream_error = fallback.error
+            else:
+                fallback_error = fallback.error or stream_error
+                yield {
+                    "trace_id": search_bundle.trace_id,
+                    "type": "error",
+                    "error": _build_user_visible_stream_error(fallback_error),
+                }
 
         answer_text = "".join(full_answer).strip()
         self._trace.write(
@@ -210,3 +225,27 @@ class VQARuntimeService:
 
     def build_trace_payload(self, trace_id: str) -> dict[str, Any]:
         return {"trace_id": trace_id, "records": self.read_trace(trace_id)}
+
+
+def _build_user_visible_stream_error(error: dict[str, str] | None) -> dict[str, str]:
+    payload = error or {"code": "LLM_STREAM_ERROR", "message": "stream failed"}
+    raw_code = str(payload.get("code", "LLM_STREAM_ERROR") or "LLM_STREAM_ERROR").strip() or "LLM_STREAM_ERROR"
+    raw_message = str(payload.get("message", "") or "").strip()
+    lowered = raw_message.lower()
+
+    if raw_code == "LLM_DISABLED":
+        return {
+            "code": raw_code,
+            "message": "LLM API Key 未配置，暂时无法执行流式问答。",
+        }
+
+    if "incomplete chunked read" in lowered or "peer closed connection" in lowered:
+        return {
+            "code": "LLM_STREAM_INTERRUPTED",
+            "message": "流式连接中途中断，系统未能完成自动恢复，请稍后重试。",
+        }
+
+    return {
+        "code": raw_code,
+        "message": raw_message or "流式回答失败，请稍后重试。",
+    }

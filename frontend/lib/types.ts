@@ -373,8 +373,10 @@ export interface VqaChatStreamEvent {
   trace_id?: string
   type: "citations" | "chunk" | "done" | "error" | "status" | string
   delta?: string
+  content?: string
   status?: string
   message?: string
+  hit_count?: number
   context_tokens_approx?: number
   citations?: VqaCitationItem[]
   error?: {
