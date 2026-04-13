@@ -2283,16 +2283,16 @@ const NotesWorkbench = React.memo(function NotesWorkbench({
         }
         setIsEditingNotes(true)
       }}>
-        <DialogContent className="max-w-[min(90vw,72rem)] p-0">
-          <DialogHeader className="border-b px-6 py-5">
+        <DialogContent className="max-h-[80vh] w-[min(96vw,144rem)] max-w-[min(96vw,144rem)] overflow-hidden p-0">
+          <DialogHeader className="border-b px-6 py-4">
             <DialogTitle>编辑 Markdown 笔记</DialogTitle>
             <DialogDescription>左侧修改内容，右侧实时预览。时间戳和图片链接会保持与工作区一致的渲染规则。</DialogDescription>
           </DialogHeader>
-          <div className="px-6 pb-4 pt-5">
+          <div className="px-6 pb-4 pt-4">
             <PromptMarkdownEditor
               value={notesDraft}
               colorMode={markdownColorMode}
-              height={560}
+              height={360}
               placeholder="在这里编辑任务笔记..."
               onChange={setNotesDraft}
             />

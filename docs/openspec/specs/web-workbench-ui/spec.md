@@ -68,6 +68,14 @@ Prompt template editor SHALL use a markdown editor that keeps the source editor 
 - **AND** the editor applies the same light or dark color mode as the renderer shell
 - **AND** scrolling one pane keeps the other pane aligned for long prompt content
 
+### Requirement: Workbench notes editor SHALL prefer a wide split layout
+The task-workbench Markdown notes editor dialog SHALL use a wide split layout that prioritizes side-by-side editing and preview over vertical height. On desktop widths, the dialog SHALL expand toward a wide landscape presentation instead of a tall narrow panel, and the editor viewport SHALL stay visually compact enough to avoid pushing the action area below the fold.
+
+#### Scenario: Open the Markdown notes editor from the task workbench
+- **WHEN** user opens `编辑 Markdown 笔记`
+- **THEN** the dialog uses a wide landscape layout suited for side-by-side source and preview panes
+- **AND** the editor viewport height remains intentionally lower than the previous tall layout so the dialog reads as a compact work surface instead of a vertically stretched sheet
+
 ### Requirement: Desktop startup SHALL preload core workbench views before main window reveal
 Electron desktop startup SHALL open a dedicated splash window first, keep the main window hidden while renderer assets and core workbench views initialize, and reveal the main window only after bootstrap completes or enters degraded mode. Core workbench views such as `新建任务`, `历史记录`, `设置中心`, `系统自检`, `任务处理`, and the prompt-template Markdown editor SHALL be included in the initial renderer startup path instead of route-level or dialog-level lazy loading placeholders. The splash surface SHALL follow the same restrained professional dark-tool styling as the renderer shell, using the project logo, a centered vertical brand composition, a single thin progress bar, and a five-step startup checklist with per-step elapsed-time feedback. The checklist SHALL be bound to explicit startup task states emitted by the hidden main window and renderer instead of inferring stages from display copy. The dedicated splash window SHALL keep a compact fixed footprint around `420 x 480` logical pixels so the launch surface reads as a concise startup panel instead of a large poster-like frame.
 
