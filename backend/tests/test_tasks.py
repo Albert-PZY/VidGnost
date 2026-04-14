@@ -752,6 +752,34 @@ def test_upload_batch_creates_multiple_tasks() -> None:
         assert len(submitted) == 2
 
 
+def test_upload_rejects_unsupported_video_extension() -> None:
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tasks/upload",
+            data={"workflow": "notes"},
+            files={"file": ("video.webm", b"dummy", "video/webm")},
+        )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["code"] == "UNSUPPORTED_VIDEO_EXTENSION"
+
+
+def test_create_task_from_path_rejects_unsupported_video_extension(tmp_path: Path) -> None:
+    local_path = tmp_path / "demo.webm"
+    local_path.write_bytes(b"dummy")
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tasks/path",
+            json={"local_path": str(local_path), "workflow": "notes", "language": "zh"},
+        )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["code"] == "UNSUPPORTED_VIDEO_EXTENSION"
+
+
 def test_task_events_stream_maps_frontend_event_contract() -> None:
     event = _normalize_stream_event(
         task_id="task-demo",

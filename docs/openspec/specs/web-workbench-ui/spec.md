@@ -66,6 +66,7 @@ The settings-center model surface SHALL expose dedicated `Ollama 运行时与模
 #### Scenario: Model list data is still loading
 - **WHEN** the settings view has entered `模型配置` but the backend model list has not yet returned
 - **THEN** the renderer shows skeleton rows in the model list region
+- **AND** the skeleton placeholders use the shared neutral loading surface instead of a theme-hue accented variant
 - **AND** it does not flash an empty-state card before the first model payload arrives
 
 ### Requirement: Configuration dialogs SHALL stay within viewport with fixed chrome
@@ -258,6 +259,7 @@ Header language controls SHALL show the current selected language with explicit 
 #### Scenario: Open header language menu
 - **WHEN** user opens the language menu in the title bar
 - **THEN** the active language option is visually highlighted
+- **AND** pointing to the title-bar language trigger opens the dropdown without requiring an extra click, while click and focus access remain available
 - **AND** changing the option updates persisted UI settings
 
 ### Requirement: Shell controls SHALL expose explicit theme selection state
@@ -266,6 +268,7 @@ Header theme controls SHALL show the current selected theme mode with explicit s
 #### Scenario: Open header theme menu
 - **WHEN** user opens the theme menu in the title bar
 - **THEN** the active theme option is visually highlighted
+- **AND** pointing to the title-bar theme trigger opens the dropdown without requiring an extra click, while click and focus access remain available
 - **AND** only the selected theme option shows the explicit selection indicator
 
 ### Requirement: Workbench branding SHALL use the project logo asset
@@ -313,9 +316,24 @@ New-task view SHALL expose `Upload`, `URL`, and `Path` intake modes inside the s
 - **THEN** the renderer shows responsive workflow step cards without horizontal scrolling, a value-preview summary, and the three intake modes
 - **AND** workflow-step and value-preview content keep a compact flat structure inside the surrounding shell cards instead of reintroducing nested heavyweight sub-cards
 - **AND** the upload mode supports drag-and-drop plus batch file selection
+- **AND** upload selection, drag-and-drop intake, and absolute local-path entry only accept `MP4`、`MOV`、`AVI`、`MKV` video inputs
+- **AND** the renderer blocks other file extensions before request submission instead of relying only on backend rejection
 - **AND** selected local video files attempt to read media duration from local metadata and show the detected duration when the browser can resolve it
 - **AND** upload helper copy keeps a higher-contrast foreground treatment in dark theme so the prompt remains readable during idle and importing states
 - **AND** the user can switch to URL or absolute local-path input without leaving the page
+
+### Requirement: History view SHALL keep compact overview and batch-delete controls
+History view SHALL present a compact summary strip and a flat batch-delete toolbar that preserve quick task access while reducing unnecessary visual chrome.
+
+#### Scenario: Open history view with no persisted tasks
+- **WHEN** user opens `历史记录` before any task has been created
+- **THEN** the `批量删除` entry action is visibly disabled
+- **AND** the disabled presentation follows the same affordance family used by the history pagination controls
+
+#### Scenario: Enter batch-delete mode from history view
+- **WHEN** user clicks `批量删除` in history view while deletable tasks are available
+- **THEN** the renderer enters selection mode for terminal tasks that support deletion
+- **AND** the toolbar keeps a compact flat presentation while exposing `全选本页`、`退出选择`、`删除已选` actions
 
 ### Requirement: Bootstrap surfaces SHALL provide startup progress and backend recovery actions
 Workbench bootstrap SHALL expose a desktop splash progress state before the main window reveal and a renderer overlay state machine for `initializing`, `connecting`, `degraded`, and `ready` after the main window becomes visible. Initializing states SHALL keep an explicit loading affordance, while degraded states SHALL switch to a non-blocking recovery panel.

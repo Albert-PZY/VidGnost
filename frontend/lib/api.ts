@@ -26,6 +26,7 @@ import type {
   WhisperConfigResponse,
   WorkflowType,
 } from "@/lib/types"
+import { getUnsupportedVideoNames, SUPPORTED_VIDEO_LABEL } from "@/lib/video-format"
 
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:8666/api"
 
@@ -142,6 +143,11 @@ export async function uploadTaskFiles(input: {
   onProgress?: (progress: number) => void
 }): Promise<TaskBatchCreateResponse> {
   const { files, workflow, language = "zh", onProgress } = input
+  const unsupportedNames = getUnsupportedVideoNames(files)
+
+  if (unsupportedNames.length > 0) {
+    throw new Error(`仅支持上传 ${SUPPORTED_VIDEO_LABEL} 格式的视频文件。`)
+  }
 
   return new Promise<TaskBatchCreateResponse>((resolve, reject) => {
     const xhr = new XMLHttpRequest()

@@ -11,7 +11,7 @@ import ffmpeg
 import yt_dlp
 
 
-ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mkv", ".mov", ".webm", ".flv", ".avi", ".m4v"}
+ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv"}
 _LOGGER = logging.getLogger(__name__)
 
 

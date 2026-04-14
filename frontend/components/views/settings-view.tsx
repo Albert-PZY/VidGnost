@@ -1483,21 +1483,21 @@ export function SettingsView({
 
                   <div className="space-y-3">
                     {isModelListLoading
-                      ? Array.from({ length: 5 }).map((_, index) => (
+                        ? Array.from({ length: 5 }).map((_, index) => (
                           <div
                             key={`model-skeleton-${index}`}
-                            className="settings-model-skeleton-card settings-models-panel rounded-lg border p-4"
+                            className="settings-models-panel rounded-lg border p-4"
                           >
                             <div className="flex items-start gap-4">
-                              <div className="app-skeleton app-skeleton-intense h-10 w-10 shrink-0 rounded-lg" />
+                              <div className="app-skeleton h-10 w-10 shrink-0 rounded-lg" />
                               <div className="min-w-0 flex-1 space-y-2">
-                                <div className="app-skeleton app-skeleton-intense h-4 w-48 rounded-md" />
-                                <div className="app-skeleton app-skeleton-intense h-3 w-72 rounded-md" />
-                                <div className="app-skeleton app-skeleton-intense h-3 w-full max-w-xl rounded-md" />
+                                <div className="app-skeleton h-4 w-48 rounded-md" />
+                                <div className="app-skeleton h-3 w-72 rounded-md" />
+                                <div className="app-skeleton h-3 w-full max-w-xl rounded-md" />
                               </div>
                               <div className="flex items-center gap-2">
-                                <div className="app-skeleton app-skeleton-intense h-9 w-20 rounded-md" />
-                                <div className="app-skeleton app-skeleton-intense h-9 w-16 rounded-md" />
+                                <div className="app-skeleton h-9 w-20 rounded-md" />
+                                <div className="app-skeleton h-9 w-16 rounded-md" />
                               </div>
                             </div>
                           </div>
@@ -2113,14 +2113,14 @@ export function SettingsView({
 
                                 {showModelPathField ? (
                                   <div className="space-y-2 md:col-span-2">
-                                    <Label htmlFor="model-path">{activeModelPreset.pathLabel || "本地路径"}</Label>
+                                    <Label htmlFor="model-path">{activeModelPreset?.pathLabel || "本地路径"}</Label>
                                     <Input
                                       id="model-path"
                                       className="bg-background/80"
                                       placeholder={
                                         isWhisperDialog
                                           ? "未就绪"
-                                          : activeModelPreset.pathPlaceholder || "可选：指定模型缓存目录或本地模型目录"
+                                          : activeModelPreset?.pathPlaceholder || "可选：指定模型缓存目录或本地模型目录"
                                       }
                                       value={modelForm.path}
                                       readOnly={isWhisperDialog}

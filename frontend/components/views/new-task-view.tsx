@@ -26,6 +26,12 @@ import { cn } from "@/lib/utils"
 import { formatBytes, formatDurationSeconds } from "@/lib/format"
 import { getApiErrorMessage } from "@/lib/api"
 import type { WorkflowType } from "@/lib/types"
+import {
+  getUnsupportedVideoNames,
+  isSupportedVideoFileName,
+  SUPPORTED_VIDEO_ACCEPT,
+  SUPPORTED_VIDEO_LABEL,
+} from "@/lib/video-format"
 
 type TaskSourceMode = "upload" | "url" | "path"
 
@@ -88,7 +94,7 @@ const MODE_COPY: Record<
   upload: {
     title: "上传文件",
     description: "适合直接把本地视频拖进工作台，支持批量导入。",
-    helper: "支持 MP4、MOV、AVI、MKV 等常见视频格式。",
+    helper: `仅支持 ${SUPPORTED_VIDEO_LABEL} 四种视频格式。`,
   },
   url: {
     title: "网络地址",
@@ -100,6 +106,16 @@ const MODE_COPY: Record<
     description: "适合你已经知道完整视频绝对路径的场景。",
     helper: "输入 Windows 本地路径后即可直接发起分析。",
   },
+}
+
+function buildUnsupportedVideoMessage(names: string[]): string {
+  if (names.length === 0) {
+    return `仅支持 ${SUPPORTED_VIDEO_LABEL} 格式的视频文件。`
+  }
+
+  const preview = names.slice(0, 3).join("、")
+  const suffix = names.length > 3 ? " 等文件。" : "。"
+  return `仅支持 ${SUPPORTED_VIDEO_LABEL} 格式的视频文件：${preview}${suffix}`
 }
 
 async function readVideoDurationLabel(file: File): Promise<string> {
@@ -160,7 +176,18 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
   }, [])
 
   const appendFiles = React.useCallback((files: File[]) => {
-    const nextFiles = files.map((file, index) => ({
+    const unsupportedNames = getUnsupportedVideoNames(files)
+    const supportedFiles = files.filter((file) => isSupportedVideoFileName(file.name))
+
+    if (unsupportedNames.length > 0) {
+      toast.error(buildUnsupportedVideoMessage(unsupportedNames))
+    }
+
+    if (supportedFiles.length === 0) {
+      return
+    }
+
+    const nextFiles = supportedFiles.map((file, index) => ({
       id: `${file.name}-${file.size}-${file.lastModified}-${index}`,
       name: file.name,
       size: file.size,
@@ -201,7 +228,7 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
   const handleDrop = (event: React.DragEvent) => {
     event.preventDefault()
     setIsDragging(false)
-    const files = Array.from(event.dataTransfer.files).filter((file) => file.type.startsWith("video/"))
+    const files = Array.from(event.dataTransfer.files)
     if (files.length > 0) {
       appendFiles(files)
     }
@@ -253,6 +280,10 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
       const value = pathInput.trim()
       if (!value) {
         toast.error("请输入本地视频路径")
+        return
+      }
+      if (!isSupportedVideoFileName(value)) {
+        toast.error(`本地路径仅支持 ${SUPPORTED_VIDEO_LABEL} 四种视频格式。`)
         return
       }
       await onStartTask({
@@ -400,7 +431,7 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="video/*"
+                    accept={SUPPORTED_VIDEO_ACCEPT}
                     multiple
                     className="hidden"
                     onChange={handleFileSelect}
