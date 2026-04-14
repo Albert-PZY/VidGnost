@@ -99,6 +99,8 @@ async def lifespan(app: FastAPI):
         settings=settings,
         model_catalog_store=model_catalog_store,
         ollama_runtime_config_store=ollama_runtime_config_store,
+        ollama_service_manager=ollama_service_manager,
+        task_store=task_store,
     )
     ui_settings_store = UISettingsStore(settings=settings)
     await ui_settings_store.get()

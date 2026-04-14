@@ -196,7 +196,7 @@ DEFAULT_MODELS: list[ModelEntry] = [
     {
         "id": "mllm-default",
         "component": "mllm",
-        "name": "默认全模态模型",
+        "name": "OpenAI Compatible MLLM",
         "provider": _REMOTE_PROVIDER,
         "model_id": "qwen3.5-omni-flash",
         "path": "",
@@ -324,6 +324,30 @@ class ModelCatalogStore:
                 item["last_check_at"] = now
             normalized = self._normalize_models(models)
             self._write_sync(normalized)
+            ollama_models = await self._ollama_client.list_local_models()
+            return self._hydrate_models(normalized, ollama_models=ollama_models)
+
+    async def sync_managed_local_model_paths(self) -> list[ModelEntry]:
+        async with self._lock:
+            models = self._read_sync()
+            changed = False
+            for item in models:
+                model_id = str(item.get("id", "")).strip()
+                provider = str(item.get("provider", "")).strip()
+                spec = get_managed_model_spec(model_id)
+                if provider != "local" or spec is None or spec.backend != "whisper":
+                    continue
+                resolved_path = self._resolve_ready_managed_local_path(item, spec=spec)
+                normalized_path = str(resolved_path) if resolved_path is not None else ""
+                if str(item.get("path", "")).strip() == normalized_path:
+                    continue
+                item["path"] = normalized_path
+                item["last_check_at"] = datetime.now(timezone.utc).isoformat()
+                changed = True
+
+            normalized = self._normalize_models(models) if changed else models
+            if changed:
+                self._write_sync(normalized)
             ollama_models = await self._ollama_client.list_local_models()
             return self._hydrate_models(normalized, ollama_models=ollama_models)
 
@@ -486,12 +510,8 @@ class ModelCatalogStore:
 
     def _hydrate_managed_local_model(self, hydrated: ModelEntry, item: ModelEntry, default_path: str) -> None:
         spec = get_managed_model_spec(str(item.get("id", "")))
-        resolved_path = self._resolve_local_model_path(str(item.get("path", "")).strip() or default_path) if default_path or str(item.get("path", "")).strip() else None
-        is_installed = bool(
-            spec is not None
-            and resolved_path is not None
-            and self._hf_downloader.is_repo_ready(resolved_path, required_files=spec.required_files)
-        )
+        resolved_path = self._resolve_ready_managed_local_path(item, spec=spec) if spec is not None else None
+        is_installed = resolved_path is not None
         configured_path = str(item.get("path", "")).strip()
         hydrated["path"] = str(resolved_path) if is_installed and resolved_path is not None else configured_path
         hydrated["default_path"] = default_path
@@ -499,6 +519,21 @@ class ModelCatalogStore:
         hydrated["supports_managed_download"] = True
         hydrated["size_bytes"] = self._measure_path_size(resolved_path) if is_installed and resolved_path is not None else 0
         hydrated["status"] = "ready" if is_installed else "not_ready"
+
+    def _resolve_ready_managed_local_path(self, item: ModelEntry, *, spec) -> Path | None:
+        candidate_paths: list[str] = []
+        configured_path = str(item.get("path", "")).strip()
+        if configured_path:
+            candidate_paths.append(configured_path)
+        candidate_paths.append(str(managed_model_target_dir(self._settings.storage_dir, spec)))
+
+        for raw_candidate in candidate_paths:
+            resolved_path = self._resolve_local_model_path(raw_candidate)
+            if resolved_path is None:
+                continue
+            if self._hf_downloader.is_repo_ready(resolved_path, required_files=spec.required_files):
+                return resolved_path
+        return None
 
     def _hydrate_ollama_model(
         self,

@@ -229,7 +229,7 @@ def test_model_download_service_skips_pull_when_ollama_already_recognizes_model(
     ollama_client = CompletingOllamaClient()
     ollama_service_manager = FakeOllamaServiceManager(
         recognized_by_service=True,
-        message="当前 Ollama 已识别该模型，无需重新拉取。",
+        message="当前 Ollama 已识别该模型，无需重新安装。",
     )
     service = ModelDownloadService(
         settings,
@@ -241,7 +241,7 @@ def test_model_download_service_skips_pull_when_ollama_already_recognizes_model(
     async def run() -> None:
         snapshot = await service.start_download("embedding-default")
         assert snapshot["state"] == "completed"
-        assert snapshot["message"] == "当前 Ollama 已识别该模型，无需重新拉取。"
+        assert snapshot["message"] == "当前 Ollama 已识别该模型，无需重新安装。"
         assert snapshot["percent"] == 100.0
         assert ollama_service_manager.inspect_calls == ["bge-m3"]
         assert ollama_client.calls == []

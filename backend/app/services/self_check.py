@@ -100,6 +100,7 @@ class SelfCheckService:
                 raise RuntimeError("Self-check is still running for this session.")
             session.status = "fixing"
             session.updated_at = datetime.now(timezone.utc).isoformat()
+        await self._run_auto_fix(session_id)
         await asyncio.sleep(0.2)
         await self._run_check(session_id)
 
@@ -378,9 +379,20 @@ class SelfCheckService:
         )
 
     async def _check_whisper(self) -> SelfCheckOutcome:
-        model_dir = Path(self._settings.storage_dir) / "model-hub" / "faster-whisper-small"
-        details = {"缓存目录": str(model_dir)}
-        if model_dir.exists():
+        model = await self._model_catalog_store.get_model("whisper-default")
+        model_dir = self._resolve_model_dir(model)
+        details = {
+            "缓存目录": model_dir or "未配置",
+            "配置来源": self._resolve_model_dir_source(model),
+        }
+        if model is None:
+            return SelfCheckOutcome(
+                status="warning",
+                message="Whisper 模型配置缺失",
+                details=details,
+                manual_action="在模型配置中重新确认 FasterWhisper Small 条目。",
+            )
+        if model_dir and Path(model_dir).exists():
             return SelfCheckOutcome(status="passed", message="Whisper 缓存就绪", details=details)
         return SelfCheckOutcome(
             status="warning",
@@ -405,7 +417,7 @@ class SelfCheckService:
                 status="warning",
                 message="LLM 服务凭据未配置",
                 details=details,
-                auto_fixable=True,
+                auto_fixable=False,
                 manual_action="在设置中心检查本地 Ollama 或其它兼容服务配置后重新执行系统自检。",
             )
 
@@ -481,8 +493,8 @@ class SelfCheckService:
             missing_message = f"{model.get('name', model_id)} 尚未就绪"
             manual_action = "检查模型配置后重试。"
             if provider == "ollama":
-                missing_message = f"{model.get('name', model_id)} 尚未通过 Ollama 拉取"
-                manual_action = "确认 Ollama 服务正在运行，并在模型配置中执行拉取。"
+                missing_message = f"{model.get('name', model_id)} 尚未通过 Ollama 安装"
+                manual_action = "确认 Ollama 服务正在运行，并在模型配置中执行安装。"
             elif provider == "openai_compatible":
                 manual_action = "检查在线 API 的 Base URL、API Key、模型名和协议配置。"
             return SelfCheckOutcome(
@@ -497,7 +509,7 @@ class SelfCheckService:
             details["错误"] = str(exc)
             manual_action = "检查模型状态后重试。"
             if provider == "ollama":
-                manual_action = "检查本地 Ollama 服务、模型拉取状态和模型名配置后重试。"
+                manual_action = "检查本地 Ollama 服务、模型安装状态和模型名配置后重试。"
             elif provider == "openai_compatible":
                 manual_action = "检查远端 API 协议、鉴权和模型名配置后重试。"
             return SelfCheckOutcome(
@@ -552,15 +564,38 @@ class SelfCheckService:
         )
 
     async def _check_model_cache(self) -> SelfCheckOutcome:
-        model_dir = Path(self._settings.storage_dir) / "model-hub" / "faster-whisper-small"
-        details = {"缓存目录": str(model_dir)}
-        if model_dir.exists():
+        model = await self._model_catalog_store.get_model("whisper-default")
+        model_dir = self._resolve_model_dir(model)
+        details = {
+            "缓存目录": model_dir or "未配置",
+            "配置来源": self._resolve_model_dir_source(model),
+        }
+        if model_dir and Path(model_dir).exists():
             return SelfCheckOutcome(status="passed", message="Whisper 模型缓存可用", details=details)
         return SelfCheckOutcome(
             status="warning",
             message="Whisper 模型缓存不存在，将在首个任务自动准备",
             details=details,
         )
+
+    async def _run_auto_fix(self, session_id: str) -> None:
+        topic = self._topic(session_id)
+        await self._event_bus.publish(topic, {"type": "self_check_fix_start", "session_id": session_id})
+        await self._model_catalog_store.sync_managed_local_model_paths()
+        await self._whisper_gpu_runtime_service.bootstrap_process_environment()
+        await self._event_bus.publish(topic, {"type": "self_check_fix_complete", "session_id": session_id})
+
+    @staticmethod
+    def _resolve_model_dir(model: dict[str, object] | None) -> str:
+        if model is None:
+            return ""
+        return str(model.get("path", "")).strip() or str(model.get("default_path", "")).strip()
+
+    @staticmethod
+    def _resolve_model_dir_source(model: dict[str, object] | None) -> str:
+        if model is None:
+            return "未配置"
+        return "模型目录" if str(model.get("path", "")).strip() else "默认目录"
 
     @staticmethod
     def _topic(session_id: str) -> str:

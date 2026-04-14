@@ -118,7 +118,7 @@
   - `backend/storage/tasks/**`
   - `backend/storage/vector-index/**`
   - `backend/storage/event-logs/**`
-- 非 Whisper 托管模型由 Ollama 统一存储与管理，后端目录中的模型清单仅保存逻辑条目与状态快照，已安装路径使用 `ollama://<model>` 表示。
+- 非 Whisper 托管模型由 Ollama 统一存储与管理，后端目录中的模型清单会持久化当前检测到的绝对模型目录，便于迁移后的路径回写、自检和设置中心统一展示。
 
 ## 6. 测试与质量保障
 

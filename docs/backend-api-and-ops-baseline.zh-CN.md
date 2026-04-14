@@ -93,8 +93,8 @@
   - 提供者：`ollama`
   - 默认模型：`sam860/qwen3-reranker:0.6b-q8_0`
   - 调用方式：本地重排模型受控 JSON 打分
-- 非 Whisper 托管模型通过 `POST /api/config/models/{model_id}/download` 触发 `Ollama pull`
-- `GET /api/config/models` 返回的非 Whisper 已安装路径使用 `ollama://<model_id>` 表示，不复制权重到 `backend/storage/model-hub`
+- 非 Whisper 托管模型通过 `POST /api/config/models/{model_id}/download` 触发本地 Ollama 模型安装
+- `GET /api/config/models` 返回的非 Whisper 已安装路径为当前生效的绝对模型目录，便于目录迁移后继续用于自检、设置展示和运行态检查
 
 ## 3.2 RAG 实现基线
 

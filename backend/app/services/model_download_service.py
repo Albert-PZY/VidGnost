@@ -106,7 +106,7 @@ class ModelDownloadService:
             if task is not None and not task.done():
                 return dict(self._states.get(model_id, _build_snapshot()))
 
-            default_message = "准备拉取默认 Ollama 模型。"
+            default_message = "准备安装默认 Ollama 模型。"
             if spec is not None and spec.component == "whisper":
                 default_message = "准备下载默认模型目录中的 Whisper Small 模型。"
             self._states[model_id] = _build_snapshot(

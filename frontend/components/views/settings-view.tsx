@@ -64,7 +64,6 @@ import {
   getWhisperConfig,
   installWhisperRuntimeLibraries,
   migrateLocalModels,
-  migrateOllamaModels,
   pauseWhisperRuntimeLibraries,
   reloadModels,
   restartOllamaService,
@@ -422,6 +421,9 @@ export function SettingsView({
   const [ollamaConfig, setOllamaConfig] = React.useState<OllamaRuntimeConfigResponse | null>(null)
   const [isPromptDialogOpen, setIsPromptDialogOpen] = React.useState(false)
   const [isModelDialogOpen, setIsModelDialogOpen] = React.useState(false)
+  const [isWhisperRuntimeDialogOpen, setIsWhisperRuntimeDialogOpen] = React.useState(false)
+  const [isOllamaRuntimeDialogOpen, setIsOllamaRuntimeDialogOpen] = React.useState(false)
+  const [isLocalMigrationDialogOpen, setIsLocalMigrationDialogOpen] = React.useState(false)
   const [isSkinDialogOpen, setIsSkinDialogOpen] = React.useState(false)
   const [pendingSkinImage, setPendingSkinImage] = React.useState<PickedSkinImage | null>(null)
   const [editingPrompt, setEditingPrompt] = React.useState<PromptTemplateItem | null>(null)
@@ -439,12 +441,13 @@ export function SettingsView({
   const [isUpdatingWhisper, setIsUpdatingWhisper] = React.useState(false)
   const [isUpdatingWhisperRuntime, setIsUpdatingWhisperRuntime] = React.useState(false)
   const [isUpdatingOllamaRuntime, setIsUpdatingOllamaRuntime] = React.useState(false)
-  const [isMigratingOllamaModels, setIsMigratingOllamaModels] = React.useState(false)
   const [isRestartingOllamaService, setIsRestartingOllamaService] = React.useState(false)
   const [isMigratingLocalModels, setIsMigratingLocalModels] = React.useState(false)
   const [whisperRuntimeDirty, setWhisperRuntimeDirty] = React.useState(false)
   const [ollamaRuntimeDirty, setOllamaRuntimeDirty] = React.useState(false)
   const [localMigrationTarget, setLocalMigrationTarget] = React.useState("")
+  const [pendingLocalMigrationConfirmation, setPendingLocalMigrationConfirmation] =
+    React.useState<LocalModelsMigrationResponse | null>(null)
   const [pendingDeletePrompt, setPendingDeletePrompt] = React.useState<PromptTemplateItem | null>(null)
   const [isDeletingPrompt, setIsDeletingPrompt] = React.useState(false)
   const markdownColorMode = resolvedTheme === "dark" ? "dark" : "light"
@@ -709,7 +712,7 @@ export function SettingsView({
   const getWhisperRuntimeHeadline = (runtime: WhisperRuntimeLibrariesResponse) => {
     switch (runtime.status) {
       case "ready":
-        return "运行库已完整就绪，可以直接开启上方本地 GPU 加速。"
+        return "运行库已完整就绪，可以在配置弹窗中启用本地 GPU 加速。"
       case "installing":
         return "正在后台下载并解压官方运行库，保持当前窗口开启即可。"
       case "paused":
@@ -725,7 +728,7 @@ export function SettingsView({
 
   const getWhisperRuntimeNextStep = (runtime: WhisperRuntimeLibrariesResponse) => {
     if (runtime.status === "ready") {
-      return "下一步：开启本地 GPU 加速，重新执行一次系统自检确认模型链路。"
+      return "下一步：在配置弹窗中启用本地 GPU 加速，并重新执行一次系统自检确认模型链路。"
     }
     if (runtime.status === "installing") {
       return "下一步：等待当前下载完成；如果要暂停，直接点“暂停下载”。"
@@ -901,7 +904,7 @@ export function SettingsView({
       setModels(response.items)
       toast.success(modelId ? "模型检测状态已刷新" : "模型列表已刷新")
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "重载模型失败"))
+      toast.error(getApiErrorMessage(error, "刷新模型检测状态失败"))
     } finally {
       setBusyModelId("")
     }
@@ -931,12 +934,12 @@ export function SettingsView({
       } else {
         const message = refreshed?.download?.message?.trim()
         if (refreshed?.download?.state === "failed") {
-          toast(message || "模型当前不可直接拉取，请先处理 Ollama 服务状态")
+          toast(message || "模型当前不可直接安装，请先处理 Ollama 服务状态")
         } else if (refreshed?.download?.state === "completed") {
-          toast.success(message || "当前模型已经就绪，无需重复拉取")
+          toast.success(message || "当前模型已经就绪，无需重复安装")
         } else {
           toast.success(
-            message || (model.component === "whisper" ? "已开始下载 Whisper 模型" : "已开始通过 Ollama 拉取模型"),
+            message || (model.component === "whisper" ? "已开始下载 Whisper 模型" : "已开始通过 Ollama 安装模型"),
           )
         }
       }
@@ -1415,32 +1418,6 @@ export function SettingsView({
     }
   }
 
-  const handleMigrateOllamaModelDir = async () => {
-    const targetDir = ollamaRuntimeForm.models_dir.trim()
-    if (!targetDir) {
-      toast.error("请先填写目标 Ollama 模型目录")
-      return
-    }
-    setIsMigratingOllamaModels(true)
-    try {
-      const response = await migrateOllamaModels(targetDir)
-      const [modelsResponse, ollamaResponse] = await Promise.all([getModels(), getOllamaRuntimeConfig()])
-      setModels(modelsResponse.items)
-      applyOllamaRuntimeConfig(ollamaResponse)
-      if (response.warnings.length > 0) {
-        toast(response.warnings.join(" "))
-      }
-      toast.success(response.message || "Ollama 模型目录已迁移")
-      if (ollamaResponse.service.restart_required || !ollamaResponse.service.reachable) {
-        toast(ollamaResponse.service.message)
-      }
-    } catch (error) {
-      toast.error(getApiErrorMessage(error, "迁移 Ollama 模型目录失败"))
-    } finally {
-      setIsMigratingOllamaModels(false)
-    }
-  }
-
   const handleRestartOllamaService = async () => {
     setIsRestartingOllamaService(true)
     try {
@@ -1467,7 +1444,7 @@ export function SettingsView({
     setLocalMigrationTarget(picked.path)
   }
 
-  const handleMigrateLocalModels = async () => {
+  const handleMigrateLocalModels = async (confirmRunningTasks = false) => {
     const targetRoot = localMigrationTarget.trim()
     if (!targetRoot) {
       toast.error("请先填写本地模型迁移目标根目录")
@@ -1475,16 +1452,27 @@ export function SettingsView({
     }
     setIsMigratingLocalModels(true)
     try {
-      const response: LocalModelsMigrationResponse = await migrateLocalModels(targetRoot)
-      const modelsResponse = await getModels()
+      const response: LocalModelsMigrationResponse = await migrateLocalModels(targetRoot, confirmRunningTasks)
+      if (response.requires_confirmation) {
+        setPendingLocalMigrationConfirmation(response)
+        return
+      }
+      const [modelsResponse, ollamaResponse] = await Promise.all([getModels(), getOllamaRuntimeConfig()])
       setModels(modelsResponse.items)
+      applyOllamaRuntimeConfig(ollamaResponse)
+      setPendingLocalMigrationConfirmation(null)
       if (response.warnings.length > 0) {
         toast(response.warnings.join(" "))
       }
       if (response.moved.length > 0) {
-        toast.success(`已迁移 ${response.moved.length} 个本地模型到指定目录`)
+        toast.success(
+          response.ollama_restarted
+            ? `${response.message} Ollama 服务已自动重启。`
+            : response.message || `已迁移 ${response.moved.length} 个本地模型到指定目录`,
+        )
+        setIsLocalMigrationDialogOpen(false)
       } else {
-        toast("没有需要迁移的本地模型")
+        toast(response.message || "没有需要迁移的本地模型")
       }
     } catch (error) {
       toast.error(getApiErrorMessage(error, "迁移本地模型失败"))
@@ -1545,6 +1533,11 @@ export function SettingsView({
         ? `仍缺少 ${whisperRuntimeLibraries.missing_files.length} 个运行库文件：${whisperRuntimeLibraries.missing_files.join("、")}`
         : "")
     : ""
+  const localConfiguredModels = React.useMemo(
+    () => models.filter((model) => model.provider === "local"),
+    [models],
+  )
+  const isModelListLoading = isLoading && models.length === 0
   const activeModelPreset = editingModel ? getModelConfigPreset(editingModel) : null
   const modelDialogHasQuantization = Boolean(activeModelPreset?.fields.includes("quantization"))
   const modelDialogHasBatchSize = Boolean(activeModelPreset?.fields.includes("max_batch_size"))
@@ -1643,273 +1636,554 @@ export function SettingsView({
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="settings-models-shell space-y-4">
-                  <div className="settings-models-panel settings-models-gpu-panel flex items-center justify-between rounded-lg border p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="settings-model-icon-shell flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                  <div className="settings-models-panel settings-model-row rounded-lg border p-4">
+                    <div className="flex items-start gap-4">
+                      <div className="settings-model-icon-shell flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                         <Zap className="h-5 w-5 text-primary" />
                       </div>
-                      <div>
-                        <div className="font-medium">GPU 加速</div>
-                        <div className="text-sm text-muted-foreground">
-                          通过 Faster-Whisper 设备配置控制本地转写使用 GPU 或 CPU
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">本地 GPU 加速运行库</span>
+                          {whisperRuntimeLibraries ? getWhisperRuntimeBadge(whisperRuntimeLibraries) : null}
+                          <Badge variant="secondary">{gpuAcceleration ? "GPU 已启用" : "当前 CPU 模式"}</Badge>
                         </div>
-                        {whisperConfig ? (
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            当前设备策略：{whisperConfig.device === "cpu" ? "CPU" : whisperConfig.device.toUpperCase()}
+                        <div className="mt-1 text-sm text-muted-foreground">
+                          管理 Faster-Whisper 使用的本地 CUDA/cuDNN 运行库，并在配置弹窗中统一设置安装目录、环境变量与 GPU 开关。
+                        </div>
+                        <div className="mt-1 truncate text-xs text-muted-foreground">
+                          {whisperRuntimeLibraries?.bin_dir || "安装完成后会在所选目录下生成 bin 目录"} · {whisperRuntimeHeadline || "等待检测"}
+                        </div>
+                        {whisperRuntimeLibraries?.message ? (
+                          <div className="mt-1 truncate text-[11px] text-muted-foreground">
+                            {whisperRuntimeLibraries.message}
                           </div>
                         ) : null}
                       </div>
+                      <div className="flex items-center gap-2">
+                        {whisperRuntimeInstalling ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={isUpdatingWhisperRuntime || !whisperRuntimeLibraries?.platform_supported}
+                            onClick={() => {
+                              void handlePauseWhisperRuntime()
+                            }}
+                          >
+                            <Pause className="mr-1 h-4 w-4" />
+                            暂停安装
+                          </Button>
+                        ) : whisperRuntimeCanResume ? (
+                          <Button
+                            size="sm"
+                            disabled={isUpdatingWhisperRuntime || !whisperRuntimeLibraries?.platform_supported}
+                            onClick={() => {
+                              void handleResumeWhisperRuntime()
+                            }}
+                          >
+                            <Play className="mr-1 h-4 w-4" />
+                            继续安装
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={isUpdatingWhisperRuntime || !whisperRuntimeLibraries?.platform_supported}
+                            onClick={() => {
+                              void handleInstallWhisperRuntime()
+                            }}
+                          >
+                            <CloudDownload className="mr-1 h-4 w-4" />
+                            安装
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setIsWhisperRuntimeDialogOpen(true)}
+                        >
+                          配置
+                        </Button>
+                      </div>
                     </div>
-                    <Switch
-                      checked={gpuAcceleration}
-                      disabled={!whisperConfig || isUpdatingWhisper}
-                      onCheckedChange={(checked) => {
-                        void handleGpuToggle(checked)
-                      }}
-                    />
+                    {whisperRuntimeShowProgress && whisperRuntimeLibraries ? (
+                      <div className="mt-3 space-y-2">
+                        <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
+                          <span className="min-w-0 truncate">
+                            {whisperRuntimeLibraries.progress.current_package
+                              ? `当前包：${whisperRuntimeLibraries.progress.current_package}`
+                              : whisperRuntimeLibraries.progress.message ||
+                                (whisperRuntimePaused ? "运行库安装已暂停" : "正在安装运行库...")}
+                          </span>
+                          <span className="shrink-0">{Math.round(whisperRuntimeLibraries.progress.percent)}%</span>
+                        </div>
+                        <Progress
+                          value={whisperRuntimeLibraries.progress.percent}
+                          className="h-2 bg-primary/10"
+                          indicatorClassName="download-progress-indicator"
+                        />
+                      </div>
+                    ) : null}
                   </div>
 
-                  {whisperRuntimeLibraries ? (
-                    <div className="settings-models-panel rounded-lg border p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="space-y-1">
-                          <div className="font-medium">本地 GPU 加速运行库</div>
-                          <div className="text-sm text-muted-foreground">
-                            自动下载并整理 NVIDIA 官方 CUDA/cuDNN redist 包，作为本地模型 GPU 加速运行环境的一部分，当前重点服务转写链路。
+                  <div className="settings-models-panel settings-model-row rounded-lg border p-4">
+                    <div className="flex items-start gap-4">
+                      <div className="settings-model-icon-shell flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                        <Cpu className="h-5 w-5 text-primary" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">Ollama 运行时</span>
+                          <Badge variant={ollamaService?.reachable ? "default" : "secondary"}>
+                            {ollamaService?.reachable ? "接口可达" : "接口不可达"}
+                          </Badge>
+                          <Badge
+                            variant="outline"
+                            className={
+                              ollamaService?.using_configured_models_dir
+                                ? "border-emerald-500/60 text-emerald-600 dark:text-emerald-300"
+                                : "border-amber-500/60 text-amber-600 dark:text-amber-300"
+                            }
+                          >
+                            {ollamaService?.using_configured_models_dir ? "模型目录已生效" : "模型目录待切换"}
+                          </Badge>
+                        </div>
+                        <div className="mt-1 text-sm text-muted-foreground">
+                          在配置弹窗中维护 Ollama 安装目录、模型安装目录和服务地址，模型安装会遵循这里的目录配置。
+                        </div>
+                        <div className="mt-1 truncate text-xs text-muted-foreground">
+                          {ollamaService?.configured_models_dir || ollamaRuntimeForm.models_dir || "未配置模型目录"} · {ollamaRuntimeForm.base_url || "未配置服务地址"}
+                        </div>
+                        <div className="mt-1 truncate text-[11px] text-muted-foreground">
+                          {ollamaService?.message || "保存配置后，这里会显示当前 Ollama 实际使用的模型目录。"}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={isRestartingOllamaService || !ollamaService?.can_self_restart}
+                          onClick={() => {
+                            void handleRestartOllamaService()
+                          }}
+                        >
+                          <Play className="mr-1 h-4 w-4" />
+                          启动/重启
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setIsOllamaRuntimeDialogOpen(true)}
+                        >
+                          配置
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="settings-models-panel settings-model-row rounded-lg border p-4">
+                    <div className="flex items-start gap-4">
+                      <div className="settings-model-icon-shell flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                        <HardDrive className="h-5 w-5 text-primary" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">本地模型批量迁移</span>
+                          <Badge variant="secondary">{`${localConfiguredModels.length} 个本地模型`}</Badge>
+                        </div>
+                        <div className="mt-1 text-sm text-muted-foreground">
+                          仅支持一次性迁移当前项目里全部本地模型，迁移完成后会自动回写绝对路径，并尝试自动重启 Ollama 服务。
+                        </div>
+                        <div className="mt-1 truncate text-xs text-muted-foreground">
+                          {localConfiguredModels.length > 0
+                            ? localConfiguredModels.map((model) => model.name).join("、")
+                            : "当前还没有已配置的本地模型"}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setIsLocalMigrationDialogOpen(true)}
+                        >
+                          配置
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-3">
+                    {isModelListLoading
+                      ? Array.from({ length: 5 }).map((_, index) => (
+                          <div
+                            key={`model-skeleton-${index}`}
+                            className="settings-models-panel rounded-lg border p-4"
+                          >
+                            <div className="flex items-start gap-4">
+                              <div className="app-skeleton h-10 w-10 shrink-0 rounded-lg" />
+                              <div className="min-w-0 flex-1 space-y-2">
+                                <div className="app-skeleton h-4 w-48 rounded-md" />
+                                <div className="app-skeleton h-3 w-72 rounded-md" />
+                                <div className="app-skeleton h-3 w-full max-w-xl rounded-md" />
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="app-skeleton h-9 w-20 rounded-md" />
+                                <div className="app-skeleton h-9 w-16 rounded-md" />
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      : models.map((model) => {
+                          const isDownloading = model.download?.state === "downloading"
+                          const downloadPercent = Math.max(0, Math.min(100, model.download?.percent ?? 0))
+
+                          return (
+                            <div key={model.id} className="settings-models-panel settings-model-row rounded-lg border p-4">
+                              <div className="flex items-start gap-4">
+                                <div
+                                  className={cn(
+                                    "settings-model-icon-shell flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+                                    getModelVisual(model.component).surfaceClassName,
+                                  )}
+                                >
+                                  {React.createElement(getModelVisual(model.component).icon, {
+                                    className: cn("h-5 w-5", getModelVisual(model.component).iconClassName),
+                                  })}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">{model.name}</span>
+                                    {getStatusBadge(model.status)}
+                                  </div>
+                                  <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                                    <Badge variant="outline" className={modelTypeTagClassNames[model.component]}>
+                                      {modelTypeLabels[model.component]}
+                                    </Badge>
+                                    <Badge variant="secondary" className="capitalize">
+                                      {providerLabels[model.provider] || model.provider.replaceAll("_", " ")}
+                                    </Badge>
+                                    <span className="flex items-center gap-1">
+                                      <HardDrive className="h-3 w-3" />
+                                      {model.size_bytes > 0 ? formatBytes(model.size_bytes) : "未记录"}
+                                    </span>
+                                  </div>
+                                  <div className="text-xs text-muted-foreground mt-1 truncate">
+                                    {model.provider === "openai_compatible"
+                                      ? `${model.api_model || model.model_id} · ${model.api_base_url || "未配置 API 地址"}`
+                                      : model.is_installed
+                                        ? model.path || model.default_path || model.model_id
+                                        : "未就绪"}
+                                  </div>
+                                  {model.download?.message && !isDownloading ? (
+                                    <div className="mt-1 truncate text-[11px] text-muted-foreground">
+                                      {model.download.message}
+                                    </div>
+                                  ) : null}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {model.supports_managed_download ? (
+                                    isDownloading ? (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={busyModelId === model.id}
+                                        onClick={() => {
+                                          void handleManagedModelAction(model)
+                                        }}
+                                      >
+                                        取消下载
+                                      </Button>
+                                    ) : (
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={busyModelId === model.id}
+                                        onClick={() => {
+                                          void handleManagedModelAction(model)
+                                        }}
+                                      >
+                                        {model.is_installed ? (
+                                          <RefreshCw className="mr-1 h-4 w-4" />
+                                        ) : (
+                                          <CloudDownload className="mr-1 h-4 w-4" />
+                                        )}
+                                        {model.is_installed ? "刷新检测" : model.component === "whisper" ? "下载" : "安装"}
+                                      </Button>
+                                    )
+                                  ) : (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      disabled={busyModelId === model.id}
+                                      onClick={() => {
+                                        void handleReloadModel(model.id)
+                                      }}
+                                    >
+                                      <RefreshCw className="mr-1 h-4 w-4" />
+                                      刷新检测
+                                    </Button>
+                                  )}
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={busyModelId === model.id || isDownloading}
+                                    onClick={() => {
+                                      handleConfigureModel(model)
+                                    }}
+                                  >
+                                    配置
+                                  </Button>
+                                </div>
+                              </div>
+                              {isDownloading ? (
+                                <div className="mt-3 space-y-2">
+                                  <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
+                                    <span className="min-w-0 truncate">
+                                      下载中 {Math.round(downloadPercent)}% · {model.download?.message || "正在下载模型文件..."}
+                                    </span>
+                                    <span className="shrink-0">{Math.round(downloadPercent)}%</span>
+                                  </div>
+                                  <Progress
+                                    value={downloadPercent}
+                                    className="h-2 bg-primary/10"
+                                    indicatorClassName="download-progress-indicator"
+                                  />
+                                </div>
+                              ) : null}
+                            </div>
+                          )
+                        })}
+                    {models.length === 0 && !isLoading && (
+                      <div className="settings-models-panel settings-model-empty rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+                        当前没有可展示的模型配置
+                      </div>
+                    )}
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      toast("当前后端提供模型刷新检测与路径更新，暂不支持新增模型条目。")
+                    }}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    添加模型
+                  </Button>
+
+                  <Dialog open={isWhisperRuntimeDialogOpen} onOpenChange={setIsWhisperRuntimeDialogOpen}>
+                    <DialogContent className="sm:max-w-2xl">
+                      <DialogHeader>
+                        <DialogTitle>本地 GPU 加速运行库</DialogTitle>
+                        <DialogDescription>
+                          配置运行库安装目录、环境变量写入方式，以及 Faster-Whisper 的 GPU 加速开关。
+                        </DialogDescription>
+                      </DialogHeader>
+
+                      <div className="space-y-5">
+                        <div className="space-y-2">
+                          <Label htmlFor="whisper-runtime-install-dir">安装目录</Label>
+                          <div className="flex flex-col gap-2 sm:flex-row">
+                            <Input
+                              id="whisper-runtime-install-dir"
+                              className="bg-background/80"
+                              value={whisperRuntimeForm.install_dir}
+                              onChange={(event) => {
+                                setWhisperRuntimeDirty(true)
+                                setWhisperRuntimeForm((current) => ({
+                                  ...current,
+                                  install_dir: event.target.value,
+                                }))
+                              }}
+                              placeholder="如 D:\\AI\\VidGnost\\transcription-cuda-runtime"
+                            />
+                            <Button
+                              variant="outline"
+                              className="shrink-0"
+                              onClick={() => {
+                                void handleBrowseWhisperRuntimeDirectory()
+                              }}
+                            >
+                              <FolderOpen className="mr-2 h-4 w-4" />
+                              浏览
+                            </Button>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            安装目录下会自动整理出统一的 <code>bin</code>、<code>lib</code>、<code>include</code> 结构，便于后续自检和分析任务直接复用。
+                          </p>
+                        </div>
+
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div className="rounded-xl border bg-muted/25 px-4 py-3">
+                            <div className="flex items-center justify-between gap-4">
+                              <div className="space-y-1">
+                                <Label className="leading-tight">自动配置环境变量</Label>
+                                <p className="text-xs text-muted-foreground">
+                                  保存到当前用户级 <code>CUDA_PATH</code> 与 <code>PATH</code>。
+                                </p>
+                              </div>
+                              <Switch
+                                checked={whisperRuntimeForm.auto_configure_env}
+                                onCheckedChange={(checked) => {
+                                  setWhisperRuntimeDirty(true)
+                                  setWhisperRuntimeForm((current) => ({
+                                    ...current,
+                                    auto_configure_env: checked,
+                                  }))
+                                }}
+                              />
+                            </div>
+                          </div>
+                          <div className="rounded-xl border bg-muted/25 px-4 py-3">
+                            <div className="flex items-center justify-between gap-4">
+                              <div className="space-y-1">
+                                <Label className="leading-tight">GPU 加速</Label>
+                                <p className="text-xs text-muted-foreground">
+                                  切换当前转写链路使用 GPU 或 CPU。
+                                </p>
+                              </div>
+                              <Switch
+                                checked={gpuAcceleration}
+                                disabled={!whisperConfig || isUpdatingWhisper}
+                                onCheckedChange={(checked) => {
+                                  void handleGpuToggle(checked)
+                                }}
+                              />
+                            </div>
                           </div>
                         </div>
-                        {getWhisperRuntimeBadge(whisperRuntimeLibraries)}
-                      </div>
 
-                      <div className="mt-4 space-y-4">
                         <div className="grid gap-3 md:grid-cols-3">
                           <div className="rounded-xl border bg-muted/20 px-4 py-3">
                             <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">当前状态</p>
                             <p className="mt-2 text-sm font-medium">{whisperRuntimeHeadline}</p>
-                            <p className="mt-1 text-xs leading-5 text-muted-foreground">{whisperRuntimeLibraries.message}</p>
+                            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                              {whisperRuntimeLibraries?.message || "等待检测"}
+                            </p>
                           </div>
                           <div className="rounded-xl border bg-muted/20 px-4 py-3">
                             <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">生效目录</p>
                             <p className="mt-2 break-all text-sm leading-6 text-foreground/90">
-                              {whisperRuntimeLibraries.bin_dir || "安装完成后会在所选目录下生成 bin 目录"}
+                              {whisperRuntimeLibraries?.bin_dir || "安装完成后会在所选目录下生成 bin 目录"}
                             </p>
                           </div>
                           <div className="rounded-xl border bg-muted/20 px-4 py-3">
                             <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">环境与版本</p>
-                            <p className="mt-2 text-sm font-medium">{whisperRuntimeLibraries.version_label}</p>
+                            <p className="mt-2 text-sm font-medium">{whisperRuntimeLibraries?.version_label || "未检测"}</p>
                             <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                              {whisperRuntimeLibraries.path_configured ? "当前进程已识别 PATH/CUDA_PATH。" : "当前进程还没有识别到完整环境变量。"}
+                              {whisperRuntimeLibraries?.path_configured ? "当前进程已识别 PATH/CUDA_PATH。" : "当前进程还没有识别到完整环境变量。"}
                             </p>
                           </div>
                         </div>
 
-                        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-                          <div className="space-y-4 rounded-xl border bg-muted/15 p-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="whisper-runtime-install-dir">安装目录</Label>
-                            <div className="flex flex-col gap-2 sm:flex-row">
-                              <Input
-                                id="whisper-runtime-install-dir"
-                                className="bg-background/80"
-                                value={whisperRuntimeForm.install_dir}
-                                onChange={(event) => {
-                                  setWhisperRuntimeDirty(true)
-                                  setWhisperRuntimeForm((current) => ({
-                                    ...current,
-                                    install_dir: event.target.value,
-                                  }))
-                                }}
-                                placeholder="如 D:\\AI\\VidGnost\\transcription-cuda-runtime"
-                              />
-                              <Button
-                                variant="outline"
-                                className="shrink-0"
-                                onClick={() => {
-                                  void handleBrowseWhisperRuntimeDirectory()
-                                }}
-                              >
-                                <FolderOpen className="mr-2 h-4 w-4" />
-                                浏览
-                              </Button>
-                            </div>
-                            <p className="text-xs text-muted-foreground">
-                              安装目录下会自动整理出统一的 <code>bin</code>、<code>lib</code>、<code>include</code> 结构，便于后续自检和分析任务直接复用。
+                        {whisperRuntimeIssueSummary ? (
+                          <div className="rounded-xl border border-destructive/30 bg-destructive/8 px-4 py-3">
+                            <p className="text-xs font-medium uppercase tracking-[0.12em] text-destructive">需要补齐的问题</p>
+                            <p className="mt-2 break-words text-sm leading-6 text-foreground/90">
+                              {whisperRuntimeIssueSummary}
                             </p>
                           </div>
+                        ) : null}
 
-                          <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-muted/30 px-4 py-3">
-                            <div className="min-w-0 flex-1 space-y-1">
-                              <div className="text-sm font-medium">自动配置环境变量</div>
-                              <p className="text-xs text-muted-foreground">
-                                保存到当前用户级 <code>CUDA_PATH</code> 与 <code>PATH</code>，后续重启 Electron 后可继续生效。
-                              </p>
+                        <div className="rounded-xl border bg-muted/20 px-4 py-3">
+                          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">下一步</p>
+                          <p className="mt-2 text-sm leading-6 text-foreground/90">{whisperRuntimeNextStep}</p>
+                        </div>
+
+                        {whisperRuntimeShowProgress && whisperRuntimeLibraries ? (
+                          <div className="space-y-2 rounded-xl border bg-muted/25 p-4">
+                            <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
+                              <span className="min-w-0 truncate">
+                                {whisperRuntimeLibraries.progress.current_package
+                                  ? `当前包：${whisperRuntimeLibraries.progress.current_package}`
+                                  : whisperRuntimeLibraries.progress.message ||
+                                    (whisperRuntimePaused ? "运行库安装已暂停" : "正在安装运行库...")}
+                              </span>
+                              <span className="shrink-0">{Math.round(whisperRuntimeLibraries.progress.percent)}%</span>
                             </div>
-                            <Switch
-                              checked={whisperRuntimeForm.auto_configure_env}
-                              onCheckedChange={(checked) => {
-                                setWhisperRuntimeDirty(true)
-                                setWhisperRuntimeForm((current) => ({
-                                  ...current,
-                                  auto_configure_env: checked,
-                                }))
-                              }}
+                            <Progress
+                              value={whisperRuntimeLibraries.progress.percent}
+                              className="h-2 bg-primary/10"
+                              indicatorClassName="download-progress-indicator"
                             />
                           </div>
+                        ) : null}
+                      </div>
 
-                          <div className="flex flex-wrap items-center gap-2">
+                      <DialogFooter className="gap-2 sm:justify-between">
+                        <Button
+                          variant="outline"
+                          disabled={isUpdatingWhisperRuntime}
+                          onClick={() => {
+                            void handleRefreshWhisperRuntimeStatus()
+                          }}
+                        >
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                          刷新状态
+                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            disabled={
+                              isUpdatingWhisperRuntime ||
+                              whisperRuntimeInstalling ||
+                              !whisperRuntimeLibraries?.platform_supported
+                            }
+                            onClick={() => {
+                              void handleSaveWhisperRuntimeConfig()
+                            }}
+                          >
+                            <Save className="mr-2 h-4 w-4" />
+                            保存配置
+                          </Button>
+                          {whisperRuntimeInstalling ? (
                             <Button
                               variant="outline"
-                              disabled={
-                                isUpdatingWhisperRuntime ||
-                                whisperRuntimeInstalling ||
-                                !whisperRuntimeLibraries.platform_supported
-                              }
+                              disabled={isUpdatingWhisperRuntime || !whisperRuntimeLibraries?.platform_supported}
                               onClick={() => {
-                                void handleSaveWhisperRuntimeConfig()
+                                void handlePauseWhisperRuntime()
                               }}
                             >
-                              <Save className="mr-2 h-4 w-4" />
-                              保存运行库配置
+                              <Pause className="mr-2 h-4 w-4" />
+                              暂停安装
                             </Button>
-                            {whisperRuntimeInstalling ? (
-                              <Button
-                                variant="outline"
-                                disabled={isUpdatingWhisperRuntime || !whisperRuntimeLibraries.platform_supported}
-                                onClick={() => {
-                                  void handlePauseWhisperRuntime()
-                                }}
-                              >
-                                <Pause className="mr-2 h-4 w-4" />
-                                暂停下载
-                              </Button>
-                            ) : whisperRuntimeCanResume ? (
-                              <Button
-                                disabled={isUpdatingWhisperRuntime || !whisperRuntimeLibraries.platform_supported}
-                                onClick={() => {
-                                  void handleResumeWhisperRuntime()
-                                }}
-                              >
-                                <Play className="mr-2 h-4 w-4" />
-                                继续安装
-                              </Button>
-                            ) : (
-                              <Button
-                                disabled={isUpdatingWhisperRuntime || !whisperRuntimeLibraries.platform_supported}
-                                onClick={() => {
-                                  void handleInstallWhisperRuntime()
-                                }}
-                              >
-                                <CloudDownload className="mr-2 h-4 w-4" />
-                                一键安装完整运行库
-                              </Button>
-                            )}
+                          ) : whisperRuntimeCanResume ? (
                             <Button
-                              variant="outline"
-                              disabled={isUpdatingWhisperRuntime}
+                              disabled={isUpdatingWhisperRuntime || !whisperRuntimeLibraries?.platform_supported}
                               onClick={() => {
-                                void handleRefreshWhisperRuntimeStatus()
+                                void handleResumeWhisperRuntime()
                               }}
                             >
-                              <RefreshCw className="mr-2 h-4 w-4" />
-                              刷新状态
+                              <Play className="mr-2 h-4 w-4" />
+                              继续安装
                             </Button>
-                          </div>
-
-                          {whisperRuntimeShowProgress ? (
-                            <div className="space-y-2 rounded-xl border bg-muted/25 p-4">
-                              <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
-                                <span className="min-w-0 truncate">
-                                  {whisperRuntimeLibraries.progress.current_package
-                                    ? `当前包：${whisperRuntimeLibraries.progress.current_package}`
-                                    : whisperRuntimeLibraries.progress.message ||
-                                      (whisperRuntimePaused ? "运行库下载已暂停" : "正在安装运行库...")}
-                                </span>
-                                <span className="shrink-0">{Math.round(whisperRuntimeLibraries.progress.percent)}%</span>
-                              </div>
-                              <Progress
-                                value={whisperRuntimeLibraries.progress.percent}
-                                className="h-2 bg-primary/10"
-                                indicatorClassName="download-progress-indicator"
-                              />
-                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
-                                <span>
-                                  已下载：
-                                  {whisperRuntimeLibraries.progress.total_bytes > 0
-                                    ? `${formatBytes(whisperRuntimeLibraries.progress.downloaded_bytes)} / ${formatBytes(
-                                        whisperRuntimeLibraries.progress.total_bytes,
-                                      )}`
-                                    : formatBytes(whisperRuntimeLibraries.progress.downloaded_bytes)}
-                                </span>
-                                <span>
-                                  速度：
-                                  {whisperRuntimeInstalling && whisperRuntimeLibraries.progress.speed_bps > 0
-                                    ? `${formatBytes(Math.round(whisperRuntimeLibraries.progress.speed_bps))}/s`
-                                    : whisperRuntimePaused
-                                      ? "已暂停"
-                                      : "等待中"}
-                                </span>
-                              </div>
-                              <p className="text-xs text-muted-foreground">
-                                {whisperRuntimeLibraries.progress.message ||
-                                  (whisperRuntimePaused
-                                    ? "当前下载已暂停，点击“继续安装”后会从已完成分片处断点续传。"
-                                    : "正在下载并解压官方运行库组件。")}
-                              </p>
-                            </div>
-                          ) : null}
-                          </div>
-
-                          <div className="space-y-4 rounded-xl border bg-muted/25 p-4">
-                            <div className="space-y-1.5">
-                              <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">下一步该做什么</p>
-                              <p className="text-sm leading-6">{whisperRuntimeNextStep}</p>
-                            </div>
-
-                            <div className="rounded-xl border bg-background/40 px-4 py-3">
-                              <p className="text-xs font-medium text-muted-foreground">自动环境配置</p>
-                              <p className="mt-1 text-sm leading-6">
-                                {whisperRuntimeForm.auto_configure_env
-                                  ? "保存后会尝试把 CUDA_PATH 与 PATH 写入当前用户环境，重启 Electron 后更稳定。"
-                                  : "当前只在本次应用进程里生效，适合先试装、先验证，再决定是否写入系统环境。"}
-                              </p>
-                            </div>
-
-                            {whisperRuntimeIssueSummary ? (
-                              <div className="rounded-xl border border-destructive/30 bg-destructive/8 px-4 py-3">
-                                <p className="text-xs font-medium uppercase tracking-[0.12em] text-destructive">需要补齐的问题</p>
-                                <p className="mt-2 break-words text-sm leading-6 text-foreground/90">
-                                  {whisperRuntimeIssueSummary}
-                                </p>
-                              </div>
-                            ) : (
-                              <div className="rounded-xl border bg-background/40 px-4 py-3">
-                                <p className="text-xs font-medium text-muted-foreground">当前检查结果</p>
-                                <p className="mt-1 text-sm leading-6 text-foreground/90">
-                                  {whisperRuntimeLibraries.ready
-                                    ? "关键运行库文件已齐全，当前进程也已经识别到可用目录。"
-                                    : "当前还没有发现额外报错；安装完成后会在这里显示缺失文件或加载异常。"}
-                                </p>
-                              </div>
-                            )}
-                          </div>
+                          ) : (
+                            <Button
+                              disabled={isUpdatingWhisperRuntime || !whisperRuntimeLibraries?.platform_supported}
+                              onClick={() => {
+                                void handleInstallWhisperRuntime()
+                              }}
+                            >
+                              <CloudDownload className="mr-2 h-4 w-4" />
+                              安装运行库
+                            </Button>
+                          )}
                         </div>
-                      </div>
-                    </div>
-                  ) : null}
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
 
-                  <div className="settings-models-panel rounded-lg border p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="font-medium">Ollama 运行时与模型目录</div>
-                        <div className="text-sm text-muted-foreground">
-                          在这里指定 Ollama 安装目录、可执行文件、模型目录与服务地址。模型拉取会遵循这里的目录配置，不再假定固定路径。
-                        </div>
-                      </div>
-                      <Badge variant="outline">{providerLabels.ollama}</Badge>
-                    </div>
+                  <Dialog open={isOllamaRuntimeDialogOpen} onOpenChange={setIsOllamaRuntimeDialogOpen}>
+                    <DialogContent className="sm:max-w-2xl">
+                      <DialogHeader>
+                        <DialogTitle>Ollama 运行时配置</DialogTitle>
+                        <DialogDescription>
+                          配置 Ollama 安装目录、模型安装目录、可执行文件与服务地址。
+                        </DialogDescription>
+                      </DialogHeader>
 
-                    <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-                      <div className="space-y-4 rounded-xl border bg-muted/15 p-4">
+                      <div className="space-y-5">
                         <div className="grid gap-4 md:grid-cols-2">
                           <div className="space-y-2">
                             <Label htmlFor="ollama-install-dir">安装目录</Label>
@@ -1952,7 +2226,7 @@ export function SettingsView({
                           </div>
 
                           <div className="space-y-2 md:col-span-2">
-                            <Label htmlFor="ollama-models-dir">模型目录</Label>
+                            <Label htmlFor="ollama-models-dir">模型安装目录</Label>
                             <div className="flex gap-2">
                               <Input
                                 id="ollama-models-dir"
@@ -1992,282 +2266,155 @@ export function SettingsView({
                               placeholder="http://127.0.0.1:11434"
                             />
                             <p className="text-xs text-muted-foreground">
-                              LLM 如果使用 Ollama provider，会自动基于这里的服务地址同步 OpenAI 兼容入口。
+                              LLM 如果使用 Ollama 服务商，会自动基于这里的服务地址同步 OpenAI Compatible 入口。
                             </p>
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Button
-                            variant="outline"
-                            disabled={isUpdatingOllamaRuntime}
-                            onClick={() => {
-                              void handleSaveOllamaRuntimeConfig()
-                            }}
-                          >
-                            <Save className="mr-2 h-4 w-4" />
-                            保存 Ollama 配置
-                          </Button>
-                          <Button
-                            variant="outline"
-                            disabled={isMigratingOllamaModels}
-                            onClick={() => {
-                              void handleMigrateOllamaModelDir()
-                            }}
-                          >
-                            <RefreshCw className="mr-2 h-4 w-4" />
-                            迁移现有 Ollama 模型
-                          </Button>
-                        </div>
-                      </div>
-
-                      <div className="rounded-xl border bg-muted/20 p-4">
-                        <div className="space-y-3">
-                          <div className="space-y-2">
+                        <div className="grid gap-3 md:grid-cols-3">
+                          <div className="rounded-xl border bg-muted/20 px-4 py-3">
                             <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">服务状态</p>
-                            <div className="flex flex-wrap gap-2">
-                              <Badge variant={ollamaService?.reachable ? "default" : "secondary"}>
-                                {ollamaService?.reachable ? "接口可达" : "接口不可达"}
-                              </Badge>
-                              <Badge variant="outline">
-                                {ollamaService?.process_detected ? "已检测到本地进程" : "未检测到本地进程"}
-                              </Badge>
-                              <Badge
-                                variant="outline"
-                                className={
-                                  ollamaService?.using_configured_models_dir
-                                    ? "border-emerald-500/60 text-emerald-600 dark:text-emerald-300"
-                                    : "border-amber-500/60 text-amber-600 dark:text-amber-300"
-                                }
-                              >
-                                {ollamaService?.using_configured_models_dir ? "模型目录已生效" : "模型目录待切换"}
-                              </Badge>
-                            </div>
+                            <p className="mt-2 text-sm font-medium">{ollamaService?.reachable ? "接口可达" : "接口不可达"}</p>
+                            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                              {ollamaService?.process_detected ? "已检测到本地进程" : "未检测到本地进程"}
+                            </p>
                           </div>
-
-                          <div className="space-y-1">
+                          <div className="rounded-xl border bg-muted/20 px-4 py-3">
                             <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">配置目录</p>
-                            <p className="break-all text-sm leading-6 text-foreground/90">
+                            <p className="mt-2 break-all text-sm leading-6 text-foreground/90">
                               {ollamaService?.configured_models_dir || ollamaRuntimeForm.models_dir || "未配置"}
                             </p>
                           </div>
-
-                          <div className="space-y-1">
-                            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">服务当前目录</p>
-                            <p className="break-all text-sm leading-6 text-foreground/90">
-                              {ollamaService?.effective_models_dir || "暂未识别"}
-                            </p>
-                          </div>
-
-                          <div className="space-y-1">
-                            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">状态说明</p>
-                            <p className="text-xs leading-6 text-muted-foreground">
+                          <div className="rounded-xl border bg-muted/20 px-4 py-3">
+                            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">当前说明</p>
+                            <p className="mt-2 text-sm leading-6 text-foreground/90">
                               {ollamaService?.message || "保存配置后，这里会显示当前 Ollama 实际使用的模型目录。"}
                             </p>
                           </div>
-
-                          <Button
-                            variant="outline"
-                            className="w-full"
-                            disabled={isRestartingOllamaService || !ollamaService?.can_self_restart}
-                            onClick={() => {
-                              void handleRestartOllamaService()
-                            }}
-                          >
-                            <Play className="mr-2 h-4 w-4" />
-                            重启/启动 Ollama 服务
-                          </Button>
-
-                          {!ollamaService?.can_self_restart ? (
-                            <p className="text-xs leading-6 text-muted-foreground">
-                              仅当服务地址指向本机且可执行文件路径有效时，才支持从这里直接启动或重启 Ollama。
-                            </p>
-                          ) : null}
                         </div>
                       </div>
-                    </div>
-                  </div>
 
-                  <div className="settings-models-panel rounded-lg border p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="font-medium">本地模型批量迁移</div>
-                        <div className="text-sm text-muted-foreground">
-                          将所有使用本地目录的模型统一迁移到指定根目录下，后端会自动回写新的绝对路径。
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 flex flex-col gap-3 rounded-xl border bg-muted/15 p-4">
-                      <div className="flex flex-col gap-2 sm:flex-row">
-                        <Input
-                          className="bg-background/80"
-                          value={localMigrationTarget}
-                          onChange={(event) => setLocalMigrationTarget(event.target.value)}
-                          placeholder="如 E:\\AI\\VidGnost\\model-hub"
-                        />
+                      <DialogFooter className="gap-2 sm:justify-between">
                         <Button
                           variant="outline"
-                          className="shrink-0"
+                          disabled={isUpdatingOllamaRuntime}
                           onClick={() => {
-                            void handleBrowseLocalMigrationTarget()
+                            void handleSaveOllamaRuntimeConfig()
                           }}
                         >
-                          <FolderOpen className="mr-2 h-4 w-4" />
-                          浏览
+                          <Save className="mr-2 h-4 w-4" />
+                          保存配置
                         </Button>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
                         <Button
                           variant="outline"
-                          disabled={isMigratingLocalModels}
+                          disabled={isRestartingOllamaService || !ollamaService?.can_self_restart}
+                          onClick={() => {
+                            void handleRestartOllamaService()
+                          }}
+                        >
+                          <Play className="mr-2 h-4 w-4" />
+                          启动/重启
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+
+                  <Dialog
+                    open={isLocalMigrationDialogOpen}
+                    onOpenChange={(open) => {
+                      setIsLocalMigrationDialogOpen(open)
+                      if (!open) {
+                        setPendingLocalMigrationConfirmation(null)
+                      }
+                    }}
+                  >
+                    <DialogContent className="sm:max-w-3xl">
+                      <DialogHeader>
+                        <DialogTitle>本地模型批量迁移</DialogTitle>
+                        <DialogDescription>
+                          当前仅支持一次性迁移全部本地模型，不支持选择性迁移。
+                        </DialogDescription>
+                      </DialogHeader>
+
+                      <div className="space-y-5">
+                        <div className="space-y-2">
+                          <Label htmlFor="local-model-migration-target">迁移目标目录</Label>
+                          <div className="flex flex-col gap-2 sm:flex-row">
+                            <Input
+                              id="local-model-migration-target"
+                              className="bg-background/80"
+                              value={localMigrationTarget}
+                              onChange={(event) => setLocalMigrationTarget(event.target.value)}
+                              placeholder="如 E:\\AI\\VidGnost\\model-hub"
+                            />
+                            <Button
+                              variant="outline"
+                              className="shrink-0"
+                              onClick={() => {
+                                void handleBrowseLocalMigrationTarget()
+                              }}
+                            >
+                              <FolderOpen className="mr-2 h-4 w-4" />
+                              浏览
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          <div className="text-sm font-medium">当前项目已配置的本地模型</div>
+                          {localConfiguredModels.length > 0 ? (
+                            <div className="space-y-2">
+                              {localConfiguredModels.map((model) => (
+                                <div key={`migration-${model.id}`} className="rounded-xl border bg-muted/20 px-4 py-3">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <div className="font-medium">{model.name}</div>
+                                      <div className="mt-1 truncate text-xs text-muted-foreground">
+                                        {model.path || model.default_path || "未配置路径"}
+                                      </div>
+                                    </div>
+                                    <Badge variant="outline">{modelTypeLabels[model.component]}</Badge>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="rounded-xl border border-dashed px-4 py-6 text-sm text-muted-foreground">
+                              当前没有可迁移的本地模型。
+                            </div>
+                          )}
+                        </div>
+
+                        {pendingLocalMigrationConfirmation ? (
+                          <div className="rounded-xl border border-amber-500/30 bg-amber-500/8 px-4 py-3">
+                            <p className="text-sm font-medium">检测到进行中的任务</p>
+                            <p className="mt-1 text-xs leading-6 text-muted-foreground">
+                              继续迁移前请再次确认，避免正在执行的分析任务因模型路径切换而异常。
+                            </p>
+                            <div className="mt-2 space-y-1 text-xs text-foreground/90">
+                              {pendingLocalMigrationConfirmation.running_tasks.map((task) => (
+                                <div key={`running-task-${task.id}`}>
+                                  {task.title || task.id} · {task.workflow} · {task.status}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <DialogFooter>
+                        <Button
+                          disabled={isMigratingLocalModels || localConfiguredModels.length === 0}
                           onClick={() => {
                             void handleMigrateLocalModels()
                           }}
                         >
                           <HardDrive className="mr-2 h-4 w-4" />
-                          批量迁移本地模型
+                          批量迁移
                         </Button>
-                        <p className="text-xs text-muted-foreground">
-                          迁移完成后，模型配置中的目录将统一显示为绝对路径。
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <Separator />
-
-                  <div className="space-y-3">
-                    {models.map((model) => {
-                      const isDownloading = model.download?.state === "downloading"
-                      const downloadPercent = Math.max(0, Math.min(100, model.download?.percent ?? 0))
-
-                      return (
-                      <div key={model.id} className="settings-models-panel settings-model-row rounded-lg border p-4">
-                        <div className="flex items-start gap-4">
-                        <div
-                          className={cn(
-                            "settings-model-icon-shell flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
-                            getModelVisual(model.component).surfaceClassName,
-                          )}
-                        >
-                          {React.createElement(getModelVisual(model.component).icon, {
-                            className: cn("h-5 w-5", getModelVisual(model.component).iconClassName),
-                          })}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{model.name}</span>
-                            {getStatusBadge(model.status)}
-                          </div>
-                          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                            <Badge variant="outline" className={modelTypeTagClassNames[model.component]}>{modelTypeLabels[model.component]}</Badge>
-                            <Badge variant="secondary" className="capitalize">
-                              {providerLabels[model.provider] || model.provider.replaceAll("_", " ")}
-                            </Badge>
-                            <span className="flex items-center gap-1">
-                              <HardDrive className="h-3 w-3" />
-                              {model.size_bytes > 0 ? formatBytes(model.size_bytes) : "未记录"}
-                            </span>
-                          </div>
-                          <div className="text-xs text-muted-foreground mt-1 truncate">
-                            {model.provider === "openai_compatible"
-                              ? `${model.api_model || model.model_id} · ${model.api_base_url || "未配置 API 地址"}`
-                              : model.is_installed
-                                ? model.path || model.default_path || model.model_id
-                                : "未就绪"}
-                          </div>
-                          {model.download?.message && !isDownloading ? (
-                            <div className="mt-1 truncate text-[11px] text-muted-foreground">
-                              {model.download.message}
-                            </div>
-                          ) : null}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {model.supports_managed_download ? (
-                            isDownloading ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={busyModelId === model.id}
-                                onClick={() => {
-                                  void handleManagedModelAction(model)
-                                }}
-                              >
-                                取消下载
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={busyModelId === model.id}
-                                onClick={() => {
-                                  void handleManagedModelAction(model)
-                                }}
-                              >
-                                {model.is_installed ? (
-                                  <RefreshCw className="mr-1 h-4 w-4" />
-                                ) : (
-                                  <CloudDownload className="mr-1 h-4 w-4" />
-                                )}
-                                {model.is_installed ? "刷新检测" : model.component === "whisper" ? "下载" : "拉取"}
-                              </Button>
-                            )
-                          ) : (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              disabled={busyModelId === model.id}
-                              onClick={() => {
-                                void handleReloadModel(model.id)
-                              }}
-                            >
-                              <RefreshCw className="mr-1 h-4 w-4" />
-                              重载
-                            </Button>
-                          )}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={busyModelId === model.id || isDownloading}
-                            onClick={() => {
-                              handleConfigureModel(model)
-                            }}
-                          >
-                            配置
-                          </Button>
-                        </div>
-                        </div>
-                        {isDownloading ? (
-                          <div className="mt-3 space-y-2">
-                            <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
-                              <span className="min-w-0 truncate">
-                                下载中 {Math.round(downloadPercent)}% · {model.download?.message || "正在下载模型文件..."}
-                              </span>
-                              <span className="shrink-0">{Math.round(downloadPercent)}%</span>
-                            </div>
-                            <Progress value={downloadPercent} className="h-2 bg-primary/10" indicatorClassName="download-progress-indicator" />
-                          </div>
-                        ) : null}
-                      </div>
-                    )})}
-                    {models.length === 0 && !isLoading && (
-                      <div className="settings-models-panel settings-model-empty rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                        当前没有可展示的模型配置
-                      </div>
-                    )}
-                  </div>
-
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => {
-                      toast("当前后端提供模型重载与路径更新，暂不支持新增模型条目。")
-                    }}
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    添加模型
-                  </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
 
                   <Dialog open={isModelDialogOpen} onOpenChange={handleModelDialogChange}>
                     <DialogContent className="model-config-dialog flex w-[min(96vw,85rem)] max-h-[90vh] max-w-[85rem] flex-col gap-0 overflow-hidden p-0 sm:max-w-[85rem]">
@@ -2321,7 +2468,7 @@ export function SettingsView({
 
                                   <div className="flex flex-wrap items-center gap-2">
                                     <Badge variant="outline" className="rounded-md border bg-background/80 text-foreground/90">
-                                      {`Provider · ${(providerLabels[modelForm.provider] || modelForm.provider).replaceAll("_", " ")}`}
+                                      {`服务商 · ${(providerLabels[modelForm.provider] || modelForm.provider).replaceAll("_", " ")}`}
                                     </Badge>
                                     <Badge variant="outline" className="rounded-md border bg-background/80 text-foreground/90">
                                       {`Component · ${modelTypeLabels[editingModel.component]}`}
@@ -2445,7 +2592,7 @@ export function SettingsView({
 
                               <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2">
                                 <div className="space-y-2">
-                                  <Label>Provider</Label>
+                                  <Label>服务商</Label>
                                   {modelProviderOptions.length === 1 ? (
                                     <Input
                                       className="bg-background/80"
@@ -2493,7 +2640,7 @@ export function SettingsView({
                                   />
                                   <p className="text-xs text-muted-foreground">
                                     {modelForm.provider === "ollama"
-                                      ? "这里填写 Ollama 中实际拉取和调用的模型名。"
+                                      ? "这里填写 Ollama 中实际安装和调用的模型名。"
                                       : "用于当前模型条目的逻辑标识，本地与在线配置会共享这个基准值。"}
                                   </p>
                                 </div>
@@ -3421,6 +3568,25 @@ export function SettingsView({
         onRequestPickImage={requestSkinImage}
         onSave={async (patch) => {
           await handleUiSettingChange(patch, patch.background_image ? "自定义换肤已更新" : "自定义换肤已清除")
+        }}
+      />
+      <ConfirmDialog
+        open={Boolean(pendingLocalMigrationConfirmation)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingLocalMigrationConfirmation(null)
+          }
+        }}
+        title="确认继续批量迁移本地模型？"
+        description={
+          pendingLocalMigrationConfirmation
+            ? `检测到 ${pendingLocalMigrationConfirmation.running_tasks.length} 个进行中的任务，继续迁移会在完成后自动重启 Ollama 服务，可能影响当前分析任务。`
+            : "继续迁移会在完成后自动重启 Ollama 服务。"
+        }
+        confirmLabel="继续迁移"
+        isPending={isMigratingLocalModels}
+        onConfirm={() => {
+          void handleMigrateLocalModels(true)
         }}
       />
       <ConfirmDialog

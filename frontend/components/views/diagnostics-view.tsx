@@ -90,6 +90,34 @@ const EMPTY_METRICS: RuntimeMetricsResponse = {
   sampled_at: "",
 }
 
+const SELF_CHECK_SESSION_STORAGE_KEY = "vidgnost:self-check:active-session:v1"
+
+function readStoredSelfCheckSessionId(): string {
+  if (typeof window === "undefined") {
+    return ""
+  }
+  try {
+    return window.localStorage.getItem(SELF_CHECK_SESSION_STORAGE_KEY) || ""
+  } catch {
+    return ""
+  }
+}
+
+function writeStoredSelfCheckSessionId(sessionId: string): void {
+  if (typeof window === "undefined") {
+    return
+  }
+  try {
+    if (sessionId) {
+      window.localStorage.setItem(SELF_CHECK_SESSION_STORAGE_KEY, sessionId)
+      return
+    }
+    window.localStorage.removeItem(SELF_CHECK_SESSION_STORAGE_KEY)
+  } catch {
+    return
+  }
+}
+
 function formatSampledAt(value: string): string {
   if (!value) {
     return "等待首次采样"
@@ -176,7 +204,7 @@ function buildChecks(report: SelfCheckReportResponse | null): DiagnosticCheck[] 
 export function DiagnosticsView() {
   const [report, setReport] = React.useState<SelfCheckReportResponse | null>(null)
   const [runtimeMetrics, setRuntimeMetrics] = React.useState<RuntimeMetricsResponse>(EMPTY_METRICS)
-  const [activeSessionId, setActiveSessionId] = React.useState("")
+  const [activeSessionId, setActiveSessionId] = React.useState(() => readStoredSelfCheckSessionId())
   const [isStarting, setIsStarting] = React.useState(false)
   const [isFixing, setIsFixing] = React.useState(false)
   const runtimeMetricsToastShownRef = React.useRef(false)
@@ -201,6 +229,10 @@ export function DiagnosticsView() {
   }, [])
 
   React.useEffect(() => {
+    writeStoredSelfCheckSessionId(activeSessionId)
+  }, [activeSessionId])
+
+  React.useEffect(() => {
     void loadRuntimeMetrics()
     const interval = window.setInterval(() => {
       void loadRuntimeMetrics()
@@ -210,6 +242,17 @@ export function DiagnosticsView() {
 
   React.useEffect(() => {
     if (!activeSessionId) {
+      return
+    }
+    void refreshReport(activeSessionId).catch(() => {
+      setActiveSessionId("")
+      setReport(null)
+      writeStoredSelfCheckSessionId("")
+    })
+  }, [activeSessionId, refreshReport])
+
+  React.useEffect(() => {
+    if (!activeSessionId || (report && !["running", "fixing"].includes(report.status))) {
       return
     }
 
@@ -230,10 +273,11 @@ export function DiagnosticsView() {
 
   const runDiagnostics = async () => {
     setIsStarting(true)
-    setReport(null)
+      setReport(null)
     try {
       const payload = await startSelfCheck()
       setActiveSessionId(payload.session_id)
+      writeStoredSelfCheckSessionId(payload.session_id)
       await refreshReport(payload.session_id)
     } catch (error) {
       toast.error(getApiErrorMessage(error, "启动系统自检失败"))

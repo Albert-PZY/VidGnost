@@ -432,10 +432,13 @@ export function restartOllamaService(): Promise<OllamaRuntimeConfigResponse> {
   })
 }
 
-export function migrateLocalModels(target_root: string): Promise<LocalModelsMigrationResponse> {
+export function migrateLocalModels(
+  target_root: string,
+  confirm_running_tasks = false,
+): Promise<LocalModelsMigrationResponse> {
   return apiFetch<LocalModelsMigrationResponse>("/config/models/migrate-local", {
     method: "POST",
-    body: JSON.stringify({ target_root }),
+    body: JSON.stringify({ target_root, confirm_running_tasks }),
   })
 }
 

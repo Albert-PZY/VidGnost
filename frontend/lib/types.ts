@@ -285,8 +285,18 @@ export interface OllamaModelsMigrationResponse {
 
 export interface LocalModelsMigrationResponse {
   target_root: string
+  message: string
+  requires_confirmation: boolean
+  planned_model_ids: string[]
+  running_tasks: Array<{
+    id: string
+    title: string | null
+    status: string
+    workflow: string
+  }>
   moved: string[]
   skipped: string[]
+  ollama_restarted: boolean
   warnings: string[]
 }
 

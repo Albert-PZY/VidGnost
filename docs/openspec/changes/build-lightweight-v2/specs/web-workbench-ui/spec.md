@@ -22,18 +22,19 @@ Settings center SHALL provide `模型配置`, `提示词模板`, `外观设置`,
 - **THEN** the renderer shows the four sections with current persisted values from backend config APIs
 
 ### Requirement: Settings center SHALL expose managed transcription CUDA runtime controls
-The settings-center model surface SHALL expose a dedicated transcription CUDA runtime area above the model list. That area SHALL show install status, install directory, runtime version label, missing-file diagnostics, environment-configuration state, and install progress, and SHALL allow saving runtime-library config plus starting a one-click managed install.
+The settings-center model surface SHALL expose a dedicated transcription CUDA runtime area above the model list. That area SHALL use a compact summary card plus configuration dialog pattern, SHALL show install status, runtime version label, environment-configuration state, and install progress, and SHALL allow saving runtime-library config plus starting a managed install.
 
 #### Scenario: Configure transcription CUDA runtime from settings
 - **WHEN** user opens settings and visits `模型配置`
-- **THEN** the renderer shows a transcription CUDA runtime card near the GPU acceleration toggle
+- **THEN** the renderer shows a compact transcription CUDA runtime card near the top of the model section
 - **AND** the user-facing card title and feedback copy describe the surface as `本地 GPU 加速运行库`, while still explaining that the current primary acceleration target is the transcription chain
-- **AND** the card allows editing the runtime install directory directly or by opening a native directory picker from Electron
-- **AND** the card allows toggling automatic user-environment-variable configuration
-- **AND** the card exposes `保存运行库配置`, an install action, a pause-or-resume action that changes with the current runtime install state, and `刷新状态`
-- **AND** the card condenses runtime information into a current-status summary, a next-step guidance block, and a single issue summary so users can act without first parsing low-level diagnostics fields
+- **AND** the card exposes an install action plus a `配置` action that opens a dialog
+- **AND** the dialog allows editing the runtime install directory directly or by opening a native directory picker from Electron
+- **AND** the dialog allows toggling automatic user-environment-variable configuration and the Faster-Whisper GPU acceleration switch
+- **AND** the dialog exposes `保存配置`, an install action, a pause-or-resume action that changes with the current runtime install state, and `刷新状态`
+- **AND** the card condenses runtime information into a current-status summary and compact progress feedback so users can act without first parsing low-level diagnostics fields
 - **AND** managed-runtime readiness detection accepts the versioned `nvJitLink*.dll` naming used by current CUDA 12 redist bundles and also searches managed subdirectories such as `bin/x64` when the official package layout keeps cuDNN DLLs there
-- **AND** when installation is active or paused, the card renders a compact progress surface with current package label, percent, downloaded bytes, and transfer speed or paused-state text
+- **AND** when installation is active or paused, the card renders a compact progress surface with current package label and percent, while the dialog keeps the detailed install state visible
 - **AND** when installation is in progress, the card polls backend runtime-library status until the backend leaves the active install state
 
 ### Requirement: Settings center SHALL expose Ollama runtime and model migration controls
@@ -41,23 +42,31 @@ The settings-center model surface SHALL expose dedicated `Ollama 运行时与模
 
 #### Scenario: Configure Ollama runtime from settings
 - **WHEN** user opens settings and visits `模型配置`
-- **THEN** the renderer shows an Ollama runtime card with `安装目录`、`可执行文件`、`模型目录`、`服务地址` fields
-- **AND** the card allows opening native directory pickers for install and model directories
-- **AND** the card exposes `保存 Ollama 配置` and `迁移现有 Ollama 模型` actions
+- **THEN** the renderer shows a compact `Ollama 运行时` summary card
+- **AND** the card exposes a `配置` action that opens a dialog with `安装目录`、`可执行文件`、`模型安装目录`、`服务地址` fields
+- **AND** the dialog allows opening native directory pickers for install and model directories
+- **AND** the card keeps `启动/重启` action separate from the dialog save action
 - **AND** the same card shows current Ollama service reachability, whether a local process was detected, the configured model directory, the effective directory currently used by the running service, and a backend-supplied status message
-- **AND** the card exposes `重启/启动 Ollama 服务` when the backend reports that self-managed restart is available
 - **AND** the card states that later Ollama model pulls follow the configured model directory instead of an implicit default path
 
 #### Scenario: Attempt managed download after Ollama model migration
 - **WHEN** user clicks a managed Ollama model download action after model files have already been moved into the configured directory
-- **THEN** renderer surfaces the backend download snapshot message instead of always showing a generic `已开始通过 Ollama 拉取模型`
-- **AND** if backend reports that the running Ollama service still has not switched to the configured directory, the toast tells the user to start or restart Ollama rather than suggesting a duplicate pull
+- **THEN** renderer surfaces the backend download snapshot message instead of always showing a generic `已开始通过 Ollama 安装模型`
+- **AND** if backend reports that the running Ollama service still has not switched to the configured directory, the toast tells the user to start or restart Ollama rather than suggesting a duplicate install
 
 #### Scenario: Batch migrate local-directory model entries from settings
-- **WHEN** user enters a target root directory in the local-model migration card and starts migration
+- **WHEN** user opens the local-model migration config dialog, reviews the configured local model list, enters a target root directory, and starts migration
 - **THEN** the renderer submits the backend migration request and refreshes the model list after completion
+- **AND** the dialog only supports migrating all configured local models together
+- **AND** if backend reports that there are active tasks, the renderer requires a second confirmation before the migration actually starts
+- **AND** successful migration triggers backend Ollama restart when restart is available
 - **AND** the card reports moved and skipped items through toast or status feedback instead of silently swallowing conflicts
 - **AND** model cards thereafter display updated absolute paths rather than logical URI-like placeholders
+
+#### Scenario: Model list data is still loading
+- **WHEN** the settings view has entered `模型配置` but the backend model list has not yet returned
+- **THEN** the renderer shows skeleton rows in the model list region
+- **AND** it does not flash an empty-state card before the first model payload arrives
 
 ### Requirement: Configuration dialogs SHALL stay within viewport with fixed chrome
 Model configuration and prompt-template configuration dialogs SHALL remain within the visible viewport, keep header and action area fixed, and allow inner content scrolling when fields exceed available height. The header chrome SHALL stay visually compact so the main form area remains the dominant surface inside the dialog.
@@ -476,3 +485,14 @@ Diagnostics view SHALL provide a direct autofix action when the backend marks is
 - **AND** it treats versioned `nvJitLink*.dll` files and managed `bin/x64` cuDNN locations as valid parts of the installed bundle when the NVIDIA package layout uses those forms
 - **AND** it lists missing runtime DLLs or load errors when the bundle is not ready
 - **AND** the diagnostics issue summary tells the user to return to the settings-center model section to install or repair the runtime bundle
+
+#### Scenario: Diagnostics view survives page navigation during self-check
+- **WHEN** user starts a self-check, leaves the diagnostics page, and later returns within the same desktop session
+- **THEN** the renderer restores the last active self-check session from local persistence
+- **AND** it reloads the current report for that session
+- **AND** it resumes SSE subscription when the restored session is still running or fixing
+
+#### Scenario: Diagnostics self-check validates Whisper cache path from configured catalog entry
+- **WHEN** the backend runs the `FasterWhisper` or `Whisper 模型缓存` self-check step after a local-model migration
+- **THEN** it resolves the Whisper cache directory from the current model-catalog path instead of assuming the storage default directory
+- **AND** the reported cache path matches the migrated absolute directory when the catalog has already been updated

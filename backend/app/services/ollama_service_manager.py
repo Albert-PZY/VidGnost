@@ -120,14 +120,14 @@ class OllamaServiceManager:
             recognized_by_service = model_name in await self._ollama_client.list_local_models()
 
         if recognized_by_service:
-            message = "当前 Ollama 已识别该模型，无需重新拉取。"
+            message = "当前 Ollama 已识别该模型，无需重新安装。"
         elif files_present_in_configured_dir:
             message = (
                 "模型文件已存在于配置目录，但当前 Ollama 服务尚未从该目录加载模型，"
                 "请先启动或重启 Ollama 服务后刷新检测。"
             )
         else:
-            message = "当前尚未在 Ollama 服务中识别到该模型，可以继续拉取。"
+            message = "当前尚未在 Ollama 服务中识别到该模型，可以继续安装。"
 
         return {
             "recognized_by_service": recognized_by_service,

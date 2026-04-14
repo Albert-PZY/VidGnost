@@ -491,7 +491,10 @@ async def migrate_local_models(
     migration_service: ModelMigrationService = Depends(get_model_migration_service),
 ) -> LocalModelsMigrationResponse:
     try:
-        payload = await migration_service.migrate_local_models(body.target_root)
+        payload = await migration_service.migrate_local_models(
+            body.target_root,
+            confirm_running_tasks=body.confirm_running_tasks,
+        )
     except ValueError as exc:
         raise AppError.bad_request(str(exc), code="LOCAL_MODEL_MIGRATION_INVALID") from exc
     return LocalModelsMigrationResponse.model_validate(payload)

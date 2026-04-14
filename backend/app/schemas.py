@@ -343,12 +343,25 @@ class OllamaServiceStatusResponse(BaseModel):
 
 class LocalModelsMigrationRequest(BaseModel):
     target_root: str = Field(min_length=1)
+    confirm_running_tasks: bool = False
+
+
+class LocalModelsMigrationTaskItem(BaseModel):
+    id: str
+    title: str | None = None
+    status: str
+    workflow: str
 
 
 class LocalModelsMigrationResponse(BaseModel):
     target_root: str
+    message: str = ""
+    requires_confirmation: bool = False
+    planned_model_ids: list[str] = Field(default_factory=list)
+    running_tasks: list[LocalModelsMigrationTaskItem] = Field(default_factory=list)
     moved: list[str] = Field(default_factory=list)
     skipped: list[str] = Field(default_factory=list)
+    ollama_restarted: bool = False
     warnings: list[str] = Field(default_factory=list)
 
 

@@ -110,6 +110,13 @@ def _build_settings(tmp_path: Path) -> Settings:
     )
 
 
+def _materialize_whisper_cache(model_dir: Path) -> None:
+    model_dir.mkdir(parents=True, exist_ok=True)
+    for file_name in ("config.json", "model.bin", "tokenizer.json", "vocabulary.txt"):
+        (model_dir / file_name).write_text("ready", encoding="utf-8")
+    (model_dir / ".ready.json").write_text('{"status":"ready"}', encoding="utf-8")
+
+
 class ReadyOllamaClient:
     def __init__(self, *, models: dict[str, dict[str, object]] | None = None) -> None:
         self.base_url = "http://127.0.0.1:11434"
@@ -306,3 +313,61 @@ def test_self_check_llm_reports_invalid_model_name(
     assert outcome.message == "LLM 模型配置无效"
     assert outcome.details["连通性"] == "HTTP 200"
     assert outcome.details["模型校验"] == '远端 /models 未返回当前模型 "test-model"'
+
+
+def test_self_check_whisper_uses_catalog_path_after_migration(tmp_path: Path) -> None:
+    settings = _build_settings(tmp_path)
+    migrated_dir = tmp_path / "G" / "Ollama_Model" / "whisper" / "whisper-default"
+    _materialize_whisper_cache(migrated_dir)
+    store = ModelCatalogStore(settings)
+    asyncio.run(store.update_model("whisper-default", {"path": str(migrated_dir)}))
+
+    service = SelfCheckService(
+        settings=settings,
+        event_bus=EventBus(),
+        whisper_gpu_runtime_service=WhisperGpuRuntimeService(
+            settings=settings,
+            runtime_config_store=RuntimeConfigStore(settings),
+        ),
+        model_catalog_store=store,
+    )
+
+    whisper_outcome = asyncio.run(service._check_whisper())  # type: ignore[attr-defined]
+    cache_outcome = asyncio.run(service._check_model_cache())  # type: ignore[attr-defined]
+
+    assert whisper_outcome.status == "passed"
+    assert whisper_outcome.details["缓存目录"] == str(migrated_dir)
+    assert cache_outcome.status == "passed"
+    assert cache_outcome.details["缓存目录"] == str(migrated_dir)
+
+
+def test_self_check_llm_missing_api_key_is_not_auto_fixable(tmp_path: Path) -> None:
+    settings = _build_settings(tmp_path)
+    service = SelfCheckService(
+        settings=settings,
+        event_bus=EventBus(),
+        whisper_gpu_runtime_service=WhisperGpuRuntimeService(
+            settings=settings,
+            runtime_config_store=RuntimeConfigStore(settings),
+        ),
+    )
+    asyncio.run(
+        service._llm_config_store.save(  # type: ignore[attr-defined]
+            {
+                "mode": "api",
+                "load_profile": "balanced",
+                "local_model_id": "qwen2.5:3b",
+                "api_key": "",
+                "base_url": "https://example.com/v1",
+                "model": "test-model",
+                "correction_mode": "strict",
+                "correction_batch_size": 24,
+                "correction_overlap": 3,
+            }
+        )
+    )
+
+    outcome = asyncio.run(service._check_llm())  # type: ignore[attr-defined]
+
+    assert outcome.status == "warning"
+    assert outcome.auto_fixable is False
