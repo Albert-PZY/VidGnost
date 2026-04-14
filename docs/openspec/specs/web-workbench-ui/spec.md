@@ -38,7 +38,7 @@ The settings-center model surface SHALL expose a dedicated transcription CUDA ru
 - **AND** when installation is in progress, the card polls backend runtime-library status until the backend leaves the active install state
 
 ### Requirement: Settings center SHALL expose Ollama runtime and model migration controls
-The settings-center model surface SHALL expose dedicated `Ollama 运行时与模型目录` and `本地模型批量迁移` cards so users can control Ollama installation paths, model-storage paths, service address, and safe relocation of existing local model files.
+The settings-center model surface SHALL expose a guided model-configuration workspace with dedicated `Ollama 运行时与模型目录` and `本地模型批量迁移` cards, a recommended setup-order guide, and task-chain grouped model cards so users can control runtime paths, service address, and safe relocation of existing local model files without first parsing every low-level field.
 
 #### Scenario: Configure Ollama runtime from settings
 - **WHEN** user opens settings and visits `模型配置`
@@ -68,6 +68,12 @@ The settings-center model surface SHALL expose dedicated `Ollama 运行时与模
 - **THEN** the renderer shows skeleton rows in the model list region
 - **AND** it does not flash an empty-state card before the first model payload arrives
 
+#### Scenario: Browse model configuration by task chain
+- **WHEN** user opens settings and visits `模型配置`
+- **THEN** the renderer shows a `推荐配置顺序` guide before the model cards
+- **AND** model cards are grouped by task-chain sections such as transcription, retrieval, and vision-related routes instead of one undifferentiated flat list
+- **AND** each model card summarizes current route, role, and key tuning values before the user opens the detailed dialog
+
 ### Requirement: Configuration dialogs SHALL stay within viewport with fixed chrome
 Model configuration and prompt-template configuration dialogs SHALL remain within the visible viewport, keep header and action area fixed, and allow inner content scrolling when fields exceed available height. The header chrome SHALL stay visually compact so the main form area remains the dominant surface inside the dialog.
 
@@ -77,20 +83,26 @@ Model configuration and prompt-template configuration dialogs SHALL remain withi
 - **AND** the title, close control, cancel action, and save action remain visible
 
 ### Requirement: Model configuration dialog SHALL separate overview and grouped controls
-Model configuration dialog SHALL use a responsive split layout with a left overview panel and a right grouped form panel. On desktop widths the dialog SHALL keep a wide presentation area suitable for dense professional forms, supporting a visual width up to `85rem`, and SHALL not fall back to the default small dialog width token. The overview panel SHALL keep a fixed readable width while the right-side configuration panel stays intentionally narrower than the previous ultra-wide layout. The overview panel SHALL expose model identity, component tag, provider, runtime status, install status, default path, current enabled state, and preset note, while keeping helper copy concise. The right-side grouped form panel SHALL adapt its visible fields to the selected provider and component capabilities, including dedicated online-API controls for image-capable entries. Dialog centering SHALL preserve crisp text rendering and SHALL not distort embedded fixed-position surfaces.
+Model configuration dialog SHALL use a responsive split layout with a left overview panel and a right grouped form panel. On desktop widths the dialog SHALL keep a wide presentation area suitable for dense professional forms, supporting a visual width up to `85rem`, and SHALL not fall back to the default small dialog width token. The overview panel SHALL keep a fixed readable width while the right-side configuration panel stays intentionally narrower than the previous ultra-wide layout. The overview panel SHALL expose model identity, component tag, provider, runtime status, install status, current route summary, current enabled state, and preset note, while keeping helper copy concise. The right-side grouped form panel SHALL present the editable controls as step-oriented groups such as route identity, runtime tuning, online API tuning, and transcript-correction settings according to the selected provider and component capabilities. Dialog centering SHALL preserve crisp text rendering and SHALL not distort embedded fixed-position surfaces.
 
 #### Scenario: Open a model configuration dialog
 - **WHEN** user clicks `配置` on a model item
 - **THEN** the dialog shows a compact overview panel for model identity and state on the left
-- **AND** the right side groups editable runtime parameters into dedicated cards
+- **AND** the right side groups editable parameters into step-oriented cards with concise task guidance
 - **AND** path fields span the full row while regular scalar fields follow a responsive two-column grid
 
 #### Scenario: Switch provider inside a model configuration dialog
 - **WHEN** user changes a model entry between `本地目录`、`Ollama`、`在线 API`
 - **THEN** the dialog updates the visible fields to match that route instead of showing one generic mixed form
-- **AND** `在线 API` shows Base URL、API Key、模型名、协议、超时和图像上传上限 fields for image-capable components
+- **AND** `在线 API` shows Base URL、API Key、模型名、超时和图像上传上限 fields for image-capable components
+- **AND** the renderer does not ask user to choose a separate protocol field because backend infers the compatible adapter from the configured service address
 - **AND** `本地目录` and `Ollama` routes keep model path or logical model-id controls visible while hiding remote-only fields
 - **AND** `mllm-default` only offers the online API route
+
+#### Scenario: Choose a local model directory inside the configuration dialog
+- **WHEN** the current model route exposes a local path field
+- **THEN** the dialog provides a native directory picker action beside that field
+- **AND** choosing a directory immediately writes the absolute path back into the current model form
 
 #### Scenario: Open the `llm-default` configuration dialog
 - **WHEN** user configures `llm-default`

@@ -3,7 +3,6 @@
 import * as React from "react"
 import { toast } from "react-hot-toast"
 import {
-  CloudDownload,
   Cpu,
   FileCode,
   FolderOpen,
@@ -13,7 +12,6 @@ import {
   Trash2,
   Edit2,
   Save,
-  RefreshCw,
   HardDrive,
   Play,
   Sparkles,
@@ -28,7 +26,6 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
-import { Progress } from "@/components/ui/progress"
 import {
   Select,
   SelectContent,
@@ -47,6 +44,23 @@ import {
 import { PromptMarkdownEditor } from "@/components/editors/prompt-markdown-editor"
 import { WebGLBlurCanvas } from "@/components/ui/webgl-blur-canvas"
 import { CustomSkinDialog } from "@/components/views/custom-skin-dialog"
+import { SettingsModelConfigDialog } from "@/components/views/settings-model-config-dialog"
+import { SettingsModelsSection } from "@/components/views/settings-models-section"
+import {
+  EMPTY_LLM_FORM,
+  EMPTY_MODEL_FORM,
+  EMPTY_OLLAMA_RUNTIME_FORM,
+  clearModelConfigDraft,
+  createLlmForm,
+  createModelForm,
+  getModelConfigPreset,
+  modelTypeLabels,
+  readModelConfigDraft,
+  saveModelConfigDraft,
+  type LLMConfigFormState,
+  type ModelConfigFormState,
+  type OllamaRuntimeFormState,
+} from "@/components/views/settings-models-shared"
 import { PromptLabPanel } from "@/components/views/prompt-lab-panel"
 import { useTheme } from "next-themes"
 import { cn } from "@/lib/utils"
@@ -71,7 +85,6 @@ import {
   updatePromptTemplate,
   updateWhisperConfig,
 } from "@/lib/api"
-import { formatBytes } from "@/lib/format"
 import { getImageLayout } from "@/lib/ui-skin"
 import type {
   LLMConfigResponse,
@@ -91,15 +104,6 @@ interface SettingsViewProps {
   onUiSettingsPreviewChange: (patch: Partial<UISettingsResponse> | null) => void
 }
 
-const modelTypeLabels: Record<string, string> = {
-  whisper: "语音转写",
-  llm: "大语言模型",
-  embedding: "嵌入模型",
-  vlm: "视觉语言模型",
-  rerank: "重排序模型",
-  mllm: "全模态模型",
-}
-
 const promptTypeLabels: Record<PromptTemplateChannel, string> = {
   correction: "文本纠错",
   notes: "笔记生成",
@@ -112,15 +116,6 @@ const promptDescriptions: Record<PromptTemplateChannel, string> = {
   notes: "将转写内容整理为结构化笔记输出。",
   mindmap: "将内容组织为思维导图结构。",
   vqa: "用于视频问答与检索回答生成。",
-}
-
-const modelTypeTagClassNames: Record<string, string> = {
-  whisper: "border-indigo-800/75 text-indigo-700 dark:border-indigo-400/55 dark:text-indigo-300",
-  llm: "border-cyan-800/75 text-cyan-700 dark:border-cyan-400/55 dark:text-cyan-300",
-  embedding: "border-emerald-800/75 text-emerald-700 dark:border-emerald-400/55 dark:text-emerald-300",
-  vlm: "border-rose-800/75 text-rose-700 dark:border-rose-400/55 dark:text-rose-300",
-  rerank: "border-amber-800/75 text-amber-700 dark:border-amber-400/55 dark:text-amber-300",
-  mllm: "border-fuchsia-800/75 text-fuchsia-700 dark:border-fuchsia-400/55 dark:text-fuchsia-300",
 }
 
 const promptTagClassNames: Record<PromptTemplateChannel, string> = {
@@ -147,159 +142,6 @@ const EMPTY_PROMPT_FORM = {
   content: "",
 }
 
-type ModelConfigFormState = {
-  provider: string
-  model_id: string
-  path: string
-  load_profile: string
-  quantization: string
-  max_batch_size: string
-  rerank_top_n: string
-  frame_interval_seconds: string
-  enabled: boolean
-  api_base_url: string
-  api_key: string
-  api_model: string
-  api_timeout_seconds: string
-  api_image_max_bytes: string
-  api_image_max_edge: string
-}
-
-type ModelConfigField = keyof ModelConfigFormState
-
-type ModelConfigPreset = {
-  title: string
-  description: string
-  note?: string
-  pathLabel?: string
-  pathPlaceholder?: string
-  quantizationLabel?: string
-  quantizationPlaceholder?: string
-  batchLabel?: string
-  batchDescription?: string
-  fields: ModelConfigField[]
-}
-
-const EMPTY_MODEL_FORM: ModelConfigFormState = {
-  provider: "ollama",
-  model_id: "",
-  path: "",
-  load_profile: "balanced",
-  quantization: "",
-  max_batch_size: "1",
-  rerank_top_n: "8",
-  frame_interval_seconds: "10",
-  enabled: true,
-  api_base_url: "",
-  api_key: "",
-  api_model: "",
-  api_timeout_seconds: "120",
-  api_image_max_bytes: "524288",
-  api_image_max_edge: "1280",
-}
-
-type LLMConfigFormState = {
-  correction_mode: LLMConfigResponse["correction_mode"]
-  correction_batch_size: string
-  correction_overlap: string
-}
-
-type OllamaRuntimeFormState = {
-  install_dir: string
-  executable_path: string
-  models_dir: string
-  base_url: string
-}
-
-const EMPTY_LLM_FORM: LLMConfigFormState = {
-  correction_mode: "strict",
-  correction_batch_size: "24",
-  correction_overlap: "3",
-}
-
-const EMPTY_OLLAMA_RUNTIME_FORM: OllamaRuntimeFormState = {
-  install_dir: "",
-  executable_path: "",
-  models_dir: "",
-  base_url: "http://127.0.0.1:11434",
-}
-
-const MODEL_CONFIG_DRAFT_STORAGE_KEY = "vidgnost:model-config-draft:v1"
-
-type ModelConfigDraftEntry = {
-  model_id: string
-  provider: string
-  component: string
-  model_form: ModelConfigFormState
-  llm_form: LLMConfigFormState
-}
-
-const modelVisuals: Record<
-  ModelDescriptor["component"],
-  {
-    icon: React.ElementType
-    iconClassName: string
-    surfaceClassName: string
-  }
-> = {
-  whisper: {
-    icon: Cpu,
-    iconClassName: "text-primary",
-    surfaceClassName: "bg-primary/10",
-  },
-  llm: {
-    icon: Cpu,
-    iconClassName: "text-primary",
-    surfaceClassName: "bg-primary/10",
-  },
-  embedding: {
-    icon: Cpu,
-    iconClassName: "text-primary",
-    surfaceClassName: "bg-primary/10",
-  },
-  vlm: {
-    icon: Cpu,
-    iconClassName: "text-primary",
-    surfaceClassName: "bg-primary/10",
-  },
-  rerank: {
-    icon: Cpu,
-    iconClassName: "text-primary",
-    surfaceClassName: "bg-primary/10",
-  },
-  mllm: {
-    icon: Sparkles,
-    iconClassName: "text-primary",
-    surfaceClassName: "bg-primary/10",
-  },
-}
-
-const localLlmPreset: ModelConfigPreset = {
-  title: "本地大模型配置",
-  description: "管理本地 LLM 的缓存目录、加载策略和吞吐参数。",
-  fields: ["path", "load_profile", "quantization", "max_batch_size", "enabled"],
-  pathLabel: "模型目录",
-  pathPlaceholder: "可选：指定本地 LLM 权重目录",
-  quantizationLabel: "量化格式",
-  quantizationPlaceholder: "如 4bit / 8bit / fp16",
-  batchLabel: "最大并发批大小",
-  batchDescription: "影响本地推理吞吐，数值越高占用越大。",
-}
-
-const providerLabels: Record<string, string> = {
-  local: "本地目录",
-  ollama: "Ollama",
-  openai_compatible: "在线 API",
-}
-
-const recommendedRemoteModels: Partial<Record<ModelDescriptor["component"], string[]>> = {
-  llm: ["qwen3.5-plus"],
-  vlm: ["qwen-image-2.0"],
-  embedding: ["qwen3-vl-embedding"],
-  rerank: ["qwen3-vl-rerank"],
-  mllm: ["qwen3.5-omni-flash"],
-}
-
 async function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -315,64 +157,6 @@ async function readFileAsDataUrl(file: File): Promise<string> {
     }
     reader.readAsDataURL(file)
   })
-}
-
-function canUseStorage(): boolean {
-  return typeof window !== "undefined" && typeof window.localStorage !== "undefined"
-}
-
-function readModelConfigDraftMap(): Record<string, ModelConfigDraftEntry> {
-  if (!canUseStorage()) {
-    return {}
-  }
-  try {
-    const raw = window.localStorage.getItem(MODEL_CONFIG_DRAFT_STORAGE_KEY)
-    if (!raw) {
-      return {}
-    }
-    const parsed = JSON.parse(raw) as unknown
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {}
-    }
-    return parsed as Record<string, ModelConfigDraftEntry>
-  } catch {
-    return {}
-  }
-}
-
-function writeModelConfigDraftMap(nextMap: Record<string, ModelConfigDraftEntry>): void {
-  if (!canUseStorage()) {
-    return
-  }
-  try {
-    if (Object.keys(nextMap).length === 0) {
-      window.localStorage.removeItem(MODEL_CONFIG_DRAFT_STORAGE_KEY)
-      return
-    }
-    window.localStorage.setItem(MODEL_CONFIG_DRAFT_STORAGE_KEY, JSON.stringify(nextMap))
-  } catch {
-    return
-  }
-}
-
-function readModelConfigDraft(modelId: string): ModelConfigDraftEntry | null {
-  const draftMap = readModelConfigDraftMap()
-  return draftMap[modelId] ?? null
-}
-
-function saveModelConfigDraft(entry: ModelConfigDraftEntry): void {
-  const draftMap = readModelConfigDraftMap()
-  draftMap[entry.model_id] = entry
-  writeModelConfigDraftMap(draftMap)
-}
-
-function clearModelConfigDraft(modelId: string): void {
-  const draftMap = readModelConfigDraftMap()
-  if (!(modelId in draftMap)) {
-    return
-  }
-  delete draftMap[modelId]
-  writeModelConfigDraftMap(draftMap)
 }
 
 type PickedSkinImage = {
@@ -620,117 +404,6 @@ export function SettingsView({
     { id: "language", label: "语言设置", icon: Globe },
   ]
 
-  const getStatusBadge = (status: ModelDescriptor["status"]) => {
-    switch (status) {
-      case "ready":
-        return <Badge variant="default" className="bg-status-success text-white">就绪</Badge>
-      case "loading":
-        return <Badge variant="secondary" className="bg-status-processing text-white">加载中</Badge>
-      case "not_ready":
-        return <Badge variant="outline">未就绪</Badge>
-      case "error":
-        return <Badge variant="destructive">错误</Badge>
-      default:
-        return <Badge variant="outline">{status}</Badge>
-    }
-  }
-
-  const getModelVisual = (component: ModelDescriptor["component"]) => {
-    return modelVisuals[component] || modelVisuals.llm
-  }
-
-  const getModelProviderOptions = (model: ModelDescriptor) => {
-    if (model.component === "whisper") {
-      return [{ value: "local", label: providerLabels.local }]
-    }
-    if (model.component === "mllm") {
-      return [{ value: "openai_compatible", label: providerLabels.openai_compatible }]
-    }
-    return [
-      { value: "ollama", label: providerLabels.ollama },
-      { value: "openai_compatible", label: providerLabels.openai_compatible },
-    ]
-  }
-
-  const getModelConfigPreset = (model: ModelDescriptor): ModelConfigPreset => {
-    if (model.component === "whisper") {
-      return {
-        title: "语音转写模型配置",
-        description: "调整 Faster-Whisper 模型目录与加载策略，并在当前弹窗内切换 GPU 加速。",
-        note: "Whisper GPU 模式会自动复用 Ollama 自带的 CUDA 运行库，无需单独安装额外运行库。",
-        fields: ["path", "load_profile", "quantization", "enabled"],
-        pathLabel: "模型目录",
-        pathPlaceholder: "可选：指定 Faster-Whisper 模型目录",
-        quantizationLabel: "推理精度",
-        quantizationPlaceholder: "如 int8 / float16 / float32",
-      }
-    }
-
-    if (model.component === "llm") {
-      if (model.provider === "openai_compatible") {
-        return {
-          title: "在线 LLM 调度配置",
-          description: "在线模型通过兼容 OpenAI 的接口调用，这里可同时维护接口参数与运行调度。",
-          note: "保存时会同时更新在线接口配置与该模型条目的启用状态、调度策略。",
-          fields: ["load_profile", "max_batch_size", "enabled"],
-          batchLabel: "请求批大小",
-          batchDescription: "用于限制同一批次的请求规模，避免接口抖动。",
-        }
-      }
-      return localLlmPreset
-    }
-
-    if (model.component === "embedding") {
-      return {
-        title: "向量嵌入模型配置",
-        description: "控制向量化模型的缓存目录和批处理吞吐。",
-        note: "嵌入模型更适合通过批大小调优吞吐，不建议频繁切换加载策略。",
-        fields: ["path", "max_batch_size", "enabled"],
-        pathLabel: "模型目录",
-        pathPlaceholder: "可选：指定嵌入模型本地目录",
-        batchLabel: "向量化批大小",
-        batchDescription: "批大小越大，向量化吞吐越高，但会增加内存压力。",
-      }
-    }
-
-    if (model.component === "vlm") {
-      return {
-        title: "视觉语言模型配置",
-        description: "控制关键帧语义识别模型的本地目录、量化方式和抽帧节奏。",
-        note: "抽帧间隔会直接影响检索时附带的画面证据密度，数值越小越细，但生成和存储开销也越高。",
-        fields: ["path", "load_profile", "quantization", "frame_interval_seconds", "enabled"],
-        pathLabel: "模型目录",
-        pathPlaceholder: "可选：指定 VLM 模型目录",
-        quantizationLabel: "权重量化",
-        quantizationPlaceholder: "如 4bit / 8bit / fp16",
-        batchLabel: "抽帧间隔（秒）",
-        batchDescription: "用于控制问答证据图的抽帧频率，默认每 10 秒抽取一张。",
-      }
-    }
-
-    if (model.component === "mllm") {
-      return {
-        title: "全模态模型配置",
-        description: "控制图文联合问答模型的路由启用与在线接口参数。",
-        note: "当全模态模型与多模态 Embedding 同时就绪时，RAG 会切换到图文联合检索路线。",
-        fields: ["load_profile", "max_batch_size", "enabled"],
-        batchLabel: "并发请求上限",
-        batchDescription: "控制图文联合请求的并发规模，避免远端接口抖动。",
-      }
-    }
-
-    return {
-      title: "重排序模型配置",
-      description: "控制 rerank 模型的本地目录、批处理规模与最终返回条数。",
-      note: "建议先调最终返回条数，再根据机器负载逐步提高重排序批大小。",
-      fields: ["path", "max_batch_size", "rerank_top_n", "enabled"],
-      pathLabel: "模型目录",
-      pathPlaceholder: "可选：指定 rerank 模型目录",
-      batchLabel: "重排序批大小",
-      batchDescription: "提升批大小可以提高吞吐，但会增加 CPU/GPU 占用。",
-    }
-  }
-
   const buildModelUpdatePayload = (model: ModelDescriptor, form: ModelConfigFormState) => {
     const preset = getModelConfigPreset(model)
     const payload: Parameters<typeof updateModel>[1] = {}
@@ -852,31 +525,8 @@ export function SettingsView({
   }
 
   const handleConfigureModel = (model: ModelDescriptor) => {
-    const nextModelForm: ModelConfigFormState = {
-      provider: model.provider,
-      model_id: model.model_id,
-      path: model.path || model.default_path || "",
-      load_profile: model.load_profile || "balanced",
-      quantization: model.quantization || "",
-      max_batch_size: String(model.max_batch_size || 1),
-      rerank_top_n: String(model.rerank_top_n || 8),
-      frame_interval_seconds: String(model.frame_interval_seconds || 10),
-      enabled: model.enabled,
-      api_base_url: model.api_base_url || "",
-      api_key: model.api_key || "",
-      api_model: model.api_model || "",
-      api_timeout_seconds: String(model.api_timeout_seconds || 120),
-      api_image_max_bytes: String(model.api_image_max_bytes || 524288),
-      api_image_max_edge: String(model.api_image_max_edge || 1280),
-    }
-    const nextLlmForm: LLMConfigFormState =
-      model.component === "llm" && llmConfig
-        ? {
-            correction_mode: llmConfig.correction_mode,
-            correction_batch_size: String(llmConfig.correction_batch_size),
-            correction_overlap: String(llmConfig.correction_overlap),
-          }
-        : EMPTY_LLM_FORM
+    const nextModelForm = createModelForm(model)
+    const nextLlmForm = createLlmForm(model, llmConfig)
     const draft = readModelConfigDraft(model.id)
 
     setEditingModel(model)
@@ -1217,6 +867,25 @@ export function SettingsView({
     setLocalMigrationTarget(picked.path)
   }
 
+  const handleBrowseModelPath = async () => {
+    if (!editingModel) {
+      return
+    }
+    if (!window.vidGnostDesktop?.pickDirectory) {
+      toast("当前环境不支持目录选择，请直接手动填写路径。")
+      return
+    }
+    const preset = getModelConfigPreset(editingModel)
+    const picked = await window.vidGnostDesktop.pickDirectory(`选择${preset.pathLabel || editingModel.name}目录`)
+    if (picked.canceled || !picked.path) {
+      return
+    }
+    setModelForm((current) => ({
+      ...current,
+      path: picked.path || current.path,
+    }))
+  }
+
   const handleMigrateLocalModels = async (confirmRunningTasks = false) => {
     const targetRoot = localMigrationTarget.trim()
     if (!targetRoot) {
@@ -1290,25 +959,20 @@ export function SettingsView({
     }
   }
 
+  const handleRefreshWhisperRuntimeStatus = async () => {
+    try {
+      const response = await getWhisperConfig()
+      setWhisperConfig(response)
+      toast.success("Whisper GPU 运行库状态已刷新")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "刷新 Whisper GPU 运行库状态失败"))
+    }
+  }
+
   const localConfiguredModels = React.useMemo(
     () => models.filter((model) => model.provider === "local" || model.provider === "ollama"),
     [models],
   )
-  const isModelListLoading = isLoading && models.length === 0
-  const activeModelPreset = editingModel ? getModelConfigPreset(editingModel) : null
-  const modelDialogHasQuantization = Boolean(activeModelPreset?.fields.includes("quantization"))
-  const modelDialogHasBatchSize = Boolean(activeModelPreset?.fields.includes("max_batch_size"))
-  const modelDialogHasRerankTopN = Boolean(activeModelPreset?.fields.includes("rerank_top_n"))
-  const modelDialogHasFrameInterval = Boolean(activeModelPreset?.fields.includes("frame_interval_seconds"))
-  const modelProviderOptions = editingModel ? getModelProviderOptions(editingModel) : []
-  const showRemoteApiFields = Boolean(modelForm.provider === "openai_compatible" && editingModel)
-  const showLlmCorrectionFields = Boolean(editingModel?.component === "llm")
-  const showModelPathField = Boolean(activeModelPreset?.fields.includes("path") && modelForm.provider !== "openai_compatible")
-  const showImageApiFields = Boolean(
-    showRemoteApiFields && editingModel && ["embedding", "vlm", "rerank", "mllm"].includes(editingModel.component),
-  )
-  const remoteModelRecommendations = editingModel ? recommendedRemoteModels[editingModel.component] || [] : []
-  const isWhisperDialog = editingModel?.component === "whisper"
   const hasSkinImage = Boolean(uiSettings.background_image)
   const skinPreviewBlur = Math.max(0, uiSettings.background_image_blur / 2)
   const skinPreviewLayout = React.useMemo(() => {
@@ -1385,260 +1049,28 @@ export function SettingsView({
 
               <div className="min-w-0 flex-1 space-y-6">
             {activeSection === "models" && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">模型配置</CardTitle>
-                  <CardDescription>
-                    管理默认模型目录、在线 LLM 接口与各类运行参数
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="settings-models-shell space-y-4">
-                  <div className="settings-models-panel settings-model-row rounded-lg border p-4">
-                    <div className="flex items-start gap-4">
-                      <div className="settings-model-icon-shell flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                        <Cpu className="h-5 w-5 text-primary" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">Ollama 运行时</span>
-                          <Badge variant={ollamaService?.reachable ? "default" : "secondary"}>
-                            {ollamaService?.reachable ? "接口可达" : "接口不可达"}
-                          </Badge>
-                          <Badge
-                            variant="outline"
-                            className={
-                              ollamaService?.using_configured_models_dir
-                                ? "border-emerald-500/60 text-emerald-600 dark:text-emerald-300"
-                                : "border-amber-500/60 text-amber-600 dark:text-amber-300"
-                            }
-                          >
-                            {ollamaService?.using_configured_models_dir ? "模型目录已生效" : "模型目录待切换"}
-                          </Badge>
-                        </div>
-                        <div className="mt-1 text-sm text-muted-foreground">
-                          在配置弹窗中维护 Ollama 安装目录、模型安装目录和服务地址，并自动同步 PATH 与 OLLAMA_MODELS 环境变量。
-                        </div>
-                        <div className="mt-1 truncate text-xs text-muted-foreground">
-                          {ollamaService?.configured_models_dir || ollamaRuntimeForm.models_dir || "未配置模型目录"} · {ollamaRuntimeForm.base_url || "未配置服务地址"}
-                        </div>
-                        <div className="mt-1 truncate text-[11px] text-muted-foreground">
-                          {ollamaService?.message || "保存配置后，这里会显示当前 Ollama 实际使用的模型目录。"}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={isRestartingOllamaService || !ollamaService?.can_self_restart}
-                          onClick={() => {
-                            void handleRestartOllamaService()
-                          }}
-                        >
-                          <Play className="mr-1 h-4 w-4" />
-                          启动/重启
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setIsOllamaRuntimeDialogOpen(true)}
-                        >
-                          配置
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="settings-models-panel settings-model-row rounded-lg border p-4">
-                    <div className="flex items-start gap-4">
-                      <div className="settings-model-icon-shell flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                        <HardDrive className="h-5 w-5 text-primary" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">本地模型批量迁移</span>
-                          <Badge variant="secondary">{`${localConfiguredModels.length} 个本地模型`}</Badge>
-                        </div>
-                        <div className="mt-1 text-sm text-muted-foreground">
-                          仅支持一次性迁移当前项目里全部本地模型，包含 Whisper 本地目录和 Ollama 管理目录，迁移完成后会自动回写绝对路径并重启 Ollama。
-                        </div>
-                        <div className="mt-1 truncate text-xs text-muted-foreground">
-                          {localConfiguredModels.length > 0
-                            ? localConfiguredModels.map((model) => model.name).join("、")
-                            : "当前还没有已配置的本地模型"}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setIsLocalMigrationDialogOpen(true)}
-                        >
-                          配置
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <Separator />
-
-                  <div className="space-y-3">
-                    {isModelListLoading
-                      ? Array.from({ length: 5 }).map((_, index) => (
-                          <div
-                            key={`model-skeleton-${index}`}
-                            className="settings-model-skeleton-card settings-models-panel rounded-lg border p-4"
-                          >
-                            <div className="flex items-start gap-4">
-                              <div className="app-skeleton app-skeleton-intense h-10 w-10 shrink-0 rounded-lg" />
-                              <div className="min-w-0 flex-1 space-y-2">
-                                <div className="app-skeleton app-skeleton-intense h-4 w-48 rounded-md" />
-                                <div className="app-skeleton app-skeleton-intense h-3 w-72 rounded-md" />
-                                <div className="app-skeleton app-skeleton-intense h-3 w-full max-w-xl rounded-md" />
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <div className="app-skeleton app-skeleton-intense h-9 w-20 rounded-md" />
-                                <div className="app-skeleton app-skeleton-intense h-9 w-16 rounded-md" />
-                              </div>
-                            </div>
-                          </div>
-                        ))
-                      : models.map((model) => {
-                          const isDownloading = model.download?.state === "downloading"
-                          const downloadPercent = Math.max(0, Math.min(100, model.download?.percent ?? 0))
-
-                          return (
-                            <div key={model.id} className="settings-models-panel settings-model-row rounded-lg border p-4">
-                              <div className="flex items-start gap-4">
-                                <div
-                                  className={cn(
-                                    "settings-model-icon-shell flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
-                                    getModelVisual(model.component).surfaceClassName,
-                                  )}
-                                >
-                                  {React.createElement(getModelVisual(model.component).icon, {
-                                    className: cn("h-5 w-5", getModelVisual(model.component).iconClassName),
-                                  })}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-medium">{model.name}</span>
-                                    {getStatusBadge(model.status)}
-                                  </div>
-                                  <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                                    <Badge variant="outline" className={modelTypeTagClassNames[model.component]}>
-                                      {modelTypeLabels[model.component]}
-                                    </Badge>
-                                    <Badge variant="secondary" className="capitalize">
-                                      {providerLabels[model.provider] || model.provider.replaceAll("_", " ")}
-                                    </Badge>
-                                    <span className="flex items-center gap-1">
-                                      <HardDrive className="h-3 w-3" />
-                                      {model.size_bytes > 0 ? formatBytes(model.size_bytes) : "未记录"}
-                                    </span>
-                                  </div>
-                                  <div className="text-xs text-muted-foreground mt-1 truncate">
-                                    {model.provider === "openai_compatible"
-                                      ? `${model.api_model || model.model_id} · ${model.api_base_url || "未配置 API 地址"}`
-                                      : model.is_installed
-                                        ? model.path || model.default_path || model.model_id
-                                        : "未就绪"}
-                                  </div>
-                                  {model.download?.message && !isDownloading ? (
-                                    <div className="mt-1 truncate text-[11px] text-muted-foreground">
-                                      {model.download.message}
-                                    </div>
-                                  ) : null}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  {model.supports_managed_download ? (
-                                    isDownloading ? (
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        disabled={busyModelId === model.id}
-                                        onClick={() => {
-                                          void handleManagedModelAction(model)
-                                        }}
-                                      >
-                                        取消下载
-                                      </Button>
-                                    ) : (
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        disabled={busyModelId === model.id}
-                                        onClick={() => {
-                                          void handleManagedModelAction(model)
-                                        }}
-                                      >
-                                        {model.is_installed ? (
-                                          <RefreshCw className="mr-1 h-4 w-4" />
-                                        ) : (
-                                          <CloudDownload className="mr-1 h-4 w-4" />
-                                        )}
-                                        {model.is_installed ? "刷新检测" : model.component === "whisper" ? "下载" : "安装"}
-                                      </Button>
-                                    )
-                                  ) : (
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      disabled={busyModelId === model.id}
-                                      onClick={() => {
-                                        void handleReloadModel(model.id)
-                                      }}
-                                    >
-                                      <RefreshCw className="mr-1 h-4 w-4" />
-                                      刷新检测
-                                    </Button>
-                                  )}
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    disabled={busyModelId === model.id || isDownloading}
-                                    onClick={() => {
-                                      handleConfigureModel(model)
-                                    }}
-                                  >
-                                    配置
-                                  </Button>
-                                </div>
-                              </div>
-                              {isDownloading ? (
-                                <div className="mt-3 space-y-2">
-                                  <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
-                                    <span className="min-w-0 truncate">
-                                      下载中 {Math.round(downloadPercent)}% · {model.download?.message || "正在下载模型文件..."}
-                                    </span>
-                                    <span className="shrink-0">{Math.round(downloadPercent)}%</span>
-                                  </div>
-                                  <Progress
-                                    value={downloadPercent}
-                                    className="h-2 bg-primary/10"
-                                    indicatorClassName="download-progress-indicator"
-                                  />
-                                </div>
-                              ) : null}
-                            </div>
-                          )
-                        })}
-                    {models.length === 0 && !isLoading && (
-                      <div className="settings-models-panel settings-model-empty rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                        当前没有可展示的模型配置
-                      </div>
-                    )}
-                  </div>
-
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => {
-                      toast("当前后端提供模型刷新检测与路径更新，暂不支持新增模型条目。")
-                    }}
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    添加模型
-                  </Button>
+              <>
+                <SettingsModelsSection
+                  models={models}
+                  isLoading={isLoading}
+                  busyModelId={busyModelId}
+                  ollamaConfig={ollamaConfig}
+                  ollamaRuntimeForm={ollamaRuntimeForm}
+                  localConfiguredModels={localConfiguredModels}
+                  isRestartingOllamaService={isRestartingOllamaService}
+                  onReloadModel={(modelId) => {
+                    void handleReloadModel(modelId)
+                  }}
+                  onManagedModelAction={(model) => {
+                    void handleManagedModelAction(model)
+                  }}
+                  onConfigureModel={handleConfigureModel}
+                  onOpenOllamaConfig={() => setIsOllamaRuntimeDialogOpen(true)}
+                  onOpenLocalMigration={() => setIsLocalMigrationDialogOpen(true)}
+                  onRestartOllamaService={() => {
+                    void handleRestartOllamaService()
+                  }}
+                />
 
                   <Dialog open={isOllamaRuntimeDialogOpen} onOpenChange={setIsOllamaRuntimeDialogOpen}>
                     <DialogContent className="sm:max-w-2xl">
@@ -1882,727 +1314,32 @@ export function SettingsView({
                     </DialogContent>
                   </Dialog>
 
-                  <Dialog open={isModelDialogOpen} onOpenChange={handleModelDialogChange}>
-                    <DialogContent className="model-config-dialog flex w-[min(96vw,85rem)] max-h-[90vh] max-w-[85rem] flex-col gap-0 overflow-hidden p-0 sm:max-w-[85rem]">
-                      <DialogHeader className="model-config-dialog-header shrink-0 border-b bg-card px-6 py-2.5 pr-10">
-                        <DialogTitle className="text-base font-semibold leading-tight">
-                          {activeModelPreset?.title || "模型常用配置"}
-                        </DialogTitle>
-                        <DialogDescription className="text-[11px] leading-normal text-muted-foreground">
-                          {activeModelPreset?.description || "更新模型配置。"}
-                        </DialogDescription>
-                      </DialogHeader>
-
-                      <div className="model-config-dialog-scroll themed-thin-scrollbar dialog-ultra-thin-scrollbar min-h-0 flex-1 overflow-y-auto">
-                        <div className="grid gap-6 px-6 py-6 xl:grid-cols-[minmax(25rem,29rem)_minmax(0,1fr)]">
-                          {/* 左侧概览：集中展示当前模型身份、状态与关键指标 */}
-                          <div className="space-y-5">
-                            {editingModel ? (
-                              <div className="model-config-dialog-panel rounded-xl border bg-card p-6">
-                                <div className="space-y-5">
-                                  <div className="flex items-start gap-4">
-                                      <div
-                                        className={cn(
-                                          "settings-model-icon-shell flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40",
-                                          getModelVisual(editingModel.component).surfaceClassName,
-                                        )}
-                                      >
-                                      {React.createElement(getModelVisual(editingModel.component).icon, {
-                                        className: cn("h-5 w-5", getModelVisual(editingModel.component).iconClassName),
-                                      })}
-                                    </div>
-                                    <div className="min-w-0 flex-1 space-y-2">
-                                      <div className="flex flex-wrap items-center gap-2">
-                                        <div className="min-w-0 text-lg font-medium leading-tight text-foreground">
-                                          {editingModel.name}
-                                        </div>
-                                        <Badge
-                                          variant="outline"
-                                          className={cn(
-                                            "rounded-md border bg-background/80",
-                                            modelTypeTagClassNames[editingModel.component],
-                                          )}
-                                        >
-                                          {modelTypeLabels[editingModel.component]}
-                                        </Badge>
-                                      </div>
-                                      <div className="break-all text-xs leading-relaxed text-muted-foreground">
-                                        {modelForm.model_id || editingModel.model_id}
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <Badge variant="outline" className="rounded-md border bg-background/80 text-foreground/90">
-                                      {`服务商 · ${(providerLabels[modelForm.provider] || modelForm.provider).replaceAll("_", " ")}`}
-                                    </Badge>
-                                    <Badge variant="outline" className="rounded-md border bg-background/80 text-foreground/90">
-                                      {`Component · ${modelTypeLabels[editingModel.component]}`}
-                                    </Badge>
-                                    {getStatusBadge(editingModel.status)}
-                                    <Badge
-                                      variant="outline"
-                                      className={cn(
-                                        "rounded-md border bg-background/80",
-                                        editingModel.is_installed
-                                          ? "border-status-success/35 text-status-success"
-                                          : "text-muted-foreground",
-                                      )}
-                                    >
-                                      {editingModel.is_installed ? "已安装" : "未安装"}
-                                    </Badge>
-                                  </div>
-
-                                  <div className="rounded-xl border bg-muted/30 p-4">
-                                    <div className="space-y-1">
-                                      <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                                        {modelForm.provider === "openai_compatible" ? "在线入口" : "默认目录"}
-                                      </div>
-                                      <div className="break-all text-xs leading-relaxed text-foreground/90">
-                                        {modelForm.provider === "openai_compatible"
-                                          ? modelForm.api_base_url || "未配置"
-                                          : editingModel.default_path || "未就绪"}
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                                    <div className="rounded-xl border bg-muted/30 p-4">
-                                      <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                                        当前启用
-                                      </div>
-                                      <div className="mt-2 text-base font-semibold leading-tight text-foreground">
-                                        {modelForm.enabled ? "已启用" : "已停用"}
-                                      </div>
-                                      <p className="mt-1 text-xs text-muted-foreground">
-                                        {modelForm.enabled ? "参与链路" : "不参与链路"}
-                                      </p>
-                                    </div>
-                                    <div className="rounded-xl border bg-muted/30 p-4">
-                                      <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                                        加载策略
-                                      </div>
-                                      <div className="mt-2 text-base font-semibold leading-tight text-foreground">
-                                        {modelForm.load_profile || "balanced"}
-                                      </div>
-                                      <p className="mt-1 text-xs text-muted-foreground">
-                                        平衡常驻与响应
-                                      </p>
-                                    </div>
-                                    <div className="rounded-xl border bg-muted/30 p-4">
-                                      <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                                        量化格式
-                                      </div>
-                                      <div className="mt-2 text-base font-semibold leading-tight text-foreground">
-                                        {modelDialogHasQuantization ? modelForm.quantization || "未设置" : "不适用"}
-                                      </div>
-                                      <p className="mt-1 text-xs text-muted-foreground">
-                                        影响显存与吞吐
-                                      </p>
-                                    </div>
-                                    <div className="rounded-xl border bg-muted/30 p-4">
-                                      <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                                        {modelDialogHasFrameInterval ? "抽帧间隔" : modelDialogHasRerankTopN ? "返回条数 / 批大小" : "批大小"}
-                                      </div>
-                                      <div className="mt-2 text-base font-semibold leading-tight text-foreground">
-                                        {modelDialogHasFrameInterval
-                                          ? `${modelForm.frame_interval_seconds || "10"} 秒`
-                                          : modelDialogHasRerankTopN
-                                            ? `${modelForm.rerank_top_n || "8"} 条 / 批 ${modelForm.max_batch_size || "1"}`
-                                          : modelDialogHasBatchSize
-                                            ? modelForm.max_batch_size || "1"
-                                            : "默认"}
-                                      </div>
-                                      <p className="mt-1 text-xs text-muted-foreground">
-                                        {modelDialogHasFrameInterval ? "影响证据帧密度" : modelDialogHasRerankTopN ? "控制最终候选数量与重排吞吐" : "越高越吃资源"}
-                                      </p>
-                                    </div>
-                                  </div>
-
-                                  <div className="rounded-xl border bg-muted/30 p-4">
-                                    <div className="space-y-1">
-                                      <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                                        {modelForm.provider === "openai_compatible" ? "当前模型 / 协议" : "当前路径"}
-                                      </div>
-                                      <div className="break-all text-xs leading-relaxed text-foreground/90">
-                                        {modelForm.provider === "openai_compatible"
-                                          ? modelForm.api_model || "未设置模型名"
-                                          : modelForm.path || editingModel.path || editingModel.default_path || "使用默认托管目录"}
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="rounded-xl border bg-muted/30 p-4">
-                                    <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                                      运行说明
-                                    </div>
-                                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                                      {activeModelPreset?.note ||
-                                        "调整常用运行参数，保存后同步后端配置。"}
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-                            ) : null}
-                          </div>
-
-                          {/* 右侧配置：按运行参数与在线接口参数分组 */}
-                          <div className="space-y-6 xl:max-w-[46rem]">
-                            <div className="model-config-dialog-panel rounded-xl border bg-card p-5 md:p-6">
-                              <div className="space-y-1">
-                                <div className="text-base font-semibold leading-tight">常用运行参数</div>
-                                <p className="text-xs leading-relaxed text-muted-foreground">
-                                  仅展示当前模型实际可调整的核心参数，避免无关配置干扰。
-                                </p>
-                              </div>
-
-                              <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2">
-                                <div className="space-y-2">
-                                  <Label>服务商</Label>
-                                  {modelProviderOptions.length === 1 ? (
-                                    <Input
-                                      className="bg-background/80"
-                                      readOnly
-                                      value={modelProviderOptions[0]?.label || providerLabels[modelForm.provider] || modelForm.provider}
-                                    />
-                                  ) : (
-                                    <Select
-                                      value={modelForm.provider}
-                                      onValueChange={(value) =>
-                                        setModelForm((current) => ({
-                                          ...current,
-                                          provider: value,
-                                        }))
-                                      }
-                                    >
-                                      <SelectTrigger className="model-config-dialog-select-trigger bg-background/80">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent className="model-config-select-content">
-                                        {modelProviderOptions.map((option) => (
-                                          <SelectItem key={option.value} value={option.value}>
-                                            {option.label}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  )}
-                                  <p className="text-xs text-muted-foreground">
-                                    为当前组件选择本地目录、Ollama 或在线 API 路由。
-                                  </p>
-                                </div>
-
-                                <div className="space-y-2">
-                                  <Label htmlFor="model-identifier">模型标识</Label>
-                                  <Input
-                                    id="model-identifier"
-                                    className="bg-background/80"
-                                    value={modelForm.model_id}
-                                    readOnly={isWhisperDialog}
-                                    onChange={(event) =>
-                                      setModelForm((current) => ({ ...current, model_id: event.target.value }))
-                                    }
-                                    placeholder={modelForm.provider === "ollama" ? "如 qwen2.5:3b / moondream" : "逻辑模型标识"}
-                                  />
-                                  <p className="text-xs text-muted-foreground">
-                                    {modelForm.provider === "ollama"
-                                      ? "这里填写 Ollama 中实际安装和调用的模型名。"
-                                      : "用于当前模型条目的逻辑标识，本地与在线配置会共享这个基准值。"}
-                                  </p>
-                                </div>
-
-                                {showModelPathField ? (
-                                  <div className="space-y-2 md:col-span-2">
-                                    <Label htmlFor="model-path">{activeModelPreset.pathLabel || "本地路径"}</Label>
-                                    <Input
-                                      id="model-path"
-                                      className="bg-background/80"
-                                      placeholder={
-                                        isWhisperDialog
-                                          ? "未就绪"
-                                          : activeModelPreset.pathPlaceholder || "可选：指定模型缓存目录或本地模型目录"
-                                      }
-                                      value={modelForm.path}
-                                      readOnly={isWhisperDialog}
-                                      onChange={(event) =>
-                                        setModelForm((current) => ({ ...current, path: event.target.value }))
-                                      }
-                                    />
-                                    <p className="text-xs text-muted-foreground">
-                                      {isWhisperDialog
-                                        ? "Whisper 模型目录由桌面端托管，点击上方“下载 / 重置”会自动写入默认目录。"
-                                        : "未填写时优先使用当前已检测到的模型目录或默认托管目录。"}
-                                    </p>
-                                  </div>
-                                ) : null}
-
-                                {isWhisperDialog ? (
-                                  <div className="space-y-4 rounded-xl border bg-muted/20 p-4 md:col-span-2">
-                                    <div className="flex items-start justify-between gap-4">
-                                      <div className="space-y-1">
-                                        <Label className="leading-tight">Whisper GPU 加速</Label>
-                                        <p className="text-xs text-muted-foreground">
-                                          自动复用 Ollama 安装目录中的 CUDA 运行库；刷新检测后即可切换 GPU 模式。
-                                        </p>
-                                      </div>
-                                      <Switch
-                                        checked={Boolean(whisperConfig && whisperConfig.device !== "cpu")}
-                                        disabled={!whisperConfig || isUpdatingWhisper}
-                                        onCheckedChange={(checked) => {
-                                          void handleGpuToggle(checked)
-                                        }}
-                                      />
-                                    </div>
-
-                                    <div className="grid gap-3 md:grid-cols-3">
-                                      <div className="rounded-xl border bg-background/70 px-4 py-3">
-                                        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                                          检测状态
-                                        </p>
-                                        <p className="mt-2 text-sm font-medium">
-                                          {whisperConfig?.runtime_libraries.ready ? "已检测到可用 GPU 运行库" : "GPU 运行库未就绪"}
-                                        </p>
-                                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                                          {whisperConfig?.runtime_libraries.message || "等待检测"}
-                                        </p>
-                                      </div>
-                                      <div className="rounded-xl border bg-background/70 px-4 py-3">
-                                        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                                          生效目录
-                                        </p>
-                                        <p className="mt-2 break-all text-sm leading-6 text-foreground/90">
-                                          {whisperConfig?.runtime_libraries.bin_dir || "未识别到 Ollama GPU 运行库目录"}
-                                        </p>
-                                      </div>
-                                      <div className="rounded-xl border bg-background/70 px-4 py-3">
-                                        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                                          环境同步
-                                        </p>
-                                        <p className="mt-2 text-sm font-medium">
-                                          {whisperConfig?.runtime_libraries.path_configured ? "当前进程已同步" : "当前进程未同步"}
-                                        </p>
-                                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                                          {whisperConfig?.runtime_libraries.version_label || "等待检测"}
-                                        </p>
-                                      </div>
-                                    </div>
-
-                                    <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed bg-background/70 px-4 py-3">
-                                      <div className="min-w-0">
-                                        <p className="text-sm font-medium">刷新检测</p>
-                                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                                          重新读取 Ollama 安装目录中的 GPU 运行库状态，并同步当前页面显示。
-                                        </p>
-                                      </div>
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        disabled={isUpdatingWhisper || isLoading}
-                                        onClick={() => {
-                                          void getWhisperConfig()
-                                            .then((response) => {
-                                              setWhisperConfig(response)
-                                              toast.success("Whisper GPU 运行库状态已刷新")
-                                            })
-                                            .catch((error) => {
-                                              toast.error(getApiErrorMessage(error, "刷新 Whisper GPU 运行库状态失败"))
-                                            })
-                                        }}
-                                      >
-                                        <RefreshCw className="mr-2 h-4 w-4" />
-                                        刷新检测
-                                      </Button>
-                                    </div>
-                                  </div>
-                                ) : null}
-
-                                {activeModelPreset?.fields.includes("load_profile") ? (
-                                  <div className="space-y-2">
-                                    <Label>加载策略</Label>
-                                    <Select
-                                      value={modelForm.load_profile}
-                                      onValueChange={(value) =>
-                                        setModelForm((current) => ({ ...current, load_profile: value }))
-                                      }
-                                    >
-                                      <SelectTrigger className="model-config-dialog-select-trigger bg-background/80">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent className="model-config-select-content">
-                                        <SelectItem value="balanced">balanced</SelectItem>
-                                        <SelectItem value="memory_first">memory_first</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                    <p className="text-xs text-muted-foreground">
-                                      根据模型体积与硬件资源选择常驻或平衡模式。
-                                    </p>
-                                  </div>
-                                ) : null}
-
-                                {modelDialogHasQuantization && modelForm.provider !== "openai_compatible" ? (
-                                  <div className="space-y-2">
-                                    <Label htmlFor="model-quantization">
-                                      {activeModelPreset?.quantizationLabel || "量化格式"}
-                                    </Label>
-                                    <Input
-                                      id="model-quantization"
-                                      className="bg-background/80"
-                                      placeholder={activeModelPreset?.quantizationPlaceholder || "如 int8 / 4bit / fp16"}
-                                      value={modelForm.quantization}
-                                      onChange={(event) =>
-                                        setModelForm((current) => ({
-                                          ...current,
-                                          quantization: event.target.value,
-                                        }))
-                                      }
-                                    />
-                                    <p className="text-xs text-muted-foreground">
-                                      推荐与当前模型文件实际格式保持一致，避免加载异常。
-                                    </p>
-                                  </div>
-                                ) : null}
-
-                                {modelDialogHasFrameInterval ? (
-                                  <div
-                                    className={cn(
-                                      "space-y-2",
-                                      !activeModelPreset?.fields.includes("load_profile") && !modelDialogHasQuantization
-                                        ? "md:col-span-2"
-                                        : "",
-                                    )}
-                                  >
-                                    <Label htmlFor="model-frame-interval">
-                                      {activeModelPreset?.batchLabel || "抽帧间隔（秒）"}
-                                    </Label>
-                                    <Input
-                                      id="model-frame-interval"
-                                      className="bg-background/80"
-                                      type="number"
-                                      min={1}
-                                      max={600}
-                                      value={modelForm.frame_interval_seconds}
-                                      onChange={(event) =>
-                                        setModelForm((current) => ({
-                                          ...current,
-                                          frame_interval_seconds: event.target.value,
-                                        }))
-                                      }
-                                    />
-                                    <p className="text-xs text-muted-foreground">
-                                      {activeModelPreset?.batchDescription || "控制证据图抽帧频率。"}
-                                    </p>
-                                  </div>
-                                ) : null}
-
-                                {modelDialogHasBatchSize ? (
-                                  <div
-                                    className={cn(
-                                      "space-y-2",
-                                      !activeModelPreset?.fields.includes("load_profile") && !modelDialogHasQuantization
-                                        ? "md:col-span-2"
-                                        : "",
-                                    )}
-                                  >
-                                    <Label htmlFor="model-max-batch">
-                                      {activeModelPreset?.batchLabel || "最大批大小"}
-                                    </Label>
-                                    <Input
-                                      id="model-max-batch"
-                                      className="bg-background/80"
-                                      type="number"
-                                      min={1}
-                                      max={64}
-                                      value={modelForm.max_batch_size}
-                                      onChange={(event) =>
-                                        setModelForm((current) => ({
-                                          ...current,
-                                          max_batch_size: event.target.value,
-                                        }))
-                                      }
-                                    />
-                                    <p className="text-xs text-muted-foreground">
-                                      {activeModelPreset?.batchDescription || "影响同批次吞吐与资源占用。"}
-                                    </p>
-                                  </div>
-                                ) : null}
-
-                                {modelDialogHasRerankTopN ? (
-                                  <div
-                                    className={cn(
-                                      "space-y-2",
-                                      !activeModelPreset?.fields.includes("load_profile") && !modelDialogHasQuantization
-                                        ? "md:col-span-2"
-                                        : "",
-                                    )}
-                                  >
-                                    <Label htmlFor="model-rerank-top-n">最终返回条数</Label>
-                                    <Input
-                                      id="model-rerank-top-n"
-                                      className="bg-background/80"
-                                      type="number"
-                                      min={1}
-                                      max={20}
-                                      value={modelForm.rerank_top_n}
-                                      onChange={(event) =>
-                                        setModelForm((current) => ({
-                                          ...current,
-                                          rerank_top_n: event.target.value,
-                                        }))
-                                      }
-                                    />
-                                    <p className="text-xs text-muted-foreground">
-                                      控制最终排序后交给问答模型的候选数量，前端问答界面会直接使用这里的默认值。
-                                    </p>
-                                  </div>
-                                ) : null}
-
-                                {activeModelPreset?.fields.includes("enabled") ? (
-                                  <div className="md:col-span-2">
-                                    <div className="flex items-center justify-between gap-4 rounded-xl border bg-muted/30 px-4 py-3.5">
-                                      <div className="min-w-0 space-y-1">
-                                        <Label className="leading-tight">启用状态</Label>
-                                        <p className="text-xs leading-relaxed text-muted-foreground">
-                                          关闭后模型不会参与当前运行链路，但会保留已保存的目录与参数。
-                                        </p>
-                                      </div>
-                                      <Switch
-                                        checked={modelForm.enabled}
-                                        onCheckedChange={(checked) =>
-                                          setModelForm((current) => ({ ...current, enabled: checked }))
-                                        }
-                                      />
-                                    </div>
-                                  </div>
-                                ) : null}
-                              </div>
-                            </div>
-
-                            {showRemoteApiFields ? (
-                              <div className="model-config-dialog-panel rounded-xl border bg-card p-5 md:p-6">
-                                <div className="space-y-1">
-                                  <div className="text-base font-semibold leading-tight">在线 API 配置</div>
-                                  <p className="text-xs leading-relaxed text-muted-foreground">
-                                    为当前组件单独配置 Base URL、模型名与鉴权信息。后端会根据服务地址和模型类型自动选择兼容适配方式。
-                                  </p>
-                                </div>
-
-                                <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2">
-                                  <div className="space-y-2 md:col-span-2">
-                                    <Label htmlFor="remote-base-url">Base URL</Label>
-                                    <Input
-                                      id="remote-base-url"
-                                      className="bg-background/80"
-                                      placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"
-                                      value={modelForm.api_base_url}
-                                      onChange={(event) =>
-                                        setModelForm((current) => ({ ...current, api_base_url: event.target.value }))
-                                      }
-                                    />
-                                    <p className="text-xs text-muted-foreground">
-                                      使用兼容 OpenAI 的服务入口地址，通常以 `/v1` 结尾。
-                                    </p>
-                                  </div>
-
-                                  <div className="space-y-2">
-                                    <Label htmlFor="remote-model">调用模型名</Label>
-                                    <Input
-                                      id="remote-model"
-                                      className="bg-background/80"
-                                      placeholder={remoteModelRecommendations.join(" / ") || "填写远端模型名"}
-                                      value={modelForm.api_model}
-                                      onChange={(event) =>
-                                        setModelForm((current) => ({ ...current, api_model: event.target.value }))
-                                      }
-                                    />
-                                    <p className="text-xs text-muted-foreground">
-                                      与提供商控制台中的可调用模型名保持一致。
-                                      {remoteModelRecommendations.length > 0 ? ` 推荐：${remoteModelRecommendations.join("、")}` : ""}
-                                    </p>
-                                  </div>
-
-                                  <div className="space-y-2">
-                                    <Label htmlFor="remote-api-key">API Key</Label>
-                                    <Input
-                                      id="remote-api-key"
-                                      className="bg-background/80"
-                                      type="password"
-                                      placeholder="输入模型提供商的 API Key"
-                                      value={modelForm.api_key}
-                                      onChange={(event) =>
-                                        setModelForm((current) => ({ ...current, api_key: event.target.value }))
-                                      }
-                                    />
-                                    <p className="text-xs text-muted-foreground">
-                                      仅当前组件会读取这里的密钥配置。
-                                    </p>
-                                  </div>
-
-                                  <div className="space-y-2">
-                                    <Label htmlFor="remote-timeout">超时（秒）</Label>
-                                    <Input
-                                      id="remote-timeout"
-                                      className="bg-background/80"
-                                      type="number"
-                                      min={10}
-                                      max={600}
-                                      value={modelForm.api_timeout_seconds}
-                                      onChange={(event) =>
-                                        setModelForm((current) => ({
-                                          ...current,
-                                          api_timeout_seconds: event.target.value,
-                                        }))
-                                      }
-                                    />
-                                    <p className="text-xs text-muted-foreground">
-                                      控制当前组件请求远端接口的超时窗口。
-                                    </p>
-                                  </div>
-
-                                  {showImageApiFields ? (
-                                    <>
-                                      <div className="space-y-2">
-                                        <Label htmlFor="remote-image-max-bytes">图片压缩上限（字节）</Label>
-                                        <Input
-                                          id="remote-image-max-bytes"
-                                          className="bg-background/80"
-                                          type="number"
-                                          min={32768}
-                                          max={8388608}
-                                          value={modelForm.api_image_max_bytes}
-                                          onChange={(event) =>
-                                            setModelForm((current) => ({
-                                              ...current,
-                                              api_image_max_bytes: event.target.value,
-                                            }))
-                                          }
-                                        />
-                                        <p className="text-xs text-muted-foreground">
-                                          在线图像理解前会压缩图片，降低带宽占用并提升响应速度。
-                                        </p>
-                                      </div>
-
-                                      <div className="space-y-2">
-                                        <Label htmlFor="remote-image-max-edge">图片最长边</Label>
-                                        <Input
-                                          id="remote-image-max-edge"
-                                          className="bg-background/80"
-                                          type="number"
-                                          min={256}
-                                          max={4096}
-                                          value={modelForm.api_image_max_edge}
-                                          onChange={(event) =>
-                                            setModelForm((current) => ({
-                                              ...current,
-                                              api_image_max_edge: event.target.value,
-                                            }))
-                                          }
-                                        />
-                                        <p className="text-xs text-muted-foreground">
-                                          用于控制发送到远端接口的图像尺寸上限。
-                                        </p>
-                                      </div>
-                                    </>
-                                  ) : null}
-                                </div>
-                              </div>
-                            ) : null}
-
-                            {showLlmCorrectionFields ? (
-                              <div className="model-config-dialog-panel rounded-xl border bg-card p-5 md:p-6">
-                                <div className="space-y-1">
-                                  <div className="text-base font-semibold leading-tight">文本纠错设置</div>
-                                  <p className="text-xs leading-relaxed text-muted-foreground">
-                                    这部分会同步到摘要与纠错链路，恢复转写文本优化阶段的可调参数。
-                                  </p>
-                                </div>
-
-                                <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2">
-                                  <div className="space-y-2">
-                                    <Label>文本纠错模式</Label>
-                                    <Select
-                                      value={llmForm.correction_mode}
-                                      onValueChange={(value) =>
-                                        setLlmForm((current) => ({
-                                          ...current,
-                                          correction_mode: value as LLMConfigResponse["correction_mode"],
-                                        }))
-                                      }
-                                    >
-                                      <SelectTrigger className="model-config-dialog-select-trigger bg-background/80">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent className="model-config-select-content">
-                                        <SelectItem value="off">off</SelectItem>
-                                        <SelectItem value="strict">strict</SelectItem>
-                                        <SelectItem value="rewrite">rewrite</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                    <p className="text-xs text-muted-foreground">
-                                      控制转写纠错阶段对原文的保守程度。
-                                    </p>
-                                  </div>
-
-                                  <div className="space-y-2">
-                                    <Label htmlFor="llm-correction-batch">纠错批大小</Label>
-                                    <Input
-                                      id="llm-correction-batch"
-                                      className="bg-background/80"
-                                      type="number"
-                                      min={6}
-                                      max={80}
-                                      value={llmForm.correction_batch_size}
-                                      onChange={(event) =>
-                                        setLlmForm((current) => ({
-                                          ...current,
-                                          correction_batch_size: event.target.value,
-                                        }))
-                                      }
-                                    />
-                                    <p className="text-xs text-muted-foreground">
-                                      批次越大吞吐越高，但失败重试成本也会增加。
-                                    </p>
-                                  </div>
-
-                                  <div className="space-y-2">
-                                    <Label htmlFor="llm-correction-overlap">纠错重叠</Label>
-                                    <Input
-                                      id="llm-correction-overlap"
-                                      className="bg-background/80"
-                                      type="number"
-                                      min={0}
-                                      max={20}
-                                      value={llmForm.correction_overlap}
-                                      onChange={(event) =>
-                                        setLlmForm((current) => ({
-                                          ...current,
-                                          correction_overlap: event.target.value,
-                                        }))
-                                      }
-                                    />
-                                    <p className="text-xs text-muted-foreground">
-                                      保留相邻片段重叠上下文，减少断句边界误差。
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-
-                      <DialogFooter className="model-config-dialog-footer shrink-0 border-t bg-card px-6 py-3">
-                        <Button variant="outline" onClick={() => handleModelDialogChange(false)}>
-                          取消
-                        </Button>
-                        <Button disabled={isSavingModel} onClick={() => void handleSaveModelConfig()}>
-                          <Save className="mr-2 h-4 w-4" />
-                          保存配置
-                        </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                </CardContent>
-              </Card>
+                  <SettingsModelConfigDialog
+                    open={isModelDialogOpen}
+                    editingModel={editingModel}
+                    modelForm={modelForm}
+                    llmForm={llmForm}
+                    whisperConfig={whisperConfig}
+                    isSavingModel={isSavingModel}
+                    isUpdatingWhisper={isUpdatingWhisper}
+                    isLoading={isLoading}
+                    onOpenChange={handleModelDialogChange}
+                    onSave={() => {
+                      void handleSaveModelConfig()
+                    }}
+                    onRefreshWhisperRuntimeStatus={() => {
+                      void handleRefreshWhisperRuntimeStatus()
+                    }}
+                    onBrowseModelPath={() => {
+                      void handleBrowseModelPath()
+                    }}
+                    onGpuToggle={(checked) => {
+                      void handleGpuToggle(checked)
+                    }}
+                    setModelForm={setModelForm}
+                    setLlmForm={setLlmForm}
+                  />
+              </>
             )}
 
             {activeSection === "prompts" && (
