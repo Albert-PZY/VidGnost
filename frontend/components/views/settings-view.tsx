@@ -3,6 +3,7 @@
 import * as React from "react"
 import { toast } from "react-hot-toast"
 import {
+  BookOpen,
   CloudDownload,
   Cpu,
   FileCode,
@@ -147,6 +148,8 @@ const EMPTY_PROMPT_FORM = {
   name: "",
   content: "",
 }
+
+type PromptDialogMode = "create" | "edit" | "view"
 
 type ModelConfigFormState = {
   provider: string
@@ -403,6 +406,7 @@ export function SettingsView({
   const [isSkinDialogOpen, setIsSkinDialogOpen] = React.useState(false)
   const [pendingSkinImage, setPendingSkinImage] = React.useState<PickedSkinImage | null>(null)
   const [editingPrompt, setEditingPrompt] = React.useState<PromptTemplateItem | null>(null)
+  const [promptDialogMode, setPromptDialogMode] = React.useState<PromptDialogMode>("create")
   const [editingModel, setEditingModel] = React.useState<ModelDescriptor | null>(null)
   const [promptForm, setPromptForm] = React.useState(EMPTY_PROMPT_FORM)
   const [modelForm, setModelForm] = React.useState<ModelConfigFormState>(EMPTY_MODEL_FORM)
@@ -424,6 +428,7 @@ export function SettingsView({
   const [pendingDeletePrompt, setPendingDeletePrompt] = React.useState<PromptTemplateItem | null>(null)
   const [isDeletingPrompt, setIsDeletingPrompt] = React.useState(false)
   const markdownColorMode = resolvedTheme === "dark" ? "dark" : "light"
+  const isPromptReadOnly = promptDialogMode === "view"
   const backgroundFileInputRef = React.useRef<HTMLInputElement | null>(null)
   const backgroundFileResolverRef = React.useRef<((image: PickedSkinImage | null) => void) | null>(null)
   const skinPreviewRef = React.useRef<HTMLDivElement | null>(null)
@@ -923,12 +928,14 @@ export function SettingsView({
     setIsPromptDialogOpen(open)
     if (!open) {
       setEditingPrompt(null)
+      setPromptDialogMode("create")
       setPromptForm(EMPTY_PROMPT_FORM)
     }
   }
 
   const handleCreatePromptClick = () => {
     setEditingPrompt(null)
+    setPromptDialogMode("create")
     setPromptForm(EMPTY_PROMPT_FORM)
     setIsPromptDialogOpen(true)
   }
@@ -940,6 +947,18 @@ export function SettingsView({
     }
 
     setEditingPrompt(prompt)
+    setPromptDialogMode("edit")
+    setPromptForm({
+      channel: prompt.channel,
+      name: prompt.name,
+      content: prompt.content,
+    })
+    setIsPromptDialogOpen(true)
+  }
+
+  const handleViewPromptClick = (prompt: PromptTemplateItem) => {
+    setEditingPrompt(prompt)
+    setPromptDialogMode("view")
     setPromptForm({
       channel: prompt.channel,
       name: prompt.name,
@@ -2625,106 +2644,142 @@ export function SettingsView({
                         <DialogContent className="prompt-config-dialog flex w-[min(96vw,88rem)] max-h-[min(90vh,60rem)] max-w-[88rem] flex-col gap-0 overflow-hidden p-0 sm:max-w-[88rem]">
                           <DialogHeader className="prompt-config-dialog-header shrink-0 border-b px-6 py-2.5 pr-10">
                             <DialogTitle className="text-base font-semibold leading-tight">
-                              {editingPrompt ? "编辑提示词模板" : "新建提示词模板"}
+                              {promptDialogMode === "view"
+                                ? editingPrompt?.name || "查看提示词模板"
+                                : editingPrompt
+                                  ? "编辑提示词模板"
+                                  : "新建提示词模板"}
                             </DialogTitle>
-                            <DialogDescription className="text-[11px] leading-normal">
-                              配置用于特定任务的提示词模板
-                            </DialogDescription>
+                            {isPromptReadOnly ? null : (
+                              <DialogDescription className="text-[11px] leading-normal">
+                                配置用于特定任务的提示词模板
+                              </DialogDescription>
+                            )}
                           </DialogHeader>
                           <div className="prompt-config-dialog-scroll themed-thin-scrollbar dialog-ultra-thin-scrollbar min-h-0 flex-1 overflow-y-auto px-6 py-5">
-                            <div className="grid gap-5 xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
-                              <section className="space-y-4">
-                                <div className="prompt-config-dialog-panel rounded-xl border bg-card p-4">
-                                  <div className="space-y-4">
-                                    <div className="grid gap-4">
-                                      <div className="space-y-2">
-                                        <Label>模板名称</Label>
-                                        <Input
-                                          placeholder="输入模板名称"
-                                          value={promptForm.name}
-                                          onChange={(event) =>
-                                            setPromptForm((current) => ({
-                                              ...current,
-                                              name: event.target.value,
-                                            }))
-                                          }
-                                        />
-                                      </div>
-                                      <div className="space-y-2">
-                                        <Label>模板类型</Label>
-                                        <Select
-                                          value={promptForm.channel}
-                                          onValueChange={(value) =>
-                                            setPromptForm((current) => ({
-                                              ...current,
-                                              channel: value as PromptTemplateChannel,
-                                            }))
-                                          }
-                                          disabled={Boolean(editingPrompt)}
-                                        >
-                                          <SelectTrigger className="prompt-config-dialog-select-trigger">
-                                            <SelectValue />
-                                          </SelectTrigger>
-                                          <SelectContent className="prompt-config-select-content">
-                                            <SelectItem value="correction">文本纠错</SelectItem>
-                                            <SelectItem value="notes">笔记生成</SelectItem>
-                                            <SelectItem value="mindmap">思维导图</SelectItem>
-                                            <SelectItem value="vqa">问答检索</SelectItem>
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
-                                    </div>
-                                    <div className="rounded-xl border bg-muted/35 px-4 py-3">
-                                      <div className="flex flex-wrap items-center gap-3">
-                                        <Badge
-                                          variant="outline"
-                                          className={cn("shrink-0", promptTagClassNames[promptForm.channel])}
-                                        >
-                                          {promptTypeLabels[promptForm.channel]}
-                                        </Badge>
-                                        <p className="text-sm leading-relaxed text-muted-foreground">
-                                          {promptDescriptions[promptForm.channel]}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              </section>
-
+                            {isPromptReadOnly ? (
                               <section className="space-y-3">
                                 <div className="prompt-config-dialog-panel rounded-xl border bg-card p-4">
-                                  <div className="space-y-1">
-                                    <Label className="text-sm font-medium">提示词内容</Label>
-                                    <p className="text-xs text-muted-foreground">
-                                      左侧编辑，右侧预览；支持 {"{text}"} 和 {"{context}"} 占位符。
-                                    </p>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <Badge
+                                      variant="outline"
+                                      className={cn("shrink-0", promptTagClassNames[promptForm.channel])}
+                                    >
+                                      {promptTypeLabels[promptForm.channel]}
+                                    </Badge>
+                                    {editingPrompt?.is_default ? <Badge variant="secondary">默认</Badge> : null}
+                                    {editingPrompt && promptBundle?.selection[editingPrompt.channel] === editingPrompt.id ? (
+                                      <Badge>当前生效</Badge>
+                                    ) : null}
                                   </div>
                                   <div className="mt-4">
                                     <PromptMarkdownEditor
                                       value={promptForm.content}
                                       colorMode={markdownColorMode}
                                       height={520}
-                                      placeholder="输入提示词内容，使用 {text} 作为输入文本占位符"
-                                      onChange={(value) =>
-                                        setPromptForm((current) => ({
-                                          ...current,
-                                          content: value,
-                                        }))
-                                      }
+                                      readOnly
+                                      onChange={() => {}}
                                     />
                                   </div>
                                 </div>
                               </section>
-                            </div>
+                            ) : (
+                              <div className="grid gap-5 xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
+                                <section className="space-y-4">
+                                  <div className="prompt-config-dialog-panel rounded-xl border bg-card p-4">
+                                    <div className="space-y-4">
+                                      <div className="grid gap-4">
+                                        <div className="space-y-2">
+                                          <Label>模板名称</Label>
+                                          <Input
+                                            placeholder="输入模板名称"
+                                            value={promptForm.name}
+                                            onChange={(event) =>
+                                              setPromptForm((current) => ({
+                                                ...current,
+                                                name: event.target.value,
+                                              }))
+                                            }
+                                          />
+                                        </div>
+                                        <div className="space-y-2">
+                                          <Label>模板类型</Label>
+                                          <Select
+                                            value={promptForm.channel}
+                                            onValueChange={(value) =>
+                                              setPromptForm((current) => ({
+                                                ...current,
+                                                channel: value as PromptTemplateChannel,
+                                              }))
+                                            }
+                                            disabled={Boolean(editingPrompt)}
+                                          >
+                                            <SelectTrigger className="prompt-config-dialog-select-trigger">
+                                              <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent className="prompt-config-select-content">
+                                              <SelectItem value="correction">文本纠错</SelectItem>
+                                              <SelectItem value="notes">笔记生成</SelectItem>
+                                              <SelectItem value="mindmap">思维导图</SelectItem>
+                                              <SelectItem value="vqa">问答检索</SelectItem>
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                      </div>
+                                      <div className="rounded-xl border bg-muted/35 px-4 py-3">
+                                        <div className="flex flex-wrap items-center gap-3">
+                                          <Badge
+                                            variant="outline"
+                                            className={cn("shrink-0", promptTagClassNames[promptForm.channel])}
+                                          >
+                                            {promptTypeLabels[promptForm.channel]}
+                                          </Badge>
+                                          <p className="text-sm leading-relaxed text-muted-foreground">
+                                            {promptDescriptions[promptForm.channel]}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </section>
+
+                                <section className="space-y-3">
+                                  <div className="prompt-config-dialog-panel rounded-xl border bg-card p-4">
+                                    <div className="space-y-1">
+                                      <Label className="text-sm font-medium">提示词内容</Label>
+                                      <p className="text-xs text-muted-foreground">
+                                        左侧编辑，右侧预览；支持 {"{text}"} 和 {"{context}"} 占位符。
+                                      </p>
+                                    </div>
+                                    <div className="mt-4">
+                                      <PromptMarkdownEditor
+                                        value={promptForm.content}
+                                        colorMode={markdownColorMode}
+                                        height={520}
+                                        placeholder="输入提示词内容，使用 {text} 作为输入文本占位符"
+                                        onChange={(value) =>
+                                          setPromptForm((current) => ({
+                                            ...current,
+                                            content: value,
+                                          }))
+                                        }
+                                      />
+                                    </div>
+                                  </div>
+                                </section>
+                              </div>
+                            )}
                           </div>
                           <DialogFooter className="prompt-config-dialog-footer shrink-0 border-t px-6 py-3">
                             <Button variant="outline" onClick={() => handlePromptDialogChange(false)}>
-                              取消
+                              {isPromptReadOnly ? "关闭" : "取消"}
                             </Button>
-                            <Button disabled={isSavingPrompt} onClick={() => void handleSavePrompt()}>
-                              <Save className="h-4 w-4 mr-2" />
-                              保存
-                            </Button>
+                            {isPromptReadOnly ? null : (
+                              <Button disabled={isSavingPrompt} onClick={() => void handleSavePrompt()}>
+                                <Save className="h-4 w-4 mr-2" />
+                                保存
+                              </Button>
+                            )}
                           </DialogFooter>
                         </DialogContent>
                       </Dialog>
@@ -2750,28 +2805,38 @@ export function SettingsView({
                               </p>
                             </div>
                             <div className="flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => handleEditPromptClick(prompt)}
-                              >
-                                <Edit2 className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-destructive"
-                                onClick={() => {
-                                  if (prompt.is_default) {
-                                    toast("系统默认模板不可删除")
-                                    return
-                                  }
-                                  setPendingDeletePrompt(prompt)
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                              {prompt.is_default ? (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  aria-label="查看模板"
+                                  onClick={() => handleViewPromptClick(prompt)}
+                                >
+                                  <BookOpen className="h-4 w-4" />
+                                </Button>
+                              ) : (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    onClick={() => handleEditPromptClick(prompt)}
+                                  >
+                                    <Edit2 className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-destructive"
+                                    onClick={() => {
+                                      setPendingDeletePrompt(prompt)
+                                    }}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </>
+                              )}
                             </div>
                           </div>
                           <div className="prompt-template-preview-shell mt-3 rounded bg-muted p-3">

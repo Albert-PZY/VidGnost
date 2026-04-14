@@ -110,6 +110,7 @@ Prompt template list and editor SHALL use channel-specific labels for `correctio
 - **WHEN** user opens the prompt template section
 - **THEN** each template card shows the channel label and a distinct icon marker
 - **AND** the editor dialog reflects the currently selected channel visually
+- **AND** system default templates expose a read-only inspect action instead of edit and delete actions
 
 ### Requirement: Prompt template editor SHALL provide split markdown editing with live preview
 Prompt template editor SHALL use a markdown editor that keeps the source editor and rendered preview visible at the same time. The editor theme SHALL follow the application light/dark theme, editor-side scrolling SHALL remain synchronized with the preview pane during editing, and helper text above the editor SHALL stay concise without repeating nearby labels.
@@ -119,6 +120,12 @@ Prompt template editor SHALL use a markdown editor that keeps the source editor 
 - **THEN** the dialog shows a markdown editor with source editing on the left and live rendered preview on the right
 - **AND** the editor applies the same light or dark color mode as the renderer shell
 - **AND** scrolling one pane keeps the other pane aligned for long prompt content
+
+#### Scenario: View a default prompt template in the settings center
+- **WHEN** user opens a system default prompt template from the prompt-template list
+- **THEN** the dialog reuses the markdown editor with the template content already populated
+- **AND** the source pane remains read-only while the preview pane keeps live rendered output visible
+- **AND** the dialog omits editable form fields and extra helper copy unrelated to reading the template body
 
 ### Requirement: Workbench notes editor SHALL prefer a wide split layout
 The task-workbench Markdown notes editor dialog SHALL use a wide split layout that prioritizes side-by-side editing and preview over vertical height. On desktop widths, the dialog SHALL expand toward a wide landscape presentation instead of a tall narrow panel, and the editor viewport SHALL stay visually compact enough to avoid pushing the action area below the fold.

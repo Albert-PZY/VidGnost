@@ -15,6 +15,7 @@ interface PromptMarkdownEditorProps {
   taskId?: string
   height?: number
   placeholder?: string
+  readOnly?: boolean
   onChange: (value: string) => void
 }
 
@@ -24,6 +25,7 @@ export function PromptMarkdownEditor({
   taskId,
   height = 520,
   placeholder,
+  readOnly = false,
   onChange,
 }: PromptMarkdownEditorProps) {
   const previewMarkdown = useDecoratedMarkdown({
@@ -42,12 +44,16 @@ export function PromptMarkdownEditor({
       <MDEditor
         value={value}
         onChange={(nextValue) => {
+          if (readOnly) {
+            return
+          }
           onChange(nextValue ?? "")
         }}
         preview="live"
         visibleDragbar={false}
         enableScroll
         height={height}
+        hideToolbar={readOnly}
         data-color-mode={colorMode}
         extraCommands={[]}
         components={{
@@ -64,6 +70,7 @@ export function PromptMarkdownEditor({
           placeholder,
           "aria-label": "提示词内容 Markdown 编辑器",
           spellCheck: false,
+          readOnly,
         }}
       />
     </div>
