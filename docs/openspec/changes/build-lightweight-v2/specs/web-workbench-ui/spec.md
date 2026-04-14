@@ -318,15 +318,23 @@ New-task view SHALL expose `Upload`, `URL`, and `Path` intake modes inside the s
 - **AND** the user can switch to URL or absolute local-path input without leaving the page
 
 ### Requirement: Bootstrap surfaces SHALL provide startup progress and backend recovery actions
-Workbench bootstrap SHALL expose a desktop splash progress state before the main window reveal and a renderer overlay state machine for `initializing`, `connecting`, `degraded`, and `ready` after the main window becomes visible. Degraded states SHALL provide direct recovery actions.
+Workbench bootstrap SHALL expose a desktop splash progress state before the main window reveal and a renderer overlay state machine for `initializing`, `connecting`, `degraded`, and `ready` after the main window becomes visible. Initializing states SHALL keep an explicit loading affordance, while degraded states SHALL switch to a non-blocking recovery panel.
+
+#### Scenario: Renderer is still initializing after main window reveal
+- **WHEN** renderer has entered `initializing` or `connecting` and is still waiting for backend health or first configuration payloads
+- **THEN** the startup surface keeps a blocking overlay over the main workbench
+- **AND** the overlay shows an animated loading affordance together with the current phase message
+- **AND** the overlay does not render disabled recovery buttons before log paths or degraded actions become actionable
 
 #### Scenario: Backend is unavailable during bootstrap
 - **WHEN** renderer cannot complete initial health/config synchronization
 - **THEN** the desktop splash completes the startup handoff and the main window opens in degraded mode
 - **AND** the desktop splash marks the failing explicit startup step as `error` instead of fabricating a fully completed progress bar
-- **AND** a blocking overlay explains that the backend is unavailable
-- **AND** the overlay provides `重试连接`, `查看诊断`, and `打开日志目录` actions
-- **AND** the overlay is dismissed automatically once bootstrap reaches `ready`
+- **AND** a non-blocking recovery panel explains that the backend is unavailable without locking the whole workbench
+- **AND** the panel provides `重试连接` and `查看诊断` actions
+- **AND** `打开日志目录` is shown only when the renderer has a current or cached runtime log path
+- **AND** the user can switch to `系统自检` while the degraded recovery panel remains available
+- **AND** the panel is dismissed automatically once bootstrap reaches `ready`
 
 ### Requirement: Task processing workbench SHALL provide a resizable evidence-driven workspace
 Task processing workbench SHALL use a horizontal resizable split layout. For notes tasks, the left workspace SHALL provide `转写片段`, `文本纠错`, `证据时间轴`, and `阶段输出` tabs. For VQA tasks, the left workspace SHALL provide `转写片段`, `证据时间轴`, `阶段输出`, and a conditional `文本纠错` tab whenever transcript correction is enabled for that task. The right workspace SHALL switch between `Markdown 工作区 / 思维导图` for notes tasks and `流式问答 / Trace Theater` for VQA tasks.

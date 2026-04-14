@@ -58,6 +58,46 @@ const DEFAULT_UI_SETTINGS: UISettingsResponse = {
   background_image_fill_mode: "cover",
 }
 
+const RUNTIME_PATHS_STORAGE_KEY = "vidgnost:runtime-paths:v1"
+
+function readStoredRuntimePaths(): RuntimePathsResponse | null {
+  if (typeof window === "undefined") {
+    return null
+  }
+  try {
+    const raw = window.localStorage.getItem(RUNTIME_PATHS_STORAGE_KEY)
+    if (!raw) {
+      return null
+    }
+    const parsed = JSON.parse(raw) as Partial<RuntimePathsResponse>
+    if (!parsed.event_log_dir || !parsed.trace_log_dir || !parsed.storage_dir) {
+      return null
+    }
+    return {
+      storage_dir: parsed.storage_dir,
+      event_log_dir: parsed.event_log_dir,
+      trace_log_dir: parsed.trace_log_dir,
+    }
+  } catch {
+    return null
+  }
+}
+
+function writeStoredRuntimePaths(paths: RuntimePathsResponse | null): void {
+  if (typeof window === "undefined") {
+    return
+  }
+  try {
+    if (!paths) {
+      window.localStorage.removeItem(RUNTIME_PATHS_STORAGE_KEY)
+      return
+    }
+    window.localStorage.setItem(RUNTIME_PATHS_STORAGE_KEY, JSON.stringify(paths))
+  } catch {
+    return
+  }
+}
+
 const getPageTitle = (viewState: ViewState) => {
   switch (viewState.type) {
     case "new-task":
@@ -89,7 +129,7 @@ export default function VideoMindApp() {
   const [isCloseConfirmOpen, setIsCloseConfirmOpen] = React.useState(false)
   const [bootstrapStatus, setBootstrapStatus] = React.useState<BootstrapStatus>("initializing")
   const [bootstrapMessage, setBootstrapMessage] = React.useState("正在装载最近任务与界面配置。")
-  const [runtimePaths, setRuntimePaths] = React.useState<RuntimePathsResponse | null>(null)
+  const [runtimePaths, setRuntimePaths] = React.useState<RuntimePathsResponse | null>(() => readStoredRuntimePaths())
   const uiSettingsRef = React.useRef(uiSettings)
   const desktopBootstrapCompletedRef = React.useRef(false)
   const effectiveUiSettings = React.useMemo(
@@ -103,6 +143,10 @@ export default function VideoMindApp() {
   React.useEffect(() => {
     uiSettingsRef.current = uiSettings
   }, [uiSettings])
+
+  React.useEffect(() => {
+    writeStoredRuntimePaths(runtimePaths)
+  }, [runtimePaths])
 
   const reportDesktopBootstrapState = React.useCallback((state: DesktopBootstrapState) => {
     window.vidGnostDesktop?.reportBootstrapState?.(state)
@@ -427,6 +471,35 @@ export default function VideoMindApp() {
     }
   }, [refreshOverview])
 
+  const handleOpenDiagnostics = React.useCallback(() => {
+    setActiveNav("diagnostics")
+    setViewState({ type: "diagnostics" })
+  }, [])
+
+  const handleOpenRuntimeLogs = React.useCallback(() => {
+    const targetPath = runtimePaths?.event_log_dir || runtimePaths?.trace_log_dir || ""
+    if (!targetPath) {
+      toast.error("当前还没有可用的日志目录。")
+      return
+    }
+    if (window.vidGnostDesktop?.openPath) {
+      void window.vidGnostDesktop.openPath(targetPath).then((result) => {
+        if (!result.ok) {
+          toast.error(result.message || "打开日志目录失败")
+        }
+      })
+      return
+    }
+    void navigator.clipboard
+      .writeText(targetPath)
+      .then(() => {
+        toast.success("当前不在 Electron 环境，日志目录已复制到剪贴板。")
+      })
+      .catch(() => {
+        toast.error("复制日志目录失败，请手动记录当前路径。")
+      })
+  }, [runtimePaths])
+
   const pageInfo = getPageTitle(viewState)
 
   return (
@@ -492,29 +565,12 @@ export default function VideoMindApp() {
             <BootstrapStatusOverlay
               status={bootstrapStatus}
               message={bootstrapMessage}
-              canOpenLogs={Boolean(runtimePaths?.event_log_dir)}
+              canOpenLogs={Boolean(runtimePaths?.event_log_dir || runtimePaths?.trace_log_dir)}
               onRetry={() => {
                 void runBootstrap(true)
               }}
-              onOpenDiagnostics={() => handleNavChange("diagnostics")}
-              onOpenLogs={() => {
-                const targetPath = runtimePaths?.event_log_dir || runtimePaths?.trace_log_dir || ""
-                if (!targetPath) {
-                  toast.error("当前还没有可用的日志目录。")
-                  return
-                }
-                if (window.vidGnostDesktop?.openPath) {
-                  void window.vidGnostDesktop.openPath(targetPath).then((result) => {
-                    if (!result.ok) {
-                      toast.error(result.message || "打开日志目录失败")
-                    }
-                  })
-                  return
-                }
-                void navigator.clipboard.writeText(targetPath).then(() => {
-                  toast.success("当前不在 Electron 环境，日志目录已复制到剪贴板。")
-                })
-              }}
+              onOpenDiagnostics={handleOpenDiagnostics}
+              onOpenLogs={handleOpenRuntimeLogs}
             />
             <ConfirmDialog
               open={isCloseConfirmOpen}
