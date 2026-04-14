@@ -326,6 +326,7 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 - **AND** user can manually scroll upward without the renderer fighting that gesture immediately
 - **AND** once the user scrolls upward beyond a configured threshold, auto-follow is suspended
 - **AND** when the user scrolls back to the bottom threshold, auto-follow resumes automatically
+- **AND** renderer-driven bottom-alignment scrolls do not accidentally count as a user break gesture while new transcript cards are still appending
 
 #### Scenario: Preview imported source media inside the workbench
 - **WHEN** user opens a task whose detail payload includes a persisted `source_local_path`
@@ -361,6 +362,7 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 - **AND** unchanged right-side Markdown or VQA workspaces remain stable while transcript deltas continue arriving, unless their own displayed artifact data has changed
 - **AND** the running-state badge summarizes the active workflow step in business language instead of showing a raw generic backend status string
 - **AND** recent stage activity omits repetitive raw progress spam and keeps milestone-focused readable updates
+- **AND** when transcript optimization is skipped for long content or timeout fallback is used, recent stage activity explains that the task continues with the current transcript to shorten waiting time instead of exposing raw pipeline wording
 - **AND** terminal task events immediately retire the cancel action and trigger a background task-detail sync so the workbench does not remain visually stuck on an earlier phase after backend completion
 
 #### Scenario: Pause and resume a running task from the workbench header

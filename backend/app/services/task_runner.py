@@ -756,7 +756,7 @@ class TaskRunner:
                         transcript_segments_json=orjson.dumps(all_segments).decode("utf-8"),
                         stage_logs_json=_encode_stage_logs(stage_logs),
                     )
-                await self._emit_log(task_id, "D", correction.message, stage_logs)
+                await self._emit_log(task_id, "D", correction.message, stage_logs, substage="transcript_optimize")
                 if not preview_streamed:
                     if correction.mode == "strict" and correction.segments:
                         for segment in correction.segments:

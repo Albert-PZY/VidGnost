@@ -839,7 +839,12 @@ function formatTaskEventTimestamp(timestamp: string): string {
 }
 
 function formatTaskEventBadge(event: TaskStreamEvent): string {
-  const substage = asString(event.substage).trim()
+  const explicitSubstage = asString(event.substage).trim()
+  const inferredSubstage =
+    !explicitSubstage && asString(event.stage).trim() === "D"
+      ? inferTranscriptOptimizeSubstageFromMessage(asString(event.message || event.text || event.title))
+      : ""
+  const substage = explicitSubstage || inferredSubstage
   if (substage) {
     return TASK_EVENT_BADGE_LABELS[substage] || substage
   }
@@ -848,6 +853,25 @@ function formatTaskEventBadge(event: TaskStreamEvent): string {
     return VM_PHASE_LABELS[stage] || `阶段 ${stage}`
   }
   return "任务动态"
+}
+
+function inferTranscriptOptimizeSubstageFromMessage(message: string): string {
+  const normalized = message.trim()
+  if (!normalized) {
+    return ""
+  }
+  if (
+    normalized === "Transcript optimization skipped because correction mode is off." ||
+    normalized === "Running transcript correction strategy..." ||
+    normalized.startsWith("Transcript rewrite skipped for long transcript") ||
+    normalized.startsWith("Rewrite correction timed out") ||
+    normalized.startsWith("Strict correction timed out") ||
+    normalized === "Rewrite correction completed." ||
+    normalized === "Strict correction completed with timeline preserved."
+  ) {
+    return "transcript_optimize"
+  }
+  return ""
 }
 
 function formatTraceScore(value: unknown): string {
@@ -952,16 +976,19 @@ function translateTaskLogMessage(message: string): string {
     return "笔记、导图和阶段产物已经保存到本地"
   }
   if (normalized === "Rewrite correction completed.") {
-    return "转写文本优化完成"
+    return "全文润色完成，后续结果会基于润色后的文本生成"
+  }
+  if (normalized === "Strict correction completed with timeline preserved.") {
+    return "逐段纠错完成，已保留原时间轴位置"
   }
   if (normalized.startsWith("Transcript rewrite skipped for long transcript")) {
-    return "转写内容较长，已跳过全文改写以避免长时间停留在文本优化阶段"
+    return "转写内容较长，本次未执行全文润色，后续结果会直接基于当前转写生成，以缩短等待时间"
   }
   if (normalized.startsWith("Rewrite correction timed out")) {
-    return "转写文本优化超时，已回退到原始转写继续后续处理"
+    return "全文润色等待超时，已直接使用当前转写继续后续处理"
   }
   if (normalized.startsWith("Strict correction timed out")) {
-    return "分段文本优化超时，已回退到原始转写继续后续处理"
+    return "逐段纠错等待超时，已直接使用当前转写继续后续处理"
   }
 
   return normalized
@@ -2571,6 +2598,8 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
   const [activeTranscriptId, setActiveTranscriptId] = React.useState("")
   const [isTranscriptAutoFollow, setIsTranscriptAutoFollow] = React.useState(true)
   const transcriptViewportRef = React.useRef<HTMLDivElement | null>(null)
+  const transcriptAutoScrollRafRef = React.useRef<number | null>(null)
+  const suppressTranscriptScrollBreakRef = React.useRef(false)
   const deferredTranscriptSegmentsForTimeline = React.useDeferredValue(transcriptSegments)
   const deferredChatHistoryForTimeline = React.useDeferredValue(chatHistory)
   const deferredTaskEvents = React.useDeferredValue(taskEvents)
@@ -2586,6 +2615,11 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
   React.useEffect(() => {
     setActiveTranscriptId("")
     setIsTranscriptAutoFollow(true)
+    suppressTranscriptScrollBreakRef.current = false
+    if (transcriptAutoScrollRafRef.current !== null) {
+      window.cancelAnimationFrame(transcriptAutoScrollRafRef.current)
+      transcriptAutoScrollRafRef.current = null
+    }
   }, [taskId, videoUrl])
 
   React.useEffect(() => {
@@ -2603,14 +2637,31 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
     if (!viewport) {
       return
     }
-    const frameId = window.requestAnimationFrame(() => {
+    const scrollToBottom = () => {
       viewport.scrollTo({
         top: viewport.scrollHeight,
         behavior: "auto",
       })
+    }
+    suppressTranscriptScrollBreakRef.current = true
+    scrollToBottom()
+    const frameId = window.requestAnimationFrame(() => {
+      scrollToBottom()
+      transcriptAutoScrollRafRef.current = window.requestAnimationFrame(() => {
+        scrollToBottom()
+        suppressTranscriptScrollBreakRef.current = false
+        transcriptAutoScrollRafRef.current = null
+      })
     })
+    transcriptAutoScrollRafRef.current = frameId
     return () => {
-      window.cancelAnimationFrame(frameId)
+      suppressTranscriptScrollBreakRef.current = false
+      if (transcriptAutoScrollRafRef.current !== null) {
+        window.cancelAnimationFrame(transcriptAutoScrollRafRef.current)
+        transcriptAutoScrollRafRef.current = null
+      } else {
+        window.cancelAnimationFrame(frameId)
+      }
     }
   }, [isTranscriptAutoFollow, lastTranscriptSignature, transcriptSegments.length])
 
@@ -2677,6 +2728,9 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
   )
 
   const handleTranscriptViewportScroll = React.useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    if (suppressTranscriptScrollBreakRef.current) {
+      return
+    }
     const target = event.currentTarget
     const distanceToBottom = target.scrollHeight - target.scrollTop - target.clientHeight
     if (distanceToBottom <= TRANSCRIPT_SCROLL_RESTORE_THRESHOLD_PX) {
