@@ -77,6 +77,24 @@ class VQAModelRuntime:
             scores.extend(batch_scores)
         return scores
 
+    async def warm_rerank(self, *, query: str, documents: list[str]) -> bool:
+        normalized_query = str(query).strip()
+        normalized_docs = [str(item).strip() for item in documents if str(item).strip()]
+        if not normalized_query or not normalized_docs:
+            return False
+        model = await self._resolve_model("rerank-default")
+        batch_size = max(1, int(model.get("max_batch_size", 8) or 8))
+        sample_docs = normalized_docs[: max(1, min(len(normalized_docs), batch_size))]
+        try:
+            scores = await self._score_rerank_batch(
+                model_id=str(model["model_id"]).strip(),
+                query=normalized_query,
+                documents=sample_docs,
+            )
+        except RuntimeError:
+            return False
+        return len(scores) == len(sample_docs) and not _looks_uninformative_scores(scores)
+
     async def describe_images(self, image_paths: list[str]) -> list[str]:
         normalized_paths = [str(item).strip() for item in image_paths if str(item).strip()]
         if not normalized_paths:

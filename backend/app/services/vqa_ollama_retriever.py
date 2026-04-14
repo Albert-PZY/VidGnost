@@ -4,6 +4,8 @@ import asyncio
 import hashlib
 import re
 import sqlite3
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +18,22 @@ from app.services.vqa_types import EvidenceDocument, RetrievalHit, SearchResult
 
 _TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_]+", re.UNICODE)
 _DEFAULT_FRAME_INTERVAL_SECONDS = 10.0
+
+
+@dataclass(slots=True)
+class PreparedTaskCorpus:
+    task_id: str
+    frame_interval_seconds: float
+    documents: list[EvidenceDocument]
+    embeddings_by_doc_id: dict[str, list[float]]
+    prepared_at: str
+
+
+@dataclass(slots=True)
+class SearchCorpus:
+    documents: list[EvidenceDocument]
+    embeddings_by_doc_id: dict[str, list[float]]
+    visuals_complete: bool
 
 
 class VQAOllamaRetriever:
@@ -46,6 +64,7 @@ class VQAOllamaRetriever:
         self._chroma_collection = None
         self._chroma_enabled = False
         self._sparse_db_path: Path | None = self._storage_dir / "vector-index" / "sparse-fts5.sqlite3"
+        self._prepared_task_cache: dict[str, PreparedTaskCorpus] = {}
         self._init_chroma()
         self._init_sparse_store()
 
@@ -110,17 +129,23 @@ class VQAOllamaRetriever:
         if not query:
             return SearchResult(query_text="", dense_hits=[], sparse_hits=[], rrf_hits=[], rerank_hits=[])
         frame_interval_seconds = self._resolve_frame_interval_seconds()
-        documents = await self._collect_documents(
+        corpus = await self._collect_search_corpus(
             task_id=task_id,
             video_paths=video_paths,
             frame_interval_seconds=frame_interval_seconds,
         )
+        documents = corpus.documents
         if not documents:
             return SearchResult(query_text=query, dense_hits=[], sparse_hits=[], rrf_hits=[], rerank_hits=[])
         max_top_k = max(1, int(top_k or self._rerank_top_n))
-        rerank_candidate_k = max(max_top_k, min(self._fused_top_k, max(max_top_k * 2, 12)))
+        rerank_candidate_k = max(max_top_k, min(self._fused_top_k, max(max_top_k + 3, 10)))
         dense_hits = self._dedupe_hits(
-            await self._dense_search(query, documents, top_k=max(self._dense_top_k, max_top_k)),
+            await self._dense_search(
+                query,
+                documents,
+                top_k=max(self._dense_top_k, max_top_k),
+                precomputed_embeddings=corpus.embeddings_by_doc_id,
+            ),
             primary_score_key="dense_score",
         )
         sparse_hits = self._dedupe_hits(
@@ -135,14 +160,21 @@ class VQAOllamaRetriever:
             await self._rerank(query, rrf_hits, top_n=max_top_k),
             primary_score_key="final_score",
         )
-        rerank_hits = await self._hydrate_visual_hits(
-            rerank_hits,
-            frame_interval_seconds=frame_interval_seconds,
-        )
-        rerank_hits = self._dedupe_hits(
-            await self._rerank(query, rerank_hits, top_n=max_top_k),
-            primary_score_key="final_score",
-        )
+        if not corpus.visuals_complete:
+            hydrated_hits = await self._hydrate_visual_hits(
+                rerank_hits,
+                frame_interval_seconds=frame_interval_seconds,
+            )
+            visuals_changed = any(
+                not before.visual_text and after.visual_text
+                for before, after in zip(rerank_hits, hydrated_hits, strict=False)
+            )
+            rerank_hits = hydrated_hits
+            if visuals_changed:
+                rerank_hits = self._dedupe_hits(
+                    await self._rerank(query, rerank_hits, top_n=max_top_k),
+                    primary_score_key="final_score",
+                )
         return SearchResult(
             query_text=query,
             dense_hits=dense_hits,
@@ -151,13 +183,69 @@ class VQAOllamaRetriever:
             rerank_hits=rerank_hits,
         )
 
-    async def _collect_documents(
+    async def prewarm_task(self, task_id: str, *, force: bool = False) -> dict[str, object]:
+        record = self._task_store.get(str(task_id).strip())
+        if record is None:
+            raise ValueError(f"Task not found: {task_id}")
+        frame_interval_seconds = self._resolve_frame_interval_seconds()
+        cache_hit = False
+        if not force:
+            prepared = self._load_prepared_task_corpus(record.id, frame_interval_seconds=frame_interval_seconds)
+            cache_hit = prepared is not None
+        else:
+            prepared = None
+        if prepared is None:
+            prepared = await self._prepare_task_corpus(
+                record,
+                frame_interval_seconds=frame_interval_seconds,
+                force=True,
+            )
+        return {
+            "task_id": prepared.task_id,
+            "prepared_at": prepared.prepared_at,
+            "frame_interval_seconds": round(prepared.frame_interval_seconds, 3),
+            "document_count": len(prepared.documents),
+            "visual_document_count": sum(1 for item in prepared.documents if item.image_path and item.visual_text),
+            "embedding_count": len(prepared.embeddings_by_doc_id),
+            "cache_hit": cache_hit,
+        }
+
+    async def _collect_search_corpus(
         self,
         *,
         task_id: str | None,
         video_paths: list[str] | None,
         frame_interval_seconds: float,
-    ) -> list[EvidenceDocument]:
+    ) -> SearchCorpus:
+        records = self._select_records(task_id=task_id, video_paths=video_paths)
+        docs: list[EvidenceDocument] = []
+        embeddings_by_doc_id: dict[str, list[float]] = {}
+        for record in records:
+            prepared = self._load_prepared_task_corpus(record.id, frame_interval_seconds=frame_interval_seconds)
+            if prepared is not None:
+                docs.extend(prepared.documents)
+                embeddings_by_doc_id.update(prepared.embeddings_by_doc_id)
+                continue
+            docs.extend(
+                await self._build_documents_from_task(
+                    record,
+                    frame_interval_seconds=frame_interval_seconds,
+                    describe_missing_visuals=False,
+                )
+            )
+        visuals_complete = all(not item.image_path or bool(item.visual_text) for item in docs)
+        return SearchCorpus(
+            documents=docs,
+            embeddings_by_doc_id=embeddings_by_doc_id,
+            visuals_complete=visuals_complete,
+        )
+
+    def _select_records(
+        self,
+        *,
+        task_id: str | None,
+        video_paths: list[str] | None,
+    ) -> list[TaskRecord]:
         records = self._task_store.list_all()
         selected_task_id = (task_id or "").strip()
         normalized_paths = {
@@ -165,7 +253,7 @@ class VQAOllamaRetriever:
             for item in (video_paths or [])
             if str(item).strip()
         }
-        docs: list[EvidenceDocument] = []
+        selected: list[TaskRecord] = []
         for record in records:
             if selected_task_id and record.id != selected_task_id:
                 continue
@@ -175,10 +263,142 @@ class VQAOllamaRetriever:
                     continue
             if record.status not in {TaskStatus.COMPLETED.value, TaskStatus.FAILED.value, TaskStatus.CANCELLED.value}:
                 continue
-            docs.extend(await self._build_documents_from_task(record, frame_interval_seconds=frame_interval_seconds))
-        return docs
+            selected.append(record)
+        return selected
 
-    async def _build_documents_from_task(self, record: TaskRecord, *, frame_interval_seconds: float) -> list[EvidenceDocument]:
+    async def _prepare_task_corpus(
+        self,
+        record: TaskRecord,
+        *,
+        frame_interval_seconds: float,
+        force: bool,
+    ) -> PreparedTaskCorpus:
+        if not force:
+            cached = self._load_prepared_task_corpus(record.id, frame_interval_seconds=frame_interval_seconds)
+            if cached is not None:
+                return cached
+        documents = await self._build_documents_from_task(
+            record,
+            frame_interval_seconds=frame_interval_seconds,
+            describe_missing_visuals=True,
+        )
+        retrieval_texts = [_compose_retrieval_text(text=item.text, visual_text=item.visual_text) for item in documents]
+        embeddings = await self._model_runtime.embed_texts(retrieval_texts) if retrieval_texts else []
+        embeddings_by_doc_id = {
+            item.doc_id: vector
+            for item, vector in zip(documents, embeddings, strict=False)
+        }
+        warmup_query = str(record.title or "").strip()
+        if not warmup_query and documents:
+            warmup_query = str(documents[0].text).strip()[:48]
+        warmup_documents = [
+            _compose_retrieval_text(text=item.text, visual_text=item.visual_text)
+            for item in documents[:6]
+        ]
+        if warmup_query and warmup_documents:
+            await self._model_runtime.warm_rerank(
+                query=warmup_query,
+                documents=warmup_documents,
+            )
+        prepared = PreparedTaskCorpus(
+            task_id=record.id,
+            frame_interval_seconds=frame_interval_seconds,
+            documents=documents,
+            embeddings_by_doc_id=embeddings_by_doc_id,
+            prepared_at=datetime.now(timezone.utc).isoformat(),
+        )
+        self._persist_prepared_task_corpus(prepared)
+        self._prepared_task_cache[self._prepared_cache_key(record.id, frame_interval_seconds)] = prepared
+        return prepared
+
+    def _prepared_cache_key(self, task_id: str, frame_interval_seconds: float) -> str:
+        return f"{str(task_id).strip()}@{frame_interval_seconds:.3f}"
+
+    def _prepared_task_corpus_path(self, task_id: str) -> Path:
+        return self._storage_dir / "tasks" / "stage-artifacts" / task_id / "D" / "vqa-prewarm" / "index.json"
+
+    def _load_prepared_task_corpus(
+        self,
+        task_id: str,
+        *,
+        frame_interval_seconds: float,
+    ) -> PreparedTaskCorpus | None:
+        cache_key = self._prepared_cache_key(task_id, frame_interval_seconds)
+        cached = self._prepared_task_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        path = self._prepared_task_corpus_path(task_id)
+        if not path.exists():
+            return None
+        try:
+            payload = orjson.loads(path.read_bytes())
+        except (orjson.JSONDecodeError, OSError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        manifest_interval = _to_float(payload.get("frame_interval_seconds"))
+        if abs(manifest_interval - frame_interval_seconds) > 1e-6:
+            return None
+        raw_documents = payload.get("documents")
+        if not isinstance(raw_documents, list):
+            return None
+        documents: list[EvidenceDocument] = []
+        for item in raw_documents:
+            try:
+                documents.append(_deserialize_evidence_document(item))
+            except ValueError:
+                continue
+        embeddings_by_doc_id: dict[str, list[float]] = {}
+        raw_embeddings = payload.get("embeddings")
+        if isinstance(raw_embeddings, list):
+            for item in raw_embeddings:
+                if not isinstance(item, dict):
+                    continue
+                doc_id = str(item.get("doc_id", "")).strip()
+                values = item.get("values")
+                if not doc_id or not isinstance(values, list):
+                    continue
+                embeddings_by_doc_id[doc_id] = [float(value) for value in values]
+        prepared = PreparedTaskCorpus(
+            task_id=str(payload.get("task_id", task_id)).strip() or task_id,
+            frame_interval_seconds=frame_interval_seconds,
+            documents=documents,
+            embeddings_by_doc_id=embeddings_by_doc_id,
+            prepared_at=str(payload.get("prepared_at", "")).strip(),
+        )
+        self._prepared_task_cache[cache_key] = prepared
+        return prepared
+
+    def _persist_prepared_task_corpus(self, prepared: PreparedTaskCorpus) -> None:
+        path = self._prepared_task_corpus_path(prepared.task_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "version": 1,
+            "task_id": prepared.task_id,
+            "prepared_at": prepared.prepared_at,
+            "frame_interval_seconds": round(prepared.frame_interval_seconds, 3),
+            "document_count": len(prepared.documents),
+            "documents": [_serialize_evidence_document(item) for item in prepared.documents],
+            "embeddings": [
+                {
+                    "doc_id": item.doc_id,
+                    "values": prepared.embeddings_by_doc_id.get(item.doc_id, []),
+                }
+                for item in prepared.documents
+                if item.doc_id in prepared.embeddings_by_doc_id
+            ],
+        }
+        temp_path = path.with_suffix(path.suffix + ".tmp")
+        temp_path.write_bytes(orjson.dumps(payload, option=orjson.OPT_INDENT_2))
+        temp_path.replace(path)
+
+    async def _build_documents_from_task(
+        self,
+        record: TaskRecord,
+        *,
+        frame_interval_seconds: float,
+        describe_missing_visuals: bool,
+    ) -> list[EvidenceDocument]:
         segments = _parse_transcript_segments(record)
         if not segments:
             return []
@@ -188,7 +408,7 @@ class VQAOllamaRetriever:
         frame_assets = await self._ensure_frame_assets(
             record,
             frame_interval_seconds=frame_interval_seconds,
-            describe_missing=False,
+            describe_missing=describe_missing_visuals,
         )
         docs: list[EvidenceDocument] = []
         cursor = 0.0
@@ -352,10 +572,36 @@ class VQAOllamaRetriever:
                 return max(1.0, float(item.get("frame_interval_seconds", _DEFAULT_FRAME_INTERVAL_SECONDS) or _DEFAULT_FRAME_INTERVAL_SECONDS))
         return _DEFAULT_FRAME_INTERVAL_SECONDS
 
-    async def _dense_search(self, query: str, docs: list[EvidenceDocument], *, top_k: int) -> list[RetrievalHit]:
+    async def _dense_search(
+        self,
+        query: str,
+        docs: list[EvidenceDocument],
+        *,
+        top_k: int,
+        precomputed_embeddings: dict[str, list[float]] | None = None,
+    ) -> list[RetrievalHit]:
+        query_embedding = (await self._model_runtime.embed_texts([query]))[0]
+        if precomputed_embeddings:
+            doc_embeddings_map = {
+                str(doc_id): [float(value) for value in values]
+                for doc_id, values in precomputed_embeddings.items()
+                if values
+            }
+            missing_docs = [item for item in docs if item.doc_id not in doc_embeddings_map]
+            if missing_docs:
+                missing_vectors = await self._model_runtime.embed_texts(
+                    [_compose_retrieval_text(text=item.text, visual_text=item.visual_text) for item in missing_docs]
+                )
+                for item, vector in zip(missing_docs, missing_vectors, strict=False):
+                    doc_embeddings_map[item.doc_id] = vector
+            scored = [
+                _doc_to_hit(doc, dense_score=_cosine_similarity(query_embedding, doc_embeddings_map.get(doc.doc_id, [])))
+                for doc in docs
+            ]
+            scored.sort(key=lambda item: item.dense_score, reverse=True)
+            return scored[: max(1, top_k)]
         retrieval_texts = [_compose_retrieval_text(text=item.text, visual_text=item.visual_text) for item in docs]
         doc_embeddings = await self._model_runtime.embed_texts(retrieval_texts)
-        query_embedding = (await self._model_runtime.embed_texts([query]))[0]
         if self._chroma_enabled and self._chroma_collection is not None:
             try:
                 return self._dense_search_by_chroma(query_embedding=query_embedding, docs=docs, doc_embeddings=doc_embeddings, top_k=top_k)
@@ -570,6 +816,43 @@ def _clone_hit(hit: RetrievalHit) -> RetrievalHit:
         rrf_score=hit.rrf_score,
         rerank_score=hit.rerank_score,
         final_score=hit.final_score,
+    )
+
+
+def _serialize_evidence_document(doc: EvidenceDocument) -> dict[str, object]:
+    return {
+        "doc_id": doc.doc_id,
+        "task_id": doc.task_id,
+        "task_title": doc.task_title,
+        "video_path": doc.video_path,
+        "start": doc.start,
+        "end": doc.end,
+        "source": doc.source,
+        "text": doc.text,
+        "visual_text": doc.visual_text,
+        "image_path": doc.image_path,
+        "language": doc.language,
+        "source_set": list(doc.source_set),
+    }
+
+
+def _deserialize_evidence_document(payload: object) -> EvidenceDocument:
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid evidence document payload")
+    source_set = payload.get("source_set")
+    return EvidenceDocument(
+        doc_id=str(payload.get("doc_id", "")).strip(),
+        task_id=str(payload.get("task_id", "")).strip(),
+        task_title=str(payload.get("task_title", "")).strip(),
+        video_path=str(payload.get("video_path", "")).strip(),
+        start=_to_float(payload.get("start")),
+        end=_to_float(payload.get("end")),
+        source=str(payload.get("source", "")).strip(),
+        text=str(payload.get("text", "")).strip(),
+        visual_text=str(payload.get("visual_text", "")).strip(),
+        image_path=str(payload.get("image_path", "")).strip(),
+        language=str(payload.get("language", "unknown")).strip() or "unknown",
+        source_set=_parse_source_set(source_set) if not isinstance(source_set, list) else [str(item).strip() for item in source_set if str(item).strip()],
     )
 
 

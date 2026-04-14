@@ -34,6 +34,7 @@ from app.services.task_artifact_index import build_task_artifact_index
 from app.services.task_preflight import TaskPreflightService
 from app.services.task_store import TaskStore
 from app.services.transcription import WhisperService
+from app.services.vqa_runtime_service import VQARuntimeService
 
 SourceType = Literal["bilibili", "local_file", "local_path"]
 StageType = Literal["A", "B", "C", "D"]
@@ -89,6 +90,7 @@ class TaskRunner:
         model_runtime_manager: ModelRuntimeManager,
         task_store: TaskStore,
         task_preflight_service: TaskPreflightService,
+        vqa_runtime_service: VQARuntimeService | None = None,
     ) -> None:
         self._settings = settings
         self._event_bus = event_bus
@@ -98,6 +100,7 @@ class TaskRunner:
         self._model_runtime_manager = model_runtime_manager
         self._task_store = task_store
         self._task_preflight_service = task_preflight_service
+        self._vqa_runtime_service = vqa_runtime_service
         self._transcriber = WhisperService(settings)
         self._summarizer = LLMService(
             settings,
@@ -876,6 +879,36 @@ class TaskRunner:
                     raise
 
                 await self._emit_log(task_id, "D", "Detailed notes and mindmap persisted to local storage", stage_logs)
+                if submission.workflow == "vqa" and self._vqa_runtime_service is not None:
+                    await self._emit_log(
+                        task_id,
+                        "D",
+                        "Prewarming VQA retrieval corpus before task completion...",
+                        stage_logs,
+                        substage="fusion_delivery",
+                    )
+                    try:
+                        prewarm_summary = await self._vqa_runtime_service.prewarm_task(task_id=task_id, force=True)
+                        await self._emit_log(
+                            task_id,
+                            "D",
+                            (
+                                "VQA retrieval corpus ready: "
+                                f"{int(prewarm_summary.get('document_count', 0) or 0)} windows, "
+                                f"{int(prewarm_summary.get('visual_document_count', 0) or 0)} visual windows, "
+                                f"{int(prewarm_summary.get('embedding_count', 0) or 0)} embeddings."
+                            ),
+                            stage_logs,
+                            substage="fusion_delivery",
+                        )
+                    except Exception as prewarm_exc:  # noqa: BLE001
+                        await self._emit_log(
+                            task_id,
+                            "D",
+                            f"VQA retrieval prewarm skipped: {type(prewarm_exc).__name__}: {prewarm_exc}",
+                            stage_logs,
+                            substage="fusion_delivery",
+                        )
                 artifact_index_json, artifact_total_bytes = build_task_artifact_index(
                     task_id=task_id,
                     transcript_text=transcript_text,
@@ -1259,6 +1292,36 @@ class TaskRunner:
                     await self._d_substage_complete(task_id, "fusion_delivery", status="failed", message=f"{type(generate_exc).__name__}: {generate_exc}", progress=_PROGRESS_FUSION_DONE)
                     raise
 
+                if record.workflow == "vqa" and self._vqa_runtime_service is not None:
+                    await self._emit_log(
+                        task_id,
+                        "D",
+                        "Prewarming VQA retrieval corpus before task completion...",
+                        stage_logs,
+                        substage="fusion_delivery",
+                    )
+                    try:
+                        prewarm_summary = await self._vqa_runtime_service.prewarm_task(task_id=task_id, force=True)
+                        await self._emit_log(
+                            task_id,
+                            "D",
+                            (
+                                "VQA retrieval corpus ready: "
+                                f"{int(prewarm_summary.get('document_count', 0) or 0)} windows, "
+                                f"{int(prewarm_summary.get('visual_document_count', 0) or 0)} visual windows, "
+                                f"{int(prewarm_summary.get('embedding_count', 0) or 0)} embeddings."
+                            ),
+                            stage_logs,
+                            substage="fusion_delivery",
+                        )
+                    except Exception as prewarm_exc:  # noqa: BLE001
+                        await self._emit_log(
+                            task_id,
+                            "D",
+                            f"VQA retrieval prewarm skipped: {type(prewarm_exc).__name__}: {prewarm_exc}",
+                            stage_logs,
+                            substage="fusion_delivery",
+                        )
                 artifact_index_json, artifact_total_bytes = build_task_artifact_index(
                     task_id=task_id,
                     transcript_text=transcript_text,

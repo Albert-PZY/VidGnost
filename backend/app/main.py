@@ -126,6 +126,7 @@ async def lifespan(app: FastAPI):
         model_runtime_manager=model_runtime_manager,
         task_store=task_store,
         task_preflight_service=task_preflight_service,
+        vqa_runtime_service=vqa_runtime,
     )
 
     app.state.settings = settings

@@ -42,6 +42,16 @@ Inside phase `D`, backend SHALL execute `transcript_optimize -> fusion_delivery`
 - **THEN** `transcript_optimize` runs before `fusion_delivery`
 - **AND** `fusion_delivery` starts only after transcript optimization completes or is skipped
 
+### Requirement: VQA tasks SHALL prewarm retrieval corpus before completion
+When a task uses workflow `vqa`, phase `D` SHALL prepare the first-question retrieval corpus before the task enters the completed state.
+
+#### Scenario: Complete a VQA task with retrieval prewarm
+- **WHEN** a `vqa` task finishes phase `D`
+- **THEN** backend persists a task-local retrieval-prewarm artifact under `D/vqa-prewarm/index.json`
+- **AND** that artifact contains the prepared retrieval windows plus their embedding cache for the current frame-sampling interval
+- **AND** frame-backed evidence windows reuse persisted `D/fusion/frames/index.json` entries and complete missing `visual_text` descriptions before the task is marked completed
+- **AND** backend performs a lightweight rerank-model warmup during the same completion pass so the next first-question request can reuse a warm runtime instead of paying the model-load penalty on demand
+
 ### Requirement: Phase C SHALL prepare the managed Whisper small cache before transcription
 Before runtime transcription starts, backend SHALL ensure the managed Whisper small model cache is present locally.
 

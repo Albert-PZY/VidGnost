@@ -57,6 +57,9 @@ class VQARuntimeService:
     def read_trace(self, trace_id: str) -> list[dict[str, Any]]:
         return self._trace.read_trace(trace_id)
 
+    async def prewarm_task(self, *, task_id: str, force: bool = False) -> dict[str, object]:
+        return await self._retriever.prewarm_task(task_id=task_id, force=force)
+
     async def search(
         self,
         *,
