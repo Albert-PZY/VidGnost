@@ -109,14 +109,16 @@ class VQAOllamaRetriever:
         query = (query_text or "").strip()
         if not query:
             return SearchResult(query_text="", dense_hits=[], sparse_hits=[], rrf_hits=[], rerank_hits=[])
+        frame_interval_seconds = self._resolve_frame_interval_seconds()
         documents = await self._collect_documents(
             task_id=task_id,
             video_paths=video_paths,
-            frame_interval_seconds=self._resolve_frame_interval_seconds(),
+            frame_interval_seconds=frame_interval_seconds,
         )
         if not documents:
             return SearchResult(query_text=query, dense_hits=[], sparse_hits=[], rrf_hits=[], rerank_hits=[])
         max_top_k = max(1, int(top_k or self._rerank_top_n))
+        rerank_candidate_k = max(max_top_k, min(self._fused_top_k, max(max_top_k * 2, 12)))
         dense_hits = self._dedupe_hits(
             await self._dense_search(query, documents, top_k=max(self._dense_top_k, max_top_k)),
             primary_score_key="dense_score",
@@ -126,11 +128,19 @@ class VQAOllamaRetriever:
             primary_score_key="sparse_score",
         )
         rrf_hits = self._dedupe_hits(
-            self._rrf_fusion(dense_hits, sparse_hits, top_k=max(self._fused_top_k, max_top_k)),
+            self._rrf_fusion(dense_hits, sparse_hits, top_k=rerank_candidate_k),
             primary_score_key="rrf_score",
         )
         rerank_hits = self._dedupe_hits(
             await self._rerank(query, rrf_hits, top_n=max_top_k),
+            primary_score_key="final_score",
+        )
+        rerank_hits = await self._hydrate_visual_hits(
+            rerank_hits,
+            frame_interval_seconds=frame_interval_seconds,
+        )
+        rerank_hits = self._dedupe_hits(
+            await self._rerank(query, rerank_hits, top_n=max_top_k),
             primary_score_key="final_score",
         )
         return SearchResult(
@@ -175,7 +185,11 @@ class VQAOllamaRetriever:
         max_end = max(end for _, end, _ in segments)
         if max_end <= 0:
             return []
-        frame_assets = await self._ensure_frame_assets(record, frame_interval_seconds=frame_interval_seconds)
+        frame_assets = await self._ensure_frame_assets(
+            record,
+            frame_interval_seconds=frame_interval_seconds,
+            describe_missing=False,
+        )
         docs: list[EvidenceDocument] = []
         cursor = 0.0
         seen_keys: set[str] = set()
@@ -222,13 +236,22 @@ class VQAOllamaRetriever:
             cursor += stride_seconds
         return docs
 
-    async def _ensure_frame_assets(self, record: TaskRecord, *, frame_interval_seconds: float) -> list[dict[str, object]]:
+    async def _ensure_frame_assets(
+        self,
+        record: TaskRecord,
+        *,
+        frame_interval_seconds: float,
+        describe_missing: bool,
+        only_relative_paths: list[str] | None = None,
+    ) -> list[dict[str, object]]:
         media_path = Path(str(record.source_local_path or record.source_input or "")).expanduser()
         if not media_path.is_file():
             return []
         frames_dir = self._storage_dir / "tasks" / "stage-artifacts" / record.id / "D" / "fusion" / "frames"
         manifest_path = frames_dir / "index.json"
         assets = _load_frame_manifest(manifest_path, frame_interval_seconds=frame_interval_seconds)
+        if not assets:
+            assets = _load_existing_frame_assets(frames_dir, frame_interval_seconds=frame_interval_seconds)
         if not assets:
             extracted = await asyncio.to_thread(
                 extract_video_frames,
@@ -245,15 +268,74 @@ class VQAOllamaRetriever:
                 for index, frame_path in enumerate(extracted)
                 if frame_path.is_file()
             ]
-        missing_indexes = [index for index, asset in enumerate(assets) if not str(asset.get("visual_text", "")).strip()]
-        if missing_indexes:
-            absolute_paths = [str((manifest_path.parent.parent / str(assets[index]["relative_path"])).resolve()) for index in missing_indexes]
-            descriptions = await self._model_runtime.describe_images(absolute_paths)
-            for index, description in zip(missing_indexes, descriptions, strict=False):
-                assets[index]["visual_text"] = description
+        target_relative_paths = {
+            str(item).strip()
+            for item in (only_relative_paths or [])
+            if str(item).strip()
+        }
+        if describe_missing:
+            missing_indexes = [
+                index
+                for index, asset in enumerate(assets)
+                if (
+                    (not target_relative_paths or str(asset.get("relative_path", "")).strip() in target_relative_paths)
+                    and not str(asset.get("visual_text", "")).strip()
+                )
+            ]
+            if missing_indexes:
+                absolute_paths = [
+                    str((manifest_path.parent.parent / str(assets[index]["relative_path"])).resolve())
+                    for index in missing_indexes
+                ]
+                descriptions = await self._model_runtime.describe_images(absolute_paths)
+                for index, description in zip(missing_indexes, descriptions, strict=False):
+                    assets[index]["visual_text"] = description
         if assets:
             _write_frame_manifest(manifest_path, frame_interval_seconds=frame_interval_seconds, assets=assets)
         return assets
+
+    async def _hydrate_visual_hits(
+        self,
+        hits: list[RetrievalHit],
+        *,
+        frame_interval_seconds: float,
+    ) -> list[RetrievalHit]:
+        if not hits:
+            return []
+        grouped_paths: dict[str, set[str]] = {}
+        for hit in hits:
+            if not hit.image_path:
+                continue
+            grouped_paths.setdefault(hit.task_id, set()).add(hit.image_path)
+        if not grouped_paths:
+            return hits
+        record_map = {
+            record.id: record
+            for record in self._task_store.list_all()
+            if record.id in grouped_paths
+        }
+        hydrated_visual_text: dict[tuple[str, str], str] = {}
+        for task_id, image_paths in grouped_paths.items():
+            record = record_map.get(task_id)
+            if record is None:
+                continue
+            assets = await self._ensure_frame_assets(
+                record,
+                frame_interval_seconds=frame_interval_seconds,
+                describe_missing=True,
+                only_relative_paths=sorted(image_paths),
+            )
+            for asset in assets:
+                relative_path = str(asset.get("relative_path", "")).strip()
+                if relative_path and relative_path in image_paths:
+                    hydrated_visual_text[(task_id, relative_path)] = str(asset.get("visual_text", "")).strip()
+        result: list[RetrievalHit] = []
+        for hit in hits:
+            item = _clone_hit(hit)
+            if not item.visual_text and item.image_path:
+                item.visual_text = hydrated_visual_text.get((item.task_id, item.image_path), "")
+            result.append(item)
+        return result
 
     def _resolve_frame_interval_seconds(self) -> float:
         catalog_path = self._storage_dir / "models" / "catalog.json"
@@ -565,6 +647,21 @@ def _load_frame_manifest(manifest_path: Path, *, frame_interval_seconds: float) 
             }
         )
     return assets
+
+
+def _load_existing_frame_assets(frames_dir: Path, *, frame_interval_seconds: float) -> list[dict[str, object]]:
+    frame_paths = sorted(frames_dir.glob("frame-*.jpg"))
+    if not frame_paths:
+        return []
+    return [
+        {
+            "timestamp": round(index * frame_interval_seconds, 3),
+            "relative_path": f"frames/{frame_path.name}",
+            "visual_text": "",
+        }
+        for index, frame_path in enumerate(frame_paths)
+        if frame_path.is_file()
+    ]
 
 
 def _write_frame_manifest(manifest_path: Path, *, frame_interval_seconds: float, assets: list[dict[str, object]]) -> None:

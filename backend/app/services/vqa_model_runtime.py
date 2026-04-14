@@ -56,17 +56,25 @@ class VQAModelRuntime:
         if not normalized_query or not normalized_docs:
             return []
         model = await self._resolve_model("rerank-default")
+        primary_model_id = str(model["model_id"]).strip()
         batch_size = max(1, int(model.get("max_batch_size", 8) or 8))
         scores: list[float] = []
         for start in range(0, len(normalized_docs), batch_size):
             batch = normalized_docs[start : start + batch_size]
-            response = await self._ollama_client.chat(
-                model=str(model["model_id"]).strip(),
-                messages=_build_rerank_messages(query=normalized_query, documents=batch),
-                options={"temperature": 0},
-                keep_alive="0",
-            )
-            scores.extend(_parse_rerank_scores(response, expected_count=len(batch)))
+            try:
+                batch_scores = await self._score_rerank_batch(
+                    model_id=primary_model_id,
+                    query=normalized_query,
+                    documents=batch,
+                )
+            except RuntimeError:
+                batch_scores = []
+            if len(batch_scores) != len(batch) or _looks_uninformative_scores(batch_scores):
+                batch_scores = await self._score_by_embedding_similarity(
+                    query=normalized_query,
+                    documents=batch,
+                )
+            scores.extend(batch_scores)
         return scores
 
     async def describe_images(self, image_paths: list[str]) -> list[str]:
@@ -94,7 +102,7 @@ class VQAModelRuntime:
                     },
                 ],
                 options={"temperature": 0.1},
-                keep_alive="0",
+                keep_alive="5m",
             )
             descriptions.append(_normalize_chat_text(content))
         return descriptions
@@ -149,7 +157,7 @@ class VQAModelRuntime:
                 },
             ],
             options={"temperature": 0},
-            keep_alive="0",
+            keep_alive="5m",
         )
         text = _normalize_chat_text(response)
         ready = bool(text)
@@ -176,6 +184,37 @@ class VQAModelRuntime:
             )
         return model
 
+    async def _score_rerank_batch(
+        self,
+        *,
+        model_id: str,
+        query: str,
+        documents: list[str],
+    ) -> list[float]:
+        response = await self._ollama_client.chat(
+            model=model_id,
+            messages=_build_rerank_messages(query=query, documents=documents),
+            options={"temperature": 0, "num_predict": 128},
+            keep_alive="5m",
+            format=_build_rerank_scores_schema(len(documents)),
+        )
+        return _parse_rerank_scores(response, expected_count=len(documents))
+
+    async def _score_by_embedding_similarity(
+        self,
+        *,
+        query: str,
+        documents: list[str],
+    ) -> list[float]:
+        if not documents:
+            return []
+        query_embedding = (await self.embed_texts([query]))[0]
+        document_embeddings = await self.embed_texts(documents)
+        return [
+            max(0.0, min(1.0, (_cosine_similarity(query_embedding, embedding) + 1.0) / 2.0))
+            for embedding in document_embeddings
+        ]
+
 
 def _build_rerank_messages(*, query: str, documents: list[str]) -> list[dict[str, object]]:
     document_lines = [f"{index + 1}. {text}" for index, text in enumerate(documents)]
@@ -198,6 +237,21 @@ def _build_rerank_messages(*, query: str, documents: list[str]) -> list[dict[str
         },
     ]
 
+
+def _build_rerank_scores_schema(expected_count: int) -> dict[str, object]:
+    safe_count = max(1, int(expected_count))
+    return {
+        "type": "object",
+        "properties": {
+            "scores": {
+                "type": "array",
+                "items": {"type": "number"},
+                "minItems": safe_count,
+                "maxItems": safe_count,
+            }
+        },
+        "required": ["scores"],
+    }
 
 def _parse_rerank_scores(raw_text: str, *, expected_count: int) -> list[float]:
     cleaned = _normalize_chat_text(raw_text)
@@ -236,3 +290,19 @@ def _normalize_embedding(vector: list[float]) -> list[float]:
     if norm <= 0:
         return [float(value) for value in vector]
     return [float(value) / norm for value in vector]
+
+
+def _cosine_similarity(lhs: list[float], rhs: list[float]) -> float:
+    if not lhs or not rhs:
+        return 0.0
+    length = min(len(lhs), len(rhs))
+    if length <= 0:
+        return 0.0
+    return sum(float(lhs[index]) * float(rhs[index]) for index in range(length))
+
+
+def _looks_uninformative_scores(scores: list[float]) -> bool:
+    if not scores:
+        return True
+    rounded = {round(float(item), 6) for item in scores}
+    return len(rounded) <= 1

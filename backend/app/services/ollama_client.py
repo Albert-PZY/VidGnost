@@ -64,12 +64,17 @@ class OllamaClient:
             name = str(item.get("name") or item.get("model") or "").strip()
             if not name:
                 continue
-            models[name] = OllamaLocalModel(
+            local_model = OllamaLocalModel(
                 name=name,
                 size_bytes=max(0, int(item.get("size", 0) or 0)),
                 digest=str(item.get("digest", "")).strip(),
                 modified_at=str(item.get("modified_at", "")).strip(),
             )
+            models[name] = local_model
+            if name.endswith(":latest"):
+                alias = name[: -len(":latest")].strip()
+                if alias and alias not in models:
+                    models[alias] = local_model
         return models
 
     async def chat(
@@ -79,6 +84,7 @@ class OllamaClient:
         messages: list[dict[str, object]],
         options: dict[str, object] | None = None,
         keep_alive: str | None = None,
+        format: dict[str, object] | str | None = None,
     ) -> str:
         payload: dict[str, object] = {
             "model": str(model).strip(),
@@ -89,6 +95,8 @@ class OllamaClient:
             payload["options"] = options
         if keep_alive:
             payload["keep_alive"] = keep_alive
+        if format is not None:
+            payload["format"] = format
         response = await self._post_json("/chat", payload)
         message = response.get("message")
         if isinstance(message, dict):

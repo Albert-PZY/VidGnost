@@ -103,6 +103,14 @@ Tasks created from uploaded files or explicit local paths SHALL retain a stable 
 - **THEN** task detail keeps `source_local_path` pointed at the retained source asset rather than a per-run temporary workspace copy
 - **AND** per-run temporary workspaces are cleaned after execution without deleting the retained source asset
 
+### Requirement: Downloaded-source task records SHALL retain a previewable source path
+Tasks created from downloadable remote inputs such as `bilibili` URLs SHALL move the fetched source media into a stable retained asset path before temporary workspaces are cleaned, so the completed task remains previewable in the workbench until deletion.
+
+#### Scenario: Finish a task created from a bilibili URL
+- **WHEN** a task starts from `bilibili`
+- **THEN** task detail keeps `source_local_path` pointed at the retained downloaded media asset instead of the per-run temporary download workspace
+- **AND** cleanup of the per-run temporary workspace does not delete the retained downloaded media asset
+
 ### Requirement: Transcription CUDA runtime SHALL be prepared before GPU transcription begins
 When persisted whisper device strategy is `auto` or `cuda`, backend SHALL configure the current process environment from the persisted transcription CUDA runtime-library install directory and SHALL only enter Faster-Whisper GPU loading after required runtime DLLs pass readiness validation. The isolated transcription worker SHALL inherit that prepared environment before loading the GPU runtime.
 

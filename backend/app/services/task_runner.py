@@ -20,6 +20,7 @@ from app.services.ingestion import (
     download_bilibili_video,
     extract_audio_wav,
     prepare_local_video,
+    sanitize_filename,
     split_audio_wav,
 )
 from app.services.llm_config_store import LLMConfigStore
@@ -440,6 +441,11 @@ class TaskRunner:
                 await self._transcriber.ensure_small_model_ready(on_progress=on_model_prepare_progress)
                 await self._emit_log(task_id, "A", f"Source type: {submission.source_type}", stage_logs)
                 ingestion_result = await asyncio.to_thread(self._ingest_source, submission, media_dir)
+                ingestion_result = await asyncio.to_thread(
+                    self._persist_source_media,
+                    submission,
+                    ingestion_result,
+                )
                 await self._emit_log(task_id, "A", f"Video ready: {ingestion_result.media_path.name}", stage_logs)
                 await self._persist_stage_artifact_json(
                     task_id,
@@ -459,7 +465,7 @@ class TaskRunner:
                     task_id,
                     title=ingestion_result.title,
                     duration_seconds=ingestion_result.duration_seconds,
-                    source_local_path=submission.source_local_path or str(ingestion_result.media_path),
+                    source_local_path=str(ingestion_result.media_path),
                     progress=_PROGRESS_STAGE_A_DONE,
                     language=selected_language,
                     model_size=selected_model,
@@ -1338,6 +1344,38 @@ class TaskRunner:
         if not local_path.exists():
             raise FileNotFoundError(f"Local source missing: {local_path}")
         return prepare_local_video(submission.task_id, local_path, media_dir)
+
+    def _persist_source_media(self, submission: TaskSubmission, ingestion_result: IngestionResult) -> IngestionResult:
+        if submission.source_type != "bilibili":
+            return ingestion_result
+
+        source_path = ingestion_result.media_path
+        if not source_path.exists() or not source_path.is_file():
+            raise FileNotFoundError(f"Ingested source media missing: {source_path}")
+
+        upload_dir = Path(self._settings.upload_dir)
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        safe_title = sanitize_filename(ingestion_result.title or submission.task_id)
+        suffix = source_path.suffix.lower() or ".mp4"
+        target_path = upload_dir / f"{submission.task_id}_{safe_title}{suffix}"
+
+        for candidate in upload_dir.glob(f"{submission.task_id}_*"):
+            if candidate == source_path or candidate == target_path:
+                continue
+            if candidate.is_dir():
+                shutil.rmtree(candidate, ignore_errors=True)
+            else:
+                candidate.unlink(missing_ok=True)
+
+        if target_path != source_path:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(source_path), str(target_path))
+
+        return IngestionResult(
+            media_path=target_path,
+            title=ingestion_result.title,
+            duration_seconds=ingestion_result.duration_seconds,
+        )
 
     async def _stage_start(
         self,

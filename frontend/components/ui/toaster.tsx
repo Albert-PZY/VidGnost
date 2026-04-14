@@ -27,19 +27,54 @@ export function Toaster() {
   const playedToastIdsRef = React.useRef<Set<string>>(new Set())
 
   React.useEffect(() => {
-    toastAudioPoolRef.current = Array.from({ length: TOAST_AUDIO_POOL_SIZE }, () => {
-      const audio = new Audio(TOAST_SOUND_SRC)
-      audio.preload = "auto"
-      return audio
-    })
+    let disposed = false
+    let objectUrl = ""
 
-    return () => {
+    const resetAudioPool = () => {
       toastAudioPoolRef.current.forEach((audio) => {
         audio.pause()
         audio.removeAttribute("src")
         audio.load()
       })
       toastAudioPoolRef.current = []
+    }
+
+    const buildAudioPool = (source: string) => {
+      toastAudioPoolRef.current = Array.from({ length: TOAST_AUDIO_POOL_SIZE }, () => {
+        const audio = new Audio(source)
+        audio.preload = "auto"
+        return audio
+      })
+    }
+
+    const prepareAudioPool = async () => {
+      try {
+        const response = await fetch(TOAST_SOUND_SRC, { cache: "no-store" })
+        if (!response.ok) {
+          throw new Error(`Failed to load toast sound: ${response.status}`)
+        }
+        const blob = await response.blob()
+        if (disposed) {
+          return
+        }
+        objectUrl = URL.createObjectURL(blob)
+        buildAudioPool(objectUrl)
+      } catch {
+        if (disposed) {
+          return
+        }
+        buildAudioPool(TOAST_SOUND_SRC)
+      }
+    }
+
+    void prepareAudioPool()
+
+    return () => {
+      disposed = true
+      resetAudioPool()
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl)
+      }
     }
   }, [])
 
