@@ -17,7 +17,6 @@ from app.api.routes_tasks import router as tasks_router
 from app.api.routes_vqa import router as vqa_router
 from app.config import get_settings
 from app.runtime_stdio import enable_windows_utf8_stdio
-from app.services.developer_log_service import DeveloperLogService
 from app.services.events import EventBus
 from app.services.llm_config_store import LLMConfigStore
 from app.services.llm_runtime_sync import sync_llm_runtime_config_from_catalog
@@ -54,9 +53,6 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     task_store = TaskStore(settings.storage_dir)
     cleanup_report = await asyncio.to_thread(cleanup_temp_dir_once, settings.temp_dir)
-    developer_log_service = DeveloperLogService(
-        log_dir=str(Path(settings.storage_dir) / "event-logs" / "developer")
-    )
     if cleanup_report.removed_count > 0:
         logger.info(
             "Startup temp cleanup removed %s/%s entries from %s",
@@ -64,34 +60,13 @@ async def lifespan(app: FastAPI):
             cleanup_report.scanned_count,
             settings.temp_dir,
         )
-        await developer_log_service.publish(
-            category="system",
-            level="info",
-            source="app.main",
-            message="启动时已清理临时目录残留文件。",
-            event_type="startup_cleanup",
-            payload={
-                "removed_count": cleanup_report.removed_count,
-                "scanned_count": cleanup_report.scanned_count,
-                "temp_dir": settings.temp_dir,
-            },
-        )
     if cleanup_report.failed_entries:
         logger.warning(
             "Startup temp cleanup failed for %s entries: %s",
             len(cleanup_report.failed_entries),
             "; ".join(cleanup_report.failed_entries),
         )
-        await developer_log_service.publish(
-            category="system",
-            level="warning",
-            source="app.main",
-            message="启动时有部分临时目录条目清理失败。",
-            event_type="startup_cleanup_warning",
-            payload={"failed_entries": cleanup_report.failed_entries},
-        )
     event_bus = EventBus(event_log_dir=str(Path(settings.storage_dir) / "event-logs"))
-    event_bus.add_observer(developer_log_service.observe_event_bus)
     llm_config_store = LLMConfigStore(settings)
     await llm_config_store.get()
     prompt_template_store = PromptTemplateStore(settings=settings)
@@ -145,13 +120,6 @@ async def lifespan(app: FastAPI):
     startup_warning = resource_guard.startup_warning()
     if startup_warning:
         logger.warning(startup_warning)
-        await developer_log_service.publish(
-            category="runtime",
-            level="warning",
-            source="app.main",
-            message=startup_warning,
-            event_type="resource_guard_warning",
-        )
     self_check_service = SelfCheckService(
         settings=settings,
         event_bus=event_bus,
@@ -179,7 +147,6 @@ async def lifespan(app: FastAPI):
         model_catalog_store=model_catalog_store,
         model_runtime=vqa_model_runtime,
         storage_dir=settings.storage_dir,
-        developer_log_service=developer_log_service,
     )
     runner = TaskRunner(
         settings=settings,
@@ -197,7 +164,6 @@ async def lifespan(app: FastAPI):
     app.state.settings = settings
     app.state.task_store = task_store
     app.state.event_bus = event_bus
-    app.state.developer_log_service = developer_log_service
     app.state.llm_config_store = llm_config_store
     app.state.prompt_template_store = prompt_template_store
     app.state.model_catalog_store = model_catalog_store
@@ -217,33 +183,10 @@ async def lifespan(app: FastAPI):
     app.state.vqa_model_runtime = vqa_model_runtime
     app.state.vqa_runtime = vqa_runtime
     app.state.task_runner = runner
-    await developer_log_service.publish(
-        category="system",
-        level="info",
-        source="app.main",
-        message="开发者日志链路已初始化。",
-        event_type="developer_log_ready",
-        payload={"storage_dir": settings.storage_dir},
-    )
     recovered_task_ids = await runner.resume_incomplete_tasks()
     if recovered_task_ids:
         logger.info("Recovered unfinished tasks on startup: %s", ", ".join(recovered_task_ids))
-        await developer_log_service.publish(
-            category="runtime",
-            level="info",
-            source="app.main",
-            message="已恢复未完成任务。",
-            event_type="task_recovery",
-            payload={"task_ids": recovered_task_ids},
-        )
     yield
-    await developer_log_service.publish(
-        category="system",
-        level="info",
-        source="app.main",
-        message="应用正在关闭。",
-        event_type="shutdown",
-    )
     await runner.shutdown()
     await model_download_service.shutdown()
     await whisper_gpu_runtime_service.shutdown()

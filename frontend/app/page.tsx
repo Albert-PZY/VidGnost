@@ -10,7 +10,6 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { AppHeader } from "@/components/app-header"
 import { NewTaskView } from "@/components/views/new-task-view"
 import { BootstrapStatusOverlay, type BootstrapStatus } from "@/components/views/bootstrap-status-overlay"
-import { DeveloperModeView } from "@/components/views/developer-mode-view"
 import { DiagnosticsView } from "@/components/views/diagnostics-view"
 import { HistoryView } from "@/components/views/history-view"
 import { SettingsView } from "@/components/views/settings-view"
@@ -19,7 +18,6 @@ import {
   createTaskFromPath,
   createTaskFromUrl,
   getApiErrorMessage,
-  reportDeveloperLog,
   getHealth,
   getRecentTasks,
   getRuntimePaths,
@@ -38,20 +36,18 @@ import type {
   WorkflowType,
 } from "@/lib/types"
 
-type NavigationId = "new-task" | "history" | "settings" | "diagnostics" | "developer-mode"
+type NavigationId = "new-task" | "history" | "settings" | "diagnostics"
 type ViewState =
   | { type: "new-task" }
   | { type: "processing"; taskId: string; workflow: WorkflowType; taskTitle: string }
   | { type: "history" }
   | { type: "settings" }
   | { type: "diagnostics" }
-  | { type: "developer-mode" }
 
 const DEFAULT_UI_SETTINGS: UISettingsResponse = {
   language: "zh",
   font_size: 14,
   auto_save: true,
-  developer_mode_enabled: false,
   theme_hue: 220,
   background_image: null,
   background_image_opacity: 28,
@@ -81,7 +77,6 @@ function readStoredRuntimePaths(): RuntimePathsResponse | null {
       storage_dir: parsed.storage_dir,
       event_log_dir: parsed.event_log_dir,
       trace_log_dir: parsed.trace_log_dir,
-      developer_log_dir: parsed.developer_log_dir,
     }
   } catch {
     return null
@@ -115,8 +110,6 @@ const getPageTitle = (viewState: ViewState) => {
       return { title: "设置中心", subtitle: "配置模型和应用" }
     case "diagnostics":
       return { title: "系统自检", subtitle: "检查运行状态" }
-    case "developer-mode":
-      return { title: "开发者模式", subtitle: "查看全链路实时日志" }
   }
 }
 
@@ -146,28 +139,6 @@ export default function VideoMindApp() {
     }),
     [uiSettings, uiSettingsPreviewPatch],
   )
-  const emitDeveloperLog = React.useCallback(
-    (payload: {
-      category?: string
-      level?: string
-      source: string
-      message: string
-      topic?: string
-      task_id?: string
-      trace_id?: string
-      session_id?: string
-      stage?: string
-      substage?: string
-      event_type?: string
-      payload?: Record<string, unknown>
-    }) => {
-      void reportDeveloperLog(payload).catch(() => {
-        // Developer logging is best-effort and must not break primary flows.
-      })
-    },
-    [],
-  )
-
   React.useEffect(() => {
     uiSettingsRef.current = uiSettings
   }, [uiSettings])
@@ -262,14 +233,6 @@ export default function VideoMindApp() {
         await settleStartupFrame()
         setBootstrapStatus("ready")
         setBootstrapMessage("系统运行正常。")
-        emitDeveloperLog({
-          category: "runtime",
-          level: "info",
-          source: "frontend.bootstrap",
-          message: "工作台初始化完成。",
-          topic: "bootstrap",
-          event_type: "bootstrap_ready",
-        })
         completeDesktopBootstrap(createDesktopBootstrapState({
           phaseId: currentPhaseId,
           phaseStatus: "complete",
@@ -281,15 +244,6 @@ export default function VideoMindApp() {
         const message = getApiErrorMessage(error, "后端当前不可用，请稍后重试。")
         setBootstrapStatus("degraded")
         setBootstrapMessage(message)
-        emitDeveloperLog({
-          category: "error",
-          level: "error",
-          source: "frontend.bootstrap",
-          message,
-          topic: "bootstrap",
-          event_type: "bootstrap_degraded",
-          payload: { phase_id: currentPhaseId },
-        })
         await settleStartupFrame()
         const degradedBootstrapState = createDesktopBootstrapState({
           phaseId: currentPhaseId,
@@ -305,7 +259,7 @@ export default function VideoMindApp() {
         }
       }
     },
-    [completeDesktopBootstrap, emitDeveloperLog, reportDesktopBootstrapState, settleStartupFrame],
+    [completeDesktopBootstrap, reportDesktopBootstrapState, settleStartupFrame],
   )
 
   React.useEffect(() => {
@@ -351,90 +305,6 @@ export default function VideoMindApp() {
     }
   }, [])
 
-  React.useEffect(() => {
-    const topic =
-      viewState.type === "processing" ? `task:${viewState.taskId}` : `view:${viewState.type}`
-    emitDeveloperLog({
-      category: "frontend",
-      level: "info",
-      source: "frontend.page",
-      message:
-        viewState.type === "processing"
-          ? `打开任务处理页：${viewState.taskTitle || viewState.taskId}`
-          : `切换到页面：${viewState.type}`,
-      topic,
-      task_id: viewState.type === "processing" ? viewState.taskId : "",
-      event_type: "view_change",
-      payload:
-        viewState.type === "processing"
-          ? {
-              view: viewState.type,
-              workflow: viewState.workflow,
-              task_title: viewState.taskTitle,
-            }
-          : { view: viewState.type },
-    })
-  }, [emitDeveloperLog, viewState])
-
-  React.useEffect(() => {
-    const handleWindowError = (event: ErrorEvent) => {
-      emitDeveloperLog({
-        category: "error",
-        level: "error",
-        source: "frontend.window",
-        message: event.message || "前端出现未捕获异常。",
-        topic: "window:error",
-        event_type: "window_error",
-        payload: {
-          filename: event.filename,
-          lineno: event.lineno,
-          colno: event.colno,
-        },
-      })
-    }
-
-    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-      const reason =
-        event.reason instanceof Error
-          ? event.reason.message
-          : typeof event.reason === "string"
-            ? event.reason
-            : "前端 Promise 出现未处理拒绝。"
-      emitDeveloperLog({
-        category: "error",
-        level: "error",
-        source: "frontend.window",
-        message: reason,
-        topic: "window:unhandledrejection",
-        event_type: "unhandled_rejection",
-        payload: {
-          reason:
-            event.reason instanceof Error
-              ? {
-                  name: event.reason.name,
-                  message: event.reason.message,
-                }
-              : { value: String(event.reason) },
-        },
-      })
-    }
-
-    window.addEventListener("error", handleWindowError)
-    window.addEventListener("unhandledrejection", handleUnhandledRejection)
-    return () => {
-      window.removeEventListener("error", handleWindowError)
-      window.removeEventListener("unhandledrejection", handleUnhandledRejection)
-    }
-  }, [emitDeveloperLog])
-
-  React.useEffect(() => {
-    if (uiSettings.developer_mode_enabled || viewState.type !== "developer-mode") {
-      return
-    }
-    setActiveNav("settings")
-    setViewState({ type: "settings" })
-  }, [uiSettings.developer_mode_enabled, viewState.type])
-
   const persistUiSettings = React.useCallback(
     async (patch: Partial<UISettingsResponse>) => {
       const current = uiSettingsRef.current
@@ -442,7 +312,6 @@ export default function VideoMindApp() {
         language: patch.language ?? current.language,
         font_size: patch.font_size ?? current.font_size,
         auto_save: patch.auto_save ?? current.auto_save,
-        developer_mode_enabled: patch.developer_mode_enabled ?? current.developer_mode_enabled,
         theme_hue: patch.theme_hue ?? current.theme_hue,
         background_image:
           patch.background_image !== undefined ? patch.background_image : current.background_image,
@@ -467,11 +336,6 @@ export default function VideoMindApp() {
   )
 
   const handleNavChange = (navId: string) => {
-    if (navId === "developer-mode" && !uiSettingsRef.current.developer_mode_enabled) {
-      setActiveNav("settings")
-      setViewState({ type: "settings" })
-      return
-    }
     setActiveNav(navId as NavigationId)
     switch (navId) {
       case "new-task":
@@ -485,9 +349,6 @@ export default function VideoMindApp() {
         break
       case "diagnostics":
         setViewState({ type: "diagnostics" })
-        break
-      case "developer-mode":
-        setViewState({ type: "developer-mode" })
         break
     }
   }
@@ -562,23 +423,9 @@ export default function VideoMindApp() {
         workflow: firstTask.workflow,
         taskTitle: displayTitle || firstTask.task_id,
       })
-      emitDeveloperLog({
-        category: "frontend",
-        level: "info",
-        source: "frontend.page",
-        message: "用户已创建新任务。",
-        topic: "task:create",
-        task_id: firstTask.task_id,
-        event_type: "task_created",
-        payload: {
-          workflow: firstTask.workflow,
-          source: input.source,
-          title: displayTitle || firstTask.task_id,
-        },
-      })
       await refreshOverview()
     },
-    [emitDeveloperLog, refreshOverview],
+    [refreshOverview],
   )
 
   const handleBackFromProcessing = () => {
@@ -597,21 +444,8 @@ export default function VideoMindApp() {
         workflow,
         taskTitle: meta?.title || taskId,
       })
-      emitDeveloperLog({
-        category: "frontend",
-        level: "info",
-        source: "frontend.page",
-        message: "用户从历史或最近任务列表打开任务。",
-        topic: "task:open",
-        task_id: taskId,
-        event_type: "task_open",
-        payload: {
-          workflow,
-          title: meta?.title || taskId,
-        },
-      })
     },
-    [emitDeveloperLog],
+    [],
   )
 
   const handleTaskLoaded = React.useCallback((task: TaskDetailResponse) => {
@@ -642,44 +476,16 @@ export default function VideoMindApp() {
   }, [])
 
   const handleOpenRuntimeLogs = React.useCallback(() => {
-    const targetPath =
-      runtimePaths?.developer_log_dir || runtimePaths?.event_log_dir || runtimePaths?.trace_log_dir || ""
+    const targetPath = runtimePaths?.event_log_dir || runtimePaths?.trace_log_dir || ""
     if (!targetPath) {
       toast.error("当前还没有可用的日志目录。")
-      emitDeveloperLog({
-        category: "frontend",
-        level: "warning",
-        source: "frontend.page",
-        message: "尝试打开日志目录，但当前目录不可用。",
-        topic: "runtime:logs",
-        event_type: "open_logs_unavailable",
-      })
       return
     }
     if (window.vidGnostDesktop?.openPath) {
       void window.vidGnostDesktop.openPath(targetPath).then((result) => {
         if (!result.ok) {
           toast.error(result.message || "打开日志目录失败")
-          emitDeveloperLog({
-            category: "frontend",
-            level: "error",
-            source: "frontend.page",
-            message: result.message || "打开日志目录失败",
-            topic: "runtime:logs",
-            event_type: "open_logs_failed",
-            payload: { target_path: targetPath },
-          })
-          return
         }
-        emitDeveloperLog({
-          category: "frontend",
-          level: "info",
-          source: "frontend.page",
-          message: "已在桌面环境打开日志目录。",
-          topic: "runtime:logs",
-          event_type: "open_logs_success",
-          payload: { target_path: targetPath },
-        })
       })
       return
     }
@@ -687,29 +493,11 @@ export default function VideoMindApp() {
       .writeText(targetPath)
       .then(() => {
         toast.success("当前不在 Electron 环境，日志目录已复制到剪贴板。")
-        emitDeveloperLog({
-          category: "frontend",
-          level: "info",
-          source: "frontend.page",
-          message: "已将日志目录复制到剪贴板。",
-          topic: "runtime:logs",
-          event_type: "copy_logs_path",
-          payload: { target_path: targetPath },
-        })
       })
       .catch(() => {
         toast.error("复制日志目录失败，请手动记录当前路径。")
-        emitDeveloperLog({
-          category: "frontend",
-          level: "error",
-          source: "frontend.page",
-          message: "复制日志目录失败。",
-          topic: "runtime:logs",
-          event_type: "copy_logs_path_failed",
-          payload: { target_path: targetPath },
-        })
       })
-  }, [emitDeveloperLog, runtimePaths])
+  }, [runtimePaths])
 
   const pageInfo = getPageTitle(viewState)
 
@@ -721,7 +509,6 @@ export default function VideoMindApp() {
           <AppSidebar
             activeNav={activeNav}
             onNavChange={handleNavChange}
-            developerModeEnabled={effectiveUiSettings.developer_mode_enabled}
             selectedWorkflow={selectedWorkflow}
             onWorkflowChange={setSelectedWorkflow}
             historyCount={taskStats.total}
@@ -773,12 +560,6 @@ export default function VideoMindApp() {
                 />
               )}
               {viewState.type === "diagnostics" && <DiagnosticsView />}
-              {viewState.type === "developer-mode" && (
-                <DeveloperModeView
-                  runtimePaths={runtimePaths}
-                  onOpenLogsDirectory={handleOpenRuntimeLogs}
-                />
-              )}
             </main>
             <BootstrapStatusOverlay
               status={bootstrapStatus}

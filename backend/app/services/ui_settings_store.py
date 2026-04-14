@@ -13,7 +13,6 @@ class UISettings(TypedDict):
     language: str
     font_size: int
     auto_save: bool
-    developer_mode_enabled: bool
     theme_hue: int
     background_image: str | None
     background_image_opacity: int
@@ -28,7 +27,6 @@ DEFAULT_UI_SETTINGS: UISettings = {
     "language": "zh",
     "font_size": 14,
     "auto_save": True,
-    "developer_mode_enabled": False,
     "theme_hue": 220,
     "background_image": None,
     "background_image_opacity": 28,
@@ -64,9 +62,6 @@ class UISettingsStore:
                 font_size = current["font_size"]
             font_size = max(12, min(20, font_size))
             auto_save = bool(updates.get("auto_save", current["auto_save"]))
-            developer_mode_enabled = bool(
-                updates.get("developer_mode_enabled", current["developer_mode_enabled"])
-            )
             theme_hue_raw = updates.get("theme_hue", current["theme_hue"])
             try:
                 theme_hue = int(theme_hue_raw)
@@ -138,7 +133,6 @@ class UISettingsStore:
                 "language": language,
                 "font_size": font_size,
                 "auto_save": auto_save,
-                "developer_mode_enabled": developer_mode_enabled,
                 "theme_hue": theme_hue,
                 "background_image": background_image,
                 "background_image_opacity": background_image_opacity,
@@ -174,9 +168,6 @@ class UISettingsStore:
             font_size = DEFAULT_UI_SETTINGS["font_size"]
         font_size = max(12, min(20, font_size))
         auto_save = bool(payload.get("auto_save", DEFAULT_UI_SETTINGS["auto_save"]))
-        developer_mode_enabled = bool(
-            payload.get("developer_mode_enabled", DEFAULT_UI_SETTINGS["developer_mode_enabled"])
-        )
         try:
             theme_hue = int(payload.get("theme_hue", DEFAULT_UI_SETTINGS["theme_hue"]))
         except (TypeError, ValueError):
@@ -251,7 +242,6 @@ class UISettingsStore:
             "language": language,
             "font_size": font_size,
             "auto_save": auto_save,
-            "developer_mode_enabled": developer_mode_enabled,
             "theme_hue": theme_hue,
             "background_image": background_image,
             "background_image_opacity": background_image_opacity,

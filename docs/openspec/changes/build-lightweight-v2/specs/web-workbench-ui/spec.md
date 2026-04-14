@@ -185,8 +185,8 @@ Renderer SHALL present transient `success`, `error`, and `loading` feedback thro
 - **AND** only the three newest visible notifications remain on screen
 - **AND** each newly shown visible notification triggers one playback attempt of the bundled `toast.mp3` sound effect
 
-### Requirement: Appearance settings SHALL persist theme hue, font size, autosave, developer-mode visibility, and custom skin state
-UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `developer_mode_enabled`, `background_image`, `background_image_opacity`, `background_image_blur`, `background_image_scale`, `background_image_focus_x`, `background_image_focus_y`, and `background_image_fill_mode`, and the renderer SHALL apply them immediately to the active shell through a dedicated fixed background layer.
+### Requirement: Appearance settings SHALL persist theme hue, font size, autosave, and custom skin state
+UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_image`, `background_image_opacity`, `background_image_blur`, `background_image_scale`, `background_image_focus_x`, `background_image_focus_y`, and `background_image_fill_mode`, and the renderer SHALL apply them immediately to the active shell through a dedicated fixed background layer.
 
 #### Scenario: Adjust theme hue
 - **WHEN** user changes theme hue from the appearance section and saves it
@@ -197,12 +197,6 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `developer_mode
 #### Scenario: Adjust font size
 - **WHEN** user changes interface font size and saves it
 - **THEN** renderer applies the new root font size immediately and restores it on next launch
-
-#### Scenario: Toggle developer-mode entry visibility
-- **WHEN** user enables or disables developer mode from settings and saves it
-- **THEN** backend persists `developer_mode_enabled`
-- **AND** the left-side system navigation only renders `开发者模式` when that setting is enabled
-- **AND** if the setting is turned off while the developer-mode page is open, renderer returns the user to `设置中心`
 
 #### Scenario: Configure a custom skin image
 - **WHEN** user chooses a skin image from the Electron shell and opens the skin dialog
@@ -537,37 +531,4 @@ Diagnostics view SHALL provide a direct autofix action when the backend marks is
 - **THEN** it resolves the Whisper cache directory from the current model-catalog path instead of assuming the storage default directory
 - **AND** the reported cache path matches the migrated absolute directory when the catalog has already been updated
 
-### Requirement: Workbench SHALL expose a dedicated developer-mode page for full-chain log tracing
-Workbench SHALL provide a dedicated `开发者模式` page in the main shell navigation. The page SHALL aggregate task events, self-check events, VQA retrieval and generation traces, frontend interaction logs, runtime lifecycle logs, and uncaught error reports into one searchable stream, while keeping the existing workbench visual language and dense professional layout.
-
-#### Scenario: Open developer mode from the application shell
-- **WHEN** user selects `开发者模式` from the system navigation area
-- **THEN** the renderer opens a standalone page instead of a modal or transient panel
-- **AND** the page header summarizes currently loaded log count, warning count, error count, and realtime subscription state
-- **AND** the page provides a direct action to open the persisted developer-log directory when runtime paths are available
-
-#### Scenario: Separate history loading from realtime connection state
-- **WHEN** the developer-mode page has already loaded matching history logs but the realtime SSE subscription is still connecting or reconnecting
-- **THEN** the loaded list remains visible instead of being replaced by a blocking loading placeholder
-- **AND** the realtime connection state is surfaced through the status summary and inline banners only
-- **AND** backend emits an immediate SSE handshake comment after subscription setup so renderer can resolve the live-connection state without waiting for a business log event
-
-#### Scenario: Filter and inspect developer logs
-- **WHEN** user uses category, minimum-level, source, task ID, trace ID, session ID, or keyword filters
-- **THEN** the renderer reloads the matching developer-log history from backend
-- **AND** the main list keeps logs ordered by sequence so newly appended records appear at the bottom
-- **AND** selecting one log reveals its metadata and raw payload JSON in a dedicated detail surface
-- **AND** empty filtered states explain that there are currently no matching logs instead of rendering a blank panel
-
-#### Scenario: Follow realtime incremental developer logs
-- **WHEN** the developer-mode page has an active realtime subscription
-- **THEN** backend streams new developer-log records through SSE without requiring page refresh
-- **AND** the renderer can pause and resume the realtime subscription explicitly
-- **AND** the renderer supports auto-follow so the list stays pinned to the newest log by default
-- **AND** when user scrolls away from the bottom threshold, auto-follow is suspended until the user re-enables it or returns near the bottom
-
-#### Scenario: Aggregate backend, frontend, and runtime error sources into developer logs
-- **WHEN** task-event bus topics, self-check topics, VQA retrieval or generation stages, frontend page interactions, or uncaught frontend or backend exceptions emit diagnostic information
-- **THEN** backend normalizes them into one developer-log schema with stable fields including category, level, source, topic, task ID, trace ID, session ID, stage, substage, message, and payload
-- **AND** backend persists those normalized records under the runtime developer-log directory in addition to keeping an in-memory history buffer for fast page load
 - **AND** Windows-unsafe topic characters are sanitized when generating persisted event-log filenames so self-check sessions and other non-task topics are still retained on disk

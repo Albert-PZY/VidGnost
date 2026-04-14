@@ -7,7 +7,6 @@ import {
   History,
   Settings,
   Activity,
-  SquareTerminal,
   ChevronDown,
   Plus,
   FolderOpen,
@@ -41,13 +40,11 @@ type NavigationItem = {
   title: string
   icon: React.ElementType
   badge?: number
-  requiresDeveloperMode?: boolean
 }
 
 interface AppSidebarProps {
   activeNav: string
   onNavChange: (navId: string) => void
-  developerModeEnabled: boolean
   selectedWorkflow: WorkflowType
   onWorkflowChange: (workflow: WorkflowType) => void
   historyCount: number
@@ -80,12 +77,6 @@ const systemNavItems: NavigationItem[] = [
     title: "系统自检",
     icon: Activity,
   },
-  {
-    id: "developer-mode",
-    title: "开发者模式",
-    icon: SquareTerminal,
-    requiresDeveloperMode: true,
-  },
 ]
 
 const workflowOptions = [
@@ -106,7 +97,6 @@ const workflowOptions = [
 export function AppSidebar({
   activeNav,
   onNavChange,
-  developerModeEnabled,
   selectedWorkflow,
   onWorkflowChange,
   historyCount,
@@ -122,11 +112,6 @@ export function AppSidebar({
       ),
     [historyCount],
   )
-  const visibleSystemNavItems = React.useMemo(
-    () => systemNavItems.filter((item) => !item.requiresDeveloperMode || developerModeEnabled),
-    [developerModeEnabled],
-  )
-
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="p-4">
@@ -272,7 +257,7 @@ export function AppSidebar({
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
-              {visibleSystemNavItems.map((item) => (
+              {systemNavItems.map((item) => (
                 <SidebarMenuItem key={item.id}>
                   <SidebarMenuButton
                     isActive={activeNav === item.id}

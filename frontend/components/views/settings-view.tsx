@@ -18,7 +18,6 @@ import {
   HardDrive,
   Play,
   Sparkles,
-  SquareTerminal,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -3094,30 +3093,6 @@ export function SettingsView({
                   </div>
 
                   <Separator />
-
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <SquareTerminal className="h-4 w-4 text-primary" />
-                          <Label>开发者模式</Label>
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          开启后才会在左下角显示开发者模式入口，用于查看全链路实时日志与调试信息。
-                        </p>
-                      </div>
-                      <Switch
-                        checked={uiSettings.developer_mode_enabled}
-                        disabled={isSavingUi}
-                        onCheckedChange={(checked) => {
-                          void handleUiSettingChange(
-                            { developer_mode_enabled: checked },
-                            checked ? "开发者模式已开启" : "开发者模式已关闭",
-                          )
-                        }}
-                      />
-                    </div>
-                  </div>
                 </CardContent>
               </Card>
             )}
