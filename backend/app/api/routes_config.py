@@ -33,6 +33,7 @@ from app.services.model_catalog_store import ModelCatalogStore
 from app.services.model_download_service import ModelDownloadService
 from app.services.model_migration_service import ModelMigrationService
 from app.services.ollama_runtime_config_store import OllamaRuntimeConfigStore
+from app.services.ollama_service_manager import OllamaServiceManager
 from app.services.prompt_template_store import PromptTemplateStore
 from app.services.resource_guard import ResourceGuard
 from app.services.runtime_config_store import RuntimeConfigStore
@@ -72,6 +73,10 @@ def get_ollama_runtime_config_store(request: Request) -> OllamaRuntimeConfigStor
 
 def get_model_migration_service(request: Request) -> ModelMigrationService:
     return request.app.state.model_migration_service
+
+
+def get_ollama_service_manager(request: Request) -> OllamaServiceManager:
+    return request.app.state.ollama_service_manager
 
 
 def get_ui_settings_store(request: Request) -> UISettingsStore:
@@ -116,6 +121,30 @@ async def _build_whisper_config_response(
         runtime_libraries=WhisperRuntimeLibrariesResponse.model_validate(runtime_libraries),
         warnings=warnings,
         rollback_applied=rollback_applied,
+    )
+
+
+async def _build_ollama_runtime_config_response(
+    payload: dict[str, object],
+    ollama_service_manager: OllamaServiceManager,
+) -> OllamaRuntimeConfigResponse:
+    return OllamaRuntimeConfigResponse.model_validate(
+        {
+            **payload,
+            "service": await ollama_service_manager.get_status(),
+        }
+    )
+
+
+async def _build_ollama_migration_response(
+    payload: dict[str, object],
+    ollama_service_manager: OllamaServiceManager,
+) -> OllamaModelsMigrationResponse:
+    return OllamaModelsMigrationResponse.model_validate(
+        {
+            **payload,
+            "service": await ollama_service_manager.get_status(),
+        }
     )
 
 
@@ -186,8 +215,9 @@ async def update_llm_config(
 @router.get("/ollama", response_model=OllamaRuntimeConfigResponse)
 async def get_ollama_runtime_config(
     store: OllamaRuntimeConfigStore = Depends(get_ollama_runtime_config_store),
+    ollama_service_manager: OllamaServiceManager = Depends(get_ollama_service_manager),
 ) -> OllamaRuntimeConfigResponse:
-    return OllamaRuntimeConfigResponse.model_validate(await store.get())
+    return await _build_ollama_runtime_config_response(await store.get(), ollama_service_manager)
 
 
 @router.put("/ollama", response_model=OllamaRuntimeConfigResponse)
@@ -196,6 +226,7 @@ async def update_ollama_runtime_config(
     llm_store: LLMConfigStore = Depends(get_store),
     catalog: ModelCatalogStore = Depends(get_model_catalog),
     store: OllamaRuntimeConfigStore = Depends(get_ollama_runtime_config_store),
+    ollama_service_manager: OllamaServiceManager = Depends(get_ollama_service_manager),
 ) -> OllamaRuntimeConfigResponse:
     payload = await store.save(
         {
@@ -210,19 +241,33 @@ async def update_ollama_runtime_config(
         model_catalog_store=catalog,
         ollama_base_url=payload["base_url"],
     )
-    return OllamaRuntimeConfigResponse.model_validate(payload)
+    return await _build_ollama_runtime_config_response(payload, ollama_service_manager)
 
 
 @router.post("/ollama/migrate-models", response_model=OllamaModelsMigrationResponse)
 async def migrate_ollama_models(
     body: OllamaModelsMigrationRequest,
     migration_service: ModelMigrationService = Depends(get_model_migration_service),
+    ollama_service_manager: OllamaServiceManager = Depends(get_ollama_service_manager),
 ) -> OllamaModelsMigrationResponse:
     try:
         payload = await migration_service.migrate_ollama_models(body.target_dir)
     except ValueError as exc:
         raise AppError.bad_request(str(exc), code="OLLAMA_MODEL_MIGRATION_INVALID") from exc
-    return OllamaModelsMigrationResponse.model_validate(payload)
+    return await _build_ollama_migration_response(payload, ollama_service_manager)
+
+
+@router.post("/ollama/restart-service", response_model=OllamaRuntimeConfigResponse)
+async def restart_ollama_service(
+    store: OllamaRuntimeConfigStore = Depends(get_ollama_runtime_config_store),
+    ollama_service_manager: OllamaServiceManager = Depends(get_ollama_service_manager),
+) -> OllamaRuntimeConfigResponse:
+    try:
+        service_status = await ollama_service_manager.restart_service()
+    except (ValueError, RuntimeError) as exc:
+        raise AppError.bad_request(str(exc), code="OLLAMA_SERVICE_RESTART_INVALID") from exc
+    payload = await store.get()
+    return OllamaRuntimeConfigResponse.model_validate({**payload, "service": service_status})
 
 
 @router.get("/whisper", response_model=WhisperConfigResponse)

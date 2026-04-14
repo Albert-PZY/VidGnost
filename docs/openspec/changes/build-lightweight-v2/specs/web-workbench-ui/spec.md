@@ -44,7 +44,14 @@ The settings-center model surface SHALL expose dedicated `Ollama 运行时与模
 - **THEN** the renderer shows an Ollama runtime card with `安装目录`、`可执行文件`、`模型目录`、`服务地址` fields
 - **AND** the card allows opening native directory pickers for install and model directories
 - **AND** the card exposes `保存 Ollama 配置` and `迁移现有 Ollama 模型` actions
+- **AND** the same card shows current Ollama service reachability, whether a local process was detected, the configured model directory, the effective directory currently used by the running service, and a backend-supplied status message
+- **AND** the card exposes `重启/启动 Ollama 服务` when the backend reports that self-managed restart is available
 - **AND** the card states that later Ollama model pulls follow the configured model directory instead of an implicit default path
+
+#### Scenario: Attempt managed download after Ollama model migration
+- **WHEN** user clicks a managed Ollama model download action after model files have already been moved into the configured directory
+- **THEN** renderer surfaces the backend download snapshot message instead of always showing a generic `已开始通过 Ollama 拉取模型`
+- **AND** if backend reports that the running Ollama service still has not switched to the configured directory, the toast tells the user to start or restart Ollama rather than suggesting a duplicate pull
 
 #### Scenario: Batch migrate local-directory model entries from settings
 - **WHEN** user enters a target root directory in the local-model migration card and starts migration

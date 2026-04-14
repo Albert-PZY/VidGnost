@@ -67,6 +67,7 @@ import {
   migrateOllamaModels,
   pauseWhisperRuntimeLibraries,
   reloadModels,
+  restartOllamaService,
   resumeWhisperRuntimeLibraries,
   startModelDownload,
   updateLLMConfig,
@@ -439,6 +440,7 @@ export function SettingsView({
   const [isUpdatingWhisperRuntime, setIsUpdatingWhisperRuntime] = React.useState(false)
   const [isUpdatingOllamaRuntime, setIsUpdatingOllamaRuntime] = React.useState(false)
   const [isMigratingOllamaModels, setIsMigratingOllamaModels] = React.useState(false)
+  const [isRestartingOllamaService, setIsRestartingOllamaService] = React.useState(false)
   const [isMigratingLocalModels, setIsMigratingLocalModels] = React.useState(false)
   const [whisperRuntimeDirty, setWhisperRuntimeDirty] = React.useState(false)
   const [ollamaRuntimeDirty, setOllamaRuntimeDirty] = React.useState(false)
@@ -451,6 +453,7 @@ export function SettingsView({
   const skinPreviewRef = React.useRef<HTMLDivElement | null>(null)
   const [skinPreviewSize, setSkinPreviewSize] = React.useState({ width: 0, height: 0 })
   const [skinPreviewImageSize, setSkinPreviewImageSize] = React.useState({ width: 0, height: 0 })
+  const ollamaService = ollamaConfig?.service ?? null
 
   React.useEffect(() => {
     setFontSize([uiSettings.font_size])
@@ -553,6 +556,18 @@ export function SettingsView({
     }
   }, [uiSettings.background_image])
 
+  const applyOllamaRuntimeConfig = React.useCallback((response: OllamaRuntimeConfigResponse) => {
+    setOllamaConfig(response)
+    setOllamaRuntimeForm({
+      install_dir: response.install_dir,
+      executable_path: response.executable_path,
+      models_dir: response.models_dir,
+      base_url: response.base_url,
+    })
+    setOllamaRuntimeDirty(false)
+    setLocalMigrationTarget((current) => current || response.models_dir)
+  }, [])
+
   const loadSettings = React.useCallback(async () => {
     setIsLoading(true)
     try {
@@ -567,16 +582,14 @@ export function SettingsView({
       setPromptBundle(promptResponse)
       setWhisperConfig(whisperResponse)
       setLlmConfig(llmResponse)
-      setOllamaConfig(ollamaResponse)
       setWhisperRuntimeDirty(false)
-      setOllamaRuntimeDirty(false)
-      setLocalMigrationTarget((current) => current || ollamaResponse.models_dir)
+      applyOllamaRuntimeConfig(ollamaResponse)
     } catch (error) {
       toast.error(getApiErrorMessage(error, "加载设置数据失败"))
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [applyOllamaRuntimeConfig])
 
   React.useEffect(() => {
     void loadSettings()
@@ -906,17 +919,26 @@ export function SettingsView({
         response = await startModelDownload(model.id)
       }
       setModels(response.items)
+      const refreshed = response.items.find((item) => item.id === model.id)
       if (model.download?.state === "downloading") {
         toast.success("模型下载已取消")
       } else if (model.is_installed) {
-        const refreshed = response.items.find((item) => item.id === model.id)
         if (refreshed?.is_installed) {
           toast.success("已刷新模型检测状态，当前模型文件可直接使用")
         } else {
           toast("已刷新模型检测状态，当前目录未检测到完整模型文件")
         }
       } else {
-        toast.success(model.component === "whisper" ? "已开始下载 Whisper 模型" : "已开始通过 Ollama 拉取模型")
+        const message = refreshed?.download?.message?.trim()
+        if (refreshed?.download?.state === "failed") {
+          toast(message || "模型当前不可直接拉取，请先处理 Ollama 服务状态")
+        } else if (refreshed?.download?.state === "completed") {
+          toast.success(message || "当前模型已经就绪，无需重复拉取")
+        } else {
+          toast.success(
+            message || (model.component === "whisper" ? "已开始下载 Whisper 模型" : "已开始通过 Ollama 拉取模型"),
+          )
+        }
       }
     } catch (error) {
       toast.error(getApiErrorMessage(error, "模型操作失败"))
@@ -1381,16 +1403,11 @@ export function SettingsView({
         models_dir: ollamaRuntimeForm.models_dir.trim(),
         base_url: ollamaRuntimeForm.base_url.trim(),
       })
-      setOllamaConfig(response)
-      setOllamaRuntimeForm({
-        install_dir: response.install_dir,
-        executable_path: response.executable_path,
-        models_dir: response.models_dir,
-        base_url: response.base_url,
-      })
-      setLocalMigrationTarget((current) => current || response.models_dir)
-      setOllamaRuntimeDirty(false)
+      applyOllamaRuntimeConfig(response)
       toast.success("Ollama 运行时配置已保存")
+      if (response.service.restart_required || !response.service.reachable) {
+        toast(response.service.message)
+      }
     } catch (error) {
       toast.error(getApiErrorMessage(error, "保存 Ollama 配置失败"))
     } finally {
@@ -1409,22 +1426,32 @@ export function SettingsView({
       const response = await migrateOllamaModels(targetDir)
       const [modelsResponse, ollamaResponse] = await Promise.all([getModels(), getOllamaRuntimeConfig()])
       setModels(modelsResponse.items)
-      setOllamaConfig(ollamaResponse)
-      setOllamaRuntimeForm({
-        install_dir: ollamaResponse.install_dir,
-        executable_path: ollamaResponse.executable_path,
-        models_dir: ollamaResponse.models_dir,
-        base_url: ollamaResponse.base_url,
-      })
-      setOllamaRuntimeDirty(false)
+      applyOllamaRuntimeConfig(ollamaResponse)
       if (response.warnings.length > 0) {
         toast(response.warnings.join(" "))
       }
       toast.success(response.message || "Ollama 模型目录已迁移")
+      if (ollamaResponse.service.restart_required || !ollamaResponse.service.reachable) {
+        toast(ollamaResponse.service.message)
+      }
     } catch (error) {
       toast.error(getApiErrorMessage(error, "迁移 Ollama 模型目录失败"))
     } finally {
       setIsMigratingOllamaModels(false)
+    }
+  }
+
+  const handleRestartOllamaService = async () => {
+    setIsRestartingOllamaService(true)
+    try {
+      const [ollamaResponse, modelsResponse] = await Promise.all([restartOllamaService(), getModels()])
+      setModels(modelsResponse.items)
+      applyOllamaRuntimeConfig(ollamaResponse)
+      toast.success(ollamaResponse.service.message || "Ollama 服务已启动")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "重启 Ollama 服务失败"))
+    } finally {
+      setIsRestartingOllamaService(false)
     }
   }
 
@@ -1995,15 +2022,68 @@ export function SettingsView({
                       </div>
 
                       <div className="rounded-xl border bg-muted/20 p-4">
-                        <div className="space-y-1">
-                          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">当前生效路径</p>
-                          <p className="mt-2 break-all text-sm leading-6 text-foreground/90">
-                            {ollamaConfig?.models_dir || ollamaRuntimeForm.models_dir || "未配置"}
-                          </p>
+                        <div className="space-y-3">
+                          <div className="space-y-2">
+                            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">服务状态</p>
+                            <div className="flex flex-wrap gap-2">
+                              <Badge variant={ollamaService?.reachable ? "default" : "secondary"}>
+                                {ollamaService?.reachable ? "接口可达" : "接口不可达"}
+                              </Badge>
+                              <Badge variant="outline">
+                                {ollamaService?.process_detected ? "已检测到本地进程" : "未检测到本地进程"}
+                              </Badge>
+                              <Badge
+                                variant="outline"
+                                className={
+                                  ollamaService?.using_configured_models_dir
+                                    ? "border-emerald-500/60 text-emerald-600 dark:text-emerald-300"
+                                    : "border-amber-500/60 text-amber-600 dark:text-amber-300"
+                                }
+                              >
+                                {ollamaService?.using_configured_models_dir ? "模型目录已生效" : "模型目录待切换"}
+                              </Badge>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1">
+                            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">配置目录</p>
+                            <p className="break-all text-sm leading-6 text-foreground/90">
+                              {ollamaService?.configured_models_dir || ollamaRuntimeForm.models_dir || "未配置"}
+                            </p>
+                          </div>
+
+                          <div className="space-y-1">
+                            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">服务当前目录</p>
+                            <p className="break-all text-sm leading-6 text-foreground/90">
+                              {ollamaService?.effective_models_dir || "暂未识别"}
+                            </p>
+                          </div>
+
+                          <div className="space-y-1">
+                            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">状态说明</p>
+                            <p className="text-xs leading-6 text-muted-foreground">
+                              {ollamaService?.message || "保存配置后，这里会显示当前 Ollama 实际使用的模型目录。"}
+                            </p>
+                          </div>
+
+                          <Button
+                            variant="outline"
+                            className="w-full"
+                            disabled={isRestartingOllamaService || !ollamaService?.can_self_restart}
+                            onClick={() => {
+                              void handleRestartOllamaService()
+                            }}
+                          >
+                            <Play className="mr-2 h-4 w-4" />
+                            重启/启动 Ollama 服务
+                          </Button>
+
+                          {!ollamaService?.can_self_restart ? (
+                            <p className="text-xs leading-6 text-muted-foreground">
+                              仅当服务地址指向本机且可执行文件路径有效时，才支持从这里直接启动或重启 Ollama。
+                            </p>
+                          ) : null}
                         </div>
-                        <p className="mt-3 text-xs leading-6 text-muted-foreground">
-                          安装目录与模型目录解耦后，可以把程序和模型放在不同磁盘。迁移按钮会移动现有模型目录并同步更新配置。
-                        </p>
                       </div>
                     </div>
                   </div>

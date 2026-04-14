@@ -252,7 +252,22 @@ export interface LLMConfigResponse {
   correction_overlap: number
 }
 
+export interface OllamaServiceStatusResponse {
+  reachable: boolean
+  process_detected: boolean
+  process_id: number | null
+  executable_path: string
+  configured_models_dir: string
+  effective_models_dir: string
+  models_dir_source: "env" | "default" | "unknown"
+  using_configured_models_dir: boolean
+  restart_required: boolean
+  can_self_restart: boolean
+  message: string
+}
+
 export interface OllamaRuntimeConfigResponse {
+  service: OllamaServiceStatusResponse
   install_dir: string
   executable_path: string
   models_dir: string
@@ -260,6 +275,7 @@ export interface OllamaRuntimeConfigResponse {
 }
 
 export interface OllamaModelsMigrationResponse {
+  service: OllamaServiceStatusResponse
   source_dir: string
   target_dir: string
   moved: boolean

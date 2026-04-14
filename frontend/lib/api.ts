@@ -425,6 +425,13 @@ export function migrateOllamaModels(target_dir: string): Promise<OllamaModelsMig
   })
 }
 
+export function restartOllamaService(): Promise<OllamaRuntimeConfigResponse> {
+  return apiFetch<OllamaRuntimeConfigResponse>("/config/ollama/restart-service", {
+    method: "POST",
+    body: JSON.stringify({}),
+  })
+}
+
 export function migrateLocalModels(target_root: string): Promise<LocalModelsMigrationResponse> {
   return apiFetch<LocalModelsMigrationResponse>("/config/models/migrate-local", {
     method: "POST",

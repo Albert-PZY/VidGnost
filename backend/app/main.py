@@ -26,6 +26,7 @@ from app.services.model_migration_service import ModelMigrationService
 from app.services.model_runtime_manager import ModelRuntimeManager
 from app.services.ollama_client import OllamaClient
 from app.services.ollama_runtime_config_store import OllamaRuntimeConfigStore
+from app.services.ollama_service_manager import OllamaServiceManager
 from app.services.prompt_template_store import PromptTemplateStore
 from app.services.resource_guard import ResourceGuard
 from app.services.runtime_metrics import RuntimeMetricsService
@@ -73,6 +74,11 @@ async def lifespan(app: FastAPI):
     ollama_runtime_config_store = OllamaRuntimeConfigStore(settings)
     await ollama_runtime_config_store.get()
     ollama_client = OllamaClient(settings, runtime_config_store=ollama_runtime_config_store)
+    ollama_service_manager = OllamaServiceManager(
+        settings,
+        runtime_config_store=ollama_runtime_config_store,
+        ollama_client=ollama_client,
+    )
     model_catalog_store = ModelCatalogStore(
         settings=settings,
         ollama_client=ollama_client,
@@ -84,7 +90,11 @@ async def lifespan(app: FastAPI):
         model_catalog_store=model_catalog_store,
         ollama_base_url=ollama_runtime_config_store.get_sync()["base_url"],
     )
-    model_download_service = ModelDownloadService(settings=settings, ollama_client=ollama_client)
+    model_download_service = ModelDownloadService(
+        settings=settings,
+        ollama_client=ollama_client,
+        ollama_service_manager=ollama_service_manager,
+    )
     model_migration_service = ModelMigrationService(
         settings=settings,
         model_catalog_store=model_catalog_store,
@@ -159,6 +169,7 @@ async def lifespan(app: FastAPI):
     app.state.model_migration_service = model_migration_service
     app.state.ollama_client = ollama_client
     app.state.ollama_runtime_config_store = ollama_runtime_config_store
+    app.state.ollama_service_manager = ollama_service_manager
     app.state.ui_settings_store = ui_settings_store
     app.state.runtime_config_store = runtime_config_store
     app.state.whisper_gpu_runtime_service = whisper_gpu_runtime_service

@@ -300,6 +300,7 @@ class WhisperRuntimeLibrariesInstallRequest(BaseModel):
 
 
 class OllamaRuntimeConfigResponse(BaseModel):
+    service: "OllamaServiceStatusResponse"
     install_dir: str
     executable_path: str
     models_dir: str
@@ -318,11 +319,26 @@ class OllamaModelsMigrationRequest(BaseModel):
 
 
 class OllamaModelsMigrationResponse(BaseModel):
+    service: "OllamaServiceStatusResponse"
     source_dir: str
     target_dir: str
     moved: bool = False
     message: str = ""
     warnings: list[str] = Field(default_factory=list)
+
+
+class OllamaServiceStatusResponse(BaseModel):
+    reachable: bool = False
+    process_detected: bool = False
+    process_id: int | None = None
+    executable_path: str = ""
+    configured_models_dir: str = ""
+    effective_models_dir: str = ""
+    models_dir_source: Literal["env", "default", "unknown"] = "unknown"
+    using_configured_models_dir: bool = False
+    restart_required: bool = False
+    can_self_restart: bool = False
+    message: str = ""
 
 
 class LocalModelsMigrationRequest(BaseModel):

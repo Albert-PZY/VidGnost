@@ -64,6 +64,7 @@ The system SHALL expose `/config/ollama` and `/config/ollama/migrate-models` so 
 #### Scenario: Read current Ollama runtime config
 - **WHEN** client requests `/config/ollama`
 - **THEN** backend returns `install_dir`, `executable_path`, `models_dir`, and `base_url`
+- **AND** response includes a nested `service` block with current reachability, detected process metadata, configured model directory, effective model directory, and whether restart is required
 - **AND** path fields are normalized as absolute filesystem paths
 
 #### Scenario: Save current Ollama runtime config
@@ -77,6 +78,12 @@ The system SHALL expose `/config/ollama` and `/config/ollama/migrate-models` so 
 - **THEN** backend safely moves the existing Ollama model directory when needed
 - **AND** backend rejects unsafe nested source-target moves
 - **AND** backend updates the persisted Ollama runtime config to the new absolute target directory
+- **AND** response includes the refreshed `service` state so frontend can immediately tell whether the running Ollama process is already using the new directory
+
+#### Scenario: Restart local Ollama service after runtime changes
+- **WHEN** client posts `/config/ollama/restart-service`
+- **THEN** backend restarts or starts the local Ollama process with the configured `OLLAMA_MODELS` directory and host binding when self-managed restart is available
+- **AND** backend returns the current runtime config plus refreshed `service` status after the reachability check succeeds
 
 ### Requirement: System SHALL expose editable Whisper runtime config API
 The system SHALL expose `/config/whisper` read/update endpoints and persist effective values into `backend/storage/config.toml`.
@@ -167,6 +174,16 @@ The system SHALL keep `whisper-default` on the managed local runtime path, allow
 - **THEN** backend starts `Ollama pull` for the configured managed model id
 - **AND** download progress is merged back into subsequent `/config/models` responses
 - **AND** completion marks the entry ready without copying model weights into `backend/storage/model-hub`
+
+#### Scenario: Skip duplicate pull when current Ollama already recognizes the model
+- **WHEN** frontend requests `/config/models/{model_id}/download` for an Ollama-backed managed entry and the active Ollama service already exposes that model in `/api/tags`
+- **THEN** backend returns a completed download snapshot explaining that no new pull is required
+- **AND** backend does not start an additional `Ollama pull` job
+
+#### Scenario: Block duplicate pull when files exist but the service has not switched directories
+- **WHEN** frontend requests `/config/models/{model_id}/download` for an Ollama-backed managed entry and the model files already exist under the configured `models_dir` but the current Ollama service is still using another directory or is not yet running
+- **THEN** backend returns a failed download snapshot with guidance to start or restart Ollama first
+- **AND** backend does not issue a redundant `Ollama pull`
 
 #### Scenario: Batch migrate local-directory model entries
 - **WHEN** frontend posts `/config/models/migrate-local` with a target root directory

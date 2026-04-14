@@ -79,6 +79,19 @@ def test_get_and_update_llm_config_persists_file() -> None:
         assert disk["model"] == "test-model"
 
 
+def test_get_ollama_runtime_config_includes_service_status() -> None:
+    with TestClient(app) as client:
+        response = client.get("/api/config/ollama")
+        assert response.status_code == 200
+        payload = response.json()
+        assert "install_dir" in payload
+        assert "models_dir" in payload
+        assert "service" in payload
+        assert isinstance(payload["service"]["reachable"], bool)
+        assert isinstance(payload["service"]["restart_required"], bool)
+        assert "configured_models_dir" in payload["service"]
+
+
 def test_prompt_templates_endpoints_work() -> None:
     with TestClient(app) as client:
         bundle_response = client.get("/api/config/prompts")

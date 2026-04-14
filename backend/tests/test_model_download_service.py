@@ -120,6 +120,46 @@ class CompletingOllamaClient:
             )
 
 
+class FakeOllamaServiceManager:
+    def __init__(
+        self,
+        *,
+        recognized_by_service: bool = False,
+        files_present_in_configured_dir: bool = False,
+        reachable: bool = True,
+        restart_required: bool = False,
+        message: str = "",
+    ) -> None:
+        self.recognized_by_service = recognized_by_service
+        self.files_present_in_configured_dir = files_present_in_configured_dir
+        self.reachable = reachable
+        self.restart_required = restart_required
+        self.message = message
+        self.inspect_calls: list[str] = []
+
+    async def inspect_model(self, model_name: str) -> dict[str, object]:
+        self.inspect_calls.append(model_name)
+        return {
+            "recognized_by_service": self.recognized_by_service,
+            "files_present_in_configured_dir": self.files_present_in_configured_dir,
+            "configured_storage_path": f"D:/models/{model_name}",
+            "message": self.message,
+            "service": {
+                "reachable": self.reachable,
+                "process_detected": True,
+                "process_id": 9527,
+                "executable_path": "D:/Ollama/ollama.exe",
+                "configured_models_dir": "D:/models",
+                "effective_models_dir": "D:/models",
+                "models_dir_source": "env",
+                "using_configured_models_dir": not self.restart_required,
+                "restart_required": self.restart_required,
+                "can_self_restart": True,
+                "message": self.message,
+            },
+        }
+
+
 def test_model_download_service_tracks_completion_and_force_flag(tmp_path: Path) -> None:
     settings = _build_settings(tmp_path)
     whisper_service = CompletingWhisperService()
@@ -179,6 +219,59 @@ def test_model_download_service_uses_ollama_pull_for_non_whisper_models(tmp_path
         assert ollama_client.calls
         assert ollama_client.calls[0]["model"] == "bge-m3"
         assert whisper_service.force_redownload_values == []
+        await service.shutdown()
+
+    asyncio.run(run())
+
+
+def test_model_download_service_skips_pull_when_ollama_already_recognizes_model(tmp_path: Path) -> None:
+    settings = _build_settings(tmp_path)
+    ollama_client = CompletingOllamaClient()
+    ollama_service_manager = FakeOllamaServiceManager(
+        recognized_by_service=True,
+        message="当前 Ollama 已识别该模型，无需重新拉取。",
+    )
+    service = ModelDownloadService(
+        settings,
+        whisper_service=CompletingWhisperService(),  # type: ignore[arg-type]
+        ollama_client=ollama_client,  # type: ignore[arg-type]
+        ollama_service_manager=ollama_service_manager,  # type: ignore[arg-type]
+    )
+
+    async def run() -> None:
+        snapshot = await service.start_download("embedding-default")
+        assert snapshot["state"] == "completed"
+        assert snapshot["message"] == "当前 Ollama 已识别该模型，无需重新拉取。"
+        assert snapshot["percent"] == 100.0
+        assert ollama_service_manager.inspect_calls == ["bge-m3"]
+        assert ollama_client.calls == []
+        await service.shutdown()
+
+    asyncio.run(run())
+
+
+def test_model_download_service_blocks_pull_when_files_already_exist_but_service_not_switched(tmp_path: Path) -> None:
+    settings = _build_settings(tmp_path)
+    ollama_client = CompletingOllamaClient()
+    ollama_service_manager = FakeOllamaServiceManager(
+        files_present_in_configured_dir=True,
+        reachable=False,
+        restart_required=True,
+        message="模型文件已存在于配置目录，但当前 Ollama 服务尚未从该目录加载模型，请先启动或重启 Ollama 服务后刷新检测。",
+    )
+    service = ModelDownloadService(
+        settings,
+        whisper_service=CompletingWhisperService(),  # type: ignore[arg-type]
+        ollama_client=ollama_client,  # type: ignore[arg-type]
+        ollama_service_manager=ollama_service_manager,  # type: ignore[arg-type]
+    )
+
+    async def run() -> None:
+        snapshot = await service.start_download("embedding-default")
+        assert snapshot["state"] == "failed"
+        assert "模型文件已存在于配置目录" in snapshot["message"]
+        assert ollama_service_manager.inspect_calls == ["bge-m3"]
+        assert ollama_client.calls == []
         await service.shutdown()
 
     asyncio.run(run())

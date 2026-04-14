@@ -7,6 +7,7 @@ from typing import TypedDict
 from app.config import Settings
 from app.services.managed_model_registry import get_managed_model_spec, supports_managed_download
 from app.services.ollama_client import OllamaClient
+from app.services.ollama_service_manager import OllamaServiceManager
 from app.services.transcription import WhisperService
 
 
@@ -53,10 +54,12 @@ class ModelDownloadService:
         settings: Settings,
         whisper_service: WhisperService | None = None,
         ollama_client: OllamaClient | None = None,
+        ollama_service_manager: OllamaServiceManager | None = None,
     ) -> None:
         self._settings = settings
         self._whisper_service = whisper_service or WhisperService(settings)
         self._ollama_client = ollama_client or OllamaClient(settings)
+        self._ollama_service_manager = ollama_service_manager
         self._lock = asyncio.Lock()
         self._states: dict[str, ModelDownloadSnapshot] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
@@ -77,12 +80,32 @@ class ModelDownloadService:
 
     async def start_download(self, model_id: str, *, force_redownload: bool = False) -> ModelDownloadSnapshot:
         self._ensure_supported(model_id)
+        spec = get_managed_model_spec(model_id)
+        if spec is not None and spec.backend == "ollama" and not force_redownload and self._ollama_service_manager is not None:
+            inspection = await self._ollama_service_manager.inspect_model(spec.remote_id)
+            if inspection["recognized_by_service"]:
+                snapshot = _build_snapshot(
+                    state="completed",
+                    message=inspection["message"],
+                    percent=100.0,
+                )
+                await self._set_snapshot(model_id, snapshot)
+                return snapshot
+            if inspection["files_present_in_configured_dir"] and (
+                inspection["service"]["restart_required"] or not inspection["service"]["reachable"]
+            ):
+                snapshot = _build_snapshot(
+                    state="failed",
+                    message=inspection["message"],
+                )
+                await self._set_snapshot(model_id, snapshot)
+                return snapshot
+
         async with self._lock:
             task = self._tasks.get(model_id)
             if task is not None and not task.done():
                 return dict(self._states.get(model_id, _build_snapshot()))
 
-            spec = get_managed_model_spec(model_id)
             default_message = "准备拉取默认 Ollama 模型。"
             if spec is not None and spec.component == "whisper":
                 default_message = "准备下载默认模型目录中的 Whisper Small 模型。"
