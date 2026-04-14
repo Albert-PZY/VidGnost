@@ -8,7 +8,7 @@ import orjson
 
 from app.services.model_catalog_store import ModelCatalogStore
 from app.services.ollama_client import OllamaClient
-from app.services.remote_model_client import RemoteModelClient
+from app.services.remote_model_client import RemoteModelClient, infer_remote_api_protocol
 from app.services.vqa_types import EvidenceDocument
 
 _JSON_FENCE_PATTERN = re.compile(r"```(?:json)?\s*(?P<body>[\s\S]*?)```", re.IGNORECASE)
@@ -562,7 +562,7 @@ def _is_remote_model_ready(model: dict[str, object]) -> bool:
 
 
 def _supports_multimodal_embedding(model: dict[str, object]) -> bool:
-    return bool(_is_remote_model_ready(model) and str(model.get("api_protocol", "")).strip().lower() == "aliyun_bailian")
+    return bool(_is_remote_model_ready(model) and infer_remote_api_protocol(model) == "aliyun_bailian")
 
 
 def _display_model_name(model: dict[str, object]) -> str:
@@ -581,4 +581,3 @@ def _compose_retrieval_text(*, text: str, visual_text: str) -> str:
     if transcript and vision:
         return f"{transcript}\n视觉线索：{vision}"
     return transcript or vision
-

@@ -136,7 +136,8 @@ The system SHALL expose `/config/models` and related model-management APIs with 
 #### Scenario: Load model list in settings
 - **WHEN** frontend requests `/config/models`
 - **THEN** backend returns each model entry with `provider`, `model_id`, `default_path`, `path`, `is_installed`, `supports_managed_download`, and optional `download` status
-- **AND** online-capable entries also expose `api_base_url`, `api_key_configured`, `api_model`, `api_protocol`, `api_timeout_seconds`, and image-upload bounds when the component can send images
+- **AND** online-capable entries also expose `api_base_url`, `api_key_configured`, `api_model`, `api_timeout_seconds`, and image-upload bounds when the component can send images
+- **AND** backend may additionally return an inferred effective protocol marker for diagnostics, but frontend settings do not require a manual protocol selector
 
 ### Requirement: Managed model catalog SHALL support provider-specific routing with absolute local paths
 The system SHALL keep `whisper-default` on the managed local runtime path, allow `llm-default`, `embedding-default`, `vlm-default`, and `rerank-default` to switch between `Ollama` and `在线 API`, and expose `mllm-default` as a dedicated online multimodal entry. All returned local paths SHALL use absolute filesystem paths rather than logical URI forms.
@@ -155,7 +156,8 @@ The system SHALL keep `whisper-default` on the managed local runtime path, allow
 
 #### Scenario: Configure remote API routing for model entries
 - **WHEN** frontend updates `llm-default`, `embedding-default`, `vlm-default`, `rerank-default`, or `mllm-default` with `provider=openai_compatible`
-- **THEN** backend persists `api_base_url`, `api_key`, `api_model`, `api_protocol`, and `api_timeout_seconds`
+- **THEN** backend persists `api_base_url`, `api_key`, `api_model`, and `api_timeout_seconds`
+- **AND** backend infers the effective remote protocol from the configured service endpoint and model component type
 - **AND** image-capable entries additionally persist `api_image_max_bytes` and `api_image_max_edge`
 - **AND** the entry becomes `is_installed=true` only when base URL, API key, model name, and enabled state together satisfy the remote-ready contract
 

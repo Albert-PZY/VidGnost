@@ -12,6 +12,7 @@ from app.services.huggingface_model_downloader import HuggingFaceModelDownloader
 from app.services.managed_model_registry import get_managed_model_spec, managed_model_target_dir
 from app.services.ollama_client import OllamaClient, OllamaLocalModel
 from app.services.ollama_runtime_config_store import OllamaRuntimeConfigStore
+from app.services.remote_model_client import infer_remote_api_protocol
 
 _REMOTE_PROVIDER = "openai_compatible"
 _SUPPORTED_COMPONENTS = {"whisper", "llm", "embedding", "vlm", "rerank", "mllm"}
@@ -570,6 +571,7 @@ class ModelCatalogStore:
         hydrated["supports_managed_download"] = False
         hydrated["size_bytes"] = 0
         hydrated["api_key_configured"] = bool(api_key)
+        hydrated["api_protocol"] = infer_remote_api_protocol(hydrated)
         hydrated["status"] = "ready" if hydrated["is_installed"] else "not_ready"
 
     def _measure_path_size(self, target: Path | None) -> int:

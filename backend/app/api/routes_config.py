@@ -427,7 +427,6 @@ async def update_model_config(
                 "api_base_url": payload.api_base_url,
                 "api_key": payload.api_key,
                 "api_model": payload.api_model,
-                "api_protocol": payload.api_protocol,
                 "api_timeout_seconds": payload.api_timeout_seconds,
                 "api_image_max_bytes": payload.api_image_max_bytes,
                 "api_image_max_edge": payload.api_image_max_edge,

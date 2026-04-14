@@ -160,7 +160,6 @@ type ModelConfigFormState = {
   api_base_url: string
   api_key: string
   api_model: string
-  api_protocol: string
   api_timeout_seconds: string
   api_image_max_bytes: string
   api_image_max_edge: string
@@ -194,7 +193,6 @@ const EMPTY_MODEL_FORM: ModelConfigFormState = {
   api_base_url: "",
   api_key: "",
   api_model: "",
-  api_protocol: "openai_compatible",
   api_timeout_seconds: "120",
   api_image_max_bytes: "524288",
   api_image_max_edge: "1280",
@@ -292,11 +290,6 @@ const providerLabels: Record<string, string> = {
   local: "本地目录",
   ollama: "Ollama",
   openai_compatible: "在线 API",
-}
-
-const apiProtocolLabels: Record<string, string> = {
-  openai_compatible: "OpenAI Compatible",
-  aliyun_bailian: "阿里云百炼专用协议",
 }
 
 const recommendedRemoteModels: Partial<Record<ModelDescriptor["component"], string[]>> = {
@@ -774,7 +767,6 @@ export function SettingsView({
     payload.api_base_url = form.api_base_url.trim()
     payload.api_key = form.api_key.trim()
     payload.api_model = form.api_model.trim()
-    payload.api_protocol = form.api_protocol
     payload.api_timeout_seconds = Number.isFinite(parsedTimeoutSeconds) ? parsedTimeoutSeconds : 120
     payload.api_image_max_bytes = Number.isFinite(parsedImageMaxBytes) ? parsedImageMaxBytes : 524288
     payload.api_image_max_edge = Number.isFinite(parsedImageMaxEdge) ? parsedImageMaxEdge : 1280
@@ -873,7 +865,6 @@ export function SettingsView({
       api_base_url: model.api_base_url || "",
       api_key: model.api_key || "",
       api_model: model.api_model || "",
-      api_protocol: model.api_protocol || "openai_compatible",
       api_timeout_seconds: String(model.api_timeout_seconds || 120),
       api_image_max_bytes: String(model.api_image_max_bytes || 524288),
       api_image_max_edge: String(model.api_image_max_edge || 1280),
@@ -2035,7 +2026,7 @@ export function SettingsView({
                                       </div>
                                       <div className="break-all text-xs leading-relaxed text-foreground/90">
                                         {modelForm.provider === "openai_compatible"
-                                          ? `${modelForm.api_model || "未设置模型名"} · ${(apiProtocolLabels[modelForm.api_protocol] || modelForm.api_protocol)}`
+                                          ? modelForm.api_model || "未设置模型名"
                                           : modelForm.path || editingModel.path || editingModel.default_path || "使用默认托管目录"}
                                       </div>
                                     </div>
@@ -2391,7 +2382,7 @@ export function SettingsView({
                                 <div className="space-y-1">
                                   <div className="text-base font-semibold leading-tight">在线 API 配置</div>
                                   <p className="text-xs leading-relaxed text-muted-foreground">
-                                    为当前组件单独配置 Base URL、模型名、协议与鉴权信息。阿里云百炼的嵌入和重排建议使用专用协议。
+                                    为当前组件单独配置 Base URL、模型名与鉴权信息。后端会根据服务地址和模型类型自动选择兼容适配方式。
                                   </p>
                                 </div>
 
@@ -2443,30 +2434,6 @@ export function SettingsView({
                                     />
                                     <p className="text-xs text-muted-foreground">
                                       仅当前组件会读取这里的密钥配置。
-                                    </p>
-                                  </div>
-
-                                  <div className="space-y-2">
-                                    <Label>接口协议</Label>
-                                    <Select
-                                      value={modelForm.api_protocol}
-                                      onValueChange={(value) =>
-                                        setModelForm((current) => ({
-                                          ...current,
-                                          api_protocol: value,
-                                        }))
-                                      }
-                                    >
-                                      <SelectTrigger className="model-config-dialog-select-trigger bg-background/80">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent className="model-config-select-content">
-                                        <SelectItem value="openai_compatible">OpenAI Compatible</SelectItem>
-                                        <SelectItem value="aliyun_bailian">阿里云百炼专用</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                    <p className="text-xs text-muted-foreground">
-                                      嵌入与重排序使用阿里云百炼专用协议时，会走兼容适配层。
                                     </p>
                                   </div>
 

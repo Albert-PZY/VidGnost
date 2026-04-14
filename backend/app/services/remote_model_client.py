@@ -12,6 +12,7 @@ import orjson
 from openai import AsyncOpenAI
 
 _DEFAULT_TIMEOUT_SECONDS = 120.0
+_BAILIAN_PROTOCOL_COMPONENTS = {"embedding", "rerank"}
 
 
 class RemoteModelClient:
@@ -81,7 +82,7 @@ class RemoteModelClient:
         input_type: str,
         enable_fusion: bool,
     ) -> list[list[float]]:
-        protocol = str(config.get("api_protocol", "openai_compatible")).strip().lower() or "openai_compatible"
+        protocol = infer_remote_api_protocol(config)
         normalized_items = [
             [content for content in item if content.get("text") or content.get("image")]
             for item in items
@@ -124,7 +125,7 @@ class RemoteModelClient:
         query_contents: list[dict[str, str]],
         document_contents: list[list[dict[str, str]]],
     ) -> list[float]:
-        protocol = str(config.get("api_protocol", "openai_compatible")).strip().lower() or "openai_compatible"
+        protocol = infer_remote_api_protocol(config)
         normalized_query = [item for item in query_contents if item.get("text") or item.get("image")]
         normalized_documents = [
             [content for content in item if content.get("text") or content.get("image")]
@@ -250,6 +251,22 @@ def _dashscope_api_root(base_url: str) -> str:
     if normalized.endswith(marker):
         return normalized[: -len(marker)]
     return normalized
+
+
+def infer_remote_api_protocol(config: dict[str, object]) -> str:
+    component = str(config.get("component", "")).strip().lower()
+    explicit = str(config.get("api_protocol", "")).strip().lower()
+    if component in _BAILIAN_PROTOCOL_COMPONENTS and (
+        _is_dashscope_compatible_base_url(str(config.get("api_base_url", "")).strip())
+        or explicit == "aliyun_bailian"
+    ):
+        return "aliyun_bailian"
+    return "openai_compatible"
+
+
+def _is_dashscope_compatible_base_url(base_url: str) -> bool:
+    normalized = str(base_url or "").strip().lower()
+    return bool(normalized and "dashscope.aliyuncs.com" in normalized)
 
 
 def _parse_dashscope_embedding(payload: dict[str, object]) -> list[float]:
