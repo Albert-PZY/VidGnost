@@ -289,16 +289,6 @@ class WhisperConfigUpdateRequest(BaseModel):
     target_channels: int = Field(default=1, ge=1, le=2)
 
 
-class WhisperRuntimeLibrariesUpdateRequest(BaseModel):
-    install_dir: str = ""
-    auto_configure_env: bool = True
-
-
-class WhisperRuntimeLibrariesInstallRequest(BaseModel):
-    install_dir: str | None = None
-    auto_configure_env: bool | None = None
-
-
 class OllamaRuntimeConfigResponse(BaseModel):
     service: "OllamaServiceStatusResponse"
     install_dir: str

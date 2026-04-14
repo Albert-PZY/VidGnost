@@ -21,6 +21,13 @@ class _LocalModelMigrationPlanItem:
     target_path: Path
 
 
+@dataclass(slots=True)
+class _OllamaModelMigrationPlan:
+    source_dir: Path
+    target_dir: Path
+    model_ids: list[str]
+
+
 class ModelMigrationService:
     def __init__(
         self,
@@ -92,14 +99,15 @@ class ModelMigrationService:
         confirm_running_tasks: bool = False,
     ) -> dict[str, object]:
         resolved_root = Path(target_root).expanduser().resolve()
-        plan_items, skipped = await self._plan_local_model_migration(resolved_root)
+        plan_items, ollama_plan, skipped = await self._plan_local_model_migration(resolved_root)
+        planned_model_ids = [item.model_id for item in plan_items] + list(ollama_plan.model_ids)
         running_tasks = self._list_running_tasks()
-        if plan_items and running_tasks and not confirm_running_tasks:
+        if planned_model_ids and running_tasks and not confirm_running_tasks:
             return {
                 "target_root": str(resolved_root),
                 "message": f"检测到 {len(running_tasks)} 个进行中的任务，确认后才会继续迁移全部本地模型。",
                 "requires_confirmation": True,
-                "planned_model_ids": [item.model_id for item in plan_items],
+                "planned_model_ids": planned_model_ids,
                 "running_tasks": [self._serialize_task(item) for item in running_tasks],
                 "moved": [],
                 "skipped": skipped,
@@ -116,6 +124,12 @@ class ModelMigrationService:
             shutil.move(str(item.source_path), str(item.target_path))
             await self._model_catalog_store.update_model(item.model_id, {"path": str(item.target_path)})
             moved.append(item.model_id)
+
+        if ollama_plan.model_ids:
+            ollama_payload = await self._migrate_ollama_models_into_root(ollama_plan)
+            if ollama_payload["warnings"]:
+                warnings.extend(ollama_payload["warnings"])
+            moved.extend(ollama_plan.model_ids)
 
         await self._model_catalog_store.sync_managed_local_model_paths()
 
@@ -136,7 +150,7 @@ class ModelMigrationService:
             "target_root": str(resolved_root),
             "message": message,
             "requires_confirmation": False,
-            "planned_model_ids": [item.model_id for item in plan_items],
+            "planned_model_ids": planned_model_ids,
             "running_tasks": [self._serialize_task(item) for item in running_tasks],
             "moved": moved,
             "skipped": skipped,
@@ -147,10 +161,17 @@ class ModelMigrationService:
     async def _plan_local_model_migration(
         self,
         resolved_root: Path,
-    ) -> tuple[list[_LocalModelMigrationPlanItem], list[str]]:
+    ) -> tuple[list[_LocalModelMigrationPlanItem], _OllamaModelMigrationPlan, list[str]]:
         plan_items: list[_LocalModelMigrationPlanItem] = []
         skipped: list[str] = []
         models = await self._model_catalog_store.list_models()
+        ollama_source_dir = Path((await self._ollama_runtime_config_store.get())["models_dir"]).expanduser().resolve()
+        ollama_model_ids = [
+            str(model.get("id", "")).strip()
+            for model in models
+            if str(model.get("provider", "")).strip().lower() == "ollama"
+            and bool(model.get("is_installed", False))
+        ]
 
         for model in models:
             provider = str(model.get("provider", "")).strip().lower()
@@ -184,7 +205,55 @@ class ModelMigrationService:
                     target_path=target_path,
                 )
             )
-        return plan_items, skipped
+        ollama_plan = _OllamaModelMigrationPlan(
+            source_dir=ollama_source_dir,
+            target_dir=resolved_root,
+            model_ids=[],
+        )
+        if ollama_model_ids and not _same_path(ollama_source_dir, resolved_root):
+            ollama_plan.model_ids = ollama_model_ids
+        return plan_items, ollama_plan, skipped
+
+    async def _migrate_ollama_models_into_root(self, plan: _OllamaModelMigrationPlan) -> dict[str, object]:
+        source_dir = plan.source_dir
+        resolved_target = plan.target_dir
+        warnings: list[str] = []
+
+        if _same_path(source_dir, resolved_target):
+            await self._ollama_runtime_config_store.save({"models_dir": str(resolved_target)})
+            return {
+                "source_dir": str(source_dir),
+                "target_dir": str(resolved_target),
+                "moved": False,
+                "warnings": warnings,
+            }
+
+        self._assert_safe_move(source_dir, resolved_target)
+        if not source_dir.exists():
+            await self._ollama_runtime_config_store.save({"models_dir": str(resolved_target)})
+            warnings.append("原始 Ollama 模型目录不存在，仅更新了配置路径。")
+            return {
+                "source_dir": str(source_dir),
+                "target_dir": str(resolved_target),
+                "moved": False,
+                "warnings": warnings,
+            }
+
+        resolved_target.mkdir(parents=True, exist_ok=True)
+        collisions = [resolved_target / child.name for child in source_dir.iterdir() if (resolved_target / child.name).exists()]
+        if collisions:
+            raise ValueError(f"目标目录已存在 Ollama 模型文件或目录：{collisions[0]}")
+
+        for child in source_dir.iterdir():
+            shutil.move(str(child), str(resolved_target / child.name))
+        shutil.rmtree(source_dir, ignore_errors=True)
+        await self._ollama_runtime_config_store.save({"models_dir": str(resolved_target)})
+        return {
+            "source_dir": str(source_dir),
+            "target_dir": str(resolved_target),
+            "moved": True,
+            "warnings": warnings,
+        }
 
     def _list_running_tasks(self) -> list[TaskRecord]:
         if self._task_store is None:
@@ -250,3 +319,10 @@ class ModelMigrationService:
 def _safe_name(value: str) -> str:
     normalized = "".join(char if char.isalnum() or char in {"-", "_", "."} else "-" for char in str(value).strip())
     return normalized.strip("-") or "model"
+
+
+def _same_path(left: Path, right: Path) -> bool:
+    try:
+        return left.expanduser().resolve() == right.expanduser().resolve()
+    except OSError:
+        return str(left).strip() == str(right).strip()

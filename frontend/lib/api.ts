@@ -24,7 +24,6 @@ import type {
   VqaChatStreamEvent,
   VqaTraceResponse,
   WhisperConfigResponse,
-  WhisperRuntimeLibrariesResponse,
   WorkflowType,
 } from "@/lib/types"
 
@@ -529,40 +528,6 @@ export function updateWhisperConfig(
   return apiFetch<WhisperConfigResponse>("/config/whisper", {
     method: "PUT",
     body: JSON.stringify(payload),
-  })
-}
-
-export function updateWhisperRuntimeLibrariesConfig(payload: {
-  install_dir: string
-  auto_configure_env: boolean
-}): Promise<WhisperRuntimeLibrariesResponse> {
-  return apiFetch<WhisperRuntimeLibrariesResponse>("/config/whisper/runtime-libraries", {
-    method: "PUT",
-    body: JSON.stringify(payload),
-  })
-}
-
-export function installWhisperRuntimeLibraries(payload: {
-  install_dir?: string
-  auto_configure_env?: boolean
-}): Promise<WhisperRuntimeLibrariesResponse> {
-  return apiFetch<WhisperRuntimeLibrariesResponse>("/config/whisper/runtime-libraries/install", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  })
-}
-
-export function pauseWhisperRuntimeLibraries(): Promise<WhisperRuntimeLibrariesResponse> {
-  return apiFetch<WhisperRuntimeLibrariesResponse>("/config/whisper/runtime-libraries/pause", {
-    method: "POST",
-    body: JSON.stringify({}),
-  })
-}
-
-export function resumeWhisperRuntimeLibraries(): Promise<WhisperRuntimeLibrariesResponse> {
-  return apiFetch<WhisperRuntimeLibrariesResponse>("/config/whisper/runtime-libraries/resume", {
-    method: "POST",
-    body: JSON.stringify({}),
   })
 }
 

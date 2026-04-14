@@ -41,12 +41,12 @@
 
 - `GET /api/config/llm`
 - `PUT /api/config/llm`
+- `GET /api/config/ollama`
+- `PUT /api/config/ollama`
+- `POST /api/config/ollama/migrate-models`
+- `POST /api/config/ollama/restart-service`
 - `GET /api/config/whisper`
 - `PUT /api/config/whisper`
-- `PUT /api/config/whisper/runtime-libraries`
-- `POST /api/config/whisper/runtime-libraries/install`
-- `POST /api/config/whisper/runtime-libraries/pause`
-- `POST /api/config/whisper/runtime-libraries/resume`
 - `GET /api/config/prompts`
 - `PUT /api/config/prompts/selection`
 - `POST /api/config/prompts/templates`
@@ -55,6 +55,7 @@
 - `GET /api/config/models`
 - `POST /api/config/models/reload`
 - `PATCH /api/config/models/{model_id}`
+- `POST /api/config/models/migrate-local`
 - `POST /api/config/models/{model_id}/download`
 - `DELETE /api/config/models/{model_id}/download`
 - `GET /api/config/ui`
@@ -95,6 +96,10 @@
   - 调用方式：本地重排模型受控 JSON 打分
 - 非 Whisper 托管模型通过 `POST /api/config/models/{model_id}/download` 触发本地 Ollama 模型安装
 - `GET /api/config/models` 返回的非 Whisper 已安装路径为当前生效的绝对模型目录，便于目录迁移后继续用于自检、设置展示和运行态检查
+- Ollama 运行时配置保存时会同步系统 `PATH` 与 `OLLAMA_MODELS`
+- `POST /api/config/ollama/restart-service` 会先清理本地 `ollama.exe` 与 `ollama app.exe` 相关进程，并确认 `11434` 端口释放后再启动本地服务
+- 当 Ollama 服务尚未返回 `/api/tags` 时，`GET /api/config/models` 仍会基于已配置 `models_dir` 下的本地 manifest 目录识别已安装模型
+- `POST /api/config/models/migrate-local` 会批量迁移当前项目中的 Whisper 本地模型目录与已安装的 Ollama 管理目录，并在完成后自动重启本地 Ollama 服务
 
 ## 3.2 RAG 实现基线
 

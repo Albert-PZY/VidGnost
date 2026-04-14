@@ -7,6 +7,7 @@ from app.config import Settings
 from app.models import TaskRecord
 from app.services.model_catalog_store import ModelCatalogStore
 from app.services.model_migration_service import ModelMigrationService
+from app.services.ollama_client import OllamaClient
 from app.services.ollama_runtime_config_store import OllamaRuntimeConfigStore
 from app.services.task_store import TaskStore
 
@@ -28,6 +29,12 @@ def _materialize_whisper_cache(model_dir: Path) -> None:
     for file_name in ("config.json", "model.bin", "tokenizer.json", "vocabulary.txt"):
         (model_dir / file_name).write_text("ready", encoding="utf-8")
     (model_dir / ".ready.json").write_text('{"status":"ready"}', encoding="utf-8")
+
+
+def _materialize_ollama_manifest(models_dir: Path, model_name: str, tag_file: str) -> None:
+    manifest_dir = OllamaClient.resolve_model_storage_path(model_name, models_dir=models_dir)
+    manifest_dir.mkdir(parents=True, exist_ok=True)
+    (manifest_dir / tag_file).write_text("ready", encoding="utf-8")
 
 
 class DummyOllamaClient:
@@ -141,3 +148,39 @@ def test_migrate_local_models_updates_catalog_and_restarts_ollama(tmp_path: Path
     assert Path(llm_model["path"]).exists()
     assert not whisper_dir.exists()
     assert not llm_dir.exists()
+
+
+def test_migrate_local_models_moves_ollama_storage_root_and_updates_runtime_config(tmp_path: Path) -> None:
+    settings = _build_settings(tmp_path)
+    source_root = tmp_path / "legacy" / "ollama-models"
+    target_root = tmp_path / "G" / "Ollama_Model"
+    _materialize_ollama_manifest(source_root, "bge-m3", "latest")
+    _materialize_ollama_manifest(source_root, "qwen2.5:3b", "3b")
+
+    ollama_runtime_store = OllamaRuntimeConfigStore(settings)
+    asyncio.run(ollama_runtime_store.save({"models_dir": str(source_root)}))
+
+    ollama_manager = StubOllamaServiceManager()
+    store = ModelCatalogStore(
+        settings,
+        ollama_client=DummyOllamaClient(),  # type: ignore[arg-type]
+        ollama_runtime_config_store=ollama_runtime_store,
+    )
+    service = ModelMigrationService(
+        settings=settings,
+        model_catalog_store=store,
+        ollama_runtime_config_store=ollama_runtime_store,
+        ollama_service_manager=ollama_manager,  # type: ignore[arg-type]
+        task_store=TaskStore(settings.storage_dir),
+    )
+
+    payload = asyncio.run(service.migrate_local_models(str(target_root), confirm_running_tasks=True))
+    current_runtime = asyncio.run(ollama_runtime_store.get())
+
+    assert payload["requires_confirmation"] is False
+    assert payload["ollama_restarted"] is True
+    assert set(payload["moved"]) == {"embedding-default", "llm-default"}
+    assert current_runtime["models_dir"] == str(target_root)
+    assert (target_root / "manifests" / "registry.ollama.ai" / "library" / "bge-m3" / "latest").exists()
+    assert (target_root / "manifests" / "registry.ollama.ai" / "library" / "qwen2.5" / "3b").exists()
+    assert not source_root.exists()

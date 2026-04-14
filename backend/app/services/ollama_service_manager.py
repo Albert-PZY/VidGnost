@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import subprocess
+import time
 from pathlib import Path
 from typing import Literal, TypedDict
 from urllib.parse import urlparse
@@ -13,6 +14,7 @@ import psutil
 from app.config import Settings
 from app.services.ollama_client import OllamaClient
 from app.services.ollama_runtime_config_store import OllamaRuntimeConfigStore
+from app.services.windows_env_manager import WindowsEnvManager
 
 _LOCAL_OLLAMA_HOSTS = {"127.0.0.1", "localhost", "0.0.0.0", "::1"}
 
@@ -51,6 +53,7 @@ class OllamaServiceManager:
         self._runtime_config_store = runtime_config_store or OllamaRuntimeConfigStore(settings)
         self._ollama_client = ollama_client or OllamaClient(settings, runtime_config_store=self._runtime_config_store)
         self._tags_timeout = httpx.Timeout(connect=0.5, read=2.0, write=2.0, pool=2.0)
+        self._windows_env_manager = WindowsEnvManager()
 
     async def get_status(self) -> OllamaServiceStatus:
         config = self._runtime_config_store.get_sync()
@@ -64,7 +67,10 @@ class OllamaServiceManager:
         effective_models_dir = ""
         models_dir_source: Literal["env", "default", "unknown"] = "unknown"
         if is_local_service:
-            process = self._find_local_process(configured_executable)
+            process = self._find_local_process(
+                configured_executable,
+                port=parsed_base_url.port or 11434,
+            )
             if process is not None:
                 effective_models_dir, models_dir_source = self._resolve_effective_models_dir(process)
 
@@ -137,6 +143,30 @@ class OllamaServiceManager:
             "service": status,
         }
 
+    async def synchronize_runtime_environment(self) -> list[str]:
+        config = self._runtime_config_store.get_sync()
+        messages: list[str] = []
+
+        install_dir = _resolve_path(config["install_dir"])
+        if install_dir:
+            path_result = await asyncio.to_thread(
+                self._windows_env_manager.prepend_path_entry,
+                install_dir,
+            )
+            messages.append(path_result.message)
+
+        models_dir = _resolve_path(config["models_dir"])
+        if models_dir:
+            Path(models_dir).mkdir(parents=True, exist_ok=True)
+            models_result = await asyncio.to_thread(
+                self._windows_env_manager.set_env_var,
+                "OLLAMA_MODELS",
+                models_dir,
+            )
+            messages.append(models_result.message)
+
+        return messages
+
     async def restart_service(self) -> OllamaServiceStatus:
         config = self._runtime_config_store.get_sync()
         parsed = _parse_base_url(config["base_url"])
@@ -147,6 +177,7 @@ class OllamaServiceManager:
         if not executable_path.is_file():
             raise ValueError(f"未找到 Ollama 可执行文件：{executable_path}")
 
+        await self.synchronize_runtime_environment()
         await asyncio.to_thread(self._restart_process_sync, executable_path, config["models_dir"], config["base_url"])
 
         for _ in range(30):
@@ -157,7 +188,8 @@ class OllamaServiceManager:
         raise RuntimeError("Ollama 服务已启动，但在等待接口就绪时超时。")
 
     def _restart_process_sync(self, executable_path: Path, models_dir: str, base_url: str) -> None:
-        self._stop_existing_processes(executable_path)
+        port = _parse_base_url(base_url).port or 11434
+        self._stop_existing_processes(executable_path, port=port)
         env = os.environ.copy()
         env["OLLAMA_MODELS"] = _resolve_path(models_dir)
         env["OLLAMA_HOST"] = _format_ollama_host(base_url)
@@ -176,8 +208,14 @@ class OllamaServiceManager:
             creationflags=creationflags,
         )
 
-    def _stop_existing_processes(self, configured_executable: Path) -> None:
-        processes = self._collect_local_processes(str(configured_executable))
+    def _stop_existing_processes(self, configured_executable: Path, *, port: int) -> None:
+        processes_by_pid: dict[int, psutil.Process] = {}
+        for process in self._collect_local_processes(str(configured_executable)):
+            processes_by_pid[process.pid] = process
+        for process in self._collect_processes_using_port(port):
+            processes_by_pid[process.pid] = process
+
+        processes = list(processes_by_pid.values())
         for process in processes:
             try:
                 process.terminate()
@@ -193,6 +231,7 @@ class OllamaServiceManager:
                 continue
         if alive:
             psutil.wait_procs(alive, timeout=3)
+        self._wait_for_port_release(port)
 
     async def _is_reachable(self, base_url: str) -> bool:
         normalized = str(base_url or "").strip().rstrip("/")
@@ -206,14 +245,22 @@ class OllamaServiceManager:
             return False
         return True
 
-    def _find_local_process(self, configured_executable: str) -> psutil.Process | None:
-        processes = self._collect_local_processes(configured_executable)
+    def _find_local_process(self, configured_executable: str, *, port: int) -> psutil.Process | None:
+        processes = self._collect_processes_using_port(port)
+        if not processes:
+            processes = self._collect_local_processes(configured_executable, include_app=False)
         if not processes:
             return None
-        processes.sort(key=lambda process: 0 if _same_path(self._resolve_process_executable(process), configured_executable) else 1)
+        processes.sort(
+            key=lambda process: (
+                0 if _same_path(self._resolve_process_executable(process), configured_executable) else 1,
+                0 if self._has_serve_cmdline(process) else 1,
+                process.pid,
+            )
+        )
         return processes[0]
 
-    def _collect_local_processes(self, configured_executable: str) -> list[psutil.Process]:
+    def _collect_local_processes(self, configured_executable: str, *, include_app: bool = True) -> list[psutil.Process]:
         matches: list[psutil.Process] = []
         for process in psutil.process_iter(["pid", "name", "exe", "cmdline"]):
             try:
@@ -224,12 +271,52 @@ class OllamaServiceManager:
                 continue
 
             is_ollama_name = name in {"ollama", "ollama.exe"}
+            is_ollama_app_name = include_app and name in {"ollama app", "ollama app.exe"}
             is_ollama_executable = Path(executable).name.lower() in {"ollama", "ollama.exe"}
             explicitly_configured = bool(executable and _same_path(executable, configured_executable))
             has_serve_cmdline = any(part == "serve" for part in cmdline)
-            if explicitly_configured or is_ollama_name or is_ollama_executable or has_serve_cmdline:
+            if explicitly_configured or is_ollama_name or is_ollama_app_name or is_ollama_executable or has_serve_cmdline:
                 matches.append(process)
         return matches
+
+    def _collect_processes_using_port(self, port: int) -> list[psutil.Process]:
+        matches: dict[int, psutil.Process] = {}
+        try:
+            connections = psutil.net_connections(kind="inet")
+        except psutil.AccessDenied:
+            return []
+
+        for connection in connections:
+            local_address = getattr(connection, "laddr", None)
+            if not local_address or getattr(local_address, "port", None) != port:
+                continue
+            pid = connection.pid
+            if pid is None or pid <= 0:
+                continue
+            try:
+                matches[pid] = psutil.Process(pid)
+            except (psutil.AccessDenied, psutil.NoSuchProcess):
+                continue
+        return list(matches.values())
+
+    def _wait_for_port_release(self, port: int) -> None:
+        for _ in range(40):
+            if not self._collect_processes_using_port(port):
+                return
+            time.sleep(0.25)
+        lingering = self._collect_processes_using_port(port)
+        for process in lingering:
+            try:
+                process.kill()
+            except (psutil.AccessDenied, psutil.NoSuchProcess):
+                continue
+        if lingering:
+            psutil.wait_procs(lingering, timeout=3)
+        if not self._collect_processes_using_port(port):
+            return
+        if lingering:
+            pids = ", ".join(str(process.pid) for process in lingering)
+            raise RuntimeError(f"{port} 端口仍被占用，未能完成 Ollama 服务重启前清理。占用 PID: {pids}")
 
     def _resolve_effective_models_dir(
         self,
@@ -253,6 +340,14 @@ class OllamaServiceManager:
         except (psutil.AccessDenied, psutil.NoSuchProcess, OSError):
             executable = ""
         return _resolve_path(executable) if executable else ""
+
+    @staticmethod
+    def _has_serve_cmdline(process: psutil.Process) -> bool:
+        try:
+            cmdline = [str(part).strip().lower() for part in process.cmdline()]
+        except (psutil.AccessDenied, psutil.NoSuchProcess, OSError):
+            return False
+        return any(part == "serve" for part in cmdline)
 
     def _build_status_message(
         self,

@@ -107,7 +107,7 @@ async def lifespan(app: FastAPI):
     runtime_config_store = RuntimeConfigStore(settings)
     whisper_gpu_runtime_service = WhisperGpuRuntimeService(
         settings=settings,
-        runtime_config_store=runtime_config_store,
+        ollama_runtime_config_store=ollama_runtime_config_store,
     )
     await whisper_gpu_runtime_service.bootstrap_process_environment()
     resource_guard = ResourceGuard(settings=settings)

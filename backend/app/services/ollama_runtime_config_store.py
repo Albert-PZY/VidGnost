@@ -48,6 +48,13 @@ def _normalize_base_url(raw: object, *, default: str) -> str:
     return candidate or default.rstrip("/")
 
 
+def _same_path(left: str | Path, right: str | Path) -> bool:
+    try:
+        return Path(left).expanduser().resolve() == Path(right).expanduser().resolve()
+    except OSError:
+        return str(left).strip() == str(right).strip()
+
+
 class OllamaRuntimeConfigStore:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
@@ -66,11 +73,19 @@ class OllamaRuntimeConfigStore:
     async def save(self, payload: dict[str, object]) -> OllamaRuntimeConfig:
         async with self._lock:
             current = self._read_sync()
+            install_dir = _normalize_path(payload.get("install_dir"), default=Path(current["install_dir"]))
+            current_default_executable = str(_default_executable_path(Path(current["install_dir"])).resolve())
+            requested_executable = str(payload.get("executable_path") or "").strip()
+            executable_default = (
+                _default_executable_path(Path(install_dir))
+                if not requested_executable or _same_path(current["executable_path"], current_default_executable)
+                else Path(current["executable_path"])
+            )
             next_payload = {
-                "install_dir": _normalize_path(payload.get("install_dir"), default=Path(current["install_dir"])),
+                "install_dir": install_dir,
                 "executable_path": _normalize_path(
                     payload.get("executable_path"),
-                    default=Path(current["executable_path"]),
+                    default=executable_default,
                 ),
                 "models_dir": _normalize_path(payload.get("models_dir"), default=Path(current["models_dir"])),
                 "base_url": _normalize_base_url(payload.get("base_url"), default=current["base_url"]),

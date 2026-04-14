@@ -9,6 +9,7 @@ from app.errors import AppError
 from app.services.llm_config_store import LLMConfigStore
 from app.services.llm_connectivity import OpenAICompatModelValidationResult
 from app.services.model_catalog_store import ModelCatalogStore
+from app.services.ollama_runtime_config_store import OllamaRuntimeConfigStore
 from app.services.runtime_config_store import RuntimeConfigStore
 from app.services.task_preflight import TaskPreflightService
 from app.services.whisper_gpu_runtime_service import WhisperGpuRuntimeService
@@ -65,9 +66,11 @@ def test_task_preflight_rejects_invalid_remote_llm_model(monkeypatch, tmp_path: 
 
 
 @pytest.mark.asyncio
-async def test_task_preflight_rejects_missing_gpu_runtime_when_device_is_auto(tmp_path: Path) -> None:
+async def test_task_preflight_rejects_missing_gpu_runtime_when_device_is_auto(monkeypatch, tmp_path: Path) -> None:
     settings = _build_settings(tmp_path)
     runtime_store = RuntimeConfigStore(settings)
+    ollama_runtime_store = OllamaRuntimeConfigStore(settings)
+    await ollama_runtime_store.save({"install_dir": str(tmp_path / "missing-ollama")})
     llm_store = LLMConfigStore(settings)
     await llm_store.save(
         {
@@ -91,9 +94,10 @@ async def test_task_preflight_rejects_missing_gpu_runtime_when_device_is_auto(tm
         model_catalog_store=ModelCatalogStore(settings),
         whisper_gpu_runtime_service=WhisperGpuRuntimeService(
             settings=settings,
-            runtime_config_store=runtime_store,
+            ollama_runtime_config_store=ollama_runtime_store,
         ),
     )
+    monkeypatch.setenv("PATH", "")
 
     with pytest.raises(AppError) as exc_info:
         service.whisper_gpu_runtime_service.assert_runtime_ready_for_device(

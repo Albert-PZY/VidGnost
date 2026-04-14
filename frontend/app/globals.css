@@ -1364,11 +1364,27 @@ body[data-app-background-active="true"] .custom-skin-dialog-surface * {
   }
 }
 
+@keyframes app-skeleton-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--primary) 0%, transparent);
+    opacity: 0.82;
+  }
+  50% {
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary) 22%, transparent);
+    opacity: 1;
+  }
+}
+
 .app-skeleton {
   position: relative;
   overflow: hidden;
   background: var(--skeleton-base);
   isolation: isolate;
+}
+
+.app-skeleton-intense {
+  animation: app-skeleton-breathe 1.4s ease-in-out infinite;
 }
 
 .app-skeleton::after {
@@ -1390,7 +1406,38 @@ body[data-app-background-active="true"] .custom-skin-dialog-surface * {
   pointer-events: none;
 }
 
+.settings-model-skeleton-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.settings-model-skeleton-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 14% 18%, color-mix(in oklch, var(--primary) 18%, transparent) 0%, transparent 36%),
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in oklch, var(--primary) 9%, transparent) 28%,
+      color-mix(in oklch, var(--primary) 16%, transparent) 52%,
+      transparent 100%
+    );
+  opacity: 0.9;
+  animation: app-skeleton-shimmer 1.25s linear infinite;
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .app-skeleton-intense {
+    animation: none;
+  }
+
+  .settings-model-skeleton-card::before {
+    animation: none;
+  }
+
   .app-skeleton::after {
     animation: none;
   }

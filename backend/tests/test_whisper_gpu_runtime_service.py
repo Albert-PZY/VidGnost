@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import asyncio
-import json
+import os
 from pathlib import Path
 
 import pytest
 
 from app.config import Settings
-from app.services.runtime_config_store import RuntimeConfigStore
-from app.services.whisper_gpu_runtime_service import WhisperGpuRuntimeService, _build_snapshot
+from app.errors import AppError
+from app.services.ollama_runtime_config_store import OllamaRuntimeConfigStore
+from app.services.whisper_gpu_runtime_service import WhisperGpuRuntimeService
 
 
 def _build_settings(tmp_path: Path) -> Settings:
@@ -23,98 +24,85 @@ def _build_settings(tmp_path: Path) -> Settings:
     )
 
 
-def test_whisper_gpu_runtime_service_resolves_installer_script_from_repo_root(tmp_path: Path) -> None:
+def _materialize_ollama_cuda_runtime(install_dir: Path) -> None:
+    cuda_dir = install_dir / "lib" / "ollama" / "cuda_v12"
+    mlx_dir = install_dir / "lib" / "ollama" / "mlx_cuda_v13"
+    cuda_dir.mkdir(parents=True, exist_ok=True)
+    mlx_dir.mkdir(parents=True, exist_ok=True)
+    for file_name in ("cublas64_12.dll", "cudart64_12.dll"):
+        (cuda_dir / file_name).write_text("dll", encoding="utf-8")
+    (mlx_dir / "cudnn64_9.dll").write_text("dll", encoding="utf-8")
+
+
+def test_whisper_gpu_runtime_service_detects_ollama_runtime(monkeypatch, tmp_path: Path) -> None:
     settings = _build_settings(tmp_path)
+    runtime_store = OllamaRuntimeConfigStore(settings)
+    install_dir = tmp_path / "Ollama"
+    _materialize_ollama_cuda_runtime(install_dir)
+    asyncio.run(runtime_store.save({"install_dir": str(install_dir)}))
+
+    monkeypatch.setattr(WhisperGpuRuntimeService, "_is_windows", staticmethod(lambda: True))
+    monkeypatch.setattr(WhisperGpuRuntimeService, "_validate_loadability", staticmethod(lambda _: ""))
+    monkeypatch.setenv("PATH", "")
+    os.environ.pop("CUDA_PATH", None)
+
     service = WhisperGpuRuntimeService(
         settings=settings,
-        runtime_config_store=RuntimeConfigStore(settings),
-    )
-
-    expected_script = Path(__file__).resolve().parents[2] / "scripts" / "install-whisper-gpu-runtime.ps1"
-
-    assert service._installer_script == expected_script  # type: ignore[attr-defined]
-    assert service._installer_script.exists()  # type: ignore[attr-defined]
-
-
-def test_whisper_gpu_runtime_service_restores_incomplete_install_as_paused(tmp_path: Path) -> None:
-    settings = _build_settings(tmp_path)
-    store = RuntimeConfigStore(settings)
-    service = WhisperGpuRuntimeService(
-        settings=settings,
-        runtime_config_store=store,
-    )
-    install_dir = str((tmp_path / "gpu-runtime").resolve())
-    asyncio.run(service.save_config(install_dir=install_dir, auto_configure_env=False))
-
-    state_path = service._state_file_path(install_dir)  # type: ignore[attr-defined]
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    state_path.write_text(
-        json.dumps(
-            {
-                "state": "installing",
-                "message": "正在下载 libcublas ...",
-                "current_package": "libcublas",
-                "downloaded_bytes": 512,
-                "total_bytes": 2048,
-                "percent": 25.0,
-                "speed_bps": 1024.0,
-                "resumable": True,
-            }
-        ),
-        encoding="utf-8",
+        ollama_runtime_config_store=runtime_store,
     )
 
     status = asyncio.run(service.get_status())
 
-    assert status["progress"]["state"] == "paused"
-    assert status["progress"]["resumable"] is True
-    assert status["status"] == "paused"
+    assert status["ready"] is True
+    assert status["status"] == "ready"
+    assert status["bin_dir"]
+    assert status["path_configured"] is True
+    assert status["discovered_files"]["cublas64_12.dll"].endswith("cublas64_12.dll")
+    assert status["discovered_files"]["cudart64_12.dll"].endswith("cudart64_12.dll")
+    assert status["discovered_files"]["cudnn64*.dll"].endswith("cudnn64_9.dll")
 
 
-@pytest.mark.asyncio
-async def test_whisper_gpu_runtime_service_pause_install_updates_snapshot(tmp_path: Path) -> None:
+def test_whisper_gpu_runtime_service_reports_missing_runtime(monkeypatch, tmp_path: Path) -> None:
     settings = _build_settings(tmp_path)
-    store = RuntimeConfigStore(settings)
+    runtime_store = OllamaRuntimeConfigStore(settings)
+    install_dir = tmp_path / "Ollama"
+    install_dir.mkdir(parents=True, exist_ok=True)
+    asyncio.run(runtime_store.save({"install_dir": str(install_dir)}))
+
+    monkeypatch.setattr(WhisperGpuRuntimeService, "_is_windows", staticmethod(lambda: True))
+    monkeypatch.setenv("PATH", "")
+
     service = WhisperGpuRuntimeService(
         settings=settings,
-        runtime_config_store=store,
+        ollama_runtime_config_store=runtime_store,
     )
-    install_dir = str((tmp_path / "gpu-runtime").resolve())
 
-    async def fake_run_install(config) -> None:
-        await service._set_snapshot(  # type: ignore[attr-defined]
-            _build_snapshot(
-                state="installing",
-                message="正在下载 cuda_cudart ...",
-                current_package="cuda_cudart",
-                downloaded_bytes=256,
-                total_bytes=4096,
-                percent=6.25,
-                speed_bps=2048.0,
-                resumable=True,
-            ),
-            install_dir=config["install_dir"],
-        )
-        while not service._pause_requested:  # type: ignore[attr-defined]
-            await asyncio.sleep(0.01)
-        await service._set_snapshot(  # type: ignore[attr-defined]
-            _build_snapshot(
-                state="paused",
-                message="下载已暂停，可随时继续。",
-                current_package="cuda_cudart",
-                downloaded_bytes=768,
-                total_bytes=4096,
-                percent=18.75,
-                resumable=True,
-            ),
-            install_dir=config["install_dir"],
-        )
+    status = asyncio.run(service.get_status())
 
-    service._run_install = fake_run_install  # type: ignore[method-assign]
+    assert status["ready"] is False
+    assert status["status"] == "not_ready"
+    assert "cublas64_12.dll" in status["missing_files"]
+    assert "cudart64_12.dll" in status["missing_files"]
 
-    await service.start_install(install_dir=install_dir, auto_configure_env=False)
-    status = await service.pause_install()
 
-    assert status["progress"]["state"] == "paused"
-    assert status["progress"]["resumable"] is True
-    assert status["status"] == "paused"
+def test_whisper_gpu_runtime_service_rejects_gpu_device_when_runtime_missing(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    settings = _build_settings(tmp_path)
+    runtime_store = OllamaRuntimeConfigStore(settings)
+    asyncio.run(runtime_store.save({"install_dir": str(tmp_path / "Ollama")}))
+
+    monkeypatch.setattr(WhisperGpuRuntimeService, "_is_windows", staticmethod(lambda: True))
+    monkeypatch.setenv("PATH", "")
+
+    service = WhisperGpuRuntimeService(
+        settings=settings,
+        ollama_runtime_config_store=runtime_store,
+    )
+    status = asyncio.run(service.get_status())
+
+    with pytest.raises(AppError) as exc_info:
+        service.assert_runtime_ready_for_device("auto", status)
+
+    assert exc_info.value.code == "TASK_PRECHECK_WHISPER_GPU_RUNTIME_MISSING"

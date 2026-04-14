@@ -71,6 +71,7 @@ The system SHALL expose `/config/ollama` and `/config/ollama/migrate-models` so 
 - **WHEN** client updates `/config/ollama`
 - **THEN** backend persists the effective runtime config into `backend/storage/ollama-runtime.json`
 - **AND** subsequent Ollama-backed model path resolution uses the configured `models_dir`
+- **AND** backend synchronizes the local process and Windows environment entries for `PATH` and `OLLAMA_MODELS` against the saved install directory and model directory
 - **AND** if `llm-default` currently uses `provider=ollama`, backend re-synchronizes `/config/llm` against the updated Ollama service address
 
 #### Scenario: Migrate existing Ollama model directory
@@ -82,7 +83,9 @@ The system SHALL expose `/config/ollama` and `/config/ollama/migrate-models` so 
 
 #### Scenario: Restart local Ollama service after runtime changes
 - **WHEN** client posts `/config/ollama/restart-service`
-- **THEN** backend restarts or starts the local Ollama process with the configured `OLLAMA_MODELS` directory and host binding when self-managed restart is available
+- **THEN** backend stops the current local Ollama service-related processes, including the tray application when present
+- **AND** backend waits until the configured service port is fully released before launching a new local Ollama process
+- **AND** backend starts the local Ollama process with the configured `OLLAMA_MODELS` directory and host binding when self-managed restart is available
 - **AND** backend returns the current runtime config plus refreshed `service` status after the reachability check succeeds
 
 ### Requirement: System SHALL expose editable Whisper runtime config API
@@ -113,32 +116,19 @@ Whisper config SHALL include `model_default`, `language`, `device`, `compute_typ
 - **WHEN** client submits unsupported whisper `compute_type`
 - **THEN** backend persists normalized `compute_type=int8`
 
-### Requirement: Transcription CUDA runtime management SHALL expose editable install config and managed install actions
-The system SHALL expose `/config/whisper/runtime-libraries`, `/config/whisper/runtime-libraries/install`, `/config/whisper/runtime-libraries/pause`, and `/config/whisper/runtime-libraries/resume` so frontend settings can persist an install directory, toggle environment-variable configuration, inspect runtime readiness, and control a managed install of the bundled NVIDIA runtime set.
+### Requirement: Whisper GPU runtime detection SHALL reuse Ollama bundled CUDA libraries
+The system SHALL surface Whisper GPU runtime readiness through `/config/whisper`, automatically discover compatible CUDA runtime directories inside the configured Ollama install directory, and stop exposing separate Whisper runtime install endpoints.
 
-#### Scenario: Save transcription CUDA runtime config
-- **WHEN** frontend saves a transcription CUDA runtime-library configuration
-- **THEN** backend persists `install_dir` and `auto_configure_env` into `backend/storage/config.toml`
-- **AND** backend applies the configured install directory to the current backend process environment when the runtime directory exists
+#### Scenario: Read Whisper GPU runtime readiness
+- **WHEN** frontend requests `/config/whisper`
+- **THEN** backend inspects the configured Ollama install directory for the required CUDA and cuDNN runtime files
+- **AND** backend updates the current backend process environment with the discovered runtime directories when available
+- **AND** the response includes readiness, discovered runtime directory, missing-file diagnostics, and loadability details through `runtime_libraries`
 
-#### Scenario: Start managed transcription CUDA runtime install
-- **WHEN** frontend requests `/config/whisper/runtime-libraries/install`
-- **THEN** backend resolves the CUDA and cuDNN package list from NVIDIA official redist manifests
-- **AND** backend downloads package archives through an internal `httpx` async pipeline with package-level concurrency and range-based segment concurrency when the upstream supports byte ranges
-- **AND** backend persists install progress, current package label, transfer speed, resumable state, and partial download artifacts under the selected install directory so interrupted sessions can continue from completed bytes
-- **AND** backend assembles archives directly into the managed runtime `bin` / `lib` / `include` layout and returns final readiness diagnostics
-
-#### Scenario: Pause managed transcription CUDA runtime install
-- **WHEN** frontend requests `/config/whisper/runtime-libraries/pause`
-- **THEN** backend stops active archive transfer loops after the current buffered chunk boundary
-- **AND** backend keeps completed archives, partial segments, and progress state on disk
-- **AND** the returned runtime-library status reports `progress.state=paused` and marks the install as resumable
-
-#### Scenario: Resume managed transcription CUDA runtime install
-- **WHEN** frontend requests `/config/whisper/runtime-libraries/resume`
-- **THEN** backend continues downloading from existing partial archive bytes or completed range segments when available
-- **AND** already completed package archives are reused without being downloaded again
-- **AND** the returned runtime-library status re-enters the active install state with updated progress diagnostics
+#### Scenario: Enable Whisper GPU mode
+- **WHEN** frontend saves whisper `device=auto|cuda`
+- **THEN** backend accepts the device value only when the detected Ollama bundled runtime is ready for GPU execution
+- **AND** task preflight returns a conflict response when GPU mode is requested but the Ollama bundled runtime is unavailable
 
 ### Requirement: Managed model catalog SHALL expose install, routing, and online API state for settings UI
 The system SHALL expose `/config/models` and related model-management APIs with effective path, default path, provider, runtime toggles, online API parameters, install state, and download progress for frontend settings.
@@ -155,7 +145,7 @@ The system SHALL keep `whisper-default` on the managed local runtime path, allow
 - **WHEN** frontend requests `/config/models`
 - **THEN** `llm-default`, `embedding-default`, `vlm-default`, and `rerank-default` return `provider=ollama`
 - **AND** installed entries expose `path` and `default_path` as absolute paths resolved under the configured Ollama `models_dir`
-- **AND** backend derives `is_installed`, `size_bytes`, and readiness from the local Ollama tags state
+- **AND** backend derives `is_installed` and readiness from the local Ollama tags state or the configured manifest directories on disk when the service has not yet returned `/api/tags`
 - **AND** `whisper-default` continues to report install state from the managed local runtime directory
 
 #### Scenario: Load Whisper entry before local files exist
@@ -187,8 +177,11 @@ The system SHALL keep `whisper-default` on the managed local runtime path, allow
 
 #### Scenario: Batch migrate local-directory model entries
 - **WHEN** frontend posts `/config/models/migrate-local` with a target root directory
-- **THEN** backend moves each `provider=local` model path into a component-specific subdirectory under the target root when that move is safe
-- **AND** backend rewrites the affected model `path` fields to the new absolute filesystem locations
+- **THEN** backend plans a single bulk migration for configured Whisper local directories and installed Ollama-managed model storage under the configured `models_dir`
+- **AND** backend moves each `provider=local` model path into a component-specific subdirectory under the target root when that move is safe
+- **AND** backend rewrites the affected model `path` fields and Ollama runtime `models_dir` to the new absolute filesystem locations
+- **AND** backend requests confirmation before continuing when active analysis tasks are still running
+- **AND** backend restarts the local Ollama service when self-managed restart is available so the migrated model directory takes effect immediately
 - **AND** entries already inside the target root, missing source paths, or conflicting with existing targets are reported as skipped rather than overwritten
 
 #### Scenario: Configure VLM frame sampling interval from settings

@@ -15,10 +15,8 @@ import {
   Save,
   RefreshCw,
   HardDrive,
-  Pause,
   Play,
   Sparkles,
-  Zap,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -62,12 +60,9 @@ import {
   getOllamaRuntimeConfig,
   getPromptTemplates,
   getWhisperConfig,
-  installWhisperRuntimeLibraries,
   migrateLocalModels,
-  pauseWhisperRuntimeLibraries,
   reloadModels,
   restartOllamaService,
-  resumeWhisperRuntimeLibraries,
   startModelDownload,
   updateLLMConfig,
   updateModel,
@@ -75,7 +70,6 @@ import {
   updatePromptSelection,
   updatePromptTemplate,
   updateWhisperConfig,
-  updateWhisperRuntimeLibrariesConfig,
 } from "@/lib/api"
 import { formatBytes } from "@/lib/format"
 import { getImageLayout } from "@/lib/ui-skin"
@@ -89,7 +83,6 @@ import type {
   PromptTemplateItem,
   UISettingsResponse,
   WhisperConfigResponse,
-  WhisperRuntimeLibrariesResponse,
 } from "@/lib/types"
 
 interface SettingsViewProps {
@@ -213,11 +206,6 @@ type LLMConfigFormState = {
   correction_overlap: string
 }
 
-type WhisperRuntimeFormState = {
-  install_dir: string
-  auto_configure_env: boolean
-}
-
 type OllamaRuntimeFormState = {
   install_dir: string
   executable_path: string
@@ -229,11 +217,6 @@ const EMPTY_LLM_FORM: LLMConfigFormState = {
   correction_mode: "strict",
   correction_batch_size: "24",
   correction_overlap: "3",
-}
-
-const EMPTY_WHISPER_RUNTIME_FORM: WhisperRuntimeFormState = {
-  install_dir: "",
-  auto_configure_env: true,
 }
 
 const EMPTY_OLLAMA_RUNTIME_FORM: OllamaRuntimeFormState = {
@@ -421,7 +404,6 @@ export function SettingsView({
   const [ollamaConfig, setOllamaConfig] = React.useState<OllamaRuntimeConfigResponse | null>(null)
   const [isPromptDialogOpen, setIsPromptDialogOpen] = React.useState(false)
   const [isModelDialogOpen, setIsModelDialogOpen] = React.useState(false)
-  const [isWhisperRuntimeDialogOpen, setIsWhisperRuntimeDialogOpen] = React.useState(false)
   const [isOllamaRuntimeDialogOpen, setIsOllamaRuntimeDialogOpen] = React.useState(false)
   const [isLocalMigrationDialogOpen, setIsLocalMigrationDialogOpen] = React.useState(false)
   const [isSkinDialogOpen, setIsSkinDialogOpen] = React.useState(false)
@@ -431,7 +413,6 @@ export function SettingsView({
   const [promptForm, setPromptForm] = React.useState(EMPTY_PROMPT_FORM)
   const [modelForm, setModelForm] = React.useState<ModelConfigFormState>(EMPTY_MODEL_FORM)
   const [llmForm, setLlmForm] = React.useState<LLMConfigFormState>(EMPTY_LLM_FORM)
-  const [whisperRuntimeForm, setWhisperRuntimeForm] = React.useState<WhisperRuntimeFormState>(EMPTY_WHISPER_RUNTIME_FORM)
   const [ollamaRuntimeForm, setOllamaRuntimeForm] = React.useState<OllamaRuntimeFormState>(EMPTY_OLLAMA_RUNTIME_FORM)
   const [isLoading, setIsLoading] = React.useState(true)
   const [busyModelId, setBusyModelId] = React.useState("")
@@ -439,11 +420,9 @@ export function SettingsView({
   const [isSavingModel, setIsSavingModel] = React.useState(false)
   const [isSavingUi, setIsSavingUi] = React.useState(false)
   const [isUpdatingWhisper, setIsUpdatingWhisper] = React.useState(false)
-  const [isUpdatingWhisperRuntime, setIsUpdatingWhisperRuntime] = React.useState(false)
   const [isUpdatingOllamaRuntime, setIsUpdatingOllamaRuntime] = React.useState(false)
   const [isRestartingOllamaService, setIsRestartingOllamaService] = React.useState(false)
   const [isMigratingLocalModels, setIsMigratingLocalModels] = React.useState(false)
-  const [whisperRuntimeDirty, setWhisperRuntimeDirty] = React.useState(false)
   const [ollamaRuntimeDirty, setOllamaRuntimeDirty] = React.useState(false)
   const [localMigrationTarget, setLocalMigrationTarget] = React.useState("")
   const [pendingLocalMigrationConfirmation, setPendingLocalMigrationConfirmation] =
@@ -585,7 +564,6 @@ export function SettingsView({
       setPromptBundle(promptResponse)
       setWhisperConfig(whisperResponse)
       setLlmConfig(llmResponse)
-      setWhisperRuntimeDirty(false)
       applyOllamaRuntimeConfig(ollamaResponse)
     } catch (error) {
       toast.error(getApiErrorMessage(error, "加载设置数据失败"))
@@ -597,16 +575,6 @@ export function SettingsView({
   React.useEffect(() => {
     void loadSettings()
   }, [loadSettings])
-
-  React.useEffect(() => {
-    if (!whisperConfig || whisperRuntimeDirty) {
-      return
-    }
-    setWhisperRuntimeForm({
-      install_dir: whisperConfig.runtime_libraries.install_dir,
-      auto_configure_env: whisperConfig.runtime_libraries.auto_configure_env,
-    })
-  }, [whisperConfig, whisperRuntimeDirty])
 
   React.useEffect(() => {
     if (!ollamaConfig || ollamaRuntimeDirty) {
@@ -652,24 +620,6 @@ export function SettingsView({
     }
   }, [models])
 
-  React.useEffect(() => {
-    if (whisperConfig?.runtime_libraries.progress.state !== "installing") {
-      return
-    }
-    const timer = window.setInterval(() => {
-      void getWhisperConfig()
-        .then((response) => {
-          setWhisperConfig(response)
-        })
-        .catch(() => {
-          // Runtime polling is best-effort; explicit actions will surface errors.
-        })
-    }, 1500)
-    return () => {
-      window.clearInterval(timer)
-    }
-  }, [whisperConfig?.runtime_libraries.progress.state])
-
   const sections = [
     { id: "models", label: "模型配置", icon: Cpu },
     { id: "prompts", label: "提示词模板", icon: FileCode },
@@ -690,59 +640,6 @@ export function SettingsView({
       default:
         return <Badge variant="outline">{status}</Badge>
     }
-  }
-
-  const getWhisperRuntimeBadge = (runtime: WhisperRuntimeLibrariesResponse) => {
-    switch (runtime.status) {
-      case "ready":
-        return <Badge className="bg-status-success text-white">已就绪</Badge>
-      case "installing":
-        return <Badge className="bg-status-processing text-white">安装中</Badge>
-      case "paused":
-        return <Badge variant="outline">已暂停</Badge>
-      case "failed":
-        return <Badge variant="destructive">异常</Badge>
-      case "unsupported":
-        return <Badge variant="outline">当前平台不支持</Badge>
-      default:
-        return <Badge variant="outline">未就绪</Badge>
-    }
-  }
-
-  const getWhisperRuntimeHeadline = (runtime: WhisperRuntimeLibrariesResponse) => {
-    switch (runtime.status) {
-      case "ready":
-        return "运行库已完整就绪，可以在配置弹窗中启用本地 GPU 加速。"
-      case "installing":
-        return "正在后台下载并解压官方运行库，保持当前窗口开启即可。"
-      case "paused":
-        return "下载已暂停，继续安装后会从已完成分片处断点续传。"
-      case "failed":
-        return "运行库还没补齐，先看下面的缺失项或加载错误，再继续安装。"
-      case "unsupported":
-        return "当前平台不支持自动安装链路，请改用 CPU 或手动准备运行库。"
-      default:
-        return "先确认安装目录，再执行一键安装，安装完成后就能启用 GPU 模式。"
-    }
-  }
-
-  const getWhisperRuntimeNextStep = (runtime: WhisperRuntimeLibrariesResponse) => {
-    if (runtime.status === "ready") {
-      return "下一步：在配置弹窗中启用本地 GPU 加速，并重新执行一次系统自检确认模型链路。"
-    }
-    if (runtime.status === "installing") {
-      return "下一步：等待当前下载完成；如果要暂停，直接点“暂停下载”。"
-    }
-    if (runtime.status === "paused") {
-      return "下一步：点击“继续安装”，从当前进度继续补齐官方 CUDA/cuDNN 组件。"
-    }
-    if (runtime.status === "failed") {
-      return "下一步：保留当前目录，修复异常后再次执行“一键安装完整运行库”。"
-    }
-    if (runtime.status === "unsupported") {
-      return "下一步：在当前机器上改用 CPU 模式，或手动部署兼容的 GPU 运行库。"
-    }
-    return "下一步：保存安装目录配置后，执行“一键安装完整运行库”。"
   }
 
   const getModelVisual = (component: ModelDescriptor["component"]) => {
@@ -766,8 +663,8 @@ export function SettingsView({
     if (model.component === "whisper") {
       return {
         title: "语音转写模型配置",
-        description: "调整 Faster-Whisper 模型目录与加载策略。GPU 开关在页面上方单独控制。",
-        note: "建议优先保持量化格式与 GPU 设备策略一致，减少首次加载抖动。",
+        description: "调整 Faster-Whisper 模型目录与加载策略，并在当前弹窗内切换 GPU 加速。",
+        note: "Whisper GPU 模式会自动复用 Ollama 自带的 CUDA 运行库，无需单独安装额外运行库。",
         fields: ["path", "load_profile", "quantization", "enabled"],
         pathLabel: "模型目录",
         pathPlaceholder: "可选：指定 Faster-Whisper 模型目录",
@@ -1255,125 +1152,6 @@ export function SettingsView({
     }
   }
 
-  const mergeWhisperRuntimeLibraries = React.useCallback((runtimeLibraries: WhisperRuntimeLibrariesResponse) => {
-    setWhisperConfig((current) => {
-      if (!current) {
-        return current
-      }
-      return {
-        ...current,
-        runtime_libraries: runtimeLibraries,
-      }
-    })
-  }, [])
-
-  const handleBrowseWhisperRuntimeDirectory = async () => {
-    if (!window.vidGnostDesktop?.pickDirectory) {
-      toast("当前环境不支持目录选择，请直接手动填写安装目录。")
-      return
-    }
-    const picked = await window.vidGnostDesktop.pickDirectory("选择本地 GPU 加速运行库安装目录")
-    if (picked.canceled || !picked.path) {
-      return
-    }
-    setWhisperRuntimeDirty(true)
-    setWhisperRuntimeForm((current) => ({
-      ...current,
-      install_dir: picked.path || current.install_dir,
-    }))
-  }
-
-  const handleRefreshWhisperRuntimeStatus = async () => {
-    try {
-      const response = await getWhisperConfig()
-      setWhisperConfig(response)
-      toast.success("本地 GPU 加速运行库状态已刷新")
-    } catch (error) {
-      toast.error(getApiErrorMessage(error, "刷新本地 GPU 加速运行库状态失败"))
-    }
-  }
-
-  const handleSaveWhisperRuntimeConfig = async () => {
-    if (!whisperRuntimeForm.install_dir.trim()) {
-      toast.error("请先填写本地 GPU 加速运行库安装目录")
-      return
-    }
-    setIsUpdatingWhisperRuntime(true)
-    try {
-      const runtimeLibraries = await updateWhisperRuntimeLibrariesConfig({
-        install_dir: whisperRuntimeForm.install_dir.trim(),
-        auto_configure_env: whisperRuntimeForm.auto_configure_env,
-      })
-      mergeWhisperRuntimeLibraries(runtimeLibraries)
-      setWhisperRuntimeForm({
-        install_dir: runtimeLibraries.install_dir,
-        auto_configure_env: runtimeLibraries.auto_configure_env,
-      })
-      setWhisperRuntimeDirty(false)
-      toast.success("本地 GPU 加速运行库配置已保存")
-    } catch (error) {
-      toast.error(getApiErrorMessage(error, "保存本地 GPU 加速运行库配置失败"))
-    } finally {
-      setIsUpdatingWhisperRuntime(false)
-    }
-  }
-
-  const handleInstallWhisperRuntime = async () => {
-    if (!whisperRuntimeForm.install_dir.trim()) {
-      toast.error("请先填写本地 GPU 加速运行库安装目录")
-      return
-    }
-    setIsUpdatingWhisperRuntime(true)
-    try {
-      const runtimeLibraries = await installWhisperRuntimeLibraries({
-        install_dir: whisperRuntimeForm.install_dir.trim(),
-        auto_configure_env: whisperRuntimeForm.auto_configure_env,
-      })
-      mergeWhisperRuntimeLibraries(runtimeLibraries)
-      setWhisperRuntimeForm({
-        install_dir: runtimeLibraries.install_dir,
-        auto_configure_env: runtimeLibraries.auto_configure_env,
-      })
-      setWhisperRuntimeDirty(false)
-      toast.success("已开始安装本地 GPU 加速运行库")
-    } catch (error) {
-      toast.error(getApiErrorMessage(error, "启动本地 GPU 加速运行库安装失败"))
-    } finally {
-      setIsUpdatingWhisperRuntime(false)
-    }
-  }
-
-  const handlePauseWhisperRuntime = async () => {
-    setIsUpdatingWhisperRuntime(true)
-    try {
-      const runtimeLibraries = await pauseWhisperRuntimeLibraries()
-      mergeWhisperRuntimeLibraries(runtimeLibraries)
-      toast.success("本地 GPU 加速运行库下载已暂停")
-    } catch (error) {
-      toast.error(getApiErrorMessage(error, "暂停本地 GPU 加速运行库下载失败"))
-    } finally {
-      setIsUpdatingWhisperRuntime(false)
-    }
-  }
-
-  const handleResumeWhisperRuntime = async () => {
-    setIsUpdatingWhisperRuntime(true)
-    try {
-      const runtimeLibraries = await resumeWhisperRuntimeLibraries()
-      mergeWhisperRuntimeLibraries(runtimeLibraries)
-      setWhisperRuntimeForm({
-        install_dir: runtimeLibraries.install_dir,
-        auto_configure_env: runtimeLibraries.auto_configure_env,
-      })
-      setWhisperRuntimeDirty(false)
-      toast.success("本地 GPU 加速运行库安装已继续")
-    } catch (error) {
-      toast.error(getApiErrorMessage(error, "继续本地 GPU 加速运行库安装失败"))
-    } finally {
-      setIsUpdatingWhisperRuntime(false)
-    }
-  }
-
   const handleBrowseOllamaDirectory = async (
     field: "install_dir" | "models_dir",
     title: string,
@@ -1406,7 +1184,9 @@ export function SettingsView({
         models_dir: ollamaRuntimeForm.models_dir.trim(),
         base_url: ollamaRuntimeForm.base_url.trim(),
       })
+      const latestWhisperConfig = await getWhisperConfig()
       applyOllamaRuntimeConfig(response)
+      setWhisperConfig(latestWhisperConfig)
       toast.success("Ollama 运行时配置已保存")
       if (response.service.restart_required || !response.service.reachable) {
         toast(response.service.message)
@@ -1421,8 +1201,10 @@ export function SettingsView({
   const handleRestartOllamaService = async () => {
     setIsRestartingOllamaService(true)
     try {
-      const [ollamaResponse, modelsResponse] = await Promise.all([restartOllamaService(), getModels()])
+      const ollamaResponse = await restartOllamaService()
+      const [modelsResponse, latestWhisperConfig] = await Promise.all([getModels(), getWhisperConfig()])
       setModels(modelsResponse.items)
+      setWhisperConfig(latestWhisperConfig)
       applyOllamaRuntimeConfig(ollamaResponse)
       toast.success(ollamaResponse.service.message || "Ollama 服务已启动")
     } catch (error) {
@@ -1487,7 +1269,7 @@ export function SettingsView({
     }
 
     if (checked && !whisperConfig.runtime_libraries.ready) {
-      toast.error("请先安装并校验完整本地 GPU 加速运行库，再启用 GPU 加速。")
+      toast.error("请先确认 Ollama 已安装并刷新检测到 GPU 运行库，再启用 Whisper GPU 加速。")
       return
     }
 
@@ -1517,24 +1299,8 @@ export function SettingsView({
     }
   }
 
-  const gpuAcceleration = whisperConfig ? whisperConfig.device !== "cpu" : false
-  const whisperRuntimeLibraries = whisperConfig?.runtime_libraries ?? null
-  const whisperRuntimeInstalling = whisperRuntimeLibraries?.progress.state === "installing"
-  const whisperRuntimePaused = whisperRuntimeLibraries?.progress.state === "paused"
-  const whisperRuntimeCanResume = Boolean(whisperRuntimeLibraries?.progress.resumable || whisperRuntimePaused)
-  const whisperRuntimeShowProgress = Boolean(
-    whisperRuntimeLibraries && (whisperRuntimeInstalling || whisperRuntimePaused),
-  )
-  const whisperRuntimeHeadline = whisperRuntimeLibraries ? getWhisperRuntimeHeadline(whisperRuntimeLibraries) : ""
-  const whisperRuntimeNextStep = whisperRuntimeLibraries ? getWhisperRuntimeNextStep(whisperRuntimeLibraries) : ""
-  const whisperRuntimeIssueSummary = whisperRuntimeLibraries
-    ? whisperRuntimeLibraries.load_error ||
-      (whisperRuntimeLibraries.missing_files.length > 0
-        ? `仍缺少 ${whisperRuntimeLibraries.missing_files.length} 个运行库文件：${whisperRuntimeLibraries.missing_files.join("、")}`
-        : "")
-    : ""
   const localConfiguredModels = React.useMemo(
-    () => models.filter((model) => model.provider === "local"),
+    () => models.filter((model) => model.provider === "local" || model.provider === "ollama"),
     [models],
   )
   const isModelListLoading = isLoading && models.length === 0
@@ -1639,95 +1405,6 @@ export function SettingsView({
                   <div className="settings-models-panel settings-model-row rounded-lg border p-4">
                     <div className="flex items-start gap-4">
                       <div className="settings-model-icon-shell flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                        <Zap className="h-5 w-5 text-primary" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">本地 GPU 加速运行库</span>
-                          {whisperRuntimeLibraries ? getWhisperRuntimeBadge(whisperRuntimeLibraries) : null}
-                          <Badge variant="secondary">{gpuAcceleration ? "GPU 已启用" : "当前 CPU 模式"}</Badge>
-                        </div>
-                        <div className="mt-1 text-sm text-muted-foreground">
-                          管理 Faster-Whisper 使用的本地 CUDA/cuDNN 运行库，并在配置弹窗中统一设置安装目录、环境变量与 GPU 开关。
-                        </div>
-                        <div className="mt-1 truncate text-xs text-muted-foreground">
-                          {whisperRuntimeLibraries?.bin_dir || "安装完成后会在所选目录下生成 bin 目录"} · {whisperRuntimeHeadline || "等待检测"}
-                        </div>
-                        {whisperRuntimeLibraries?.message ? (
-                          <div className="mt-1 truncate text-[11px] text-muted-foreground">
-                            {whisperRuntimeLibraries.message}
-                          </div>
-                        ) : null}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {whisperRuntimeInstalling ? (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={isUpdatingWhisperRuntime || !whisperRuntimeLibraries?.platform_supported}
-                            onClick={() => {
-                              void handlePauseWhisperRuntime()
-                            }}
-                          >
-                            <Pause className="mr-1 h-4 w-4" />
-                            暂停安装
-                          </Button>
-                        ) : whisperRuntimeCanResume ? (
-                          <Button
-                            size="sm"
-                            disabled={isUpdatingWhisperRuntime || !whisperRuntimeLibraries?.platform_supported}
-                            onClick={() => {
-                              void handleResumeWhisperRuntime()
-                            }}
-                          >
-                            <Play className="mr-1 h-4 w-4" />
-                            继续安装
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={isUpdatingWhisperRuntime || !whisperRuntimeLibraries?.platform_supported}
-                            onClick={() => {
-                              void handleInstallWhisperRuntime()
-                            }}
-                          >
-                            <CloudDownload className="mr-1 h-4 w-4" />
-                            安装
-                          </Button>
-                        )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setIsWhisperRuntimeDialogOpen(true)}
-                        >
-                          配置
-                        </Button>
-                      </div>
-                    </div>
-                    {whisperRuntimeShowProgress && whisperRuntimeLibraries ? (
-                      <div className="mt-3 space-y-2">
-                        <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
-                          <span className="min-w-0 truncate">
-                            {whisperRuntimeLibraries.progress.current_package
-                              ? `当前包：${whisperRuntimeLibraries.progress.current_package}`
-                              : whisperRuntimeLibraries.progress.message ||
-                                (whisperRuntimePaused ? "运行库安装已暂停" : "正在安装运行库...")}
-                          </span>
-                          <span className="shrink-0">{Math.round(whisperRuntimeLibraries.progress.percent)}%</span>
-                        </div>
-                        <Progress
-                          value={whisperRuntimeLibraries.progress.percent}
-                          className="h-2 bg-primary/10"
-                          indicatorClassName="download-progress-indicator"
-                        />
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="settings-models-panel settings-model-row rounded-lg border p-4">
-                    <div className="flex items-start gap-4">
-                      <div className="settings-model-icon-shell flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                         <Cpu className="h-5 w-5 text-primary" />
                       </div>
                       <div className="min-w-0 flex-1">
@@ -1748,7 +1425,7 @@ export function SettingsView({
                           </Badge>
                         </div>
                         <div className="mt-1 text-sm text-muted-foreground">
-                          在配置弹窗中维护 Ollama 安装目录、模型安装目录和服务地址，模型安装会遵循这里的目录配置。
+                          在配置弹窗中维护 Ollama 安装目录、模型安装目录和服务地址，并自动同步 PATH 与 OLLAMA_MODELS 环境变量。
                         </div>
                         <div className="mt-1 truncate text-xs text-muted-foreground">
                           {ollamaService?.configured_models_dir || ollamaRuntimeForm.models_dir || "未配置模型目录"} · {ollamaRuntimeForm.base_url || "未配置服务地址"}
@@ -1791,7 +1468,7 @@ export function SettingsView({
                           <Badge variant="secondary">{`${localConfiguredModels.length} 个本地模型`}</Badge>
                         </div>
                         <div className="mt-1 text-sm text-muted-foreground">
-                          仅支持一次性迁移当前项目里全部本地模型，迁移完成后会自动回写绝对路径，并尝试自动重启 Ollama 服务。
+                          仅支持一次性迁移当前项目里全部本地模型，包含 Whisper 本地目录和 Ollama 管理目录，迁移完成后会自动回写绝对路径并重启 Ollama。
                         </div>
                         <div className="mt-1 truncate text-xs text-muted-foreground">
                           {localConfiguredModels.length > 0
@@ -1818,18 +1495,18 @@ export function SettingsView({
                       ? Array.from({ length: 5 }).map((_, index) => (
                           <div
                             key={`model-skeleton-${index}`}
-                            className="settings-models-panel rounded-lg border p-4"
+                            className="settings-model-skeleton-card settings-models-panel rounded-lg border p-4"
                           >
                             <div className="flex items-start gap-4">
-                              <div className="app-skeleton h-10 w-10 shrink-0 rounded-lg" />
+                              <div className="app-skeleton app-skeleton-intense h-10 w-10 shrink-0 rounded-lg" />
                               <div className="min-w-0 flex-1 space-y-2">
-                                <div className="app-skeleton h-4 w-48 rounded-md" />
-                                <div className="app-skeleton h-3 w-72 rounded-md" />
-                                <div className="app-skeleton h-3 w-full max-w-xl rounded-md" />
+                                <div className="app-skeleton app-skeleton-intense h-4 w-48 rounded-md" />
+                                <div className="app-skeleton app-skeleton-intense h-3 w-72 rounded-md" />
+                                <div className="app-skeleton app-skeleton-intense h-3 w-full max-w-xl rounded-md" />
                               </div>
                               <div className="flex items-center gap-2">
-                                <div className="app-skeleton h-9 w-20 rounded-md" />
-                                <div className="app-skeleton h-9 w-16 rounded-md" />
+                                <div className="app-skeleton app-skeleton-intense h-9 w-20 rounded-md" />
+                                <div className="app-skeleton app-skeleton-intense h-9 w-16 rounded-md" />
                               </div>
                             </div>
                           </div>
@@ -1972,214 +1649,12 @@ export function SettingsView({
                     添加模型
                   </Button>
 
-                  <Dialog open={isWhisperRuntimeDialogOpen} onOpenChange={setIsWhisperRuntimeDialogOpen}>
-                    <DialogContent className="sm:max-w-2xl">
-                      <DialogHeader>
-                        <DialogTitle>本地 GPU 加速运行库</DialogTitle>
-                        <DialogDescription>
-                          配置运行库安装目录、环境变量写入方式，以及 Faster-Whisper 的 GPU 加速开关。
-                        </DialogDescription>
-                      </DialogHeader>
-
-                      <div className="space-y-5">
-                        <div className="space-y-2">
-                          <Label htmlFor="whisper-runtime-install-dir">安装目录</Label>
-                          <div className="flex flex-col gap-2 sm:flex-row">
-                            <Input
-                              id="whisper-runtime-install-dir"
-                              className="bg-background/80"
-                              value={whisperRuntimeForm.install_dir}
-                              onChange={(event) => {
-                                setWhisperRuntimeDirty(true)
-                                setWhisperRuntimeForm((current) => ({
-                                  ...current,
-                                  install_dir: event.target.value,
-                                }))
-                              }}
-                              placeholder="如 D:\\AI\\VidGnost\\transcription-cuda-runtime"
-                            />
-                            <Button
-                              variant="outline"
-                              className="shrink-0"
-                              onClick={() => {
-                                void handleBrowseWhisperRuntimeDirectory()
-                              }}
-                            >
-                              <FolderOpen className="mr-2 h-4 w-4" />
-                              浏览
-                            </Button>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            安装目录下会自动整理出统一的 <code>bin</code>、<code>lib</code>、<code>include</code> 结构，便于后续自检和分析任务直接复用。
-                          </p>
-                        </div>
-
-                        <div className="grid gap-4 md:grid-cols-2">
-                          <div className="rounded-xl border bg-muted/25 px-4 py-3">
-                            <div className="flex items-center justify-between gap-4">
-                              <div className="space-y-1">
-                                <Label className="leading-tight">自动配置环境变量</Label>
-                                <p className="text-xs text-muted-foreground">
-                                  保存到当前用户级 <code>CUDA_PATH</code> 与 <code>PATH</code>。
-                                </p>
-                              </div>
-                              <Switch
-                                checked={whisperRuntimeForm.auto_configure_env}
-                                onCheckedChange={(checked) => {
-                                  setWhisperRuntimeDirty(true)
-                                  setWhisperRuntimeForm((current) => ({
-                                    ...current,
-                                    auto_configure_env: checked,
-                                  }))
-                                }}
-                              />
-                            </div>
-                          </div>
-                          <div className="rounded-xl border bg-muted/25 px-4 py-3">
-                            <div className="flex items-center justify-between gap-4">
-                              <div className="space-y-1">
-                                <Label className="leading-tight">GPU 加速</Label>
-                                <p className="text-xs text-muted-foreground">
-                                  切换当前转写链路使用 GPU 或 CPU。
-                                </p>
-                              </div>
-                              <Switch
-                                checked={gpuAcceleration}
-                                disabled={!whisperConfig || isUpdatingWhisper}
-                                onCheckedChange={(checked) => {
-                                  void handleGpuToggle(checked)
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="grid gap-3 md:grid-cols-3">
-                          <div className="rounded-xl border bg-muted/20 px-4 py-3">
-                            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">当前状态</p>
-                            <p className="mt-2 text-sm font-medium">{whisperRuntimeHeadline}</p>
-                            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                              {whisperRuntimeLibraries?.message || "等待检测"}
-                            </p>
-                          </div>
-                          <div className="rounded-xl border bg-muted/20 px-4 py-3">
-                            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">生效目录</p>
-                            <p className="mt-2 break-all text-sm leading-6 text-foreground/90">
-                              {whisperRuntimeLibraries?.bin_dir || "安装完成后会在所选目录下生成 bin 目录"}
-                            </p>
-                          </div>
-                          <div className="rounded-xl border bg-muted/20 px-4 py-3">
-                            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">环境与版本</p>
-                            <p className="mt-2 text-sm font-medium">{whisperRuntimeLibraries?.version_label || "未检测"}</p>
-                            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                              {whisperRuntimeLibraries?.path_configured ? "当前进程已识别 PATH/CUDA_PATH。" : "当前进程还没有识别到完整环境变量。"}
-                            </p>
-                          </div>
-                        </div>
-
-                        {whisperRuntimeIssueSummary ? (
-                          <div className="rounded-xl border border-destructive/30 bg-destructive/8 px-4 py-3">
-                            <p className="text-xs font-medium uppercase tracking-[0.12em] text-destructive">需要补齐的问题</p>
-                            <p className="mt-2 break-words text-sm leading-6 text-foreground/90">
-                              {whisperRuntimeIssueSummary}
-                            </p>
-                          </div>
-                        ) : null}
-
-                        <div className="rounded-xl border bg-muted/20 px-4 py-3">
-                          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">下一步</p>
-                          <p className="mt-2 text-sm leading-6 text-foreground/90">{whisperRuntimeNextStep}</p>
-                        </div>
-
-                        {whisperRuntimeShowProgress && whisperRuntimeLibraries ? (
-                          <div className="space-y-2 rounded-xl border bg-muted/25 p-4">
-                            <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
-                              <span className="min-w-0 truncate">
-                                {whisperRuntimeLibraries.progress.current_package
-                                  ? `当前包：${whisperRuntimeLibraries.progress.current_package}`
-                                  : whisperRuntimeLibraries.progress.message ||
-                                    (whisperRuntimePaused ? "运行库安装已暂停" : "正在安装运行库...")}
-                              </span>
-                              <span className="shrink-0">{Math.round(whisperRuntimeLibraries.progress.percent)}%</span>
-                            </div>
-                            <Progress
-                              value={whisperRuntimeLibraries.progress.percent}
-                              className="h-2 bg-primary/10"
-                              indicatorClassName="download-progress-indicator"
-                            />
-                          </div>
-                        ) : null}
-                      </div>
-
-                      <DialogFooter className="gap-2 sm:justify-between">
-                        <Button
-                          variant="outline"
-                          disabled={isUpdatingWhisperRuntime}
-                          onClick={() => {
-                            void handleRefreshWhisperRuntimeStatus()
-                          }}
-                        >
-                          <RefreshCw className="mr-2 h-4 w-4" />
-                          刷新状态
-                        </Button>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            disabled={
-                              isUpdatingWhisperRuntime ||
-                              whisperRuntimeInstalling ||
-                              !whisperRuntimeLibraries?.platform_supported
-                            }
-                            onClick={() => {
-                              void handleSaveWhisperRuntimeConfig()
-                            }}
-                          >
-                            <Save className="mr-2 h-4 w-4" />
-                            保存配置
-                          </Button>
-                          {whisperRuntimeInstalling ? (
-                            <Button
-                              variant="outline"
-                              disabled={isUpdatingWhisperRuntime || !whisperRuntimeLibraries?.platform_supported}
-                              onClick={() => {
-                                void handlePauseWhisperRuntime()
-                              }}
-                            >
-                              <Pause className="mr-2 h-4 w-4" />
-                              暂停安装
-                            </Button>
-                          ) : whisperRuntimeCanResume ? (
-                            <Button
-                              disabled={isUpdatingWhisperRuntime || !whisperRuntimeLibraries?.platform_supported}
-                              onClick={() => {
-                                void handleResumeWhisperRuntime()
-                              }}
-                            >
-                              <Play className="mr-2 h-4 w-4" />
-                              继续安装
-                            </Button>
-                          ) : (
-                            <Button
-                              disabled={isUpdatingWhisperRuntime || !whisperRuntimeLibraries?.platform_supported}
-                              onClick={() => {
-                                void handleInstallWhisperRuntime()
-                              }}
-                            >
-                              <CloudDownload className="mr-2 h-4 w-4" />
-                              安装运行库
-                            </Button>
-                          )}
-                        </div>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-
                   <Dialog open={isOllamaRuntimeDialogOpen} onOpenChange={setIsOllamaRuntimeDialogOpen}>
                     <DialogContent className="sm:max-w-2xl">
                       <DialogHeader>
                         <DialogTitle>Ollama 运行时配置</DialogTitle>
                         <DialogDescription>
-                          配置 Ollama 安装目录、模型安装目录、可执行文件与服务地址。
+                          配置 Ollama 安装目录、模型安装目录、可执行文件与服务地址，并自动同步 PATH 与 OLLAMA_MODELS。
                         </DialogDescription>
                       </DialogHeader>
 
@@ -2332,7 +1807,7 @@ export function SettingsView({
                       <DialogHeader>
                         <DialogTitle>本地模型批量迁移</DialogTitle>
                         <DialogDescription>
-                          当前仅支持一次性迁移全部本地模型，不支持选择性迁移。
+                          当前仅支持一次性迁移全部本地模型，覆盖 Whisper 本地目录与 Ollama 管理目录，不支持选择性迁移。
                         </DialogDescription>
                       </DialogHeader>
 
@@ -2361,7 +1836,7 @@ export function SettingsView({
                         </div>
 
                         <div className="space-y-3">
-                          <div className="text-sm font-medium">当前项目已配置的本地模型</div>
+                          <div className="text-sm font-medium">当前项目已配置的本地模型条目</div>
                           {localConfiguredModels.length > 0 ? (
                             <div className="space-y-2">
                               {localConfiguredModels.map((model) => (
@@ -2667,6 +2142,86 @@ export function SettingsView({
                                         ? "Whisper 模型目录由桌面端托管，点击上方“下载 / 重置”会自动写入默认目录。"
                                         : "未填写时优先使用当前已检测到的模型目录或默认托管目录。"}
                                     </p>
+                                  </div>
+                                ) : null}
+
+                                {isWhisperDialog ? (
+                                  <div className="space-y-4 rounded-xl border bg-muted/20 p-4 md:col-span-2">
+                                    <div className="flex items-start justify-between gap-4">
+                                      <div className="space-y-1">
+                                        <Label className="leading-tight">Whisper GPU 加速</Label>
+                                        <p className="text-xs text-muted-foreground">
+                                          自动复用 Ollama 安装目录中的 CUDA 运行库；刷新检测后即可切换 GPU 模式。
+                                        </p>
+                                      </div>
+                                      <Switch
+                                        checked={Boolean(whisperConfig && whisperConfig.device !== "cpu")}
+                                        disabled={!whisperConfig || isUpdatingWhisper}
+                                        onCheckedChange={(checked) => {
+                                          void handleGpuToggle(checked)
+                                        }}
+                                      />
+                                    </div>
+
+                                    <div className="grid gap-3 md:grid-cols-3">
+                                      <div className="rounded-xl border bg-background/70 px-4 py-3">
+                                        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                                          检测状态
+                                        </p>
+                                        <p className="mt-2 text-sm font-medium">
+                                          {whisperConfig?.runtime_libraries.ready ? "已检测到可用 GPU 运行库" : "GPU 运行库未就绪"}
+                                        </p>
+                                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                          {whisperConfig?.runtime_libraries.message || "等待检测"}
+                                        </p>
+                                      </div>
+                                      <div className="rounded-xl border bg-background/70 px-4 py-3">
+                                        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                                          生效目录
+                                        </p>
+                                        <p className="mt-2 break-all text-sm leading-6 text-foreground/90">
+                                          {whisperConfig?.runtime_libraries.bin_dir || "未识别到 Ollama GPU 运行库目录"}
+                                        </p>
+                                      </div>
+                                      <div className="rounded-xl border bg-background/70 px-4 py-3">
+                                        <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                                          环境同步
+                                        </p>
+                                        <p className="mt-2 text-sm font-medium">
+                                          {whisperConfig?.runtime_libraries.path_configured ? "当前进程已同步" : "当前进程未同步"}
+                                        </p>
+                                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                          {whisperConfig?.runtime_libraries.version_label || "等待检测"}
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed bg-background/70 px-4 py-3">
+                                      <div className="min-w-0">
+                                        <p className="text-sm font-medium">刷新检测</p>
+                                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                          重新读取 Ollama 安装目录中的 GPU 运行库状态，并同步当前页面显示。
+                                        </p>
+                                      </div>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        disabled={isUpdatingWhisper || isLoading}
+                                        onClick={() => {
+                                          void getWhisperConfig()
+                                            .then((response) => {
+                                              setWhisperConfig(response)
+                                              toast.success("Whisper GPU 运行库状态已刷新")
+                                            })
+                                            .catch((error) => {
+                                              toast.error(getApiErrorMessage(error, "刷新 Whisper GPU 运行库状态失败"))
+                                            })
+                                        }}
+                                      >
+                                        <RefreshCw className="mr-2 h-4 w-4" />
+                                        刷新检测
+                                      </Button>
+                                    </div>
                                   </div>
                                 ) : null}
 

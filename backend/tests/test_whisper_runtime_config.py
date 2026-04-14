@@ -7,7 +7,6 @@ from app.config import Settings
 from app.services.runtime_config_store import (
     DEFAULT_WHISPER_RUNTIME_CONFIG,
     RuntimeConfigStore,
-    _default_runtime_libraries_install_dir,
     _normalize_device,
 )
 from app.services.transcription import WhisperService
@@ -49,33 +48,35 @@ def test_device_normalizers_accept_supported_values() -> None:
     assert WhisperService._normalize_device("cpu") == "cpu"
 
 
-def test_runtime_config_store_persists_runtime_libraries_section(tmp_path: Path) -> None:
+def test_runtime_config_store_ignores_legacy_runtime_libraries_section(tmp_path: Path) -> None:
     settings = _build_settings(tmp_path)
     store = RuntimeConfigStore(settings)
+    Path(settings.runtime_config_path).write_text(
+        """
+[whisper]
+model_default = "medium"
+language = "zh"
+device = "auto"
+compute_type = "int8"
+model_load_profile = "balanced"
+beam_size = 6
+vad_filter = true
+chunk_seconds = 240
+target_sample_rate = 16000
+target_channels = 1
 
-    saved = asyncio.run(
-        store.save_whisper_runtime_libraries(
-            {
-                "install_dir": str(tmp_path / "gpu-runtime"),
-                "auto_configure_env": False,
-            }
-        )
+[whisper.runtime_libraries]
+install_dir = "D:\\\\gpu-runtime"
+auto_configure_env = false
+""".strip(),
+        encoding="utf-8",
     )
-    current = asyncio.run(store.get_whisper_runtime_libraries())
+
+    current = asyncio.run(store.get_whisper(mask_secrets=False))
+    saved = asyncio.run(store.save_whisper(current))
     disk_text = Path(settings.runtime_config_path).read_text(encoding="utf-8")
 
-    assert saved["install_dir"] == str((tmp_path / "gpu-runtime").resolve())
-    assert saved["auto_configure_env"] is False
-    assert current == saved
-    assert "[whisper.runtime_libraries]" in disk_text
-    assert 'auto_configure_env = false' in disk_text
-
-
-def test_runtime_config_store_defaults_runtime_libraries_install_dir(tmp_path: Path) -> None:
-    settings = _build_settings(tmp_path)
-    store = RuntimeConfigStore(settings)
-
-    current = asyncio.run(store.get_whisper_runtime_libraries())
-
-    assert current["install_dir"] == _default_runtime_libraries_install_dir(settings)
-    assert current["auto_configure_env"] is True
+    assert current["model_default"] == "medium"
+    assert current["device"] == "auto"
+    assert saved["chunk_seconds"] == 240
+    assert "[whisper.runtime_libraries]" not in disk_text

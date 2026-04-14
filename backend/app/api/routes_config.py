@@ -22,9 +22,7 @@ from app.schemas import (
     UISettingsResponse,
     UISettingsUpdateRequest,
     WhisperConfigResponse,
-    WhisperRuntimeLibrariesInstallRequest,
     WhisperRuntimeLibrariesResponse,
-    WhisperRuntimeLibrariesUpdateRequest,
     WhisperConfigUpdateRequest,
 )
 from app.services.llm_config_store import LLMConfigStore
@@ -236,6 +234,7 @@ async def update_ollama_runtime_config(
             "base_url": body.base_url,
         }
     )
+    await ollama_service_manager.synchronize_runtime_environment()
     await sync_llm_runtime_config_from_catalog(
         llm_config_store=llm_store,
         model_catalog_store=catalog,
@@ -316,46 +315,6 @@ async def update_whisper_config(
         warnings=checked["warnings"],
         rollback_applied=checked["rollback_applied"],
     )
-
-
-@router.put("/whisper/runtime-libraries", response_model=WhisperRuntimeLibrariesResponse)
-async def update_whisper_runtime_libraries(
-    body: WhisperRuntimeLibrariesUpdateRequest,
-    whisper_gpu_runtime_service: WhisperGpuRuntimeService = Depends(get_whisper_gpu_runtime_service),
-) -> WhisperRuntimeLibrariesResponse:
-    payload = await whisper_gpu_runtime_service.save_config(
-        install_dir=body.install_dir,
-        auto_configure_env=body.auto_configure_env,
-    )
-    return WhisperRuntimeLibrariesResponse.model_validate(payload)
-
-
-@router.post("/whisper/runtime-libraries/install", response_model=WhisperRuntimeLibrariesResponse)
-async def install_whisper_runtime_libraries(
-    body: WhisperRuntimeLibrariesInstallRequest,
-    whisper_gpu_runtime_service: WhisperGpuRuntimeService = Depends(get_whisper_gpu_runtime_service),
-) -> WhisperRuntimeLibrariesResponse:
-    payload = await whisper_gpu_runtime_service.start_install(
-        install_dir=body.install_dir,
-        auto_configure_env=body.auto_configure_env,
-    )
-    return WhisperRuntimeLibrariesResponse.model_validate(payload)
-
-
-@router.post("/whisper/runtime-libraries/pause", response_model=WhisperRuntimeLibrariesResponse)
-async def pause_whisper_runtime_libraries(
-    whisper_gpu_runtime_service: WhisperGpuRuntimeService = Depends(get_whisper_gpu_runtime_service),
-) -> WhisperRuntimeLibrariesResponse:
-    payload = await whisper_gpu_runtime_service.pause_install()
-    return WhisperRuntimeLibrariesResponse.model_validate(payload)
-
-
-@router.post("/whisper/runtime-libraries/resume", response_model=WhisperRuntimeLibrariesResponse)
-async def resume_whisper_runtime_libraries(
-    whisper_gpu_runtime_service: WhisperGpuRuntimeService = Depends(get_whisper_gpu_runtime_service),
-) -> WhisperRuntimeLibrariesResponse:
-    payload = await whisper_gpu_runtime_service.resume_install()
-    return WhisperRuntimeLibrariesResponse.model_validate(payload)
 
 
 @router.get("/prompts", response_model=PromptTemplateBundleResponse)

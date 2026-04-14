@@ -346,7 +346,7 @@ class SelfCheckService:
         status = await self._whisper_gpu_runtime_service.get_status()
         details = {
             "版本": status["version_label"],
-            "安装目录": status["install_dir"],
+            "Ollama 安装目录": status["install_dir"],
             "运行库目录": status["bin_dir"],
             "环境变量": "已配置" if status["path_configured"] else "未配置",
         }
@@ -365,9 +365,9 @@ class SelfCheckService:
         if status["status"] == "unsupported":
             return SelfCheckOutcome(
                 status="warning",
-                message="当前平台不支持转写 CUDA 运行库自动安装",
+                message="当前平台暂不支持自动检测 Ollama GPU 运行库",
                 details=details,
-                manual_action="如需 GPU 转写，请在支持的平台手动安装完整 CUDA 12 与 cuDNN 9 运行环境。",
+                manual_action="请在支持的平台安装 Ollama，并确认其自带 GPU 运行库可用后重新执行系统自检。",
             )
 
         return SelfCheckOutcome(
@@ -375,7 +375,7 @@ class SelfCheckService:
             message="转写 CUDA 运行库未就绪",
             details=details,
             auto_fixable=False,
-            manual_action="在设置中心的语音转写模型区域配置安装目录并执行“一键安装完整运行库”。",
+            manual_action="在设置中心检查 Ollama 安装目录，确认已安装带 GPU 运行时的 Ollama，并点击“刷新检测”。",
         )
 
     async def _check_whisper(self) -> SelfCheckOutcome:

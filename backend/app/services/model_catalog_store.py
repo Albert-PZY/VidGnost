@@ -545,17 +545,20 @@ class ModelCatalogStore:
     ) -> None:
         model_name = str(item.get("model_id", "")).strip()
         local_model = ollama_models.get(model_name)
+        disk_path = self._resolve_local_model_path(default_path) if default_path else None
+        files_present_on_disk = self._path_has_files(disk_path)
         resolved_path = (
             str(getattr(local_model, "path", "")).strip()
             if local_model is not None
             else ""
-        ) or default_path
+        ) or (str(disk_path) if files_present_on_disk and disk_path is not None else default_path)
+        is_installed = local_model is not None or files_present_on_disk
         hydrated["path"] = resolved_path
         hydrated["default_path"] = default_path
-        hydrated["is_installed"] = local_model is not None
+        hydrated["is_installed"] = is_installed
         hydrated["supports_managed_download"] = True
         hydrated["size_bytes"] = max(0, int(getattr(local_model, "size_bytes", 0) or 0)) if local_model is not None else 0
-        hydrated["status"] = "ready" if local_model is not None else "not_ready"
+        hydrated["status"] = "ready" if is_installed else "not_ready"
 
     def _hydrate_remote_model(self, hydrated: ModelEntry, item: ModelEntry) -> None:
         api_base_url = str(item.get("api_base_url", "")).strip()
@@ -581,6 +584,18 @@ class ModelCatalogStore:
             if file_path.is_file():
                 total += max(0, int(file_path.stat().st_size))
         return total
+
+    @staticmethod
+    def _path_has_files(target: Path | None) -> bool:
+        if target is None or not target.exists():
+            return False
+        if target.is_file():
+            return True
+        try:
+            next(target.iterdir())
+        except StopIteration:
+            return False
+        return True
 
 
 def _normalize_provider(raw: object, *, component: str, default: str) -> str:
