@@ -19,10 +19,13 @@ from app.config import get_settings
 from app.runtime_stdio import enable_windows_utf8_stdio
 from app.services.events import EventBus
 from app.services.llm_config_store import LLMConfigStore
+from app.services.llm_runtime_sync import sync_llm_runtime_config_from_catalog
 from app.services.model_catalog_store import ModelCatalogStore
 from app.services.model_download_service import ModelDownloadService
+from app.services.model_migration_service import ModelMigrationService
 from app.services.model_runtime_manager import ModelRuntimeManager
 from app.services.ollama_client import OllamaClient
+from app.services.ollama_runtime_config_store import OllamaRuntimeConfigStore
 from app.services.prompt_template_store import PromptTemplateStore
 from app.services.resource_guard import ResourceGuard
 from app.services.runtime_metrics import RuntimeMetricsService
@@ -67,10 +70,26 @@ async def lifespan(app: FastAPI):
     await llm_config_store.get()
     prompt_template_store = PromptTemplateStore(settings=settings)
     await prompt_template_store.get_bundle()
-    ollama_client = OllamaClient(settings)
-    model_catalog_store = ModelCatalogStore(settings=settings, ollama_client=ollama_client)
+    ollama_runtime_config_store = OllamaRuntimeConfigStore(settings)
+    await ollama_runtime_config_store.get()
+    ollama_client = OllamaClient(settings, runtime_config_store=ollama_runtime_config_store)
+    model_catalog_store = ModelCatalogStore(
+        settings=settings,
+        ollama_client=ollama_client,
+        ollama_runtime_config_store=ollama_runtime_config_store,
+    )
     await model_catalog_store.list_models()
+    await sync_llm_runtime_config_from_catalog(
+        llm_config_store=llm_config_store,
+        model_catalog_store=model_catalog_store,
+        ollama_base_url=ollama_runtime_config_store.get_sync()["base_url"],
+    )
     model_download_service = ModelDownloadService(settings=settings, ollama_client=ollama_client)
+    model_migration_service = ModelMigrationService(
+        settings=settings,
+        model_catalog_store=model_catalog_store,
+        ollama_runtime_config_store=ollama_runtime_config_store,
+    )
     ui_settings_store = UISettingsStore(settings=settings)
     await ui_settings_store.get()
     runtime_config_store = RuntimeConfigStore(settings)
@@ -108,6 +127,7 @@ async def lifespan(app: FastAPI):
     vqa_model_runtime = VQAModelRuntime(
         model_catalog_store=model_catalog_store,
         ollama_client=ollama_client,
+        storage_dir=settings.storage_dir,
     )
     vqa_runtime = VQARuntimeService(
         task_store=task_store,
@@ -136,7 +156,9 @@ async def lifespan(app: FastAPI):
     app.state.prompt_template_store = prompt_template_store
     app.state.model_catalog_store = model_catalog_store
     app.state.model_download_service = model_download_service
+    app.state.model_migration_service = model_migration_service
     app.state.ollama_client = ollama_client
+    app.state.ollama_runtime_config_store = ollama_runtime_config_store
     app.state.ui_settings_store = ui_settings_store
     app.state.runtime_config_store = runtime_config_store
     app.state.whisper_gpu_runtime_service = whisper_gpu_runtime_service

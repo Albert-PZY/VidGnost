@@ -75,6 +75,7 @@ class SelfCheckService:
         self._vqa_model_runtime = VQAModelRuntime(
             model_catalog_store=self._model_catalog_store,
             ollama_client=self._ollama_client,
+            storage_dir=settings.storage_dir,
         )
         self._whisper_gpu_runtime_service = whisper_gpu_runtime_service
         self._sessions: dict[str, SelfCheckSession] = {}
@@ -437,15 +438,15 @@ class SelfCheckService:
         )
 
     async def _check_embedding(self) -> SelfCheckOutcome:
-        return await self._probe_ollama_model("embedding-default", self._vqa_model_runtime.probe_embedding)
+        return await self._probe_model("embedding-default", self._vqa_model_runtime.probe_embedding)
 
     async def _check_vlm(self) -> SelfCheckOutcome:
-        return await self._probe_ollama_model("vlm-default", self._vqa_model_runtime.probe_vlm)
+        return await self._probe_model("vlm-default", self._vqa_model_runtime.probe_vlm)
 
     async def _check_rerank(self) -> SelfCheckOutcome:
-        return await self._probe_ollama_model("rerank-default", self._vqa_model_runtime.probe_rerank)
+        return await self._probe_model("rerank-default", self._vqa_model_runtime.probe_rerank)
 
-    async def _probe_ollama_model(
+    async def _probe_model(
         self,
         model_id: str,
         probe,
@@ -461,10 +462,10 @@ class SelfCheckService:
             )
 
         details = {
-            "模型": str(model.get("model_id", "")).strip() or model_id,
+            "模型": str(model.get("api_model", "")).strip() or str(model.get("model_id", "")).strip() or model_id,
             "提供方": str(model.get("provider", "")).strip() or "unknown",
             "当前路径": str(model.get("path", "")).strip() or str(model.get("default_path", "")).strip() or "未就绪",
-            "endpoint": self._ollama_client.base_url,
+            "endpoint": str(model.get("api_base_url", "")).strip() or self._ollama_client.base_url,
             "加载策略": self._describe_load_profile(str(model.get("load_profile", "")).strip()),
             "量化": str(model.get("quantization", "")).strip() or "未配置",
         }
@@ -475,29 +476,42 @@ class SelfCheckService:
                 details=details,
                 manual_action="在模型配置中重新启用该模型。",
             )
+        provider = str(model.get("provider", "")).strip().lower()
         if not bool(model.get("is_installed", False)):
+            missing_message = f"{model.get('name', model_id)} 尚未就绪"
+            manual_action = "检查模型配置后重试。"
+            if provider == "ollama":
+                missing_message = f"{model.get('name', model_id)} 尚未通过 Ollama 拉取"
+                manual_action = "确认 Ollama 服务正在运行，并在模型配置中执行拉取。"
+            elif provider == "openai_compatible":
+                manual_action = "检查在线 API 的 Base URL、API Key、模型名和协议配置。"
             return SelfCheckOutcome(
                 status="warning",
-                message=f"{model.get('name', model_id)} 尚未通过 Ollama 拉取",
+                message=missing_message,
                 details=details,
-                manual_action="确认 Ollama 服务正在运行，并在模型配置中执行拉取。",
+                manual_action=manual_action,
             )
         try:
             result = await probe()
         except Exception as exc:  # noqa: BLE001
             details["错误"] = str(exc)
+            manual_action = "检查模型状态后重试。"
+            if provider == "ollama":
+                manual_action = "检查本地 Ollama 服务、模型拉取状态和模型名配置后重试。"
+            elif provider == "openai_compatible":
+                manual_action = "检查远端 API 协议、鉴权和模型名配置后重试。"
             return SelfCheckOutcome(
                 status="failed",
                 message=f"{model.get('name', model_id)} 推理校验失败",
                 details=details,
-                manual_action="检查本地 Ollama 服务、模型拉取状态和模型名配置后重试。",
+                manual_action=manual_action,
             )
         details.update(result.details)
         return SelfCheckOutcome(
             status="passed" if result.ready else "failed",
             message=result.message,
             details=details,
-            manual_action="" if result.ready else "检查本地 Ollama 服务与模型状态后重试。",
+            manual_action="" if result.ready else "检查当前模型的 provider、鉴权与运行状态后重试。",
         )
 
     async def _check_chromadb(self) -> SelfCheckOutcome:

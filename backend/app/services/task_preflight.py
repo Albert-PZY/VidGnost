@@ -51,6 +51,7 @@ class TaskPreflightService:
         vqa_model_runtime = VQAModelRuntime(
             model_catalog_store=self.model_catalog_store,
             ollama_client=self.ollama_client,
+            storage_dir=self.settings.storage_dir,
         )
 
         self._assert_storage_capacity()
@@ -210,14 +211,14 @@ class TaskPreflightService:
                 raise AppError.conflict(
                     f"运行前检查失败：{component} 模型最小推理校验未通过。",
                     code="TASK_PRECHECK_MODEL_RUNTIME_INVALID",
-                    hint=f"请检查 Ollama 服务和对应模型拉取状态。详细原因：{exc}",
+                    hint=f"请检查对应模型的 provider、鉴权或本地运行状态。详细原因：{exc}",
                 ) from exc
             if result.ready:
                 continue
             raise AppError.conflict(
                 f"运行前检查失败：{component} 模型最小推理校验未通过。",
                 code="TASK_PRECHECK_MODEL_RUNTIME_INVALID",
-                hint=f"请检查 Ollama 服务和对应模型拉取状态。详细原因：{result.message}",
+                hint=f"请检查对应模型的 provider、鉴权或本地运行状态。详细原因：{result.message}",
             )
 
 

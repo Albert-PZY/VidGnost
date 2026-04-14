@@ -44,13 +44,18 @@ class VQARuntimeService:
         resolved_model_runtime = model_runtime or VQAModelRuntime(
             model_catalog_store=resolved_model_catalog_store,
             ollama_client=OllamaClient(llm_config_store._settings),  # type: ignore[attr-defined]
+            storage_dir=storage_dir,
         )
         self._retriever = VQAOllamaRetriever(
             task_store=task_store,
             storage_dir=storage_dir,
             model_runtime=resolved_model_runtime,
         )
-        self._chat = VQAChatService(llm_config_store=llm_config_store)
+        self._chat = VQAChatService(
+            llm_config_store=llm_config_store,
+            model_catalog_store=resolved_model_catalog_store,
+            model_runtime=resolved_model_runtime,
+        )
         self._model_catalog_store = resolved_model_catalog_store
         self._trace = VQATraceStore(log_dir=f"{storage_dir}/event-logs/traces")
 

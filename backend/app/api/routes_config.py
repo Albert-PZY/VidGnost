@@ -7,8 +7,14 @@ from app.schemas import (
     LLMConfigResponse,
     LLMConfigUpdateRequest,
     ModelListResponse,
+    LocalModelsMigrationRequest,
+    LocalModelsMigrationResponse,
     ModelReloadRequest,
     ModelUpdateRequest,
+    OllamaModelsMigrationRequest,
+    OllamaModelsMigrationResponse,
+    OllamaRuntimeConfigResponse,
+    OllamaRuntimeConfigUpdateRequest,
     PromptTemplateBundleResponse,
     PromptTemplateCreateRequest,
     PromptTemplateSelectionUpdateRequest,
@@ -22,8 +28,11 @@ from app.schemas import (
     WhisperConfigUpdateRequest,
 )
 from app.services.llm_config_store import LLMConfigStore
+from app.services.llm_runtime_sync import sync_llm_runtime_config_from_catalog
 from app.services.model_catalog_store import ModelCatalogStore
 from app.services.model_download_service import ModelDownloadService
+from app.services.model_migration_service import ModelMigrationService
+from app.services.ollama_runtime_config_store import OllamaRuntimeConfigStore
 from app.services.prompt_template_store import PromptTemplateStore
 from app.services.resource_guard import ResourceGuard
 from app.services.runtime_config_store import RuntimeConfigStore
@@ -55,6 +64,14 @@ def get_model_catalog(request: Request) -> ModelCatalogStore:
 
 def get_model_download_service(request: Request) -> ModelDownloadService:
     return request.app.state.model_download_service
+
+
+def get_ollama_runtime_config_store(request: Request) -> OllamaRuntimeConfigStore:
+    return request.app.state.ollama_runtime_config_store
+
+
+def get_model_migration_service(request: Request) -> ModelMigrationService:
+    return request.app.state.model_migration_service
 
 
 def get_ui_settings_store(request: Request) -> UISettingsStore:
@@ -164,6 +181,48 @@ async def update_llm_config(
         correction_batch_size=response_payload["correction_batch_size"],
         correction_overlap=response_payload["correction_overlap"],
     )
+
+
+@router.get("/ollama", response_model=OllamaRuntimeConfigResponse)
+async def get_ollama_runtime_config(
+    store: OllamaRuntimeConfigStore = Depends(get_ollama_runtime_config_store),
+) -> OllamaRuntimeConfigResponse:
+    return OllamaRuntimeConfigResponse.model_validate(await store.get())
+
+
+@router.put("/ollama", response_model=OllamaRuntimeConfigResponse)
+async def update_ollama_runtime_config(
+    body: OllamaRuntimeConfigUpdateRequest,
+    llm_store: LLMConfigStore = Depends(get_store),
+    catalog: ModelCatalogStore = Depends(get_model_catalog),
+    store: OllamaRuntimeConfigStore = Depends(get_ollama_runtime_config_store),
+) -> OllamaRuntimeConfigResponse:
+    payload = await store.save(
+        {
+            "install_dir": body.install_dir,
+            "executable_path": body.executable_path,
+            "models_dir": body.models_dir,
+            "base_url": body.base_url,
+        }
+    )
+    await sync_llm_runtime_config_from_catalog(
+        llm_config_store=llm_store,
+        model_catalog_store=catalog,
+        ollama_base_url=payload["base_url"],
+    )
+    return OllamaRuntimeConfigResponse.model_validate(payload)
+
+
+@router.post("/ollama/migrate-models", response_model=OllamaModelsMigrationResponse)
+async def migrate_ollama_models(
+    body: OllamaModelsMigrationRequest,
+    migration_service: ModelMigrationService = Depends(get_model_migration_service),
+) -> OllamaModelsMigrationResponse:
+    try:
+        payload = await migration_service.migrate_ollama_models(body.target_dir)
+    except ValueError as exc:
+        raise AppError.bad_request(str(exc), code="OLLAMA_MODEL_MIGRATION_INVALID") from exc
+    return OllamaModelsMigrationResponse.model_validate(payload)
 
 
 @router.get("/whisper", response_model=WhisperConfigResponse)
@@ -341,13 +400,18 @@ async def reload_models(
 async def update_model_config(
     model_id: str,
     payload: ModelUpdateRequest,
+    llm_store: LLMConfigStore = Depends(get_store),
     catalog: ModelCatalogStore = Depends(get_model_catalog),
     download_service: ModelDownloadService = Depends(get_model_download_service),
+    ollama_runtime_store: OllamaRuntimeConfigStore = Depends(get_ollama_runtime_config_store),
 ) -> ModelListResponse:
     try:
         await catalog.update_model(
             model_id,
             {
+                "name": payload.name,
+                "provider": payload.provider,
+                "model_id": payload.model_id,
                 "path": payload.path,
                 "status": payload.status,
                 "load_profile": payload.load_profile,
@@ -356,11 +420,36 @@ async def update_model_config(
                 "rerank_top_n": payload.rerank_top_n,
                 "frame_interval_seconds": payload.frame_interval_seconds,
                 "enabled": payload.enabled,
+                "api_base_url": payload.api_base_url,
+                "api_key": payload.api_key,
+                "api_model": payload.api_model,
+                "api_protocol": payload.api_protocol,
+                "api_timeout_seconds": payload.api_timeout_seconds,
+                "api_image_max_bytes": payload.api_image_max_bytes,
+                "api_image_max_edge": payload.api_image_max_edge,
             },
         )
+        if model_id == "llm-default":
+            await sync_llm_runtime_config_from_catalog(
+                llm_config_store=llm_store,
+                model_catalog_store=catalog,
+                ollama_base_url=ollama_runtime_store.get_sync()["base_url"],
+            )
     except ValueError as exc:
         raise AppError.bad_request(str(exc), code="MODEL_UPDATE_INVALID") from exc
     return await _build_model_list_response(catalog, download_service)
+
+
+@router.post("/models/migrate-local", response_model=LocalModelsMigrationResponse)
+async def migrate_local_models(
+    body: LocalModelsMigrationRequest,
+    migration_service: ModelMigrationService = Depends(get_model_migration_service),
+) -> LocalModelsMigrationResponse:
+    try:
+        payload = await migration_service.migrate_local_models(body.target_root)
+    except ValueError as exc:
+        raise AppError.bad_request(str(exc), code="LOCAL_MODEL_MIGRATION_INVALID") from exc
+    return LocalModelsMigrationResponse.model_validate(payload)
 
 
 @router.post("/models/{model_id}/download", response_model=ModelListResponse)

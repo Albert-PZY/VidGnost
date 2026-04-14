@@ -8,7 +8,7 @@ export type SourceType = "bilibili" | "local_file" | "local_path"
 
 export type PromptTemplateChannel = "correction" | "notes" | "mindmap" | "vqa"
 
-export type ModelComponentType = "whisper" | "llm" | "embedding" | "vlm" | "rerank"
+export type ModelComponentType = "whisper" | "llm" | "embedding" | "vlm" | "rerank" | "mllm"
 export type BackgroundImageFillMode = "cover" | "contain" | "repeat" | "center"
 
 export type ModelRuntimeStatus = "ready" | "loading" | "not_ready" | "error"
@@ -151,6 +151,14 @@ export interface ModelDescriptor {
   supports_managed_download: boolean
   download?: ModelDownloadStatus | null
   last_check_at: string
+  api_base_url: string
+  api_key: string
+  api_key_configured: boolean
+  api_model: string
+  api_protocol: string
+  api_timeout_seconds: number
+  api_image_max_bytes: number
+  api_image_max_edge: number
 }
 
 export interface ModelListResponse {
@@ -242,6 +250,28 @@ export interface LLMConfigResponse {
   correction_mode: "off" | "strict" | "rewrite"
   correction_batch_size: number
   correction_overlap: number
+}
+
+export interface OllamaRuntimeConfigResponse {
+  install_dir: string
+  executable_path: string
+  models_dir: string
+  base_url: string
+}
+
+export interface OllamaModelsMigrationResponse {
+  source_dir: string
+  target_dir: string
+  moved: boolean
+  message: string
+  warnings: string[]
+}
+
+export interface LocalModelsMigrationResponse {
+  target_root: string
+  moved: string[]
+  skipped: string[]
+  warnings: string[]
 }
 
 export interface UISettingsResponse {

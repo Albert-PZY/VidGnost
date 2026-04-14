@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import httpx
+import orjson
 
 from app.config import Settings
 
@@ -541,6 +542,9 @@ class WhisperService:
             await result
 
     def small_model_dir(self) -> Path:
+        configured_dir = _read_configured_whisper_model_dir(self._settings.storage_dir)
+        if configured_dir is not None:
+            return configured_dir
         return self._download_root / self._MODEL_DIR_NAME
 
     def is_small_model_ready(self) -> bool:
@@ -612,3 +616,25 @@ def _normalize_load_profile(raw: object) -> LoadProfile:
     if candidate in {"balanced", "memory_first"}:
         return candidate
     return "balanced"
+
+
+def _read_configured_whisper_model_dir(storage_dir: str) -> Path | None:
+    catalog_path = Path(storage_dir) / "models" / "catalog.json"
+    if not catalog_path.exists():
+        return None
+    try:
+        payload = orjson.loads(catalog_path.read_bytes())
+    except (orjson.JSONDecodeError, OSError):
+        return None
+    if not isinstance(payload, list):
+        return None
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("id", "")).strip() != "whisper-default":
+            continue
+        raw_path = str(item.get("path", "")).strip()
+        if not raw_path:
+            return None
+        return Path(raw_path).expanduser().resolve()
+    return None

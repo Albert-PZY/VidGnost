@@ -17,6 +17,7 @@ from app.services.vqa_model_runtime import VQAModelRuntime
 from app.services.vqa_types import EvidenceDocument, RetrievalHit, SearchResult
 
 _TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_]+", re.UNICODE)
+_CJK_SEGMENT_PATTERN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]+", re.UNICODE)
 _DEFAULT_FRAME_INTERVAL_SECONDS = 10.0
 
 
@@ -24,6 +25,7 @@ _DEFAULT_FRAME_INTERVAL_SECONDS = 10.0
 class PreparedTaskCorpus:
     task_id: str
     frame_interval_seconds: float
+    embedding_route: str
     documents: list[EvidenceDocument]
     embeddings_by_doc_id: dict[str, list[float]]
     prepared_at: str
@@ -34,6 +36,7 @@ class SearchCorpus:
     documents: list[EvidenceDocument]
     embeddings_by_doc_id: dict[str, list[float]]
     visuals_complete: bool
+    embedding_route: str
 
 
 class VQAOllamaRetriever:
@@ -129,10 +132,12 @@ class VQAOllamaRetriever:
         if not query:
             return SearchResult(query_text="", dense_hits=[], sparse_hits=[], rrf_hits=[], rerank_hits=[])
         frame_interval_seconds = self._resolve_frame_interval_seconds()
+        embedding_route = "multimodal" if await self._model_runtime.use_multimodal_retrieval_route() else "text"
         corpus = await self._collect_search_corpus(
             task_id=task_id,
             video_paths=video_paths,
             frame_interval_seconds=frame_interval_seconds,
+            embedding_route=embedding_route,
         )
         documents = corpus.documents
         if not documents:
@@ -145,6 +150,7 @@ class VQAOllamaRetriever:
                 documents,
                 top_k=max(self._dense_top_k, max_top_k),
                 precomputed_embeddings=corpus.embeddings_by_doc_id,
+                multimodal=corpus.embedding_route == "multimodal",
             ),
             primary_score_key="dense_score",
         )
@@ -157,7 +163,7 @@ class VQAOllamaRetriever:
             primary_score_key="rrf_score",
         )
         rerank_hits = self._dedupe_hits(
-            await self._rerank(query, rrf_hits, top_n=max_top_k),
+            await self._rerank(query, rrf_hits, top_n=max_top_k, multimodal=corpus.embedding_route == "multimodal"),
             primary_score_key="final_score",
         )
         if not corpus.visuals_complete:
@@ -172,7 +178,7 @@ class VQAOllamaRetriever:
             rerank_hits = hydrated_hits
             if visuals_changed:
                 rerank_hits = self._dedupe_hits(
-                    await self._rerank(query, rerank_hits, top_n=max_top_k),
+                    await self._rerank(query, rerank_hits, top_n=max_top_k, multimodal=corpus.embedding_route == "multimodal"),
                     primary_score_key="final_score",
                 )
         return SearchResult(
@@ -188,9 +194,14 @@ class VQAOllamaRetriever:
         if record is None:
             raise ValueError(f"Task not found: {task_id}")
         frame_interval_seconds = self._resolve_frame_interval_seconds()
+        embedding_route = "multimodal" if await self._model_runtime.use_multimodal_retrieval_route() else "text"
         cache_hit = False
         if not force:
-            prepared = self._load_prepared_task_corpus(record.id, frame_interval_seconds=frame_interval_seconds)
+            prepared = self._load_prepared_task_corpus(
+                record.id,
+                frame_interval_seconds=frame_interval_seconds,
+                embedding_route=embedding_route,
+            )
             cache_hit = prepared is not None
         else:
             prepared = None
@@ -198,6 +209,7 @@ class VQAOllamaRetriever:
             prepared = await self._prepare_task_corpus(
                 record,
                 frame_interval_seconds=frame_interval_seconds,
+                embedding_route=embedding_route,
                 force=True,
             )
         return {
@@ -216,12 +228,17 @@ class VQAOllamaRetriever:
         task_id: str | None,
         video_paths: list[str] | None,
         frame_interval_seconds: float,
+        embedding_route: str,
     ) -> SearchCorpus:
         records = self._select_records(task_id=task_id, video_paths=video_paths)
         docs: list[EvidenceDocument] = []
         embeddings_by_doc_id: dict[str, list[float]] = {}
         for record in records:
-            prepared = self._load_prepared_task_corpus(record.id, frame_interval_seconds=frame_interval_seconds)
+            prepared = self._load_prepared_task_corpus(
+                record.id,
+                frame_interval_seconds=frame_interval_seconds,
+                embedding_route=embedding_route,
+            )
             if prepared is not None:
                 docs.extend(prepared.documents)
                 embeddings_by_doc_id.update(prepared.embeddings_by_doc_id)
@@ -238,6 +255,7 @@ class VQAOllamaRetriever:
             documents=docs,
             embeddings_by_doc_id=embeddings_by_doc_id,
             visuals_complete=visuals_complete,
+            embedding_route=embedding_route,
         )
 
     def _select_records(
@@ -271,10 +289,15 @@ class VQAOllamaRetriever:
         record: TaskRecord,
         *,
         frame_interval_seconds: float,
+        embedding_route: str,
         force: bool,
     ) -> PreparedTaskCorpus:
         if not force:
-            cached = self._load_prepared_task_corpus(record.id, frame_interval_seconds=frame_interval_seconds)
+            cached = self._load_prepared_task_corpus(
+                record.id,
+                frame_interval_seconds=frame_interval_seconds,
+                embedding_route=embedding_route,
+            )
             if cached is not None:
                 return cached
         documents = await self._build_documents_from_task(
@@ -282,8 +305,11 @@ class VQAOllamaRetriever:
             frame_interval_seconds=frame_interval_seconds,
             describe_missing_visuals=True,
         )
-        retrieval_texts = [_compose_retrieval_text(text=item.text, visual_text=item.visual_text) for item in documents]
-        embeddings = await self._model_runtime.embed_texts(retrieval_texts) if retrieval_texts else []
+        embeddings = (
+            await self._model_runtime.embed_documents(documents, multimodal=embedding_route == "multimodal")
+            if documents
+            else []
+        )
         embeddings_by_doc_id = {
             item.doc_id: vector
             for item, vector in zip(documents, embeddings, strict=False)
@@ -303,16 +329,19 @@ class VQAOllamaRetriever:
         prepared = PreparedTaskCorpus(
             task_id=record.id,
             frame_interval_seconds=frame_interval_seconds,
+            embedding_route=embedding_route,
             documents=documents,
             embeddings_by_doc_id=embeddings_by_doc_id,
             prepared_at=datetime.now(timezone.utc).isoformat(),
         )
         self._persist_prepared_task_corpus(prepared)
-        self._prepared_task_cache[self._prepared_cache_key(record.id, frame_interval_seconds)] = prepared
+        self._prepared_task_cache[
+            self._prepared_cache_key(record.id, frame_interval_seconds, embedding_route)
+        ] = prepared
         return prepared
 
-    def _prepared_cache_key(self, task_id: str, frame_interval_seconds: float) -> str:
-        return f"{str(task_id).strip()}@{frame_interval_seconds:.3f}"
+    def _prepared_cache_key(self, task_id: str, frame_interval_seconds: float, embedding_route: str) -> str:
+        return f"{str(task_id).strip()}@{frame_interval_seconds:.3f}@{embedding_route}"
 
     def _prepared_task_corpus_path(self, task_id: str) -> Path:
         return self._storage_dir / "tasks" / "stage-artifacts" / task_id / "D" / "vqa-prewarm" / "index.json"
@@ -322,8 +351,9 @@ class VQAOllamaRetriever:
         task_id: str,
         *,
         frame_interval_seconds: float,
+        embedding_route: str,
     ) -> PreparedTaskCorpus | None:
-        cache_key = self._prepared_cache_key(task_id, frame_interval_seconds)
+        cache_key = self._prepared_cache_key(task_id, frame_interval_seconds, embedding_route)
         cached = self._prepared_task_cache.get(cache_key)
         if cached is not None:
             return cached
@@ -338,6 +368,9 @@ class VQAOllamaRetriever:
             return None
         manifest_interval = _to_float(payload.get("frame_interval_seconds"))
         if abs(manifest_interval - frame_interval_seconds) > 1e-6:
+            return None
+        manifest_route = str(payload.get("embedding_route", "text")).strip() or "text"
+        if manifest_route != embedding_route:
             return None
         raw_documents = payload.get("documents")
         if not isinstance(raw_documents, list):
@@ -362,6 +395,7 @@ class VQAOllamaRetriever:
         prepared = PreparedTaskCorpus(
             task_id=str(payload.get("task_id", task_id)).strip() or task_id,
             frame_interval_seconds=frame_interval_seconds,
+            embedding_route=manifest_route,
             documents=documents,
             embeddings_by_doc_id=embeddings_by_doc_id,
             prepared_at=str(payload.get("prepared_at", "")).strip(),
@@ -377,6 +411,7 @@ class VQAOllamaRetriever:
             "task_id": prepared.task_id,
             "prepared_at": prepared.prepared_at,
             "frame_interval_seconds": round(prepared.frame_interval_seconds, 3),
+            "embedding_route": prepared.embedding_route,
             "document_count": len(prepared.documents),
             "documents": [_serialize_evidence_document(item) for item in prepared.documents],
             "embeddings": [
@@ -579,8 +614,9 @@ class VQAOllamaRetriever:
         *,
         top_k: int,
         precomputed_embeddings: dict[str, list[float]] | None = None,
+        multimodal: bool,
     ) -> list[RetrievalHit]:
-        query_embedding = (await self._model_runtime.embed_texts([query]))[0]
+        query_embedding = await self._model_runtime.embed_query_text(query)
         if precomputed_embeddings:
             doc_embeddings_map = {
                 str(doc_id): [float(value) for value in values]
@@ -589,8 +625,9 @@ class VQAOllamaRetriever:
             }
             missing_docs = [item for item in docs if item.doc_id not in doc_embeddings_map]
             if missing_docs:
-                missing_vectors = await self._model_runtime.embed_texts(
-                    [_compose_retrieval_text(text=item.text, visual_text=item.visual_text) for item in missing_docs]
+                missing_vectors = await self._model_runtime.embed_documents(
+                    missing_docs,
+                    multimodal=multimodal,
                 )
                 for item, vector in zip(missing_docs, missing_vectors, strict=False):
                     doc_embeddings_map[item.doc_id] = vector
@@ -600,8 +637,7 @@ class VQAOllamaRetriever:
             ]
             scored.sort(key=lambda item: item.dense_score, reverse=True)
             return scored[: max(1, top_k)]
-        retrieval_texts = [_compose_retrieval_text(text=item.text, visual_text=item.visual_text) for item in docs]
-        doc_embeddings = await self._model_runtime.embed_texts(retrieval_texts)
+        doc_embeddings = await self._model_runtime.embed_documents(docs, multimodal=multimodal)
         if self._chroma_enabled and self._chroma_collection is not None:
             try:
                 return self._dense_search_by_chroma(query_embedding=query_embedding, docs=docs, doc_embeddings=doc_embeddings, top_k=top_k)
@@ -740,11 +776,19 @@ class VQAOllamaRetriever:
         ranked = sorted(fused.values(), key=lambda item: item.rrf_score, reverse=True)
         return ranked[: max(1, top_k)]
 
-    async def _rerank(self, query: str, hits: list[RetrievalHit], *, top_n: int) -> list[RetrievalHit]:
+    async def _rerank(self, query: str, hits: list[RetrievalHit], *, top_n: int, multimodal: bool) -> list[RetrievalHit]:
         if not hits:
             return []
         rerank_inputs = [_compose_retrieval_text(text=item.text, visual_text=item.visual_text) for item in hits]
-        scores = await self._model_runtime.score_rerank_pairs(query=query, documents=rerank_inputs)
+        image_paths = [
+            _resolve_hit_image_path(self._storage_dir, item.task_id, item.image_path) if multimodal and item.image_path else ""
+            for item in hits
+        ]
+        scores = await self._model_runtime.score_rerank_pairs(
+            query=query,
+            documents=rerank_inputs,
+            image_paths=image_paths,
+        )
         ranked: list[RetrievalHit] = []
         for hit, score in zip(hits, scores, strict=False):
             item = _clone_hit(hit)
@@ -1047,10 +1091,27 @@ def _parse_source_set(raw: object) -> list[str]:
 
 
 def _tokenize(text: str) -> set[str]:
-    tokens = {match.group(0).lower() for match in _TOKEN_PATTERN.finditer(text)}
+    normalized = str(text or "").strip().lower()
+    if not normalized:
+        return set()
+    tokens = {match.group(0).lower() for match in _TOKEN_PATTERN.finditer(normalized)}
+    for match in _CJK_SEGMENT_PATTERN.finditer(normalized):
+        segment = match.group(0)
+        if len(segment) == 1:
+            tokens.add(segment)
+            continue
+        tokens.update(
+            segment[index : index + 2]
+            for index in range(len(segment) - 1)
+            if segment[index : index + 2].strip()
+        )
     if tokens:
         return tokens
-    return {text[index : index + 2] for index in range(max(0, len(text) - 1)) if text[index : index + 2].strip()}
+    return {
+        normalized[index : index + 2]
+        for index in range(max(0, len(normalized) - 1))
+        if normalized[index : index + 2].strip()
+    }
 
 
 def _to_fts_query(text: str) -> str:
@@ -1060,6 +1121,15 @@ def _to_fts_query(text: str) -> str:
 
 def _normalize_retrieval_text(text: str) -> str:
     return " ".join(str(text or "").split()).strip().lower()
+
+
+def _resolve_hit_image_path(storage_dir: Path, task_id: str, image_path: str) -> str:
+    candidate = Path(str(image_path or "").strip())
+    if not str(candidate):
+        return ""
+    if candidate.is_absolute():
+        return str(candidate.resolve())
+    return str((storage_dir / "tasks" / "stage-artifacts" / str(task_id).strip() / "D" / "fusion" / candidate).resolve())
 
 
 def _to_float(value: Any) -> float:

@@ -11,7 +11,7 @@ WorkflowType = Literal["notes", "vqa"]
 TaskStatusPublic = Literal["queued", "running", "paused", "completed", "failed", "cancelled"]
 SourceType = Literal["bilibili", "local_file", "local_path"]
 PromptTemplateChannel = Literal["correction", "notes", "mindmap", "vqa"]
-ModelComponentType = Literal["whisper", "llm", "embedding", "vlm", "rerank"]
+ModelComponentType = Literal["whisper", "llm", "embedding", "vlm", "rerank", "mllm"]
 ModelRuntimeStatus = Literal["ready", "loading", "not_ready", "error"]
 ModelDownloadState = Literal["idle", "downloading", "completed", "cancelled", "failed"]
 BackgroundImageFillMode = Literal["cover", "contain", "repeat", "center"]
@@ -299,6 +299,43 @@ class WhisperRuntimeLibrariesInstallRequest(BaseModel):
     auto_configure_env: bool | None = None
 
 
+class OllamaRuntimeConfigResponse(BaseModel):
+    install_dir: str
+    executable_path: str
+    models_dir: str
+    base_url: str
+
+
+class OllamaRuntimeConfigUpdateRequest(BaseModel):
+    install_dir: str = ""
+    executable_path: str = ""
+    models_dir: str = ""
+    base_url: str = ""
+
+
+class OllamaModelsMigrationRequest(BaseModel):
+    target_dir: str = Field(min_length=1)
+
+
+class OllamaModelsMigrationResponse(BaseModel):
+    source_dir: str
+    target_dir: str
+    moved: bool = False
+    message: str = ""
+    warnings: list[str] = Field(default_factory=list)
+
+
+class LocalModelsMigrationRequest(BaseModel):
+    target_root: str = Field(min_length=1)
+
+
+class LocalModelsMigrationResponse(BaseModel):
+    target_root: str
+    moved: list[str] = Field(default_factory=list)
+    skipped: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class ModelDownloadStatus(BaseModel):
     state: ModelDownloadState = "idle"
     message: str = ""
@@ -330,6 +367,14 @@ class ModelDescriptor(BaseModel):
     supports_managed_download: bool = False
     download: ModelDownloadStatus | None = None
     last_check_at: str = ""
+    api_base_url: str = ""
+    api_key: str = ""
+    api_key_configured: bool = False
+    api_model: str = ""
+    api_protocol: str = "openai_compatible"
+    api_timeout_seconds: int = Field(default=120, ge=10, le=600)
+    api_image_max_bytes: int = Field(default=524288, ge=32768, le=8388608)
+    api_image_max_edge: int = Field(default=1280, ge=256, le=4096)
 
 
 class ModelListResponse(BaseModel):
@@ -341,6 +386,9 @@ class ModelReloadRequest(BaseModel):
 
 
 class ModelUpdateRequest(BaseModel):
+    name: str | None = None
+    provider: str | None = None
+    model_id: str | None = None
     path: str | None = None
     status: ModelRuntimeStatus | None = None
     load_profile: str | None = None
@@ -349,6 +397,13 @@ class ModelUpdateRequest(BaseModel):
     rerank_top_n: int | None = Field(default=None, ge=1, le=20)
     frame_interval_seconds: int | None = Field(default=None, ge=1, le=600)
     enabled: bool | None = None
+    api_base_url: str | None = None
+    api_key: str | None = None
+    api_model: str | None = None
+    api_protocol: str | None = None
+    api_timeout_seconds: int | None = Field(default=None, ge=10, le=600)
+    api_image_max_bytes: int | None = Field(default=None, ge=32768, le=8388608)
+    api_image_max_edge: int | None = Field(default=None, ge=256, le=4096)
 
 
 class UISettingsResponse(BaseModel):

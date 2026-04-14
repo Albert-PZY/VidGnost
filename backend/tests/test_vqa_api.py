@@ -46,8 +46,10 @@ def stub_vqa_models(monkeypatch: pytest.MonkeyPatch) -> None:
         *,
         query: str,
         documents: list[str],
+        image_paths: list[str] | None = None,
     ) -> list[float]:
         _ = query
+        _ = image_paths
         return [max(0.1, 1.0 - index * 0.1) for index, _ in enumerate(documents)]
 
     async def fake_describe_images(_self: VQAModelRuntime, image_paths: list[str]) -> list[str]:

@@ -2,7 +2,10 @@ import type {
   ApiErrorPayload,
   HealthResponse,
   LLMConfigResponse,
+  LocalModelsMigrationResponse,
   ModelListResponse,
+  OllamaModelsMigrationResponse,
+  OllamaRuntimeConfigResponse,
   PromptTemplateBundleResponse,
   RuntimePathsResponse,
   RuntimeMetricsResponse,
@@ -374,6 +377,8 @@ export function reloadModels(modelId?: string): Promise<ModelListResponse> {
 export function updateModel(
   modelId: string,
   payload: {
+    provider?: string | null
+    model_id?: string | null
     path?: string | null
     status?: string | null
     load_profile?: string | null
@@ -382,11 +387,48 @@ export function updateModel(
     rerank_top_n?: number | null
     frame_interval_seconds?: number | null
     enabled?: boolean | null
+    api_base_url?: string | null
+    api_key?: string | null
+    api_model?: string | null
+    api_protocol?: string | null
+    api_timeout_seconds?: number | null
+    api_image_max_bytes?: number | null
+    api_image_max_edge?: number | null
   },
 ): Promise<ModelListResponse> {
   return apiFetch<ModelListResponse>(`/config/models/${modelId}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
+  })
+}
+
+export function getOllamaRuntimeConfig(): Promise<OllamaRuntimeConfigResponse> {
+  return apiFetch<OllamaRuntimeConfigResponse>("/config/ollama", { method: "GET" })
+}
+
+export function updateOllamaRuntimeConfig(payload: {
+  install_dir?: string
+  executable_path?: string
+  models_dir?: string
+  base_url?: string
+}): Promise<OllamaRuntimeConfigResponse> {
+  return apiFetch<OllamaRuntimeConfigResponse>("/config/ollama", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+}
+
+export function migrateOllamaModels(target_dir: string): Promise<OllamaModelsMigrationResponse> {
+  return apiFetch<OllamaModelsMigrationResponse>("/config/ollama/migrate-models", {
+    method: "POST",
+    body: JSON.stringify({ target_dir }),
+  })
+}
+
+export function migrateLocalModels(target_root: string): Promise<LocalModelsMigrationResponse> {
+  return apiFetch<LocalModelsMigrationResponse>("/config/models/migrate-local", {
+    method: "POST",
+    body: JSON.stringify({ target_root }),
   })
 }
 

@@ -151,7 +151,8 @@ def test_self_check_vlm_reports_ready_when_model_cache_exists(tmp_path: Path) ->
 
     assert outcome.status == "passed"
     assert outcome.message == "VLM 模型已通过 Ollama 最小推理校验"
-    assert outcome.details["当前路径"] == "ollama://moondream"
+    assert "manifests" in outcome.details["当前路径"]
+    assert outcome.details["当前路径"].endswith("moondream")
     assert outcome.details["加载策略"] == "常驻内存优先"
 
 
@@ -174,7 +175,7 @@ def test_self_check_vlm_reports_disabled_when_model_is_turned_off(tmp_path: Path
     outcome = asyncio.run(service._check_vlm())  # type: ignore[attr-defined]
 
     assert outcome.status == "warning"
-    assert outcome.message == "Ollama Moondream 已停用"
+    assert outcome.message == "默认 VLM 已停用"
 
 
 def test_self_check_llm_reports_missing_api_key(tmp_path: Path) -> None:

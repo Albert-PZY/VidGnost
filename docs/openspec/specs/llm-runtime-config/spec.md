@@ -37,11 +37,46 @@ LLM config SHALL include `base_url`, `api_key`, `model`, `load_profile`, `local_
 - **THEN** response includes `api_key_configured` derived from the stored secret value
 
 ### Requirement: Frontend settings SHALL expose online LLM provider parameters
-Frontend model configuration for the online LLM SHALL allow users to edit Base URL, provider API Key, model name, load profile, and correction controls from the settings center.
+Frontend model configuration for `llm-default` SHALL allow users to switch between `Ollama` and `在线 API`, edit Base URL, provider API Key, model name, load profile, and keep transcript-correction controls in the same settings workflow.
 
 #### Scenario: Open online LLM configuration dialog
 - **WHEN** user configures the online LLM entry in settings
 - **THEN** dialog shows OpenAI-compatible provider fields and common runtime parameters together
+- **AND** the same dialog keeps `文本纠错模式`、`批大小`、`重叠窗口` controls visible for `llm-default`
+
+### Requirement: LLM runtime SHALL stay synchronized with the managed `llm-default` entry
+Persisted `/config/llm` runtime values SHALL remain aligned with the `llm-default` model entry while continuing to own transcript-correction controls.
+
+#### Scenario: Save `llm-default` with Ollama provider
+- **WHEN** frontend updates `llm-default` through `/config/models` with `provider=ollama`
+- **THEN** backend synchronizes `/config/llm.base_url` to `<configured_ollama_base_url>/v1`
+- **AND** `/config/llm.model` follows the configured Ollama `model_id`
+- **AND** `/config/llm.api_key` is normalized to a non-empty local placeholder so the OpenAI-compatible Ollama endpoint can be called without a user-supplied secret
+
+#### Scenario: Save `llm-default` with online API provider
+- **WHEN** frontend updates `llm-default` through `/config/models` with `provider=openai_compatible`
+- **THEN** backend synchronizes `/config/llm.base_url` and `/config/llm.model` from `api_base_url` and `api_model`
+- **AND** existing correction controls in `/config/llm` remain effective
+
+### Requirement: System SHALL expose editable Ollama runtime config and migration APIs
+The system SHALL expose `/config/ollama` and `/config/ollama/migrate-models` so frontend settings can manage the Ollama install location, executable path, model directory, service base URL, and migration of existing model files.
+
+#### Scenario: Read current Ollama runtime config
+- **WHEN** client requests `/config/ollama`
+- **THEN** backend returns `install_dir`, `executable_path`, `models_dir`, and `base_url`
+- **AND** path fields are normalized as absolute filesystem paths
+
+#### Scenario: Save current Ollama runtime config
+- **WHEN** client updates `/config/ollama`
+- **THEN** backend persists the effective runtime config into `backend/storage/ollama-runtime.json`
+- **AND** subsequent Ollama-backed model path resolution uses the configured `models_dir`
+- **AND** if `llm-default` currently uses `provider=ollama`, backend re-synchronizes `/config/llm` against the updated Ollama service address
+
+#### Scenario: Migrate existing Ollama model directory
+- **WHEN** client posts `/config/ollama/migrate-models` with a new target directory
+- **THEN** backend safely moves the existing Ollama model directory when needed
+- **AND** backend rejects unsafe nested source-target moves
+- **AND** backend updates the persisted Ollama runtime config to the new absolute target directory
 
 ### Requirement: System SHALL expose editable Whisper runtime config API
 The system SHALL expose `/config/whisper` read/update endpoints and persist effective values into `backend/storage/config.toml`.
@@ -98,22 +133,34 @@ The system SHALL expose `/config/whisper/runtime-libraries`, `/config/whisper/ru
 - **AND** already completed package archives are reused without being downloaded again
 - **AND** the returned runtime-library status re-enters the active install state with updated progress diagnostics
 
-### Requirement: Managed model catalog SHALL expose install and download state for settings UI
-The system SHALL expose `/config/models` and related model-management APIs with effective path, default path, install state, and download progress for frontend settings.
+### Requirement: Managed model catalog SHALL expose install, routing, and online API state for settings UI
+The system SHALL expose `/config/models` and related model-management APIs with effective path, default path, provider, runtime toggles, online API parameters, install state, and download progress for frontend settings.
 
 #### Scenario: Load model list in settings
 - **WHEN** frontend requests `/config/models`
-- **THEN** backend returns each model entry with `default_path`, `path`, `is_installed`, `supports_managed_download`, and optional `download` status
+- **THEN** backend returns each model entry with `provider`, `model_id`, `default_path`, `path`, `is_installed`, `supports_managed_download`, and optional `download` status
+- **AND** online-capable entries also expose `api_base_url`, `api_key_configured`, `api_model`, `api_protocol`, `api_timeout_seconds`, and image-upload bounds when the component can send images
 
-### Requirement: Managed local model catalog SHALL use Ollama for non-Whisper components
-The system SHALL treat `llm-default`, `embedding-default`, `vlm-default`, and `rerank-default` as Ollama-managed local models, while keeping `whisper-default` on the existing Whisper runtime path.
+### Requirement: Managed model catalog SHALL support provider-specific routing with absolute local paths
+The system SHALL keep `whisper-default` on the managed local runtime path, allow `llm-default`, `embedding-default`, `vlm-default`, and `rerank-default` to switch between `Ollama` and `在线 API`, and expose `mllm-default` as a dedicated online multimodal entry. All returned local paths SHALL use absolute filesystem paths rather than logical URI forms.
 
 #### Scenario: Load Ollama-backed model entries
 - **WHEN** frontend requests `/config/models`
 - **THEN** `llm-default`, `embedding-default`, `vlm-default`, and `rerank-default` return `provider=ollama`
-- **AND** installed entries expose `path` and `default_path` using the `ollama://<model_id>` form
+- **AND** installed entries expose `path` and `default_path` as absolute paths resolved under the configured Ollama `models_dir`
 - **AND** backend derives `is_installed`, `size_bytes`, and readiness from the local Ollama tags state
 - **AND** `whisper-default` continues to report install state from the managed local runtime directory
+
+#### Scenario: Load Whisper entry before local files exist
+- **WHEN** frontend requests `/config/models` and `whisper-default` has not been prepared locally
+- **THEN** backend returns `path=""`
+- **AND** `default_path` still exposes the managed absolute install target directory for that component
+
+#### Scenario: Configure remote API routing for model entries
+- **WHEN** frontend updates `llm-default`, `embedding-default`, `vlm-default`, `rerank-default`, or `mllm-default` with `provider=openai_compatible`
+- **THEN** backend persists `api_base_url`, `api_key`, `api_model`, `api_protocol`, and `api_timeout_seconds`
+- **AND** image-capable entries additionally persist `api_image_max_bytes` and `api_image_max_edge`
+- **AND** the entry becomes `is_installed=true` only when base URL, API key, model name, and enabled state together satisfy the remote-ready contract
 
 #### Scenario: Start managed model download for Ollama-backed entries
 - **WHEN** frontend requests `/config/models/{model_id}/download` for `llm-default`, `embedding-default`, `vlm-default`, or `rerank-default`
@@ -121,10 +168,11 @@ The system SHALL treat `llm-default`, `embedding-default`, `vlm-default`, and `r
 - **AND** download progress is merged back into subsequent `/config/models` responses
 - **AND** completion marks the entry ready without copying model weights into `backend/storage/model-hub`
 
-#### Scenario: Persist local Ollama-compatible LLM config without explicit secret input
-- **WHEN** frontend saves `/config/llm` with `base_url=http://127.0.0.1:11434/v1` or `http://localhost:11434/v1` and leaves `api_key` empty
-- **THEN** backend normalizes the stored LLM API key to a non-empty local placeholder value
-- **AND** subsequent Stage-D generation requests can use the local Ollama OpenAI-compatible endpoint without requiring the user to re-enter a key
+#### Scenario: Batch migrate local-directory model entries
+- **WHEN** frontend posts `/config/models/migrate-local` with a target root directory
+- **THEN** backend moves each `provider=local` model path into a component-specific subdirectory under the target root when that move is safe
+- **AND** backend rewrites the affected model `path` fields to the new absolute filesystem locations
+- **AND** entries already inside the target root, missing source paths, or conflicting with existing targets are reported as skipped rather than overwritten
 
 #### Scenario: Configure VLM frame sampling interval from settings
 - **WHEN** frontend loads or updates the `vlm-default` model entry through `/config/models`
@@ -137,6 +185,26 @@ The system SHALL treat `llm-default`, `embedding-default`, `vlm-default`, and `r
 - **THEN** backend exposes `rerank_top_n` as an integer configuration field
 - **AND** the field accepts values in the documented bounded runtime range
 - **AND** VQA search, analysis, and streaming chat use the persisted `rerank_top_n` as the default final candidate count whenever the client request does not override `top_k`
+
+### Requirement: VQA runtime SHALL support remote multimodal retrieval when compatible models are configured
+The VQA runtime SHALL open a joint text-image retrieval route when `mllm-default` is ready and `embedding-default` supports multimodal remote embedding, and SHALL otherwise fall back to the original text-oriented route.
+
+#### Scenario: Use the multimodal retrieval route
+- **WHEN** `mllm-default` is enabled with a complete online API config and `embedding-default` is configured with a multimodal-compatible remote protocol
+- **THEN** backend prepares retrieval documents with transcript text plus keyframe image content
+- **AND** dense embedding, rerank, and answer generation reuse those joint text-image inputs
+- **AND** answer generation may attach up to the bounded number of encoded keyframes to the final multimodal chat request
+
+#### Scenario: Fall back to the text retrieval route
+- **WHEN** `mllm-default` is unavailable or the embedding entry does not support multimodal remote embedding
+- **THEN** backend keeps the original transcript-plus-visual-description vectorization route
+- **AND** VLM frame descriptions and text-vector retrieval continue to drive the downstream RAG chain
+
+#### Scenario: Send bounded image payloads to remote vision-capable APIs
+- **WHEN** backend sends keyframes to a remote `vlm`, `rerank`, `embedding`, or `mllm` entry
+- **THEN** backend encodes images as base64 or data-URL payloads compatible with the selected provider
+- **AND** backend compresses oversized images toward the configured `api_image_max_bytes` and `api_image_max_edge` bounds before upload
+- **AND** provider-specific protocol differences such as Alibaba Bailian embedding or rerank payload shape are normalized behind the runtime client
 
 ### Requirement: Runtime config APIs SHALL ignore unsupported fields
 Runtime config APIs SHALL process documented fields and ignore unsupported extra fields in payloads.

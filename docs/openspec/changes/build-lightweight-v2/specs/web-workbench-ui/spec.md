@@ -36,6 +36,22 @@ The settings-center model surface SHALL expose a dedicated transcription CUDA ru
 - **AND** when installation is active or paused, the card renders a compact progress surface with current package label, percent, downloaded bytes, and transfer speed or paused-state text
 - **AND** when installation is in progress, the card polls backend runtime-library status until the backend leaves the active install state
 
+### Requirement: Settings center SHALL expose Ollama runtime and model migration controls
+The settings-center model surface SHALL expose dedicated `Ollama 运行时与模型目录` and `本地模型批量迁移` cards so users can control Ollama installation paths, model-storage paths, service address, and safe relocation of existing local model files.
+
+#### Scenario: Configure Ollama runtime from settings
+- **WHEN** user opens settings and visits `模型配置`
+- **THEN** the renderer shows an Ollama runtime card with `安装目录`、`可执行文件`、`模型目录`、`服务地址` fields
+- **AND** the card allows opening native directory pickers for install and model directories
+- **AND** the card exposes `保存 Ollama 配置` and `迁移现有 Ollama 模型` actions
+- **AND** the card states that later Ollama model pulls follow the configured model directory instead of an implicit default path
+
+#### Scenario: Batch migrate local-directory model entries from settings
+- **WHEN** user enters a target root directory in the local-model migration card and starts migration
+- **THEN** the renderer submits the backend migration request and refreshes the model list after completion
+- **AND** the card reports moved and skipped items through toast or status feedback instead of silently swallowing conflicts
+- **AND** model cards thereafter display updated absolute paths rather than logical URI-like placeholders
+
 ### Requirement: Configuration dialogs SHALL stay within viewport with fixed chrome
 Model configuration and prompt-template configuration dialogs SHALL remain within the visible viewport, keep header and action area fixed, and allow inner content scrolling when fields exceed available height. The header chrome SHALL stay visually compact so the main form area remains the dominant surface inside the dialog.
 
@@ -45,13 +61,25 @@ Model configuration and prompt-template configuration dialogs SHALL remain withi
 - **AND** the title, close control, cancel action, and save action remain visible
 
 ### Requirement: Model configuration dialog SHALL separate overview and grouped controls
-Model configuration dialog SHALL use a responsive split layout with a left overview panel and a right grouped form panel. On desktop widths the dialog SHALL keep a wide presentation area suitable for dense professional forms, supporting a visual width up to `85rem`, and SHALL not fall back to the default small dialog width token. The overview panel SHALL keep a fixed readable width while the right-side configuration panel stays intentionally narrower than the previous ultra-wide layout. The overview panel SHALL expose model identity, component tag, provider, runtime status, install status, default path, current enabled state, and preset note, while keeping helper copy concise. Dialog centering SHALL preserve crisp text rendering and SHALL not distort embedded fixed-position surfaces.
+Model configuration dialog SHALL use a responsive split layout with a left overview panel and a right grouped form panel. On desktop widths the dialog SHALL keep a wide presentation area suitable for dense professional forms, supporting a visual width up to `85rem`, and SHALL not fall back to the default small dialog width token. The overview panel SHALL keep a fixed readable width while the right-side configuration panel stays intentionally narrower than the previous ultra-wide layout. The overview panel SHALL expose model identity, component tag, provider, runtime status, install status, default path, current enabled state, and preset note, while keeping helper copy concise. The right-side grouped form panel SHALL adapt its visible fields to the selected provider and component capabilities, including dedicated online-API controls for image-capable entries. Dialog centering SHALL preserve crisp text rendering and SHALL not distort embedded fixed-position surfaces.
 
 #### Scenario: Open a model configuration dialog
 - **WHEN** user clicks `配置` on a model item
 - **THEN** the dialog shows a compact overview panel for model identity and state on the left
 - **AND** the right side groups editable runtime parameters into dedicated cards
 - **AND** path fields span the full row while regular scalar fields follow a responsive two-column grid
+
+#### Scenario: Switch provider inside a model configuration dialog
+- **WHEN** user changes a model entry between `本地目录`、`Ollama`、`在线 API`
+- **THEN** the dialog updates the visible fields to match that route instead of showing one generic mixed form
+- **AND** `在线 API` shows Base URL、API Key、模型名、协议、超时和图像上传上限 fields for image-capable components
+- **AND** `本地目录` and `Ollama` routes keep model path or logical model-id controls visible while hiding remote-only fields
+- **AND** `mllm-default` only offers the online API route
+
+#### Scenario: Open the `llm-default` configuration dialog
+- **WHEN** user configures `llm-default`
+- **THEN** the dialog keeps `文本纠错设置` grouped inside the same model configuration surface regardless of whether the current provider is `Ollama` or `在线 API`
+- **AND** saving LLM provider changes does not require leaving the model dialog to update transcript-correction settings
 
 #### Scenario: Recover unsaved model-dialog draft after renderer reload
 - **WHEN** user edits a model configuration dialog and the renderer reloads before the user saves
@@ -393,6 +421,7 @@ Frontend UI library SHALL provide a reusable virtual-list component under `front
 - **WHEN** user submits a question from the VQA workbench
 - **THEN** before retrieval hits or answer tokens arrive, the assistant bubble shows a temporary loading placeholder with business-language progress copy instead of a blank bubble
 - **AND** if the task has already completed its persisted `D/vqa-prewarm` preparation, the first question reuses that prepared retrieval corpus and frame descriptions instead of rebuilding embeddings or visual evidence on demand
+- **AND** if the backend has a ready multimodal retrieval route, the same chat surface can answer from joint text-image evidence without changing the user interaction flow
 - **THEN** the renderer streams incremental answer chunks into the chat surface
 - **AND** while answer chunks are still streaming, the assistant bubble keeps a lightweight plain-text surface instead of re-running full Markdown rendering on every chunk
 - **AND** streamed assistant answers render as Markdown instead of plain paragraph text
@@ -405,6 +434,7 @@ Frontend UI library SHALL provide a reusable virtual-list component under `front
 - **AND** opening Trace Theater reveals Dense, Sparse, RRF, and final rerank panels with per-stage deduplicated candidates
 - **AND** Trace Theater states that retrieval uses the original user question directly without query expansion
 - **AND** Trace Theater shows human-readable normalized scores instead of raw backend magnitude values that collapse visually to zero
+- **AND** remote image-capable routes keep citation thumbnails and trace panels behaviorally consistent with the local route even when the backend compresses keyframes before upload
 - **AND** per-task VQA chat history is restored when the user leaves the workbench and later reopens the same task from history or recent tasks
 - **AND** once the chat reaches fifteen user turns, the sixteenth send action first asks for confirmation and explains that continuing will clear the existing conversation before starting a new one
 

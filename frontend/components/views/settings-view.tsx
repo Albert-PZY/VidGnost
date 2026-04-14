@@ -59,15 +59,19 @@ import {
   getApiErrorMessage,
   getLLMConfig,
   getModels,
+  getOllamaRuntimeConfig,
   getPromptTemplates,
   getWhisperConfig,
   installWhisperRuntimeLibraries,
+  migrateLocalModels,
+  migrateOllamaModels,
   pauseWhisperRuntimeLibraries,
   reloadModels,
   resumeWhisperRuntimeLibraries,
   startModelDownload,
   updateLLMConfig,
   updateModel,
+  updateOllamaRuntimeConfig,
   updatePromptSelection,
   updatePromptTemplate,
   updateWhisperConfig,
@@ -77,7 +81,9 @@ import { formatBytes } from "@/lib/format"
 import { getImageLayout } from "@/lib/ui-skin"
 import type {
   LLMConfigResponse,
+  LocalModelsMigrationResponse,
   ModelDescriptor,
+  OllamaRuntimeConfigResponse,
   PromptTemplateBundleResponse,
   PromptTemplateChannel,
   PromptTemplateItem,
@@ -98,6 +104,7 @@ const modelTypeLabels: Record<string, string> = {
   embedding: "嵌入模型",
   vlm: "视觉语言模型",
   rerank: "重排序模型",
+  mllm: "全模态模型",
 }
 
 const promptTypeLabels: Record<PromptTemplateChannel, string> = {
@@ -120,6 +127,7 @@ const modelTypeTagClassNames: Record<string, string> = {
   embedding: "border-emerald-800/75 text-emerald-700 dark:border-emerald-400/55 dark:text-emerald-300",
   vlm: "border-rose-800/75 text-rose-700 dark:border-rose-400/55 dark:text-rose-300",
   rerank: "border-amber-800/75 text-amber-700 dark:border-amber-400/55 dark:text-amber-300",
+  mllm: "border-fuchsia-800/75 text-fuchsia-700 dark:border-fuchsia-400/55 dark:text-fuchsia-300",
 }
 
 const promptTagClassNames: Record<PromptTemplateChannel, string> = {
@@ -147,6 +155,8 @@ const EMPTY_PROMPT_FORM = {
 }
 
 type ModelConfigFormState = {
+  provider: string
+  model_id: string
   path: string
   load_profile: string
   quantization: string
@@ -154,6 +164,13 @@ type ModelConfigFormState = {
   rerank_top_n: string
   frame_interval_seconds: string
   enabled: boolean
+  api_base_url: string
+  api_key: string
+  api_model: string
+  api_protocol: string
+  api_timeout_seconds: string
+  api_image_max_bytes: string
+  api_image_max_edge: string
 }
 
 type ModelConfigField = keyof ModelConfigFormState
@@ -172,6 +189,8 @@ type ModelConfigPreset = {
 }
 
 const EMPTY_MODEL_FORM: ModelConfigFormState = {
+  provider: "ollama",
+  model_id: "",
   path: "",
   load_profile: "balanced",
   quantization: "",
@@ -179,12 +198,16 @@ const EMPTY_MODEL_FORM: ModelConfigFormState = {
   rerank_top_n: "8",
   frame_interval_seconds: "10",
   enabled: true,
+  api_base_url: "",
+  api_key: "",
+  api_model: "",
+  api_protocol: "openai_compatible",
+  api_timeout_seconds: "120",
+  api_image_max_bytes: "524288",
+  api_image_max_edge: "1280",
 }
 
 type LLMConfigFormState = {
-  base_url: string
-  api_key: string
-  model: string
   correction_mode: LLMConfigResponse["correction_mode"]
   correction_batch_size: string
   correction_overlap: string
@@ -195,10 +218,14 @@ type WhisperRuntimeFormState = {
   auto_configure_env: boolean
 }
 
+type OllamaRuntimeFormState = {
+  install_dir: string
+  executable_path: string
+  models_dir: string
+  base_url: string
+}
+
 const EMPTY_LLM_FORM: LLMConfigFormState = {
-  base_url: "",
-  api_key: "",
-  model: "",
   correction_mode: "strict",
   correction_batch_size: "24",
   correction_overlap: "3",
@@ -207,6 +234,13 @@ const EMPTY_LLM_FORM: LLMConfigFormState = {
 const EMPTY_WHISPER_RUNTIME_FORM: WhisperRuntimeFormState = {
   install_dir: "",
   auto_configure_env: true,
+}
+
+const EMPTY_OLLAMA_RUNTIME_FORM: OllamaRuntimeFormState = {
+  install_dir: "",
+  executable_path: "",
+  models_dir: "",
+  base_url: "http://127.0.0.1:11434",
 }
 
 const MODEL_CONFIG_DRAFT_STORAGE_KEY = "vidgnost:model-config-draft:v1"
@@ -252,6 +286,11 @@ const modelVisuals: Record<
     iconClassName: "text-primary",
     surfaceClassName: "bg-primary/10",
   },
+  mllm: {
+    icon: Sparkles,
+    iconClassName: "text-primary",
+    surfaceClassName: "bg-primary/10",
+  },
 }
 
 const localLlmPreset: ModelConfigPreset = {
@@ -264,6 +303,25 @@ const localLlmPreset: ModelConfigPreset = {
   quantizationPlaceholder: "如 4bit / 8bit / fp16",
   batchLabel: "最大并发批大小",
   batchDescription: "影响本地推理吞吐，数值越高占用越大。",
+}
+
+const providerLabels: Record<string, string> = {
+  local: "本地目录",
+  ollama: "Ollama",
+  openai_compatible: "在线 API",
+}
+
+const apiProtocolLabels: Record<string, string> = {
+  openai_compatible: "OpenAI Compatible",
+  aliyun_bailian: "阿里云百炼专用协议",
+}
+
+const recommendedRemoteModels: Partial<Record<ModelDescriptor["component"], string[]>> = {
+  llm: ["qwen3.5-plus"],
+  vlm: ["qwen-image-2.0"],
+  embedding: ["qwen3-vl-embedding"],
+  rerank: ["qwen3-vl-rerank"],
+  mllm: ["qwen3.5-omni-flash"],
 }
 
 async function readFileAsDataUrl(file: File): Promise<string> {
@@ -360,6 +418,7 @@ export function SettingsView({
   const [promptBundle, setPromptBundle] = React.useState<PromptTemplateBundleResponse | null>(null)
   const [whisperConfig, setWhisperConfig] = React.useState<WhisperConfigResponse | null>(null)
   const [llmConfig, setLlmConfig] = React.useState<LLMConfigResponse | null>(null)
+  const [ollamaConfig, setOllamaConfig] = React.useState<OllamaRuntimeConfigResponse | null>(null)
   const [isPromptDialogOpen, setIsPromptDialogOpen] = React.useState(false)
   const [isModelDialogOpen, setIsModelDialogOpen] = React.useState(false)
   const [isSkinDialogOpen, setIsSkinDialogOpen] = React.useState(false)
@@ -370,6 +429,7 @@ export function SettingsView({
   const [modelForm, setModelForm] = React.useState<ModelConfigFormState>(EMPTY_MODEL_FORM)
   const [llmForm, setLlmForm] = React.useState<LLMConfigFormState>(EMPTY_LLM_FORM)
   const [whisperRuntimeForm, setWhisperRuntimeForm] = React.useState<WhisperRuntimeFormState>(EMPTY_WHISPER_RUNTIME_FORM)
+  const [ollamaRuntimeForm, setOllamaRuntimeForm] = React.useState<OllamaRuntimeFormState>(EMPTY_OLLAMA_RUNTIME_FORM)
   const [isLoading, setIsLoading] = React.useState(true)
   const [busyModelId, setBusyModelId] = React.useState("")
   const [isSavingPrompt, setIsSavingPrompt] = React.useState(false)
@@ -377,7 +437,12 @@ export function SettingsView({
   const [isSavingUi, setIsSavingUi] = React.useState(false)
   const [isUpdatingWhisper, setIsUpdatingWhisper] = React.useState(false)
   const [isUpdatingWhisperRuntime, setIsUpdatingWhisperRuntime] = React.useState(false)
+  const [isUpdatingOllamaRuntime, setIsUpdatingOllamaRuntime] = React.useState(false)
+  const [isMigratingOllamaModels, setIsMigratingOllamaModels] = React.useState(false)
+  const [isMigratingLocalModels, setIsMigratingLocalModels] = React.useState(false)
   const [whisperRuntimeDirty, setWhisperRuntimeDirty] = React.useState(false)
+  const [ollamaRuntimeDirty, setOllamaRuntimeDirty] = React.useState(false)
+  const [localMigrationTarget, setLocalMigrationTarget] = React.useState("")
   const [pendingDeletePrompt, setPendingDeletePrompt] = React.useState<PromptTemplateItem | null>(null)
   const [isDeletingPrompt, setIsDeletingPrompt] = React.useState(false)
   const markdownColorMode = resolvedTheme === "dark" ? "dark" : "light"
@@ -491,17 +556,21 @@ export function SettingsView({
   const loadSettings = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      const [modelsResponse, promptResponse, whisperResponse, llmResponse] = await Promise.all([
+      const [modelsResponse, promptResponse, whisperResponse, llmResponse, ollamaResponse] = await Promise.all([
         getModels(),
         getPromptTemplates(),
         getWhisperConfig(),
         getLLMConfig(),
+        getOllamaRuntimeConfig(),
       ])
       setModels(modelsResponse.items)
       setPromptBundle(promptResponse)
       setWhisperConfig(whisperResponse)
       setLlmConfig(llmResponse)
+      setOllamaConfig(ollamaResponse)
       setWhisperRuntimeDirty(false)
+      setOllamaRuntimeDirty(false)
+      setLocalMigrationTarget((current) => current || ollamaResponse.models_dir)
     } catch (error) {
       toast.error(getApiErrorMessage(error, "加载设置数据失败"))
     } finally {
@@ -522,6 +591,19 @@ export function SettingsView({
       auto_configure_env: whisperConfig.runtime_libraries.auto_configure_env,
     })
   }, [whisperConfig, whisperRuntimeDirty])
+
+  React.useEffect(() => {
+    if (!ollamaConfig || ollamaRuntimeDirty) {
+      return
+    }
+    setOllamaRuntimeForm({
+      install_dir: ollamaConfig.install_dir,
+      executable_path: ollamaConfig.executable_path,
+      models_dir: ollamaConfig.models_dir,
+      base_url: ollamaConfig.base_url,
+    })
+    setLocalMigrationTarget((current) => current || ollamaConfig.models_dir)
+  }, [ollamaConfig, ollamaRuntimeDirty])
 
   React.useEffect(() => {
     if (!isModelDialogOpen || !editingModel) {
@@ -651,6 +733,19 @@ export function SettingsView({
     return modelVisuals[component] || modelVisuals.llm
   }
 
+  const getModelProviderOptions = (model: ModelDescriptor) => {
+    if (model.component === "whisper") {
+      return [{ value: "local", label: providerLabels.local }]
+    }
+    if (model.component === "mllm") {
+      return [{ value: "openai_compatible", label: providerLabels.openai_compatible }]
+    }
+    return [
+      { value: "ollama", label: providerLabels.ollama },
+      { value: "openai_compatible", label: providerLabels.openai_compatible },
+    ]
+  }
+
   const getModelConfigPreset = (model: ModelDescriptor): ModelConfigPreset => {
     if (model.component === "whisper") {
       return {
@@ -707,6 +802,17 @@ export function SettingsView({
       }
     }
 
+    if (model.component === "mllm") {
+      return {
+        title: "全模态模型配置",
+        description: "控制图文联合问答模型的路由启用与在线接口参数。",
+        note: "当全模态模型与多模态 Embedding 同时就绪时，RAG 会切换到图文联合检索路线。",
+        fields: ["load_profile", "max_batch_size", "enabled"],
+        batchLabel: "并发请求上限",
+        batchDescription: "控制图文联合请求的并发规模，避免远端接口抖动。",
+      }
+    }
+
     return {
       title: "重排序模型配置",
       description: "控制 rerank 模型的本地目录、批处理规模与最终返回条数。",
@@ -722,9 +828,17 @@ export function SettingsView({
   const buildModelUpdatePayload = (model: ModelDescriptor, form: ModelConfigFormState) => {
     const preset = getModelConfigPreset(model)
     const payload: Parameters<typeof updateModel>[1] = {}
+    const parsedBatchSize = Number.parseInt(form.max_batch_size, 10)
+    const parsedRerankTopN = Number.parseInt(form.rerank_top_n, 10)
+    const parsedFrameInterval = Number.parseInt(form.frame_interval_seconds, 10)
+    const parsedTimeoutSeconds = Number.parseInt(form.api_timeout_seconds, 10)
+    const parsedImageMaxBytes = Number.parseInt(form.api_image_max_bytes, 10)
+    const parsedImageMaxEdge = Number.parseInt(form.api_image_max_edge, 10)
 
+    payload.provider = form.provider
+    payload.model_id = form.model_id.trim() || model.model_id
     if (preset.fields.includes("path")) {
-      payload.path = form.path.trim()
+      payload.path = form.provider === "openai_compatible" ? "" : form.path.trim()
     }
     if (preset.fields.includes("load_profile")) {
       payload.load_profile = form.load_profile.trim() || "balanced"
@@ -733,35 +847,36 @@ export function SettingsView({
       payload.quantization = form.quantization.trim()
     }
     if (preset.fields.includes("max_batch_size")) {
-      payload.max_batch_size = Number.parseInt(form.max_batch_size, 10) || 1
+      payload.max_batch_size = Number.isFinite(parsedBatchSize) ? parsedBatchSize : 1
     }
     if (preset.fields.includes("rerank_top_n")) {
-      payload.rerank_top_n = Number.parseInt(form.rerank_top_n, 10) || 8
+      payload.rerank_top_n = Number.isFinite(parsedRerankTopN) ? parsedRerankTopN : 8
     }
     if (preset.fields.includes("frame_interval_seconds")) {
-      payload.frame_interval_seconds = Number.parseInt(form.frame_interval_seconds, 10) || 10
+      payload.frame_interval_seconds = Number.isFinite(parsedFrameInterval) ? parsedFrameInterval : 10
     }
     if (preset.fields.includes("enabled")) {
       payload.enabled = form.enabled
     }
+    payload.api_base_url = form.api_base_url.trim()
+    payload.api_key = form.api_key.trim()
+    payload.api_model = form.api_model.trim()
+    payload.api_protocol = form.api_protocol
+    payload.api_timeout_seconds = Number.isFinite(parsedTimeoutSeconds) ? parsedTimeoutSeconds : 120
+    payload.api_image_max_bytes = Number.isFinite(parsedImageMaxBytes) ? parsedImageMaxBytes : 524288
+    payload.api_image_max_edge = Number.isFinite(parsedImageMaxEdge) ? parsedImageMaxEdge : 1280
 
     return payload
   }
 
-  const buildLlmUpdatePayload = (): LLMConfigResponse | null => {
-    if (!llmConfig) {
-      return null
-    }
+  const buildLlmUpdatePayload = (runtimeConfig: LLMConfigResponse): LLMConfigResponse => {
     const parsedBatchSize = Number.parseInt(llmForm.correction_batch_size, 10)
     const parsedOverlap = Number.parseInt(llmForm.correction_overlap, 10)
     return {
-      ...llmConfig,
-      base_url: llmForm.base_url.trim(),
-      api_key: llmForm.api_key.trim(),
-      model: llmForm.model.trim(),
+      ...runtimeConfig,
       correction_mode: llmForm.correction_mode,
-      correction_batch_size: Number.isFinite(parsedBatchSize) ? parsedBatchSize : llmConfig.correction_batch_size,
-      correction_overlap: Number.isFinite(parsedOverlap) ? parsedOverlap : llmConfig.correction_overlap,
+      correction_batch_size: Number.isFinite(parsedBatchSize) ? parsedBatchSize : runtimeConfig.correction_batch_size,
+      correction_overlap: Number.isFinite(parsedOverlap) ? parsedOverlap : runtimeConfig.correction_overlap,
       load_profile: modelForm.load_profile === "memory_first" ? "memory_first" : "balanced",
     }
   }
@@ -801,7 +916,7 @@ export function SettingsView({
           toast("已刷新模型检测状态，当前目录未检测到完整模型文件")
         }
       } else {
-        toast.success("已开始下载模型到默认目录")
+        toast.success(model.component === "whisper" ? "已开始下载 Whisper 模型" : "已开始通过 Ollama 拉取模型")
       }
     } catch (error) {
       toast.error(getApiErrorMessage(error, "模型操作失败"))
@@ -824,20 +939,26 @@ export function SettingsView({
 
   const handleConfigureModel = (model: ModelDescriptor) => {
     const nextModelForm: ModelConfigFormState = {
-      path: model.default_path || model.path || "",
+      provider: model.provider,
+      model_id: model.model_id,
+      path: model.path || model.default_path || "",
       load_profile: model.load_profile || "balanced",
       quantization: model.quantization || "",
       max_batch_size: String(model.max_batch_size || 1),
       rerank_top_n: String(model.rerank_top_n || 8),
       frame_interval_seconds: String(model.frame_interval_seconds || 10),
       enabled: model.enabled,
+      api_base_url: model.api_base_url || "",
+      api_key: model.api_key || "",
+      api_model: model.api_model || "",
+      api_protocol: model.api_protocol || "openai_compatible",
+      api_timeout_seconds: String(model.api_timeout_seconds || 120),
+      api_image_max_bytes: String(model.api_image_max_bytes || 524288),
+      api_image_max_edge: String(model.api_image_max_edge || 1280),
     }
     const nextLlmForm: LLMConfigFormState =
-      model.provider === "openai_compatible" && llmConfig
+      model.component === "llm" && llmConfig
         ? {
-            base_url: llmConfig.base_url,
-            api_key: llmConfig.api_key,
-            model: llmConfig.model,
             correction_mode: llmConfig.correction_mode,
             correction_batch_size: String(llmConfig.correction_batch_size),
             correction_overlap: String(llmConfig.correction_overlap),
@@ -865,20 +986,13 @@ export function SettingsView({
     setIsSavingModel(true)
     setBusyModelId(editingModel.id)
     try {
-      if (editingModel.provider === "openai_compatible") {
-        const nextLlmPayload = buildLlmUpdatePayload()
-        if (!nextLlmPayload) {
-          throw new Error("在线 LLM 配置尚未加载完成")
-        }
-        const [modelsResponse, llmResponse] = await Promise.all([
-          updateModel(editingModel.id, buildModelUpdatePayload(editingModel, modelForm)),
-          updateLLMConfig(nextLlmPayload),
-        ])
-        setModels(modelsResponse.items)
+      const modelsResponse = await updateModel(editingModel.id, buildModelUpdatePayload(editingModel, modelForm))
+      setModels(modelsResponse.items)
+      if (editingModel.component === "llm") {
+        const syncedRuntimeConfig = await getLLMConfig()
+        const nextLlmPayload = buildLlmUpdatePayload(syncedRuntimeConfig)
+        const llmResponse = await updateLLMConfig(nextLlmPayload)
         setLlmConfig(llmResponse)
-      } else {
-        const response = await updateModel(editingModel.id, buildModelUpdatePayload(editingModel, modelForm))
-        setModels(response.items)
       }
       clearModelConfigDraft(editingModel.id)
       handleModelDialogChange(false)
@@ -1235,6 +1349,123 @@ export function SettingsView({
     }
   }
 
+  const handleBrowseOllamaDirectory = async (
+    field: "install_dir" | "models_dir",
+    title: string,
+  ) => {
+    if (!window.vidGnostDesktop?.pickDirectory) {
+      toast("当前环境不支持目录选择，请直接手动填写路径。")
+      return
+    }
+    const picked = await window.vidGnostDesktop.pickDirectory(title)
+    if (picked.canceled || !picked.path) {
+      return
+    }
+    setOllamaRuntimeDirty(true)
+    setOllamaRuntimeForm((current) => ({
+      ...current,
+      [field]: picked.path || current[field],
+    }))
+  }
+
+  const handleSaveOllamaRuntimeConfig = async () => {
+    if (!ollamaRuntimeForm.install_dir.trim() || !ollamaRuntimeForm.models_dir.trim()) {
+      toast.error("请先填写 Ollama 安装目录和模型目录")
+      return
+    }
+    setIsUpdatingOllamaRuntime(true)
+    try {
+      const response = await updateOllamaRuntimeConfig({
+        install_dir: ollamaRuntimeForm.install_dir.trim(),
+        executable_path: ollamaRuntimeForm.executable_path.trim(),
+        models_dir: ollamaRuntimeForm.models_dir.trim(),
+        base_url: ollamaRuntimeForm.base_url.trim(),
+      })
+      setOllamaConfig(response)
+      setOllamaRuntimeForm({
+        install_dir: response.install_dir,
+        executable_path: response.executable_path,
+        models_dir: response.models_dir,
+        base_url: response.base_url,
+      })
+      setLocalMigrationTarget((current) => current || response.models_dir)
+      setOllamaRuntimeDirty(false)
+      toast.success("Ollama 运行时配置已保存")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "保存 Ollama 配置失败"))
+    } finally {
+      setIsUpdatingOllamaRuntime(false)
+    }
+  }
+
+  const handleMigrateOllamaModelDir = async () => {
+    const targetDir = ollamaRuntimeForm.models_dir.trim()
+    if (!targetDir) {
+      toast.error("请先填写目标 Ollama 模型目录")
+      return
+    }
+    setIsMigratingOllamaModels(true)
+    try {
+      const response = await migrateOllamaModels(targetDir)
+      const [modelsResponse, ollamaResponse] = await Promise.all([getModels(), getOllamaRuntimeConfig()])
+      setModels(modelsResponse.items)
+      setOllamaConfig(ollamaResponse)
+      setOllamaRuntimeForm({
+        install_dir: ollamaResponse.install_dir,
+        executable_path: ollamaResponse.executable_path,
+        models_dir: ollamaResponse.models_dir,
+        base_url: ollamaResponse.base_url,
+      })
+      setOllamaRuntimeDirty(false)
+      if (response.warnings.length > 0) {
+        toast(response.warnings.join(" "))
+      }
+      toast.success(response.message || "Ollama 模型目录已迁移")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "迁移 Ollama 模型目录失败"))
+    } finally {
+      setIsMigratingOllamaModels(false)
+    }
+  }
+
+  const handleBrowseLocalMigrationTarget = async () => {
+    if (!window.vidGnostDesktop?.pickDirectory) {
+      toast("当前环境不支持目录选择，请直接手动填写路径。")
+      return
+    }
+    const picked = await window.vidGnostDesktop.pickDirectory("选择本地模型迁移目标根目录")
+    if (picked.canceled || !picked.path) {
+      return
+    }
+    setLocalMigrationTarget(picked.path)
+  }
+
+  const handleMigrateLocalModels = async () => {
+    const targetRoot = localMigrationTarget.trim()
+    if (!targetRoot) {
+      toast.error("请先填写本地模型迁移目标根目录")
+      return
+    }
+    setIsMigratingLocalModels(true)
+    try {
+      const response: LocalModelsMigrationResponse = await migrateLocalModels(targetRoot)
+      const modelsResponse = await getModels()
+      setModels(modelsResponse.items)
+      if (response.warnings.length > 0) {
+        toast(response.warnings.join(" "))
+      }
+      if (response.moved.length > 0) {
+        toast.success(`已迁移 ${response.moved.length} 个本地模型到指定目录`)
+      } else {
+        toast("没有需要迁移的本地模型")
+      }
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "迁移本地模型失败"))
+    } finally {
+      setIsMigratingLocalModels(false)
+    }
+  }
+
   const handleGpuToggle = async (checked: boolean) => {
     if (!whisperConfig) {
       return
@@ -1292,7 +1523,14 @@ export function SettingsView({
   const modelDialogHasBatchSize = Boolean(activeModelPreset?.fields.includes("max_batch_size"))
   const modelDialogHasRerankTopN = Boolean(activeModelPreset?.fields.includes("rerank_top_n"))
   const modelDialogHasFrameInterval = Boolean(activeModelPreset?.fields.includes("frame_interval_seconds"))
-  const showOnlineLlmFields = Boolean(editingModel?.provider === "openai_compatible")
+  const modelProviderOptions = editingModel ? getModelProviderOptions(editingModel) : []
+  const showRemoteApiFields = Boolean(modelForm.provider === "openai_compatible" && editingModel)
+  const showLlmCorrectionFields = Boolean(editingModel?.component === "llm")
+  const showModelPathField = Boolean(activeModelPreset?.fields.includes("path") && modelForm.provider !== "openai_compatible")
+  const showImageApiFields = Boolean(
+    showRemoteApiFields && editingModel && ["embedding", "vlm", "rerank", "mllm"].includes(editingModel.component),
+  )
+  const remoteModelRecommendations = editingModel ? recommendedRemoteModels[editingModel.component] || [] : []
   const isWhisperDialog = editingModel?.component === "whisper"
   const hasSkinImage = Boolean(uiSettings.background_image)
   const skinPreviewBlur = Math.max(0, uiSettings.background_image_blur / 2)
@@ -1632,6 +1870,191 @@ export function SettingsView({
                     </div>
                   ) : null}
 
+                  <div className="settings-models-panel rounded-lg border p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="font-medium">Ollama 运行时与模型目录</div>
+                        <div className="text-sm text-muted-foreground">
+                          在这里指定 Ollama 安装目录、可执行文件、模型目录与服务地址。模型拉取会遵循这里的目录配置，不再假定固定路径。
+                        </div>
+                      </div>
+                      <Badge variant="outline">{providerLabels.ollama}</Badge>
+                    </div>
+
+                    <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+                      <div className="space-y-4 rounded-xl border bg-muted/15 p-4">
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <Label htmlFor="ollama-install-dir">安装目录</Label>
+                            <div className="flex gap-2">
+                              <Input
+                                id="ollama-install-dir"
+                                className="bg-background/80"
+                                value={ollamaRuntimeForm.install_dir}
+                                onChange={(event) => {
+                                  setOllamaRuntimeDirty(true)
+                                  setOllamaRuntimeForm((current) => ({ ...current, install_dir: event.target.value }))
+                                }}
+                                placeholder="如 D:\\AI\\Ollama"
+                              />
+                              <Button
+                                variant="outline"
+                                className="shrink-0"
+                                onClick={() => {
+                                  void handleBrowseOllamaDirectory("install_dir", "选择 Ollama 安装目录")
+                                }}
+                              >
+                                <FolderOpen className="mr-2 h-4 w-4" />
+                                浏览
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="ollama-executable">可执行文件</Label>
+                            <Input
+                              id="ollama-executable"
+                              className="bg-background/80"
+                              value={ollamaRuntimeForm.executable_path}
+                              onChange={(event) => {
+                                setOllamaRuntimeDirty(true)
+                                setOllamaRuntimeForm((current) => ({ ...current, executable_path: event.target.value }))
+                              }}
+                              placeholder="如 D:\\AI\\Ollama\\ollama.exe"
+                            />
+                          </div>
+
+                          <div className="space-y-2 md:col-span-2">
+                            <Label htmlFor="ollama-models-dir">模型目录</Label>
+                            <div className="flex gap-2">
+                              <Input
+                                id="ollama-models-dir"
+                                className="bg-background/80"
+                                value={ollamaRuntimeForm.models_dir}
+                                onChange={(event) => {
+                                  const nextValue = event.target.value
+                                  setOllamaRuntimeDirty(true)
+                                  setOllamaRuntimeForm((current) => ({ ...current, models_dir: nextValue }))
+                                  setLocalMigrationTarget(nextValue)
+                                }}
+                                placeholder="如 D:\\AI\\OllamaModels"
+                              />
+                              <Button
+                                variant="outline"
+                                className="shrink-0"
+                                onClick={() => {
+                                  void handleBrowseOllamaDirectory("models_dir", "选择 Ollama 模型目录")
+                                }}
+                              >
+                                <FolderOpen className="mr-2 h-4 w-4" />
+                                浏览
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2 md:col-span-2">
+                            <Label htmlFor="ollama-base-url">服务地址</Label>
+                            <Input
+                              id="ollama-base-url"
+                              className="bg-background/80"
+                              value={ollamaRuntimeForm.base_url}
+                              onChange={(event) => {
+                                setOllamaRuntimeDirty(true)
+                                setOllamaRuntimeForm((current) => ({ ...current, base_url: event.target.value }))
+                              }}
+                              placeholder="http://127.0.0.1:11434"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              LLM 如果使用 Ollama provider，会自动基于这里的服务地址同步 OpenAI 兼容入口。
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Button
+                            variant="outline"
+                            disabled={isUpdatingOllamaRuntime}
+                            onClick={() => {
+                              void handleSaveOllamaRuntimeConfig()
+                            }}
+                          >
+                            <Save className="mr-2 h-4 w-4" />
+                            保存 Ollama 配置
+                          </Button>
+                          <Button
+                            variant="outline"
+                            disabled={isMigratingOllamaModels}
+                            onClick={() => {
+                              void handleMigrateOllamaModelDir()
+                            }}
+                          >
+                            <RefreshCw className="mr-2 h-4 w-4" />
+                            迁移现有 Ollama 模型
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border bg-muted/20 p-4">
+                        <div className="space-y-1">
+                          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">当前生效路径</p>
+                          <p className="mt-2 break-all text-sm leading-6 text-foreground/90">
+                            {ollamaConfig?.models_dir || ollamaRuntimeForm.models_dir || "未配置"}
+                          </p>
+                        </div>
+                        <p className="mt-3 text-xs leading-6 text-muted-foreground">
+                          安装目录与模型目录解耦后，可以把程序和模型放在不同磁盘。迁移按钮会移动现有模型目录并同步更新配置。
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="settings-models-panel rounded-lg border p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="font-medium">本地模型批量迁移</div>
+                        <div className="text-sm text-muted-foreground">
+                          将所有使用本地目录的模型统一迁移到指定根目录下，后端会自动回写新的绝对路径。
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-col gap-3 rounded-xl border bg-muted/15 p-4">
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <Input
+                          className="bg-background/80"
+                          value={localMigrationTarget}
+                          onChange={(event) => setLocalMigrationTarget(event.target.value)}
+                          placeholder="如 E:\\AI\\VidGnost\\model-hub"
+                        />
+                        <Button
+                          variant="outline"
+                          className="shrink-0"
+                          onClick={() => {
+                            void handleBrowseLocalMigrationTarget()
+                          }}
+                        >
+                          <FolderOpen className="mr-2 h-4 w-4" />
+                          浏览
+                        </Button>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          variant="outline"
+                          disabled={isMigratingLocalModels}
+                          onClick={() => {
+                            void handleMigrateLocalModels()
+                          }}
+                        >
+                          <HardDrive className="mr-2 h-4 w-4" />
+                          批量迁移本地模型
+                        </Button>
+                        <p className="text-xs text-muted-foreground">
+                          迁移完成后，模型配置中的目录将统一显示为绝对路径。
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
                   <Separator />
 
                   <div className="space-y-3">
@@ -1660,7 +2083,7 @@ export function SettingsView({
                           <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                             <Badge variant="outline" className={modelTypeTagClassNames[model.component]}>{modelTypeLabels[model.component]}</Badge>
                             <Badge variant="secondary" className="capitalize">
-                              {model.provider.replaceAll("_", " ")}
+                              {providerLabels[model.provider] || model.provider.replaceAll("_", " ")}
                             </Badge>
                             <span className="flex items-center gap-1">
                               <HardDrive className="h-3 w-3" />
@@ -1668,7 +2091,11 @@ export function SettingsView({
                             </span>
                           </div>
                           <div className="text-xs text-muted-foreground mt-1 truncate">
-                            {model.is_installed ? model.path || model.default_path || model.model_id : "未就绪"}
+                            {model.provider === "openai_compatible"
+                              ? `${model.api_model || model.model_id} · ${model.api_base_url || "未配置 API 地址"}`
+                              : model.is_installed
+                                ? model.path || model.default_path || model.model_id
+                                : "未就绪"}
                           </div>
                           {model.download?.message && !isDownloading ? (
                             <div className="mt-1 truncate text-[11px] text-muted-foreground">
@@ -1703,7 +2130,7 @@ export function SettingsView({
                                 ) : (
                                   <CloudDownload className="mr-1 h-4 w-4" />
                                 )}
-                                {model.is_installed ? "刷新检测" : "下载"}
+                                {model.is_installed ? "刷新检测" : model.component === "whisper" ? "下载" : "拉取"}
                               </Button>
                             )
                           ) : (
@@ -1807,14 +2234,14 @@ export function SettingsView({
                                         </Badge>
                                       </div>
                                       <div className="break-all text-xs leading-relaxed text-muted-foreground">
-                                        {editingModel.model_id}
+                                        {modelForm.model_id || editingModel.model_id}
                                       </div>
                                     </div>
                                   </div>
 
                                   <div className="flex flex-wrap items-center gap-2">
                                     <Badge variant="outline" className="rounded-md border bg-background/80 text-foreground/90">
-                                      {`Provider · ${editingModel.provider.replaceAll("_", " ")}`}
+                                      {`Provider · ${(providerLabels[modelForm.provider] || modelForm.provider).replaceAll("_", " ")}`}
                                     </Badge>
                                     <Badge variant="outline" className="rounded-md border bg-background/80 text-foreground/90">
                                       {`Component · ${modelTypeLabels[editingModel.component]}`}
@@ -1836,10 +2263,12 @@ export function SettingsView({
                                   <div className="rounded-xl border bg-muted/30 p-4">
                                     <div className="space-y-1">
                                       <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                                        默认目录
+                                        {modelForm.provider === "openai_compatible" ? "在线入口" : "默认目录"}
                                       </div>
                                       <div className="break-all text-xs leading-relaxed text-foreground/90">
-                                        {editingModel.default_path || "未就绪"}
+                                        {modelForm.provider === "openai_compatible"
+                                          ? modelForm.api_base_url || "未配置"
+                                          : editingModel.default_path || "未就绪"}
                                       </div>
                                     </div>
                                   </div>
@@ -1900,10 +2329,12 @@ export function SettingsView({
                                   <div className="rounded-xl border bg-muted/30 p-4">
                                     <div className="space-y-1">
                                       <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                                        当前路径
+                                        {modelForm.provider === "openai_compatible" ? "当前模型 / 协议" : "当前路径"}
                                       </div>
                                       <div className="break-all text-xs leading-relaxed text-foreground/90">
-                                        {modelForm.path || editingModel.path || editingModel.default_path || "使用默认托管目录"}
+                                        {modelForm.provider === "openai_compatible"
+                                          ? `${modelForm.api_model || "未设置模型名"} · ${(apiProtocolLabels[modelForm.api_protocol] || modelForm.api_protocol)}`
+                                          : modelForm.path || editingModel.path || editingModel.default_path || "使用默认托管目录"}
                                       </div>
                                     </div>
                                   </div>
@@ -1933,7 +2364,61 @@ export function SettingsView({
                               </div>
 
                               <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2">
-                                {activeModelPreset?.fields.includes("path") ? (
+                                <div className="space-y-2">
+                                  <Label>Provider</Label>
+                                  {modelProviderOptions.length === 1 ? (
+                                    <Input
+                                      className="bg-background/80"
+                                      readOnly
+                                      value={modelProviderOptions[0]?.label || providerLabels[modelForm.provider] || modelForm.provider}
+                                    />
+                                  ) : (
+                                    <Select
+                                      value={modelForm.provider}
+                                      onValueChange={(value) =>
+                                        setModelForm((current) => ({
+                                          ...current,
+                                          provider: value,
+                                        }))
+                                      }
+                                    >
+                                      <SelectTrigger className="model-config-dialog-select-trigger bg-background/80">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent className="model-config-select-content">
+                                        {modelProviderOptions.map((option) => (
+                                          <SelectItem key={option.value} value={option.value}>
+                                            {option.label}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  )}
+                                  <p className="text-xs text-muted-foreground">
+                                    为当前组件选择本地目录、Ollama 或在线 API 路由。
+                                  </p>
+                                </div>
+
+                                <div className="space-y-2">
+                                  <Label htmlFor="model-identifier">模型标识</Label>
+                                  <Input
+                                    id="model-identifier"
+                                    className="bg-background/80"
+                                    value={modelForm.model_id}
+                                    readOnly={isWhisperDialog}
+                                    onChange={(event) =>
+                                      setModelForm((current) => ({ ...current, model_id: event.target.value }))
+                                    }
+                                    placeholder={modelForm.provider === "ollama" ? "如 qwen2.5:3b / moondream" : "逻辑模型标识"}
+                                  />
+                                  <p className="text-xs text-muted-foreground">
+                                    {modelForm.provider === "ollama"
+                                      ? "这里填写 Ollama 中实际拉取和调用的模型名。"
+                                      : "用于当前模型条目的逻辑标识，本地与在线配置会共享这个基准值。"}
+                                  </p>
+                                </div>
+
+                                {showModelPathField ? (
                                   <div className="space-y-2 md:col-span-2">
                                     <Label htmlFor="model-path">{activeModelPreset.pathLabel || "本地路径"}</Label>
                                     <Input
@@ -1981,7 +2466,7 @@ export function SettingsView({
                                   </div>
                                 ) : null}
 
-                                {modelDialogHasQuantization ? (
+                                {modelDialogHasQuantization && modelForm.provider !== "openai_compatible" ? (
                                   <div className="space-y-2">
                                     <Label htmlFor="model-quantization">
                                       {activeModelPreset?.quantizationLabel || "量化格式"}
@@ -2119,25 +2604,25 @@ export function SettingsView({
                               </div>
                             </div>
 
-                            {showOnlineLlmFields ? (
+                            {showRemoteApiFields ? (
                               <div className="model-config-dialog-panel rounded-xl border bg-card p-5 md:p-6">
                                 <div className="space-y-1">
-                                  <div className="text-base font-semibold leading-tight">OpenAI 兼容接口配置</div>
+                                  <div className="text-base font-semibold leading-tight">在线 API 配置</div>
                                   <p className="text-xs leading-relaxed text-muted-foreground">
-                                    保存后会同步写入后端在线 LLM 配置，用于实际请求 Base URL、模型名与 API Key。
+                                    为当前组件单独配置 Base URL、模型名、协议与鉴权信息。阿里云百炼的嵌入和重排建议使用专用协议。
                                   </p>
                                 </div>
 
                                 <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2">
                                   <div className="space-y-2 md:col-span-2">
-                                    <Label htmlFor="llm-base-url">Base URL</Label>
+                                    <Label htmlFor="remote-base-url">Base URL</Label>
                                     <Input
-                                      id="llm-base-url"
+                                      id="remote-base-url"
                                       className="bg-background/80"
-                                      placeholder="https://provider.example.com/v1"
-                                      value={llmForm.base_url}
+                                      placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"
+                                      value={modelForm.api_base_url}
                                       onChange={(event) =>
-                                        setLlmForm((current) => ({ ...current, base_url: event.target.value }))
+                                        setModelForm((current) => ({ ...current, api_base_url: event.target.value }))
                                       }
                                     />
                                     <p className="text-xs text-muted-foreground">
@@ -2146,38 +2631,143 @@ export function SettingsView({
                                   </div>
 
                                   <div className="space-y-2">
-                                    <Label htmlFor="llm-model">模型名称</Label>
+                                    <Label htmlFor="remote-model">调用模型名</Label>
                                     <Input
-                                      id="llm-model"
+                                      id="remote-model"
                                       className="bg-background/80"
-                                      placeholder="如 qwen3.5-flash / gpt-4.1-mini"
-                                      value={llmForm.model}
+                                      placeholder={remoteModelRecommendations.join(" / ") || "填写远端模型名"}
+                                      value={modelForm.api_model}
                                       onChange={(event) =>
-                                        setLlmForm((current) => ({ ...current, model: event.target.value }))
+                                        setModelForm((current) => ({ ...current, api_model: event.target.value }))
                                       }
                                     />
                                     <p className="text-xs text-muted-foreground">
                                       与提供商控制台中的可调用模型名保持一致。
+                                      {remoteModelRecommendations.length > 0 ? ` 推荐：${remoteModelRecommendations.join("、")}` : ""}
                                     </p>
                                   </div>
 
                                   <div className="space-y-2">
-                                    <Label htmlFor="llm-api-key">API Key</Label>
+                                    <Label htmlFor="remote-api-key">API Key</Label>
                                     <Input
-                                      id="llm-api-key"
+                                      id="remote-api-key"
                                       className="bg-background/80"
                                       type="password"
                                       placeholder="输入模型提供商的 API Key"
-                                      value={llmForm.api_key}
+                                      value={modelForm.api_key}
                                       onChange={(event) =>
-                                        setLlmForm((current) => ({ ...current, api_key: event.target.value }))
+                                        setModelForm((current) => ({ ...current, api_key: event.target.value }))
                                       }
                                     />
                                     <p className="text-xs text-muted-foreground">
-                                      保存后将同步到后端在线模型配置文件。
+                                      仅当前组件会读取这里的密钥配置。
                                     </p>
                                   </div>
 
+                                  <div className="space-y-2">
+                                    <Label>接口协议</Label>
+                                    <Select
+                                      value={modelForm.api_protocol}
+                                      onValueChange={(value) =>
+                                        setModelForm((current) => ({
+                                          ...current,
+                                          api_protocol: value,
+                                        }))
+                                      }
+                                    >
+                                      <SelectTrigger className="model-config-dialog-select-trigger bg-background/80">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent className="model-config-select-content">
+                                        <SelectItem value="openai_compatible">OpenAI Compatible</SelectItem>
+                                        <SelectItem value="aliyun_bailian">阿里云百炼专用</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-muted-foreground">
+                                      嵌入与重排序使用阿里云百炼专用协议时，会走兼容适配层。
+                                    </p>
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <Label htmlFor="remote-timeout">超时（秒）</Label>
+                                    <Input
+                                      id="remote-timeout"
+                                      className="bg-background/80"
+                                      type="number"
+                                      min={10}
+                                      max={600}
+                                      value={modelForm.api_timeout_seconds}
+                                      onChange={(event) =>
+                                        setModelForm((current) => ({
+                                          ...current,
+                                          api_timeout_seconds: event.target.value,
+                                        }))
+                                      }
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                      控制当前组件请求远端接口的超时窗口。
+                                    </p>
+                                  </div>
+
+                                  {showImageApiFields ? (
+                                    <>
+                                      <div className="space-y-2">
+                                        <Label htmlFor="remote-image-max-bytes">图片压缩上限（字节）</Label>
+                                        <Input
+                                          id="remote-image-max-bytes"
+                                          className="bg-background/80"
+                                          type="number"
+                                          min={32768}
+                                          max={8388608}
+                                          value={modelForm.api_image_max_bytes}
+                                          onChange={(event) =>
+                                            setModelForm((current) => ({
+                                              ...current,
+                                              api_image_max_bytes: event.target.value,
+                                            }))
+                                          }
+                                        />
+                                        <p className="text-xs text-muted-foreground">
+                                          在线图像理解前会压缩图片，降低带宽占用并提升响应速度。
+                                        </p>
+                                      </div>
+
+                                      <div className="space-y-2">
+                                        <Label htmlFor="remote-image-max-edge">图片最长边</Label>
+                                        <Input
+                                          id="remote-image-max-edge"
+                                          className="bg-background/80"
+                                          type="number"
+                                          min={256}
+                                          max={4096}
+                                          value={modelForm.api_image_max_edge}
+                                          onChange={(event) =>
+                                            setModelForm((current) => ({
+                                              ...current,
+                                              api_image_max_edge: event.target.value,
+                                            }))
+                                          }
+                                        />
+                                        <p className="text-xs text-muted-foreground">
+                                          用于控制发送到远端接口的图像尺寸上限。
+                                        </p>
+                                      </div>
+                                    </>
+                                  ) : null}
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {showLlmCorrectionFields ? (
+                              <div className="model-config-dialog-panel rounded-xl border bg-card p-5 md:p-6">
+                                <div className="space-y-1">
+                                  <div className="text-base font-semibold leading-tight">文本纠错设置</div>
+                                  <p className="text-xs leading-relaxed text-muted-foreground">
+                                    这部分会同步到摘要与纠错链路，恢复转写文本优化阶段的可调参数。
+                                  </p>
+                                </div>
+
+                                <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2">
                                   <div className="space-y-2">
                                     <Label>文本纠错模式</Label>
                                     <Select
@@ -2199,7 +2789,7 @@ export function SettingsView({
                                       </SelectContent>
                                     </Select>
                                     <p className="text-xs text-muted-foreground">
-                                      控制在线纠错阶段对原文的保守程度。
+                                      控制转写纠错阶段对原文的保守程度。
                                     </p>
                                   </div>
 

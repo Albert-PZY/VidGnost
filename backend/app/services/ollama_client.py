@@ -10,6 +10,7 @@ import httpx
 import orjson
 
 from app.config import Settings
+from app.services.ollama_runtime_config_store import OllamaRuntimeConfigStore
 
 OllamaProgressCallback = Any
 
@@ -20,31 +21,37 @@ class OllamaLocalModel:
     size_bytes: int = 0
     digest: str = ""
     modified_at: str = ""
+    path: str = ""
 
 
 class OllamaClient:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        runtime_config_store: OllamaRuntimeConfigStore | None = None,
+    ) -> None:
         self._settings = settings
-        self._base_url = str(settings.ollama_base_url).strip().rstrip("/")
+        self._runtime_config_store = runtime_config_store or OllamaRuntimeConfigStore(settings)
         self._tags_timeout = httpx.Timeout(connect=0.5, read=2.0, write=2.0, pool=2.0)
         self._request_timeout = httpx.Timeout(connect=1.0, read=180.0, write=180.0, pool=10.0)
         self._pull_timeout = httpx.Timeout(connect=1.0, read=None, write=None, pool=10.0)
 
     @property
     def base_url(self) -> str:
-        return self._base_url
+        return self._runtime_config_store.get_sync()["base_url"]
 
     @property
     def openai_compat_base_url(self) -> str:
-        return f"{self._base_url}/v1"
+        return f"{self.base_url}/v1"
 
-    @staticmethod
-    def model_uri(model_name: str) -> str:
-        return f"ollama://{str(model_name).strip()}"
+
 
     async def list_local_models(self) -> dict[str, OllamaLocalModel]:
-        if not self._base_url:
+        base_url = self.base_url
+        if not base_url:
             return {}
+        models_dir = Path(self._runtime_config_store.get_sync()["models_dir"])
         try:
             async with httpx.AsyncClient(timeout=self._tags_timeout) as client:
                 response = await client.get(self._api_url("/tags"))
@@ -69,6 +76,7 @@ class OllamaClient:
                 size_bytes=max(0, int(item.get("size", 0) or 0)),
                 digest=str(item.get("digest", "")).strip(),
                 modified_at=str(item.get("modified_at", "")).strip(),
+                path=str(self.resolve_model_storage_path(name, models_dir=models_dir)),
             )
             models[name] = local_model
             if name.endswith(":latest"):
@@ -161,7 +169,47 @@ class OllamaClient:
         return data
 
     def _api_url(self, endpoint: str) -> str:
-        return f"{self._base_url}/api/{endpoint.lstrip('/')}"
+        return f"{self.base_url}/api/{endpoint.lstrip('/')}"
+
+    @staticmethod
+    def resolve_model_storage_path(model_name: str, *, models_dir: str | Path) -> Path:
+        root = Path(models_dir).expanduser().resolve()
+        registry, namespace, repository, _tag = _split_ollama_model_name(model_name)
+        return root / "manifests" / registry / namespace / repository
+
+
+def _split_ollama_model_name(model_name: str) -> tuple[str, str, str, str]:
+    normalized = str(model_name or "").strip()
+    if not normalized:
+        return ("registry.ollama.ai", "library", "unknown", "latest")
+
+    raw_parts = [part.strip() for part in normalized.split("/") if part.strip()]
+    registry = "registry.ollama.ai"
+    namespace = "library"
+    repository_parts: list[str] = []
+    if len(raw_parts) >= 2 and ("." in raw_parts[0] or ":" in raw_parts[0]):
+        registry = raw_parts[0]
+        if len(raw_parts) >= 3:
+            namespace = raw_parts[1]
+            repository_parts = raw_parts[2:]
+        else:
+            repository_parts = raw_parts[1:]
+    elif len(raw_parts) >= 2:
+        namespace = raw_parts[0]
+        repository_parts = raw_parts[1:]
+    else:
+        repository_parts = raw_parts
+
+    if not repository_parts:
+        repository_parts = ["unknown"]
+    repository_tail = repository_parts[-1]
+    if ":" in repository_tail:
+        repository_name, tag = repository_tail.rsplit(":", 1)
+        repository_parts[-1] = repository_name or "unknown"
+    else:
+        tag = "latest"
+    repository = "/".join(part for part in repository_parts if part) or "unknown"
+    return registry, namespace, repository, tag
 
 
 def _loads_json_line(line: str) -> dict[str, object] | None:
