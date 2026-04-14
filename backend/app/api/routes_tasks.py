@@ -297,15 +297,36 @@ def list_tasks(
 
 
 @router.get("/{task_id}", response_model=TaskDetailResponse)
-def get_task(task_id: str, task_store: TaskStore = Depends(get_task_store)) -> TaskDetailResponse:
+def get_task(
+    task_id: str,
+    request: Request,
+    task_store: TaskStore = Depends(get_task_store),
+) -> TaskDetailResponse:
     record = _require_task(task_store, task_id)
+    record, _ = _repair_task_source_media_record(
+        record,
+        task_store=task_store,
+        upload_dir=str(request.app.state.settings.upload_dir),
+    )
     return _to_detail(record)
 
 
 @router.get("/{task_id}/source-media")
-def get_task_source_media(task_id: str, task_store: TaskStore = Depends(get_task_store)):
+def get_task_source_media(
+    task_id: str,
+    request: Request,
+    task_store: TaskStore = Depends(get_task_store),
+):
     record = _require_task(task_store, task_id)
-    target_path = _resolve_task_source_media_path(record)
+    record, repaired_path = _repair_task_source_media_record(
+        record,
+        task_store=task_store,
+        upload_dir=str(request.app.state.settings.upload_dir),
+    )
+    target_path = repaired_path or _resolve_task_source_media_path(
+        record,
+        upload_dir=str(request.app.state.settings.upload_dir),
+    )
     media_type = mimetypes.guess_type(str(target_path))[0] or "application/octet-stream"
     return FileResponse(target_path, media_type=media_type)
 
@@ -327,12 +348,24 @@ def get_task_artifact_file(
 
 
 @router.get("/{task_id}/open-location")
-def open_task_location(task_id: str, task_store: TaskStore = Depends(get_task_store)) -> JSONResponse:
+def open_task_location(
+    task_id: str,
+    request: Request,
+    task_store: TaskStore = Depends(get_task_store),
+) -> JSONResponse:
     record = _require_task(task_store, task_id)
-    path_value = record.source_local_path or ""
-    if not path_value:
-        raise AppError.bad_request("Task has no local path", code="TASK_LOCAL_PATH_MISSING")
-    path = Path(path_value)
+    record, repaired_path = _repair_task_source_media_record(
+        record,
+        task_store=task_store,
+        upload_dir=str(request.app.state.settings.upload_dir),
+    )
+    target_path = repaired_path
+    if target_path is None:
+        path_value = record.source_local_path or ""
+        if not path_value:
+            raise AppError.bad_request("Task has no local path", code="TASK_LOCAL_PATH_MISSING")
+        target_path = Path(path_value)
+    path = target_path
     if path.is_file():
         path = path.parent
     return JSONResponse({"task_id": task_id, "path": str(path.resolve())})
@@ -793,14 +826,78 @@ def _build_content_disposition(filename: str) -> str:
     return f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded_filename}"
 
 
-def _resolve_task_source_media_path(record: TaskRecord) -> Path:
+def _resolve_task_source_media_path(record: TaskRecord, *, upload_dir: str | None = None) -> Path:
+    target_path = _find_task_source_media_path(record, upload_dir=upload_dir)
+    if target_path is not None:
+        return target_path
     path_value = (record.source_local_path or "").strip()
     if not path_value:
         raise AppError.bad_request("Task has no local source media", code="TASK_SOURCE_MEDIA_MISSING")
-    target_path = Path(path_value).expanduser()
-    if not target_path.exists() or not target_path.is_file():
-        raise AppError.not_found("Task source media not found", code="TASK_SOURCE_MEDIA_NOT_FOUND")
-    return target_path
+    raise AppError.not_found("Task source media not found", code="TASK_SOURCE_MEDIA_NOT_FOUND")
+
+
+def _repair_task_source_media_record(
+    record: TaskRecord,
+    *,
+    task_store: TaskStore,
+    upload_dir: str | None = None,
+) -> tuple[TaskRecord, Path | None]:
+    resolved_path = _find_task_source_media_path(record, upload_dir=upload_dir)
+    if resolved_path is None:
+        return record, None
+    resolved_value = str(resolved_path)
+    if (record.source_local_path or "").strip() == resolved_value:
+        return record, resolved_path
+    updated_record = task_store.update(record.id, source_local_path=resolved_value)
+    return updated_record, resolved_path
+
+
+def _find_task_source_media_path(record: TaskRecord, *, upload_dir: str | None = None) -> Path | None:
+    seen: set[str] = set()
+    for candidate in _iter_task_source_media_candidates(record, upload_dir=upload_dir):
+        candidate_key = str(candidate).casefold()
+        if candidate_key in seen:
+            continue
+        seen.add(candidate_key)
+        if candidate.exists() and candidate.is_file():
+            return candidate
+    return None
+
+
+def _iter_task_source_media_candidates(record: TaskRecord, *, upload_dir: str | None = None) -> list[Path]:
+    candidates: list[Path] = []
+    path_value = str(record.source_local_path or "").strip()
+    if path_value:
+        candidates.append(Path(path_value).expanduser())
+
+    source_input = str(record.source_input or "").strip()
+    if source_input and (record.source_type == "local_path" or _looks_like_local_media_path(source_input)):
+        candidates.append(Path(source_input).expanduser())
+
+    if upload_dir:
+        upload_root = Path(upload_dir).expanduser()
+        if upload_root.exists():
+            candidates.extend(
+                sorted(
+                    (
+                        candidate
+                        for candidate in upload_root.glob(f"{record.id}_*")
+                        if candidate.is_file() and candidate.suffix.lower() in ALLOWED_VIDEO_EXTENSIONS
+                    ),
+                    key=lambda item: item.stat().st_mtime,
+                    reverse=True,
+                )
+            )
+    return candidates
+
+
+def _looks_like_local_media_path(value: str) -> bool:
+    raw = str(value or "").strip()
+    if not raw or "://" in raw:
+        return False
+    if raw.startswith("\\\\") or raw.startswith("~"):
+        return True
+    return Path(raw).is_absolute()
 
 
 def _resolve_task_artifact_path(*, storage_dir: str, task_id: str, relative_path: str) -> Path:
@@ -824,9 +921,8 @@ def _resolve_effective_duration_seconds(record: TaskRecord) -> float | None:
         if max_end > 0:
             return round(float(max_end), 2)
 
-    path_value = (record.source_local_path or "").strip()
-    if path_value:
-        media_path = Path(path_value).expanduser()
+    media_path = _find_task_source_media_path(record)
+    if media_path is not None:
         if media_path.exists() and media_path.is_file():
             probed_duration = probe_media_duration_seconds(media_path)
             if probed_duration and probed_duration > 0:

@@ -125,6 +125,11 @@ Tasks created from uploaded files or explicit local paths SHALL retain a stable 
 - **THEN** task detail keeps `source_local_path` pointed at the retained source asset rather than a per-run temporary workspace copy
 - **AND** per-run temporary workspaces are cleaned after execution without deleting the retained source asset
 
+#### Scenario: Recover a legacy local-source record that still points to a temporary workspace copy
+- **WHEN** task detail or source-media retrieval encounters a `local_file` or `local_path` record whose persisted `source_local_path` no longer exists because it points at a cleaned per-run temporary workspace
+- **THEN** backend attempts to resolve the retained source asset from the original local path or retained upload directory candidate for that task
+- **AND** when a retained source asset is found, backend refreshes the task record so `source_local_path` points back to that stable asset path before returning task detail or source media
+
 ### Requirement: Downloaded-source task records SHALL retain a previewable source path
 Tasks created from downloadable remote inputs such as `bilibili` URLs SHALL move the fetched source media into a stable retained asset path before temporary workspaces are cleaned, so the completed task remains previewable in the workbench until deletion.
 

@@ -155,6 +155,86 @@ def test_task_detail_includes_fusion_prompt_markdown() -> None:
         assert detail["fusion_prompt_markdown"] == "## Fusion Prompt"
 
 
+def test_task_detail_repairs_broken_local_file_source_media_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    with TestClient(app) as client:
+        async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
+            return
+
+        client.app.state.task_runner.submit = fake_submit
+        create_response = client.post(
+            "/api/tasks/url",
+            json={
+                "url": "BV1xx411c7mD",
+                "model_size": "small",
+                "language": "zh",
+            },
+        )
+        assert create_response.status_code == 202
+        task_id = create_response.json()["task_id"]
+
+        upload_dir = tmp_path / "uploads"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        repaired_path = upload_dir / f"{task_id}_demo.mp4"
+        repaired_path.write_bytes(b"video-bytes")
+        monkeypatch.setattr(client.app.state.settings, "upload_dir", str(upload_dir))
+
+        broken_temp_path = tmp_path / "tmp" / task_id / f"{task_id}.mp4"
+        client.app.state.task_store.update(
+            task_id,
+            source_type="local_file",
+            source_input="demo.mp4",
+            source_local_path=str(broken_temp_path),
+            status=TaskStatus.COMPLETED.value,
+        )
+
+        detail_response = client.get(f"/api/tasks/{task_id}")
+        assert detail_response.status_code == 200
+        detail = detail_response.json()
+        assert detail["source_local_path"] == str(repaired_path)
+        assert client.app.state.task_store.get(task_id).source_local_path == str(repaired_path)
+
+        media_response = client.get(f"/api/tasks/{task_id}/source-media")
+        assert media_response.status_code == 200
+        assert media_response.content == b"video-bytes"
+
+
+def test_task_source_media_falls_back_to_local_source_input_path(tmp_path: Path) -> None:
+    with TestClient(app) as client:
+        async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
+            return
+
+        client.app.state.task_runner.submit = fake_submit
+        create_response = client.post(
+            "/api/tasks/url",
+            json={
+                "url": "BV1xx411c7mD",
+                "model_size": "small",
+                "language": "zh",
+            },
+        )
+        assert create_response.status_code == 202
+        task_id = create_response.json()["task_id"]
+
+        stable_source_path = tmp_path / "source.mp4"
+        stable_source_path.write_bytes(b"stable-video")
+        broken_temp_path = tmp_path / "tmp" / task_id / f"{task_id}.mp4"
+        client.app.state.task_store.update(
+            task_id,
+            source_type="local_path",
+            source_input=str(stable_source_path),
+            source_local_path=str(broken_temp_path),
+            status=TaskStatus.COMPLETED.value,
+        )
+
+        media_response = client.get(f"/api/tasks/{task_id}/source-media")
+        assert media_response.status_code == 200
+        assert media_response.content == b"stable-video"
+        assert client.app.state.task_store.get(task_id).source_local_path == str(stable_source_path)
+
+
 def test_remove_analysis_results_by_prefix() -> None:
     with TestClient(app) as client:
         async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]

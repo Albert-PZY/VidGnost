@@ -449,6 +449,7 @@ class TaskRunner:
                     submission,
                     ingestion_result,
                 )
+                persisted_source_media_path = _resolve_persisted_source_media_path(submission, ingestion_result)
                 await self._emit_log(task_id, "A", f"Video ready: {ingestion_result.media_path.name}", stage_logs)
                 await self._persist_stage_artifact_json(
                     task_id,
@@ -458,7 +459,8 @@ class TaskRunner:
                         "task_id": task_id,
                         "source_type": submission.source_type,
                         "source_input": submission.source_input,
-                        "source_local_path": str(ingestion_result.media_path),
+                        "source_local_path": str(persisted_source_media_path),
+                        "processing_media_path": str(ingestion_result.media_path),
                         "title": ingestion_result.title,
                         "duration_seconds": ingestion_result.duration_seconds,
                         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -468,7 +470,7 @@ class TaskRunner:
                     task_id,
                     title=ingestion_result.title,
                     duration_seconds=ingestion_result.duration_seconds,
-                    source_local_path=str(ingestion_result.media_path),
+                    source_local_path=str(persisted_source_media_path),
                     progress=_PROGRESS_STAGE_A_DONE,
                     language=selected_language,
                     model_size=selected_model,
@@ -2661,6 +2663,14 @@ def _interpolate_progress(start: int, end: int, ratio: float) -> int:
 def _format_size_mb(size_bytes: int) -> str:
     safe_size = max(0, int(size_bytes))
     return f"{safe_size / (1024 * 1024):.1f} MiB"
+
+
+def _resolve_persisted_source_media_path(submission: TaskSubmission, ingestion_result: IngestionResult) -> Path:
+    if submission.source_type == "bilibili":
+        return ingestion_result.media_path
+    if submission.source_local_path:
+        return Path(submission.source_local_path).expanduser()
+    return ingestion_result.media_path
 
 
 def _normalize_notes_image_relative_path(relative_path: str) -> str:

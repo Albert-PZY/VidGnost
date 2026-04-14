@@ -409,6 +409,7 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 #### Scenario: Preview imported source media inside the workbench
 - **WHEN** user opens a task whose detail payload includes a persisted `source_local_path`
 - **THEN** the left video panel requests the playable source through `GET /tasks/{task_id}/source-media` instead of a renderer-side `file://` URL
+- **AND** if backend detects that the stored `source_local_path` points to a cleaned temporary workspace, it repairs the task detail path from the retained source asset before the panel requests playback
 - **AND** the video element resets stale playback time and duration state when the task or media source changes
 - **AND** if the source file can no longer be opened, the panel shows a readable preview-failure hint instead of leaving a silent black frame
 
