@@ -84,6 +84,26 @@ def install_error_handlers(app: FastAPI) -> None:
             request.url.path,
             exc_info=exc,
         )
+        developer_log_service = getattr(request.app.state, "developer_log_service", None)
+        if developer_log_service is not None:
+            try:
+                await developer_log_service.publish(
+                    category="error",
+                    level="error",
+                    source="api.error_handlers",
+                    message=f"{type(exc).__name__}: {exc}",
+                    topic=request.url.path,
+                    trace_id=trace_id,
+                    event_type="unhandled_exception",
+                    payload={
+                        "trace_id": trace_id,
+                        "method": request.method,
+                        "path": request.url.path,
+                        "error_type": type(exc).__name__,
+                    },
+                )
+            except Exception:  # noqa: BLE001
+                pass
         return JSONResponse(
             status_code=500,
             content=_error_payload(

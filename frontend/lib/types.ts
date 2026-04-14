@@ -18,6 +18,8 @@ export type ModelDownloadState = "idle" | "downloading" | "completed" | "cancell
 export type WhisperRuntimeLibrariesStatus = "ready" | "not_ready" | "installing" | "paused" | "failed" | "unsupported"
 
 export type WhisperRuntimeLibrariesInstallState = "idle" | "installing" | "paused" | "completed" | "failed"
+export type DeveloperLogCategory = "system" | "runtime" | "task" | "self_check" | "vqa" | "frontend" | "error"
+export type DeveloperLogLevel = "debug" | "info" | "warning" | "error"
 
 export interface ApiErrorPayload {
   code: string
@@ -365,6 +367,30 @@ export interface RuntimePathsResponse {
   storage_dir: string
   event_log_dir: string
   trace_log_dir: string
+  developer_log_dir?: string
+}
+
+export interface DeveloperLogEntry {
+  id: string
+  sequence: number
+  ts: string
+  category: DeveloperLogCategory
+  level: DeveloperLogLevel
+  source: string
+  message: string
+  topic: string
+  task_id: string
+  trace_id: string
+  session_id: string
+  stage: string
+  substage: string
+  event_type: string
+  payload: Record<string, unknown>
+}
+
+export interface DeveloperLogListResponse {
+  items: DeveloperLogEntry[]
+  total: number
 }
 
 export interface HealthResponse {

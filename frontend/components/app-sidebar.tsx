@@ -7,6 +7,7 @@ import {
   History,
   Settings,
   Activity,
+  SquareTerminal,
   ChevronDown,
   Plus,
   FolderOpen,
@@ -76,6 +77,11 @@ const systemNavItems: NavigationItem[] = [
     id: "diagnostics",
     title: "系统自检",
     icon: Activity,
+  },
+  {
+    id: "developer-mode",
+    title: "开发者模式",
+    icon: SquareTerminal,
   },
 ]
 

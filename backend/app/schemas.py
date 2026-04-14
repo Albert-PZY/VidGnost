@@ -15,6 +15,8 @@ ModelComponentType = Literal["whisper", "llm", "embedding", "vlm", "rerank", "ml
 ModelRuntimeStatus = Literal["ready", "loading", "not_ready", "error"]
 ModelDownloadState = Literal["idle", "downloading", "completed", "cancelled", "failed"]
 BackgroundImageFillMode = Literal["cover", "contain", "repeat", "center"]
+DeveloperLogCategory = Literal["system", "runtime", "task", "self_check", "vqa", "frontend", "error"]
+DeveloperLogLevel = Literal["debug", "info", "warning", "error"]
 
 
 class TranscriptSegment(BaseModel):
@@ -509,3 +511,42 @@ class RuntimePathsResponse(BaseModel):
     storage_dir: str
     event_log_dir: str
     trace_log_dir: str
+    developer_log_dir: str
+
+
+class DeveloperLogEntryResponse(BaseModel):
+    id: str
+    sequence: int
+    ts: str
+    category: DeveloperLogCategory
+    level: DeveloperLogLevel
+    source: str
+    message: str
+    topic: str = ""
+    task_id: str = ""
+    trace_id: str = ""
+    session_id: str = ""
+    stage: str = ""
+    substage: str = ""
+    event_type: str = ""
+    payload: dict[str, object] = Field(default_factory=dict)
+
+
+class DeveloperLogListResponse(BaseModel):
+    items: list[DeveloperLogEntryResponse] = Field(default_factory=list)
+    total: int = 0
+
+
+class DeveloperLogFrontendCreateRequest(BaseModel):
+    category: DeveloperLogCategory = "frontend"
+    level: DeveloperLogLevel = "info"
+    source: str = Field(min_length=1, max_length=120)
+    message: str = Field(min_length=1, max_length=400)
+    topic: str = ""
+    task_id: str = ""
+    trace_id: str = ""
+    session_id: str = ""
+    stage: str = ""
+    substage: str = ""
+    event_type: str = ""
+    payload: dict[str, object] = Field(default_factory=dict)

@@ -102,6 +102,7 @@ async def chat(
 
 @router.post("/chat/stream")
 async def chat_stream(
+    request: Request,
     payload: VQAChatRequest,
     runtime: VQARuntimeService = Depends(get_vqa_runtime),
 ) -> StreamingResponse:
@@ -117,6 +118,20 @@ async def chat_stream(
             ):
                 yield f"data: {orjson.dumps(event).decode('utf-8')}\n\n"
         except Exception:  # noqa: BLE001
+            developer_log_service = getattr(request.app.state, "developer_log_service", None)
+            if developer_log_service is not None:
+                try:
+                    await developer_log_service.publish(
+                        category="error",
+                        level="error",
+                        source="api.routes_vqa",
+                        message="视频问答流式接口发生未处理异常。",
+                        task_id=(payload.task_id or "").strip(),
+                        event_type="vqa_stream_transport_error",
+                        payload={"query_text": query_text},
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
             error_event = {
                 "type": "error",
                 "error": {

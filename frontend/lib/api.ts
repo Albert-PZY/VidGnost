@@ -1,5 +1,7 @@
 import type {
   ApiErrorPayload,
+  DeveloperLogEntry,
+  DeveloperLogListResponse,
   HealthResponse,
   LLMConfigResponse,
   LocalModelsMigrationResponse,
@@ -560,6 +562,75 @@ export function getRuntimeMetrics(): Promise<RuntimeMetricsResponse> {
 
 export function getRuntimePaths(): Promise<RuntimePathsResponse> {
   return apiFetch<RuntimePathsResponse>("/runtime/paths", { method: "GET" })
+}
+
+export function getDeveloperLogs(params: {
+  category?: string
+  level?: string
+  source?: string
+  task_id?: string
+  trace_id?: string
+  session_id?: string
+  q?: string
+  limit?: number
+} = {}): Promise<DeveloperLogListResponse> {
+  return fetchJson<DeveloperLogListResponse>(buildApiUrl("/runtime/developer-logs", params))
+}
+
+export function streamDeveloperLogs(
+  params: {
+    category?: string
+    level?: string
+    source?: string
+    task_id?: string
+    trace_id?: string
+    session_id?: string
+    q?: string
+    history_limit?: number
+  },
+  onMessage: (event: DeveloperLogEntry) => void,
+): EventSource {
+  const source = new EventSource(buildApiUrl("/runtime/developer-logs/events", params))
+  source.onmessage = (message) => {
+    if (!message.data || message.data === "[DONE]") {
+      return
+    }
+    onMessage(JSON.parse(message.data) as DeveloperLogEntry)
+  }
+  return source
+}
+
+export function reportDeveloperLog(payload: {
+  category?: string
+  level?: string
+  source: string
+  message: string
+  topic?: string
+  task_id?: string
+  trace_id?: string
+  session_id?: string
+  stage?: string
+  substage?: string
+  event_type?: string
+  payload?: Record<string, unknown>
+}): Promise<DeveloperLogEntry> {
+  return apiFetch<DeveloperLogEntry>("/runtime/developer-logs/frontend", {
+    method: "POST",
+    body: JSON.stringify({
+      category: payload.category ?? "frontend",
+      level: payload.level ?? "info",
+      source: payload.source,
+      message: payload.message,
+      topic: payload.topic ?? "",
+      task_id: payload.task_id ?? "",
+      trace_id: payload.trace_id ?? "",
+      session_id: payload.session_id ?? "",
+      stage: payload.stage ?? "",
+      substage: payload.substage ?? "",
+      event_type: payload.event_type ?? "",
+      payload: payload.payload ?? {},
+    }),
+  })
 }
 
 export async function streamChatWithTask(

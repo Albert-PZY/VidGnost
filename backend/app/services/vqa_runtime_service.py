@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Any, AsyncIterator
 
+from app.services.developer_log_service import DeveloperLogService
 from app.services.llm_config_store import LLMConfigStore
 from app.services.model_catalog_store import ModelCatalogStore
 from app.services.ollama_client import OllamaClient
@@ -36,6 +37,7 @@ class VQARuntimeService:
         model_catalog_store: ModelCatalogStore | None = None,
         model_runtime: VQAModelRuntime | None = None,
         storage_dir: str,
+        developer_log_service: DeveloperLogService | None = None,
     ) -> None:
         resolved_model_catalog_store = model_catalog_store or ModelCatalogStore(
             llm_config_store._settings,  # type: ignore[attr-defined]
@@ -58,9 +60,35 @@ class VQARuntimeService:
         )
         self._model_catalog_store = resolved_model_catalog_store
         self._trace = VQATraceStore(log_dir=f"{storage_dir}/event-logs/traces")
+        self._developer_log_service = developer_log_service
 
     def read_trace(self, trace_id: str) -> list[dict[str, Any]]:
         return self._trace.read_trace(trace_id)
+
+    async def _publish_log(
+        self,
+        *,
+        level: str,
+        message: str,
+        task_id: str | None = None,
+        trace_id: str | None = None,
+        stage: str | None = None,
+        event_type: str | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        if self._developer_log_service is None:
+            return
+        await self._developer_log_service.publish(
+            category="vqa",
+            level=level,
+            source="services.vqa_runtime",
+            message=message,
+            task_id=task_id,
+            trace_id=trace_id,
+            stage=stage,
+            event_type=event_type,
+            payload=payload or {},
+        )
 
     async def prewarm_task(self, *, task_id: str, force: bool = False) -> dict[str, object]:
         return await self._retriever.prewarm_task(task_id=task_id, force=force)
@@ -93,6 +121,20 @@ class VQARuntimeService:
                 }
             },
         )
+        await self._publish_log(
+            level="info",
+            message="开始执行视频问答检索。",
+            task_id=task_id,
+            trace_id=resolved_trace_id,
+            stage="retrieval",
+            event_type="vqa_retrieval_start",
+            payload={
+                "query_text": query_text,
+                "task_id": task_id,
+                "video_paths": video_paths or [],
+                "top_k": resolved_top_k,
+            },
+        )
         result = await self._retriever.search(
             query_text=query_text,
             task_id=task_id,
@@ -115,6 +157,20 @@ class VQARuntimeService:
                 "rerank_hits": [item.to_dict() for item in result.rerank_hits],
             },
         )
+        await self._publish_log(
+            level="info" if result.rerank_hits else "warning",
+            message=f"检索完成，获得 {len(result.rerank_hits)} 条最终候选。",
+            task_id=task_id,
+            trace_id=resolved_trace_id,
+            stage="retrieval",
+            event_type="vqa_retrieval_complete",
+            payload={
+                "dense_count": len(result.dense_hits),
+                "sparse_count": len(result.sparse_hits),
+                "rrf_count": len(result.rrf_hits),
+                "rerank_count": len(result.rerank_hits),
+            },
+        )
         return SearchBundle(trace_id=resolved_trace_id, result=result)
 
     async def analyze(
@@ -130,6 +186,15 @@ class VQARuntimeService:
             task_id=task_id,
             video_paths=video_paths,
             top_k=top_k,
+        )
+        await self._publish_log(
+            level="info",
+            message="开始生成问答结果。",
+            task_id=task_id,
+            trace_id=search_bundle.trace_id,
+            stage="generation",
+            event_type="vqa_generation_start",
+            payload={"hit_count": len(search_bundle.result.rerank_hits)},
         )
         chat_result = await self._chat.answer(query_text=query_text, hits=search_bundle.result.rerank_hits)
         self._trace.write(
@@ -150,6 +215,19 @@ class VQARuntimeService:
                 "citation_count": len(chat_result.citations),
             },
         )
+        await self._publish_log(
+            level="error" if chat_result.error else "info",
+            message="问答结果生成完成。",
+            task_id=task_id,
+            trace_id=search_bundle.trace_id,
+            stage="generation",
+            event_type="vqa_generation_complete",
+            payload={
+                "error": chat_result.error,
+                "citation_count": len(chat_result.citations),
+                "context_tokens_approx": chat_result.context_tokens_approx,
+            },
+        )
         return AnalyzeBundle(trace_id=search_bundle.trace_id, search=search_bundle.result, chat=chat_result)
 
     async def stream_chat(
@@ -166,6 +244,15 @@ class VQARuntimeService:
             task_id=task_id,
             video_paths=video_paths,
             top_k=top_k,
+        )
+        await self._publish_log(
+            level="info",
+            message="开始流式生成问答结果。",
+            task_id=task_id,
+            trace_id=search_bundle.trace_id,
+            stage="llm_stream",
+            event_type="vqa_stream_start",
+            payload={"hit_count": len(search_bundle.result.rerank_hits)},
         )
         yield {
             "trace_id": search_bundle.trace_id,
@@ -193,6 +280,15 @@ class VQARuntimeService:
 
         if stream_error is not None:
             # Auto downgrade to non-stream completion.
+            await self._publish_log(
+                level="warning",
+                message="流式生成中断，准备回退到非流式补全。",
+                task_id=task_id,
+                trace_id=search_bundle.trace_id,
+                stage="llm_stream",
+                event_type="vqa_stream_fallback",
+                payload={"error": stream_error},
+            )
             fallback = await self._chat.answer(query_text=query_text, hits=search_bundle.result.rerank_hits)
             if fallback.answer:
                 yield {
@@ -232,6 +328,19 @@ class VQARuntimeService:
                 "ok": stream_error is None,
                 "result_count": len(search_bundle.result.rerank_hits),
                 "answer_size": len(answer_text),
+            },
+        )
+        await self._publish_log(
+            level="error" if stream_error else "info",
+            message="流式问答已结束。",
+            task_id=task_id,
+            trace_id=search_bundle.trace_id,
+            stage="llm_stream",
+            event_type="vqa_stream_complete",
+            payload={
+                "error": stream_error,
+                "answer_size": len(answer_text),
+                "result_count": len(search_bundle.result.rerank_hits),
             },
         )
 
