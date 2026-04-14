@@ -316,6 +316,8 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 - **WHEN** user opens the `文本纠错` tab for a task whose transcript-correction stage is enabled
 - **THEN** `strict` mode shows per-timestamp comparison rows with original transcript on the left and corrected transcript on the right
 - **AND** the corrected side can fill in progressively while the correction stream is still running
+- **AND** `strict` comparison rows align original and corrected segments by their timestamp key instead of relying on array index position or arrival order
+- **AND** if one timestamp has not received its corrected segment yet, only that timestamp row shows a local waiting placeholder and later rows remain visible
 - **AND** long `strict` comparison lists render through a virtualized row surface so only the visible timestamp rows stay mounted
 - **AND** `rewrite` mode shows the rewritten transcript as a single streaming text surface instead of a per-segment diff
 - **AND** if correction is skipped or disabled, the tab explains that downstream notes generation is using the raw transcript directly

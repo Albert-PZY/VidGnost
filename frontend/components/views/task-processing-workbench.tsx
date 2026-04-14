@@ -2392,12 +2392,36 @@ const TranscriptCorrectionPanel = React.memo(function TranscriptCorrectionPanel(
 }: TranscriptCorrectionPanelProps) {
   const normalizedStatus = asString(status).trim().toLowerCase()
   const strictRows = React.useMemo(() => {
-    const rowCount = Math.max(sourceSegments.length, resultSegments.length)
-    return Array.from({ length: rowCount }, (_, index) => ({
-      key: `${sourceSegments[index]?.start ?? resultSegments[index]?.start ?? index}-${sourceSegments[index]?.end ?? resultSegments[index]?.end ?? index}-${index}`,
-      source: sourceSegments[index] ?? null,
-      result: resultSegments[index] ?? null,
-    }))
+    const sourceByKey = new Map<string, TranscriptSegment>()
+    const resultByKey = new Map<string, TranscriptSegment>()
+    const orderedKeys = new Set<string>()
+
+    for (const segment of sourceSegments) {
+      const key = buildTranscriptSegmentKey(segment)
+      sourceByKey.set(key, segment)
+      orderedKeys.add(key)
+    }
+
+    for (const segment of resultSegments) {
+      const key = buildTranscriptSegmentKey(segment)
+      resultByKey.set(key, segment)
+      orderedKeys.add(key)
+    }
+
+    return Array.from(orderedKeys)
+      .sort((leftKey, rightKey) => {
+        const left = sourceByKey.get(leftKey) ?? resultByKey.get(leftKey)
+        const right = sourceByKey.get(rightKey) ?? resultByKey.get(rightKey)
+        if (!left || !right) {
+          return left ? -1 : right ? 1 : 0
+        }
+        return left.start - right.start || left.end - right.end
+      })
+      .map((key) => ({
+        key,
+        source: sourceByKey.get(key) ?? null,
+        result: resultByKey.get(key) ?? null,
+      }))
   }, [resultSegments, sourceSegments])
   const effectiveMode =
     mode !== "unknown"
@@ -2462,7 +2486,7 @@ const TranscriptCorrectionPanel = React.memo(function TranscriptCorrectionPanel(
                       segment={row.result}
                       placeholder={
                         normalizedStatus === "running"
-                          ? "正在流式输出这一段的纠错结果..."
+                          ? "这一时间片的纠错结果还在生成中..."
                           : "当前时间片没有可展示的纠错文本。"
                       }
                       tone="accent"
