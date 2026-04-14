@@ -38,6 +38,7 @@ def _build_hit() -> RetrievalHit:
         source="audio+visual",
         source_set=["dense", "rerank"],
         image_path="frames/frame-0001.jpg",
+        visual_text="画面中展示了检索增强生成流程示意。",
         dense_score=0.92,
         sparse_score=0.81,
         rrf_score=0.88,
@@ -72,11 +73,10 @@ async def test_vqa_stream_chat_replaces_partial_answer_after_stream_fallback(
         storage_dir=settings.storage_dir,
     )
 
-    monkeypatch.setattr(
-        runtime,
-        "search",
-        lambda **kwargs: _build_search_bundle(str(kwargs.get("query_text", ""))),
-    )
+    async def fake_search(**kwargs: object) -> SearchBundle:
+        return _build_search_bundle(str(kwargs.get("query_text", "")))
+
+    monkeypatch.setattr(runtime, "search", fake_search)
 
     async def fake_stream_answer(**_: object):
         yield {

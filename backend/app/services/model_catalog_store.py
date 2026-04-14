@@ -9,6 +9,7 @@ import orjson
 
 from app.config import Settings
 from app.services.huggingface_model_downloader import HuggingFaceModelDownloader
+from app.services.ollama_client import OllamaClient, OllamaLocalModel
 from app.services.managed_model_registry import get_managed_model_spec, managed_model_target_dir, supports_managed_download
 
 
@@ -57,12 +58,12 @@ DEFAULT_MODELS: list[ModelEntry] = [
     {
         "id": "llm-default",
         "component": "llm",
-        "name": "OpenAI Compatible LLM",
-        "provider": "openai_compatible",
-        "model_id": "gpt-4.1-mini",
+        "name": "Ollama Qwen2.5 3B",
+        "provider": "ollama",
+        "model_id": "qwen2.5:3b",
         "path": "",
-        "status": "ready",
-        "quantization": "",
+        "status": "not_ready",
+        "quantization": "Q4_K_M",
         "load_profile": "balanced",
         "max_batch_size": 1,
         "rerank_top_n": 8,
@@ -77,11 +78,11 @@ DEFAULT_MODELS: list[ModelEntry] = [
     {
         "id": "embedding-default",
         "component": "embedding",
-        "name": "Paraphrase Multilingual MiniLM",
-        "provider": "local",
-        "model_id": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        "name": "Ollama BGE-M3",
+        "provider": "ollama",
+        "model_id": "bge-m3",
         "path": "",
-        "status": "ready",
+        "status": "not_ready",
         "quantization": "",
         "load_profile": "balanced",
         "max_batch_size": 16,
@@ -97,12 +98,12 @@ DEFAULT_MODELS: list[ModelEntry] = [
     {
         "id": "vlm-default",
         "component": "vlm",
-        "name": "Moondream2 4bit",
-        "provider": "local",
-        "model_id": "vikhyatk/moondream2",
+        "name": "Ollama Moondream",
+        "provider": "ollama",
+        "model_id": "moondream",
         "path": "",
-        "status": "loading",
-        "quantization": "4bit",
+        "status": "not_ready",
+        "quantization": "Q4_K_M",
         "load_profile": "memory_first",
         "max_batch_size": 1,
         "rerank_top_n": 8,
@@ -117,12 +118,12 @@ DEFAULT_MODELS: list[ModelEntry] = [
     {
         "id": "rerank-default",
         "component": "rerank",
-        "name": "BGE Reranker v2 m3",
-        "provider": "local",
-        "model_id": "BAAI/bge-reranker-v2-m3",
+        "name": "Ollama Qwen3 Reranker",
+        "provider": "ollama",
+        "model_id": "sam860/qwen3-reranker:0.6b-q8_0",
         "path": "",
-        "status": "ready",
-        "quantization": "",
+        "status": "not_ready",
+        "quantization": "Q8_0",
         "load_profile": "balanced",
         "max_batch_size": 8,
         "rerank_top_n": 8,
@@ -131,24 +132,31 @@ DEFAULT_MODELS: list[ModelEntry] = [
         "size_bytes": 0,
         "default_path": "",
         "is_installed": False,
-        "supports_managed_download": False,
+        "supports_managed_download": True,
         "last_check_at": "",
     },
 ]
 
 
 class ModelCatalogStore:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        *,
+        ollama_client: OllamaClient | None = None,
+    ) -> None:
         self._settings = settings
         self._path = Path(settings.storage_dir) / "models" / "catalog.json"
         self._hf_downloader = HuggingFaceModelDownloader(settings)
+        self._ollama_client = ollama_client or OllamaClient(settings)
         self._lock = asyncio.Lock()
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._ensure_file()
 
     async def list_models(self) -> list[ModelEntry]:
         async with self._lock:
-            return self._hydrate_models(self._read_sync())
+            ollama_models = await self._ollama_client.list_local_models()
+            return self._hydrate_models(self._read_sync(), ollama_models=ollama_models)
 
     async def update_model(self, model_id: str, updates: dict[str, Any]) -> list[ModelEntry]:
         async with self._lock:
@@ -172,7 +180,8 @@ class ModelCatalogStore:
                     target[key] = str(value).strip()
             target["last_check_at"] = datetime.now(timezone.utc).isoformat()
             self._write_sync(models)
-            return self._hydrate_models(models)
+            ollama_models = await self._ollama_client.list_local_models()
+            return self._hydrate_models(models, ollama_models=ollama_models)
 
     async def reload_models(self, model_id: str | None = None) -> list[ModelEntry]:
         async with self._lock:
@@ -183,7 +192,8 @@ class ModelCatalogStore:
                     continue
                 item["last_check_at"] = now
             self._write_sync(models)
-            return self._hydrate_models(models)
+            ollama_models = await self._ollama_client.list_local_models()
+            return self._hydrate_models(models, ollama_models=ollama_models)
 
     def get_rerank_top_n(self) -> int:
         models = self._read_sync()
@@ -198,6 +208,7 @@ class ModelCatalogStore:
         self._write_sync([dict(item) for item in DEFAULT_MODELS])
 
     def _read_sync(self) -> list[ModelEntry]:
+        defaults_by_id = {item["id"]: dict(item) for item in DEFAULT_MODELS}
         if not self._path.exists():
             return [dict(item) for item in DEFAULT_MODELS]
         try:
@@ -214,25 +225,34 @@ class ModelCatalogStore:
             component = str(item.get("component", "")).strip()
             if not model_id or component not in {"whisper", "llm", "embedding", "vlm", "rerank"}:
                 continue
+            default_item = defaults_by_id.get(model_id, {})
+            provider = str(item.get("provider", default_item.get("provider", "local"))).strip()
+            managed_spec = get_managed_model_spec(model_id)
+            default_remote_id = str(default_item.get("model_id", "")).strip()
+            persisted_remote_id = str(item.get("model_id", "")).strip()
+            if managed_spec is not None and managed_spec.backend == "ollama":
+                provider = "ollama"
+                if not persisted_remote_id or persisted_remote_id == _legacy_model_id_for(model_id):
+                    persisted_remote_id = default_remote_id
             normalized.append(
                 {
                     "id": model_id,
                     "component": component,
-                    "name": str(item.get("name", model_id)),
-                    "provider": str(item.get("provider", "local")),
-                    "model_id": str(item.get("model_id", "")),
+                    "name": str(item.get("name", default_item.get("name", model_id))),
+                    "provider": provider,
+                    "model_id": persisted_remote_id or default_remote_id,
                     "path": str(item.get("path", "")),
-                    "status": str(item.get("status", "ready")),
-                    "quantization": str(item.get("quantization", "")),
-                    "load_profile": str(item.get("load_profile", "balanced")),
-                    "max_batch_size": max(1, min(64, int(item.get("max_batch_size", 1) or 1))),
-                    "rerank_top_n": max(1, min(20, int(item.get("rerank_top_n", 8) or 8))),
-                    "frame_interval_seconds": max(1, min(600, int(item.get("frame_interval_seconds", 10) or 10))),
+                    "status": str(item.get("status", default_item.get("status", "ready"))),
+                    "quantization": str(item.get("quantization", default_item.get("quantization", ""))),
+                    "load_profile": str(item.get("load_profile", default_item.get("load_profile", "balanced"))),
+                    "max_batch_size": max(1, min(64, int(item.get("max_batch_size", default_item.get("max_batch_size", 1)) or 1))),
+                    "rerank_top_n": max(1, min(20, int(item.get("rerank_top_n", default_item.get("rerank_top_n", 8)) or 8))),
+                    "frame_interval_seconds": max(1, min(600, int(item.get("frame_interval_seconds", default_item.get("frame_interval_seconds", 10)) or 10))),
                     "enabled": bool(item.get("enabled", True)),
                     "size_bytes": max(0, int(item.get("size_bytes", 0) or 0)),
                     "default_path": str(item.get("default_path", "")),
                     "is_installed": bool(item.get("is_installed", False)),
-                    "supports_managed_download": bool(item.get("supports_managed_download", False)),
+                    "supports_managed_download": bool(item.get("supports_managed_download", default_item.get("supports_managed_download", False))),
                     "last_check_at": str(item.get("last_check_at", "")),
                 }
             )
@@ -247,10 +267,20 @@ class ModelCatalogStore:
         tmp_path.write_bytes(orjson.dumps(models, option=orjson.OPT_INDENT_2))
         tmp_path.replace(self._path)
 
-    def _hydrate_models(self, models: list[ModelEntry]) -> list[ModelEntry]:
-        return [self._hydrate_single_model(item) for item in models]
+    def _hydrate_models(
+        self,
+        models: list[ModelEntry],
+        *,
+        ollama_models: dict[str, OllamaLocalModel],
+    ) -> list[ModelEntry]:
+        return [self._hydrate_single_model(item, ollama_models=ollama_models) for item in models]
 
-    def _hydrate_single_model(self, item: ModelEntry) -> ModelEntry:
+    def _hydrate_single_model(
+        self,
+        item: ModelEntry,
+        *,
+        ollama_models: dict[str, OllamaLocalModel],
+    ) -> ModelEntry:
         hydrated = dict(item)
         component = str(item.get("component", "")).strip()
         provider = str(item.get("provider", "")).strip()
@@ -261,17 +291,12 @@ class ModelCatalogStore:
             self._hydrate_managed_local_model(hydrated, item, default_path)
             return hydrated
 
-        if provider == "openai_compatible":
-            hydrated["path"] = ""
-            hydrated["default_path"] = ""
-            hydrated["is_installed"] = bool(item.get("enabled", True))
-            hydrated["supports_managed_download"] = False
-            hydrated["size_bytes"] = 0
-            hydrated["status"] = "ready" if item.get("enabled", True) else "not_ready"
-            return hydrated
-
         if supports_managed_download(str(item.get("id", ""))):
-            self._hydrate_managed_local_model(hydrated, item, default_path)
+            spec = get_managed_model_spec(str(item.get("id", "")))
+            if spec is not None and spec.backend == "ollama":
+                self._hydrate_ollama_model(hydrated, item, default_path, ollama_models=ollama_models)
+            else:
+                self._hydrate_managed_local_model(hydrated, item, default_path)
             return hydrated
 
         resolved_path = self._resolve_local_model_path(raw_path) if raw_path else None
@@ -287,6 +312,8 @@ class ModelCatalogStore:
     def _resolve_default_path(self, item: ModelEntry) -> str:
         spec = get_managed_model_spec(str(item.get("id", "")))
         if spec is not None:
+            if spec.backend == "ollama":
+                return OllamaClient.model_uri(str(item.get("model_id", "")).strip() or spec.remote_id)
             return str(managed_model_target_dir(self._settings.storage_dir, spec))
         raw_path = str(item.get("path", "")).strip()
         if not raw_path:
@@ -317,6 +344,23 @@ class ModelCatalogStore:
         hydrated["size_bytes"] = self._measure_path_size(target_dir) if is_installed and target_dir is not None else 0
         hydrated["status"] = "ready" if is_installed else "not_ready"
 
+    def _hydrate_ollama_model(
+        self,
+        hydrated: ModelEntry,
+        item: ModelEntry,
+        default_path: str,
+        *,
+        ollama_models: dict[str, OllamaLocalModel],
+    ) -> None:
+        model_name = str(item.get("model_id", "")).strip()
+        local_model = ollama_models.get(model_name)
+        hydrated["path"] = OllamaClient.model_uri(model_name) if local_model is not None else ""
+        hydrated["default_path"] = default_path
+        hydrated["is_installed"] = local_model is not None
+        hydrated["supports_managed_download"] = True
+        hydrated["size_bytes"] = local_model.size_bytes if local_model is not None else 0
+        hydrated["status"] = "ready" if local_model is not None else "not_ready"
+
     def _measure_path_size(self, target: Path) -> int:
         if target.is_file():
             return max(0, int(target.stat().st_size))
@@ -327,3 +371,13 @@ class ModelCatalogStore:
             if file_path.is_file():
                 total += max(0, int(file_path.stat().st_size))
         return total
+
+
+def _legacy_model_id_for(model_id: str) -> str:
+    legacy = {
+        "llm-default": "gpt-4.1-mini",
+        "embedding-default": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+        "vlm-default": "vikhyatk/moondream2",
+        "rerank-default": "BAAI/bge-reranker-v2-m3",
+    }
+    return legacy.get(model_id, "")

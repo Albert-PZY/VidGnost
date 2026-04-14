@@ -105,6 +105,27 @@ The system SHALL expose `/config/models` and related model-management APIs with 
 - **WHEN** frontend requests `/config/models`
 - **THEN** backend returns each model entry with `default_path`, `path`, `is_installed`, `supports_managed_download`, and optional `download` status
 
+### Requirement: Managed local model catalog SHALL use Ollama for non-Whisper components
+The system SHALL treat `llm-default`, `embedding-default`, `vlm-default`, and `rerank-default` as Ollama-managed local models, while keeping `whisper-default` on the existing Whisper runtime path.
+
+#### Scenario: Load Ollama-backed model entries
+- **WHEN** frontend requests `/config/models`
+- **THEN** `llm-default`, `embedding-default`, `vlm-default`, and `rerank-default` return `provider=ollama`
+- **AND** installed entries expose `path` and `default_path` using the `ollama://<model_id>` form
+- **AND** backend derives `is_installed`, `size_bytes`, and readiness from the local Ollama tags state
+- **AND** `whisper-default` continues to report install state from the managed local runtime directory
+
+#### Scenario: Start managed model download for Ollama-backed entries
+- **WHEN** frontend requests `/config/models/{model_id}/download` for `llm-default`, `embedding-default`, `vlm-default`, or `rerank-default`
+- **THEN** backend starts `Ollama pull` for the configured managed model id
+- **AND** download progress is merged back into subsequent `/config/models` responses
+- **AND** completion marks the entry ready without copying model weights into `backend/storage/model-hub`
+
+#### Scenario: Persist local Ollama-compatible LLM config without explicit secret input
+- **WHEN** frontend saves `/config/llm` with `base_url=http://127.0.0.1:11434/v1` or `http://localhost:11434/v1` and leaves `api_key` empty
+- **THEN** backend normalizes the stored LLM API key to a non-empty local placeholder value
+- **AND** subsequent Stage-D generation requests can use the local Ollama OpenAI-compatible endpoint without requiring the user to re-enter a key
+
 #### Scenario: Configure VLM frame sampling interval from settings
 - **WHEN** frontend loads or updates the `vlm-default` model entry through `/config/models`
 - **THEN** backend exposes `frame_interval_seconds` as an integer configuration field

@@ -17,6 +17,8 @@ from app.services.llm_config_store import LLMConfigStore
 from app.services.llm_connectivity import validate_openai_compat_model_config
 from app.services.model_catalog_store import ModelCatalogStore
 from app.services.naming import generate_time_key
+from app.services.ollama_client import OllamaClient
+from app.services.vqa_model_runtime import VQAModelRuntime
 from app.services.whisper_gpu_runtime_service import WhisperGpuRuntimeService
 
 StepStatus = Literal["pending", "running", "passed", "warning", "failed"]
@@ -62,11 +64,18 @@ class SelfCheckService:
         settings: Settings,
         event_bus: EventBus,
         whisper_gpu_runtime_service: WhisperGpuRuntimeService,
+        model_catalog_store: ModelCatalogStore | None = None,
+        ollama_client: OllamaClient | None = None,
     ) -> None:
         self._settings = settings
         self._event_bus = event_bus
         self._llm_config_store = LLMConfigStore(settings)
-        self._model_catalog_store = ModelCatalogStore(settings)
+        self._ollama_client = ollama_client or OllamaClient(settings)
+        self._model_catalog_store = model_catalog_store or ModelCatalogStore(settings, ollama_client=self._ollama_client)
+        self._vqa_model_runtime = VQAModelRuntime(
+            model_catalog_store=self._model_catalog_store,
+            ollama_client=self._ollama_client,
+        )
         self._whisper_gpu_runtime_service = whisper_gpu_runtime_service
         self._sessions: dict[str, SelfCheckSession] = {}
         self._max_session_cache = _MAX_SELF_CHECK_SESSION_CACHE
@@ -280,6 +289,7 @@ class SelfCheckService:
             _SelfCheckItem("llm", "LLM 模型", self._check_llm),
             _SelfCheckItem("embedding", "嵌入模型", self._check_embedding),
             _SelfCheckItem("vlm", "VLM 模型", self._check_vlm),
+            _SelfCheckItem("rerank", "重排序模型", self._check_rerank),
             _SelfCheckItem("chromadb", "ChromaDB", self._check_chromadb),
             _SelfCheckItem("storage", "存储空间", self._check_storage),
             _SelfCheckItem("ffmpeg", "FFmpeg", self._check_ffmpeg),
@@ -392,10 +402,10 @@ class SelfCheckService:
         if not api_key:
             return SelfCheckOutcome(
                 status="warning",
-                message="LLM API Key 未配置",
+                message="LLM 服务凭据未配置",
                 details=details,
                 auto_fixable=True,
-                manual_action="在设置中心填写可用的 LLM API Key 后重新执行系统自检。",
+                manual_action="在设置中心检查本地 Ollama 或其它兼容服务配置后重新执行系统自检。",
             )
 
         validation = validate_openai_compat_model_config(
@@ -409,67 +419,85 @@ class SelfCheckService:
         if validation.ok:
             return SelfCheckOutcome(
                 status="passed",
-                message="LLM 在线 API 连通正常",
+                message="LLM 服务连通正常",
                 details=details,
             )
         if validation.connectivity_ok and not validation.model_ok:
             return SelfCheckOutcome(
                 status="failed",
-                message="LLM 在线 API 模型配置无效",
+                message="LLM 模型配置无效",
                 details=details,
                 manual_action="检查模型名是否存在于远端模型列表中，并确认当前配置与服务端返回一致。",
             )
         return SelfCheckOutcome(
             status="failed",
-            message="LLM 在线 API 连通失败",
+            message="LLM 服务连通失败",
             details=details,
             manual_action="检查 Base URL、API Key、网络连通性和鉴权配置后重新执行系统自检。",
         )
 
     async def _check_embedding(self) -> SelfCheckOutcome:
-        return SelfCheckOutcome(
-            status="passed",
-            message="Embedding 模型按配置可加载",
-            details={"默认模型": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"},
-        )
+        return await self._probe_ollama_model("embedding-default", self._vqa_model_runtime.probe_embedding)
 
     async def _check_vlm(self) -> SelfCheckOutcome:
+        return await self._probe_ollama_model("vlm-default", self._vqa_model_runtime.probe_vlm)
+
+    async def _check_rerank(self) -> SelfCheckOutcome:
+        return await self._probe_ollama_model("rerank-default", self._vqa_model_runtime.probe_rerank)
+
+    async def _probe_ollama_model(
+        self,
+        model_id: str,
+        probe,
+    ) -> SelfCheckOutcome:
         models = await self._model_catalog_store.list_models()
-        model = next((item for item in models if str(item.get("id", "")) == "vlm-default"), None)
+        model = next((item for item in models if str(item.get("id", "")) == model_id), None)
         if model is None:
             return SelfCheckOutcome(
                 status="warning",
-                message="VLM 模型配置缺失",
-                details={"默认模型": "vikhyatk/moondream2"},
-                manual_action="检查模型目录配置并刷新模型状态。",
+                message=f"{model_id} 配置缺失",
+                details={"endpoint": self._ollama_client.base_url},
+                manual_action="检查模型配置并刷新状态。",
             )
 
-        default_path = str(model.get("default_path", "")).strip()
-        current_path = str(model.get("path", "")).strip() or default_path or "未就绪"
         details = {
-            "默认模型": str(model.get("model_id", "")).strip() or str(model.get("name", "")).strip() or "未配置",
-            "默认目录": default_path or "未配置",
-            "当前路径": current_path,
+            "模型": str(model.get("model_id", "")).strip() or model_id,
+            "提供方": str(model.get("provider", "")).strip() or "unknown",
+            "当前路径": str(model.get("path", "")).strip() or str(model.get("default_path", "")).strip() or "未就绪",
+            "endpoint": self._ollama_client.base_url,
             "加载策略": self._describe_load_profile(str(model.get("load_profile", "")).strip()),
             "量化": str(model.get("quantization", "")).strip() or "未配置",
         }
-
         if not bool(model.get("enabled", True)):
             return SelfCheckOutcome(
                 status="warning",
-                message="VLM 模型已停用",
+                message=f"{model.get('name', model_id)} 已停用",
                 details=details,
-                manual_action="在模型配置中重新启用视觉语言模型。",
+                manual_action="在模型配置中重新启用该模型。",
             )
-
-        if bool(model.get("is_installed", False)):
-            return SelfCheckOutcome(status="passed", message="VLM 模型已就绪", details=details)
-
+        if not bool(model.get("is_installed", False)):
+            return SelfCheckOutcome(
+                status="warning",
+                message=f"{model.get('name', model_id)} 尚未通过 Ollama 拉取",
+                details=details,
+                manual_action="确认 Ollama 服务正在运行，并在模型配置中执行拉取。",
+            )
+        try:
+            result = await probe()
+        except Exception as exc:  # noqa: BLE001
+            details["错误"] = str(exc)
+            return SelfCheckOutcome(
+                status="failed",
+                message=f"{model.get('name', model_id)} 推理校验失败",
+                details=details,
+                manual_action="检查本地 Ollama 服务、模型拉取状态和模型名配置后重试。",
+            )
+        details.update(result.details)
         return SelfCheckOutcome(
-            status="warning",
-            message="VLM 模型未就绪，将在需要时自动准备",
+            status="passed" if result.ready else "failed",
+            message=result.message,
             details=details,
-            manual_action="检查模型目录或在模型配置中刷新检测状态。",
+            manual_action="" if result.ready else "检查本地 Ollama 服务与模型状态后重试。",
         )
 
     async def _check_chromadb(self) -> SelfCheckOutcome:

@@ -387,10 +387,10 @@
 | 角色 | 默认模型 | 可选模型 | 资源建议 | 选型理由 |
 |---|---|---|---|---|
 | ASR | `faster-whisper small` | `faster-whisper medium` | CPU 优先，显存占用低 | 语速与准确率平衡，适配本地转写 |
-| Embedding | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | `BAAI/bge-m3` | 384 维优先，索引体积小 | 多语覆盖广，适合中英混合语料 |
-| Rerank | `BAAI/bge-reranker-v2-m3` | `jinaai/jina-reranker-v2-base-multilingual` | CPU/GPU 均可，按批处理 | 提升 Top-K 精度，降低误召回 |
-| VLM | `vikhyatk/moondream2`（4bit） | `Qwen2-VL-7B-Instruct`（量化） | 默认 4bit，小显存优先 | 4GB 显存可运行，画面语义补充稳定 |
-| LLM（在线） | `gpt-4.1-mini`（OpenAI-compatible） | `qwen3.5-flash` 等兼容模型 | 走 API，降低本地压力 | 回答质量与延迟平衡，便于流式输出 |
+| Embedding | `bge-m3`（Ollama） | 其它可用 Ollama embedding 模型 | 本地拉取，索引体积与语义覆盖平衡 | 统一走 Ollama，减少本地 Python 推理依赖 |
+| Rerank | `sam860/qwen3-reranker:0.6b-q8_0`（Ollama） | 其它可用 Ollama rerank 模型 | 小模型优先，兼顾本地稳定性 | 提升 Top-K 精度，保持 4GB 显存设备可落地 |
+| VLM | `moondream`（Ollama） | 其它可用 Ollama vision 模型 | 轻量视觉理解优先 | 抽帧补充画面语义，避免本地 `transformers` OOM |
+| LLM（默认本地） | `qwen2.5:3b`（Ollama `/v1`） | 其它 OpenAI-compatible / Ollama 模型 | 本地优先，仍保留兼容远端 API 能力 | 统一走 OpenAI-compatible 调用链，兼顾本地可用性与流式输出 |
 
 ## 10.3 设置中心最小配置项
 
@@ -412,7 +412,7 @@
 
 ```toml
 [semantic]
-model_id = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+model_id = "bge-m3"
 query_prefix = ""
 document_prefix = ""
 
@@ -433,9 +433,9 @@ max_images_per_answer = 3
 
 [llm]
 enabled = true
-provider = "openai_compatible"
-base_url = "https://api.openai.com/v1"
-model = "gpt-4.1-mini"
+provider = "ollama"
+base_url = "http://127.0.0.1:11434/v1"
+model = "qwen2.5:3b"
 timeout_seconds = 60
 stream = true
 ```

@@ -12,7 +12,9 @@ from app.schemas import WorkflowType
 from app.services.llm_connectivity import validate_openai_compat_model_config
 from app.services.llm_config_store import LLMConfigStore
 from app.services.model_catalog_store import ModelCatalogStore
+from app.services.ollama_client import OllamaClient
 from app.services.runtime_config_store import RuntimeConfigStore
+from app.services.vqa_model_runtime import VQAModelRuntime
 from app.services.whisper_gpu_runtime_service import WhisperGpuRuntimeService
 
 PreflightStage = Literal["full_task", "stage_d_retry"]
@@ -29,6 +31,11 @@ class TaskPreflightService:
     runtime_config_store: RuntimeConfigStore
     model_catalog_store: ModelCatalogStore
     whisper_gpu_runtime_service: WhisperGpuRuntimeService
+    ollama_client: OllamaClient | None = None
+
+    def __post_init__(self) -> None:
+        if self.ollama_client is None:
+            self.ollama_client = OllamaClient(self.settings)
 
     async def assert_ready_for_analysis(
         self,
@@ -40,6 +47,10 @@ class TaskPreflightService:
             self.llm_config_store.get(),
             self.runtime_config_store.get_whisper(),
             self.model_catalog_store.list_models(),
+        )
+        vqa_model_runtime = VQAModelRuntime(
+            model_catalog_store=self.model_catalog_store,
+            ollama_client=self.ollama_client,
         )
 
         self._assert_storage_capacity()
@@ -54,6 +65,8 @@ class TaskPreflightService:
                 whisper_gpu_status,
             )
         self._assert_required_models_ready(workflow=workflow, stage=stage, models=models)
+        if workflow == "vqa":
+            await self._assert_vqa_runtime_ready(vqa_model_runtime)
 
     def _assert_storage_capacity(self) -> None:
         storage_dir = Path(self.settings.storage_dir)
@@ -144,9 +157,11 @@ class TaskPreflightService:
         stage: PreflightStage,
         models: list[dict[str, object]],
     ) -> None:
-        _ = workflow
         models_by_id = {str(item.get("id", "")).strip(): item for item in models}
-        for model_id in _required_model_ids(stage):
+        required_model_ids = list(_required_model_ids(stage))
+        if workflow == "vqa" and stage != "stage_d_retry":
+            required_model_ids.extend(["embedding-default", "vlm-default", "rerank-default"])
+        for model_id in required_model_ids:
             model = models_by_id.get(model_id)
             if model is None:
                 raise AppError.conflict(
@@ -180,6 +195,29 @@ class TaskPreflightService:
                 f"运行前检查失败：模型“{model_name}”尚未就绪。",
                 code="TASK_PRECHECK_MODEL_NOT_READY",
                 hint=hint,
+            )
+
+    async def _assert_vqa_runtime_ready(self, vqa_model_runtime: VQAModelRuntime) -> None:
+        probes = [
+            ("embedding", vqa_model_runtime.probe_embedding),
+            ("vlm", vqa_model_runtime.probe_vlm),
+            ("rerank", vqa_model_runtime.probe_rerank),
+        ]
+        for component, probe in probes:
+            try:
+                result = await probe()
+            except Exception as exc:  # noqa: BLE001
+                raise AppError.conflict(
+                    f"运行前检查失败：{component} 模型最小推理校验未通过。",
+                    code="TASK_PRECHECK_MODEL_RUNTIME_INVALID",
+                    hint=f"请检查 Ollama 服务和对应模型拉取状态。详细原因：{exc}",
+                ) from exc
+            if result.ready:
+                continue
+            raise AppError.conflict(
+                f"运行前检查失败：{component} 模型最小推理校验未通过。",
+                code="TASK_PRECHECK_MODEL_RUNTIME_INVALID",
+                hint=f"请检查 Ollama 服务和对应模型拉取状态。详细原因：{result.message}",
             )
 
 

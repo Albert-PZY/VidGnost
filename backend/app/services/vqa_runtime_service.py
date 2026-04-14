@@ -5,9 +5,11 @@ from typing import Any, AsyncIterator
 
 from app.services.llm_config_store import LLMConfigStore
 from app.services.model_catalog_store import ModelCatalogStore
+from app.services.ollama_client import OllamaClient
 from app.services.task_store import TaskStore
 from app.services.vqa_chat_service import ChatResult, VQAChatService
-from app.services.vqa_retriever import VQAHybridRetriever
+from app.services.vqa_model_runtime import VQAModelRuntime
+from app.services.vqa_ollama_retriever import VQAOllamaRetriever
 from app.services.vqa_trace_store import VQATraceStore
 from app.services.vqa_types import SearchResult
 
@@ -31,18 +33,31 @@ class VQARuntimeService:
         *,
         task_store: TaskStore,
         llm_config_store: LLMConfigStore,
-        model_catalog_store: ModelCatalogStore,
+        model_catalog_store: ModelCatalogStore | None = None,
+        model_runtime: VQAModelRuntime | None = None,
         storage_dir: str,
     ) -> None:
-        self._retriever = VQAHybridRetriever(task_store=task_store, storage_dir=storage_dir)
+        resolved_model_catalog_store = model_catalog_store or ModelCatalogStore(
+            llm_config_store._settings,  # type: ignore[attr-defined]
+            ollama_client=OllamaClient(llm_config_store._settings),  # type: ignore[attr-defined]
+        )
+        resolved_model_runtime = model_runtime or VQAModelRuntime(
+            model_catalog_store=resolved_model_catalog_store,
+            ollama_client=OllamaClient(llm_config_store._settings),  # type: ignore[attr-defined]
+        )
+        self._retriever = VQAOllamaRetriever(
+            task_store=task_store,
+            storage_dir=storage_dir,
+            model_runtime=resolved_model_runtime,
+        )
         self._chat = VQAChatService(llm_config_store=llm_config_store)
-        self._model_catalog_store = model_catalog_store
+        self._model_catalog_store = resolved_model_catalog_store
         self._trace = VQATraceStore(log_dir=f"{storage_dir}/event-logs/traces")
 
     def read_trace(self, trace_id: str) -> list[dict[str, Any]]:
         return self._trace.read_trace(trace_id)
 
-    def search(
+    async def search(
         self,
         *,
         query_text: str,
@@ -70,7 +85,7 @@ class VQARuntimeService:
                 }
             },
         )
-        result = self._retriever.search(
+        result = await self._retriever.search(
             query_text=query_text,
             task_id=task_id,
             video_paths=video_paths,
@@ -102,7 +117,7 @@ class VQARuntimeService:
         video_paths: list[str] | None = None,
         top_k: int | None = None,
     ) -> AnalyzeBundle:
-        search_bundle = self.search(
+        search_bundle = await self.search(
             query_text=query_text,
             task_id=task_id,
             video_paths=video_paths,
@@ -138,7 +153,7 @@ class VQARuntimeService:
         top_k: int | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         yield {"type": "status", "status": "retrieving"}
-        search_bundle = self.search(
+        search_bundle = await self.search(
             query_text=query_text,
             task_id=task_id,
             video_paths=video_paths,

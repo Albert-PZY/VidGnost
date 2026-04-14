@@ -10,7 +10,7 @@ from app.config import Settings
 
 SUPPORTED_LLM_MODES = {"api"}
 SUPPORTED_LOAD_PROFILES = {"balanced", "memory_first"}
-DEFAULT_LOCAL_LLM_MODEL_ID = "Qwen/Qwen2.5-7B-Instruct"
+DEFAULT_LOCAL_LLM_MODEL_ID = "qwen2.5:3b"
 _LEGACY_MASK_PLACEHOLDERS = {"__SECRET_MASKED__", "********"}
 
 
@@ -44,12 +44,13 @@ class LLMConfigStore:
         async with self._lock:
             current = self._read_sync()
             resolved_api_key = _resolve_secret_update(payload.get("api_key"), current["api_key"])
+            resolved_base_url = str(payload.get("base_url", "")).strip() or self._settings.llm_base_url
             sanitized_file_payload: dict[str, object] = {
                 "mode": _normalize_llm_mode(payload.get("mode")),
                 "load_profile": _normalize_load_profile(payload.get("load_profile")),
                 "local_model_id": _normalize_local_model_id(payload.get("local_model_id")),
-                "api_key": resolved_api_key,
-                "base_url": str(payload.get("base_url", "")).strip() or self._settings.llm_base_url,
+                "api_key": _normalize_api_key(resolved_api_key, resolved_base_url, self._settings.llm_api_key),
+                "base_url": resolved_base_url,
                 "model": str(payload.get("model", "")).strip() or self._settings.llm_model,
                 "correction_mode": _normalize_correction_mode(payload.get("correction_mode")),
                 "correction_batch_size": _normalize_correction_batch_size(payload.get("correction_batch_size")),
@@ -78,14 +79,15 @@ class LLMConfigStore:
         return self._build_config(data=file_payload)
 
     def _build_config(self, *, data: dict[str, object]) -> LLMConfig:
-        safe_api_key = str(data.get("api_key", "")).strip()
+        base_url = str(data.get("base_url", "")).strip() or self._settings.llm_base_url
+        safe_api_key = _normalize_api_key(str(data.get("api_key", "")).strip(), base_url, self._settings.llm_api_key)
         return {
             "mode": _normalize_llm_mode(data.get("mode", "api")),
             "load_profile": _normalize_load_profile(data.get("load_profile", "balanced")),
             "local_model_id": _normalize_local_model_id(data.get("local_model_id", self._settings.llm_local_model_id)),
             "api_key": safe_api_key,
             "api_key_configured": bool(safe_api_key),
-            "base_url": str(data.get("base_url", "")).strip() or self._settings.llm_base_url,
+            "base_url": base_url,
             "model": str(data.get("model", "")).strip() or self._settings.llm_model,
             "correction_mode": _normalize_correction_mode(data.get("correction_mode", self._settings.llm_correction_mode)),
             "correction_batch_size": _normalize_correction_batch_size(
@@ -164,3 +166,13 @@ def _normalize_load_profile(raw: object) -> str:
     if candidate in SUPPORTED_LOAD_PROFILES:
         return candidate
     return "balanced"
+
+
+def _normalize_api_key(raw: object, base_url: str, default_api_key: str) -> str:
+    candidate = str(raw or "").strip()
+    if candidate:
+        return candidate
+    normalized_base_url = str(base_url).strip().lower()
+    if normalized_base_url.startswith("http://127.0.0.1:11434") or normalized_base_url.startswith("http://localhost:11434"):
+        return str(default_api_key or "ollama").strip() or "ollama"
+    return ""

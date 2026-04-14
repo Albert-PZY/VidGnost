@@ -156,11 +156,6 @@ async def test_generate_fails_when_all_llm_paths_unavailable(tmp_path: Path) -> 
         llm_config_store=_DummyLLMConfigStore(),
         prompt_template_store=_DummyPromptTemplateStore(),
     )
-
-    async def _raise_local(*args, **kwargs) -> str:  # type: ignore[no-untyped-def]
-        raise RuntimeError("local unavailable")
-
-    service._chat_markdown_once_local = _raise_local  # type: ignore[method-assign]
     service._build_client = lambda _config: None  # type: ignore[method-assign]
 
     with pytest.raises(RuntimeError, match="LLM_ALL_UNAVAILABLE"):
@@ -172,25 +167,25 @@ async def test_generate_fails_when_all_llm_paths_unavailable(tmp_path: Path) -> 
 
 
 @pytest.mark.asyncio
-async def test_generate_can_fallback_from_api_to_local(tmp_path: Path) -> None:
+async def test_generate_uses_api_runtime_when_client_available(tmp_path: Path) -> None:
     service = LLMService(
         settings=_build_settings(tmp_path),
         llm_config_store=_DummyLLMConfigStore(),
         prompt_template_store=_DummyPromptTemplateStore(),
     )
 
-    async def _local_response(*args, **kwargs) -> str:  # type: ignore[no-untyped-def]
+    async def _stream_response(*args, **kwargs) -> str:  # type: ignore[no-untyped-def]
         if kwargs.get("instruction") == "summary prompt":
             return "## summary"
         return "# mindmap"
 
-    service._chat_markdown_once_local = _local_response  # type: ignore[method-assign]
-    service._build_client = lambda _config: None  # type: ignore[method-assign]
+    service._chat_markdown_stream = _stream_response  # type: ignore[method-assign]
+    service._build_client = lambda _config: object()  # type: ignore[method-assign]
 
     bundle = await service.generate(
         title="demo",
         transcript_text="测试文本",
-        llm_config_override={"mode": "api", "api_key": ""},
+        llm_config_override={"mode": "api", "api_key": "ollama"},
     )
     assert bundle.summary_markdown == "## summary"
     assert bundle.mindmap_markdown == "# mindmap"
@@ -204,7 +199,7 @@ async def test_generate_replaces_mermaid_block_with_image_markdown(tmp_path: Pat
         prompt_template_store=_DummyPromptTemplateStore(),
     )
 
-    async def _local_response(*args, **kwargs) -> str:  # type: ignore[no-untyped-def]
+    async def _stream_response(*args, **kwargs) -> str:  # type: ignore[no-untyped-def]
         if kwargs.get("instruction") == "summary prompt":
             return "## 笔记\n\n```mermaid\nflowchart TD\nA-->B\n```"
         return "# mindmap"
@@ -212,14 +207,14 @@ async def test_generate_replaces_mermaid_block_with_image_markdown(tmp_path: Pat
     async def _render_ok(_code: str) -> tuple[bytes | None, str]:
         return (b"\x89PNG\r\n\x1a\nfake", "")
 
-    service._chat_markdown_once_local = _local_response  # type: ignore[method-assign]
-    service._build_client = lambda _config: None  # type: ignore[method-assign]
+    service._chat_markdown_stream = _stream_response  # type: ignore[method-assign]
+    service._build_client = lambda _config: object()  # type: ignore[method-assign]
     service._render_mermaid_png_bytes = _render_ok  # type: ignore[method-assign]
 
     bundle = await service.generate(
         title="demo",
         transcript_text="测试文本",
-        llm_config_override={"mode": "local"},
+        llm_config_override={"mode": "api", "api_key": "ollama"},
     )
     assert "```mermaid" not in bundle.summary_markdown
     assert "![Mermaid 图示 1](notes-images/mermaid-001.png)" in bundle.summary_markdown

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import gc
 import re
 import shutil
 import subprocess
@@ -34,7 +33,6 @@ from app.services.prompt_template_store import PromptTemplateStore
 
 _JSON_CODE_FENCE_PATTERN = re.compile(r"```(?:json)?\s*([\s\S]*?)\s*```", flags=re.IGNORECASE)
 _MERMAID_CODE_FENCE_PATTERN = re.compile(r"```mermaid\s*([\s\S]*?)\s*```", flags=re.IGNORECASE)
-_LOCAL_LLM_MODES = {"local", "api"}
 _MAX_DIRECT_TRANSCRIPT_CHARS = 24000
 _SUMMARY_WINDOW_CHARS = 9000
 _SUMMARY_WINDOW_OVERLAP_CHARS = 1200
@@ -102,11 +100,8 @@ class LLMService:
         self._settings = settings
         self._config_store = llm_config_store
         self._prompt_template_store = prompt_template_store
-        self._local_model_cache_root = Path(settings.storage_dir) / "model-hub"
-        self._local_model_cache_root.mkdir(parents=True, exist_ok=True)
         self._project_root = Path(__file__).resolve().parents[3]
         self._frontend_dir = self._project_root / "frontend"
-        self._local_llm_runtime: dict[str, tuple[Any, Any]] = {}
         self._api_runtime = OpenAICompatRuntime(component="llm")
         self._api_disable_thinking_support: dict[str, bool] = {}
         self._mermaid_renderer_command: list[str] | None = None
@@ -126,167 +121,82 @@ class LLMService:
             raise ValueError("Empty transcript text")
 
         llm_config = dict(llm_config_override) if llm_config_override is not None else await self._config_store.get()
-        mode = _normalize_llm_mode(llm_config.get("mode"))
-        load_profile = _normalize_load_profile(llm_config.get("load_profile"))
         client = self._build_client(llm_config)
         model_name = str(llm_config.get("model", self._settings.llm_model)).strip() or self._settings.llm_model
-        local_model_id = str(llm_config.get("local_model_id", self._settings.llm_local_model_id)).strip() or self._settings.llm_local_model_id
         summary_prompt, mindmap_prompt = await self._prompt_template_store.resolve_selected_prompts()
         if self._settings.enable_mock_llm:
             raise RuntimeError("LLM_ALL_UNAVAILABLE: Mock summary generation is disabled.")
+        if client is None:
+            raise RuntimeError("LLM_ALL_UNAVAILABLE: api unavailable: api_key is empty or client init failed")
+
+        async def summary_realtime_delta(delta: str) -> None:
+            if on_summary_delta is None:
+                return
+            await on_summary_delta(delta, "realtime")
+
+        async def mindmap_realtime_delta(delta: str) -> None:
+            if on_mindmap_delta is None:
+                return
+            await on_mindmap_delta(delta, "realtime")
 
         try:
-            attempts: list[str] = []
-            summary: str | None = None
-            mindmap: str | None = None
-            resolved_llm_mode: Literal["api", "local"] | None = None
-            resolved_model_name = ""
-            resolved_client: AsyncOpenAI | None = None
-            prompt_preview_sent = False
-            preferred_modes: tuple[Literal["local", "api"], Literal["local", "api"]] = (
-                ("local", "api") if mode == "local" else ("api", "local")
+            summary_context = await self._build_summary_context(
+                title=title,
+                transcript_text=transcript_text,
+                llm_mode="api",
+                client=client,
+                model_name=model_name,
             )
-
-            for current_mode in preferred_modes:
-                if current_mode == "api":
-                    if client is None:
-                        attempts.append("api unavailable: api_key is empty or client init failed")
-                        continue
-                    try:
-                        async def summary_realtime_delta(delta: str) -> None:
-                            if on_summary_delta is None:
-                                return
-                            await on_summary_delta(delta, "realtime")
-
-                        async def mindmap_realtime_delta(delta: str) -> None:
-                            if on_mindmap_delta is None:
-                                return
-                            await on_mindmap_delta(delta, "realtime")
-
-                        summary_context = await self._build_summary_context(
-                            title=title,
-                            transcript_text=transcript_text,
-                            llm_mode="api",
-                            client=client,
-                            model_name=model_name,
-                        )
-                        summary_user_content = CHAT_TRANSCRIPT_USER_CONTENT_TEMPLATE.format(
-                            title=title,
-                            transcript=summary_context[:_MAX_DIRECT_TRANSCRIPT_CHARS],
-                        )
-                        if on_fusion_prompt_preview is not None and not prompt_preview_sent:
-                            await on_fusion_prompt_preview(
-                                self._build_fusion_prompt_preview(
-                                    llm_mode="api",
-                                    model_name=model_name,
-                                    instruction=summary_prompt,
-                                    user_content=summary_user_content,
-                                )
-                            )
-                            prompt_preview_sent = True
-                        summary, mindmap = await asyncio.gather(
-                            self._chat_markdown_stream(
-                                client=client,
-                                instruction=summary_prompt,
-                                title=title,
-                                transcript=summary_context,
-                                model_name=model_name,
-                                on_delta=summary_realtime_delta if on_summary_delta else None,
-                            ),
-                            self._chat_markdown_stream(
-                                client=client,
-                                instruction=mindmap_prompt,
-                                title=title,
-                                transcript=summary_context,
-                                model_name=model_name,
-                                on_delta=mindmap_realtime_delta if on_mindmap_delta else None,
-                            ),
-                        )
-                        resolved_llm_mode = "api"
-                        resolved_model_name = model_name
-                        resolved_client = client
-                        break
-                    except Exception as exc:  # noqa: BLE001
-                        attempts.append(f"api failed: {type(exc).__name__}: {exc}")
-                        continue
-
-                try:
-                    summary_context = await self._build_summary_context(
-                        title=title,
-                        transcript_text=transcript_text,
-                        llm_mode="local",
-                        client=None,
-                        model_name=local_model_id,
-                    )
-                    summary_user_content = CHAT_TRANSCRIPT_USER_CONTENT_TEMPLATE.format(
-                        title=title,
-                        transcript=summary_context[:_MAX_DIRECT_TRANSCRIPT_CHARS],
-                    )
-                    if on_fusion_prompt_preview is not None and not prompt_preview_sent:
-                        await on_fusion_prompt_preview(
-                            self._build_fusion_prompt_preview(
-                                llm_mode="local",
-                                model_name=local_model_id,
-                                instruction=summary_prompt,
-                                user_content=summary_user_content,
-                            )
-                        )
-                        prompt_preview_sent = True
-                    summary, mindmap = await asyncio.gather(
-                        self._chat_markdown_once_local(
-                            model_id=local_model_id,
-                            instruction=summary_prompt,
-                            user_content=summary_user_content,
-                            temperature=0.25,
-                        ),
-                        self._chat_markdown_once_local(
-                            model_id=local_model_id,
-                            instruction=mindmap_prompt,
-                            user_content=CHAT_TRANSCRIPT_USER_CONTENT_TEMPLATE.format(
-                                title=title,
-                                transcript=summary_context[:_MAX_DIRECT_TRANSCRIPT_CHARS],
-                            ),
-                            temperature=0.2,
-                        ),
-                    )
-                    if on_summary_delta and summary:
-                        await self._emit_compat_deltas(summary, on_summary_delta)
-                    if on_mindmap_delta and mindmap:
-                        await self._emit_compat_deltas(mindmap, on_mindmap_delta)
-                    resolved_llm_mode = "local"
-                    resolved_model_name = local_model_id
-                    resolved_client = None
-                    break
-                except Exception as exc:  # noqa: BLE001
-                    attempts.append(f"local failed: {type(exc).__name__}: {exc}")
-                    continue
-
-            if summary is None or mindmap is None:
-                reason = " | ".join(attempts).strip() or "no available llm runtime"
-                if len(reason) > 460:
-                    reason = f"{reason[:457]}..."
-                raise RuntimeError(f"LLM_ALL_UNAVAILABLE: {reason}")
-            if resolved_llm_mode is None:
-                raise RuntimeError("LLM_ALL_UNAVAILABLE: unresolved generation runtime")
-            structured_summary = _normalize_summary_markdown_structure(summary)
-            if structured_summary:
-                summary = structured_summary
-            summary, notes_image_assets = await self._replace_mermaid_with_images(
-                markdown=summary,
-                llm_mode=resolved_llm_mode,
-                client=resolved_client,
-                model_name=resolved_model_name,
+            summary_user_content = CHAT_TRANSCRIPT_USER_CONTENT_TEMPLATE.format(
+                title=title,
+                transcript=summary_context[:_MAX_DIRECT_TRANSCRIPT_CHARS],
             )
-            notes = self._compose_notes(title=title, summary=summary)
-            return SummaryBundle(
-                summary_markdown=summary,
-                mindmap_markdown=mindmap,
-                notes_markdown=notes,
-                notes_image_assets=notes_image_assets,
+            if on_fusion_prompt_preview is not None:
+                await on_fusion_prompt_preview(
+                    self._build_fusion_prompt_preview(
+                        llm_mode="api",
+                        model_name=model_name,
+                        instruction=summary_prompt,
+                        user_content=summary_user_content,
+                    )
+                )
+            summary, mindmap = await asyncio.gather(
+                self._chat_markdown_stream(
+                    client=client,
+                    instruction=summary_prompt,
+                    title=title,
+                    transcript=summary_context,
+                    model_name=model_name,
+                    on_delta=summary_realtime_delta if on_summary_delta else None,
+                ),
+                self._chat_markdown_stream(
+                    client=client,
+                    instruction=mindmap_prompt,
+                    title=title,
+                    transcript=summary_context,
+                    model_name=model_name,
+                    on_delta=mindmap_realtime_delta if on_mindmap_delta else None,
+                ),
             )
-        finally:
-            if mode == "local" and load_profile == "memory_first":
-                self.release_runtime_models()
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(f"LLM_ALL_UNAVAILABLE: api failed: {type(exc).__name__}: {exc}") from exc
+
+        structured_summary = _normalize_summary_markdown_structure(summary)
+        if structured_summary:
+            summary = structured_summary
+        summary, notes_image_assets = await self._replace_mermaid_with_images(
+            markdown=summary,
+            llm_mode="api",
+            client=client,
+            model_name=model_name,
+        )
+        notes = self._compose_notes(title=title, summary=summary)
+        return SummaryBundle(
+            summary_markdown=summary,
+            mindmap_markdown=mindmap,
+            notes_markdown=notes,
+            notes_image_assets=notes_image_assets,
+        )
 
     async def correct_transcript(
         self,
@@ -311,7 +221,6 @@ class LLMService:
 
         llm_config = dict(llm_config_override) if llm_config_override is not None else await self._config_store.get()
         mode = _normalize_correction_mode(llm_config.get("correction_mode"))
-        load_profile = _normalize_load_profile(llm_config.get("load_profile"))
         if mode == "off":
             return TranscriptCorrectionBundle(
                 mode="off",
@@ -342,11 +251,7 @@ class LLMService:
                 message="LLM API client unavailable, fallback to original transcript.",
             )
 
-        model_name = (
-            str(llm_config.get("local_model_id", self._settings.llm_local_model_id)).strip()
-            if llm_mode == "local"
-            else str(llm_config.get("model", self._settings.llm_model)).strip()
-        ) or self._settings.llm_model
+        model_name = str(llm_config.get("model", self._settings.llm_model)).strip() or self._settings.llm_model
         correction_timeout_seconds = _resolve_correction_timeout_seconds(
             mode=mode,
             base_timeout_seconds=self._settings.llm_timeout_seconds,
@@ -490,13 +395,9 @@ class LLMService:
                 message="Strict correction completed with timeline preserved.",
             )
         finally:
-            if llm_mode == "local" and load_profile == "memory_first":
-                self.release_runtime_models()
+            pass
 
     def _build_client(self, llm_config: dict) -> AsyncOpenAI | None:
-        mode = _normalize_llm_mode(llm_config.get("mode"))
-        if mode != "api":
-            return None
         api_key = llm_config.get("api_key", "").strip()
         if not api_key:
             return None
@@ -678,14 +579,6 @@ class LLMService:
         temperature: float,
         max_tokens: int | None = None,
     ) -> str:
-        if llm_mode == "local":
-            return await self._chat_markdown_once_local(
-                model_id=model_name,
-                instruction=instruction,
-                user_content=user_content,
-                temperature=temperature,
-                max_new_tokens=max_tokens,
-            )
         if client is None:
             raise RuntimeError("LLM API client unavailable in api mode")
         return await self._chat_markdown_once(
@@ -860,25 +753,16 @@ class LLMService:
                 title=title,
                 segments_payload=payload,
             )
-            if llm_mode == "local":
-                raw = await self._chat_markdown_once_local(
-                    model_id=model_name,
-                    instruction=STRICT_CORRECTION_PROMPT,
-                    user_content=user_content,
-                    temperature=0.0,
-                    max_new_tokens=720,
-                )
-            else:
-                if client is None:
-                    return None
-                raw = await self._chat_markdown_once(
-                    client=client,
-                    model_name=model_name,
-                    instruction=STRICT_CORRECTION_PROMPT,
-                    user_content=user_content,
-                    temperature=0.0,
-                    max_tokens=720,
-                )
+            if client is None:
+                return None
+            raw = await self._chat_markdown_once(
+                client=client,
+                model_name=model_name,
+                instruction=STRICT_CORRECTION_PROMPT,
+                user_content=user_content,
+                temperature=0.0,
+                max_tokens=720,
+            )
             expected_indices = list(range(batch_start, batch_end))
             parsed = _parse_strict_correction_response(raw, expected_indices)
             if parsed is None:
@@ -943,40 +827,31 @@ class LLMService:
             title=title,
             transcript_text=transcript_text[:28000],
         )
-        if llm_mode == "local":
-            rewritten = await self._chat_markdown_once_local(
-                model_id=model_name,
+        if client is None:
+            return ""
+
+        async def realtime_delta(delta: str) -> None:
+            if on_preview_delta is None:
+                return
+            await on_preview_delta(delta, "realtime")
+
+        if on_preview_delta is None:
+            rewritten = await self._chat_markdown_once(
+                client=client,
+                model_name=model_name,
                 instruction=REWRITE_TRANSCRIPT_PROMPT,
                 user_content=user_content,
                 temperature=0.2,
             )
-            if on_preview_delta and rewritten.strip():
-                await self._emit_compat_deltas(rewritten.strip(), on_preview_delta)
         else:
-            if client is None:
-                return ""
-            async def realtime_delta(delta: str) -> None:
-                if on_preview_delta is None:
-                    return
-                await on_preview_delta(delta, "realtime")
-
-            if on_preview_delta is None:
-                rewritten = await self._chat_markdown_once(
-                    client=client,
-                    model_name=model_name,
-                    instruction=REWRITE_TRANSCRIPT_PROMPT,
-                    user_content=user_content,
-                    temperature=0.2,
-                )
-            else:
-                rewritten = await self._chat_markdown_once_stream(
-                    client=client,
-                    model_name=model_name,
-                    instruction=REWRITE_TRANSCRIPT_PROMPT,
-                    user_content=user_content,
-                    temperature=0.2,
-                    on_delta=realtime_delta,
-                )
+            rewritten = await self._chat_markdown_once_stream(
+                client=client,
+                model_name=model_name,
+                instruction=REWRITE_TRANSCRIPT_PROMPT,
+                user_content=user_content,
+                temperature=0.2,
+                on_delta=realtime_delta,
+            )
         return rewritten.strip()
 
     async def _replace_mermaid_with_images(
@@ -1197,112 +1072,6 @@ class LLMService:
             return
         await callback(text, "compat")
 
-    async def _chat_markdown_once_local(
-        self,
-        model_id: str,
-        instruction: str,
-        user_content: str,
-        *,
-        temperature: float = 0.2,
-        max_new_tokens: int | None = None,
-    ) -> str:
-        return await asyncio.to_thread(
-            self._chat_markdown_once_local_sync,
-            model_id,
-            instruction,
-            user_content,
-            temperature,
-            max_new_tokens,
-        )
-
-    def _chat_markdown_once_local_sync(
-        self,
-        model_id: str,
-        instruction: str,
-        user_content: str,
-        temperature: float,
-        max_new_tokens: int | None,
-    ) -> str:
-        tokenizer, model = self._get_or_create_local_llm_runtime(model_id)
-        messages = [
-            {"role": "system", "content": instruction},
-            {"role": "user", "content": user_content},
-        ]
-        if hasattr(tokenizer, "apply_chat_template"):
-            try:
-                prompt = tokenizer.apply_chat_template(
-                    messages,
-                    tokenize=False,
-                    add_generation_prompt=True,
-                    enable_thinking=False,
-                )
-            except TypeError:
-                prompt = tokenizer.apply_chat_template(
-                    messages,
-                    tokenize=False,
-                    add_generation_prompt=True,
-                )
-        else:
-            prompt = f"[SYSTEM]\n{instruction}\n\n[USER]\n{user_content}\n\n[ASSISTANT]\n"
-        inputs = tokenizer(prompt, return_tensors="pt")
-        device = getattr(model, "device", None)
-        if device is not None:
-            inputs = {key: value.to(device) for key, value in inputs.items()}
-        safe_max_new_tokens = 1200
-        if isinstance(max_new_tokens, int) and max_new_tokens > 0:
-            safe_max_new_tokens = max(32, min(2048, max_new_tokens))
-        generate_kwargs: dict[str, Any] = {
-            "max_new_tokens": safe_max_new_tokens,
-        }
-        # Only pass sampling knobs when sampling is enabled; otherwise
-        # transformers may warn that temperature/top_p/top_k are ignored.
-        if temperature > 0.0:
-            generate_kwargs.update(
-                {
-                    "do_sample": True,
-                    "temperature": max(0.01, temperature),
-                    "top_p": 0.9,
-                }
-            )
-        generated = model.generate(
-            **inputs,
-            **generate_kwargs,
-        )
-        input_length = int(inputs["input_ids"].shape[-1])
-        output_tokens = generated[0][input_length:]
-        return tokenizer.decode(output_tokens, skip_special_tokens=True).strip()
-
-    def _get_or_create_local_llm_runtime(self, model_id: str) -> tuple[Any, Any]:
-        if model_id in self._local_llm_runtime:
-            return self._local_llm_runtime[model_id]
-
-        _ensure_torch_cuda_ready(component="LLM")
-        from transformers import AutoModelForCausalLM, AutoTokenizer
-
-        tokenizer = AutoTokenizer.from_pretrained(
-            model_id,
-            cache_dir=str(self._local_model_cache_root),
-            trust_remote_code=True,
-            local_files_only=True,
-        )
-        model = AutoModelForCausalLM.from_pretrained(
-            model_id,
-            cache_dir=str(self._local_model_cache_root),
-            trust_remote_code=True,
-            device_map="auto",
-            torch_dtype="auto",
-            local_files_only=True,
-        )
-        self._local_llm_runtime[model_id] = (tokenizer, model)
-        return tokenizer, model
-
-    def release_runtime_models(self) -> None:
-        if not self._local_llm_runtime:
-            return
-        self._local_llm_runtime.clear()
-        gc.collect()
-        _clear_torch_cuda_cache()
-
     @staticmethod
     def _compose_notes(title: str, summary: str) -> str:
         return (
@@ -1436,17 +1205,8 @@ def _resolve_correction_timeout_seconds(
 
 
 def _normalize_llm_mode(raw: object) -> Literal["api", "local"]:
-    candidate = str(raw).strip().lower()
-    if candidate in _LOCAL_LLM_MODES:
-        return candidate  # type: ignore[return-value]
-    return "local"
-
-
-def _normalize_load_profile(raw: object) -> Literal["balanced", "memory_first"]:
-    candidate = str(raw).strip().lower()
-    if candidate in {"balanced", "memory_first"}:
-        return candidate  # type: ignore[return-value]
-    return "balanced"
+    _ = raw
+    return "api"
 
 
 def _bounded_int(raw: object, *, fallback: int, minimum: int, maximum: int) -> int:
@@ -1674,45 +1434,3 @@ def _try_orjson_loads(raw: str) -> object | None:
         return orjson.loads(raw)
     except orjson.JSONDecodeError:
         return None
-
-
-def _clear_torch_cuda_cache() -> None:
-    try:
-        import torch
-    except Exception:  # noqa: BLE001
-        return
-    try:
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-    except Exception:  # noqa: BLE001
-        return
-
-
-def _ensure_torch_cuda_ready(*, component: str) -> None:
-    try:
-        import torch
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(
-            f"Local {component} runtime requires `torch`, but it is unavailable: {type(exc).__name__}: {exc}"
-        ) from exc
-
-    version_text = str(getattr(torch, "__version__", "")).strip().lower()
-    if "+cpu" in version_text:
-        raise RuntimeError(
-            f"Local {component} runtime requires CUDA-enabled torch, but current build is CPU-only (`{version_text}`)."
-        )
-    cuda_version = str(getattr(getattr(torch, "version", None), "cuda", "") or "").strip()
-    if not cuda_version:
-        raise RuntimeError(
-            f"Local {component} runtime requires CUDA-enabled torch, but `torch.version.cuda` is empty."
-        )
-    try:
-        cuda_available = bool(torch.cuda.is_available())
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(
-            f"Local {component} runtime requires CUDA, but `torch.cuda.is_available()` failed: {type(exc).__name__}: {exc}"
-        ) from exc
-    if not cuda_available:
-        raise RuntimeError(
-            f"Local {component} runtime requires CUDA, but no CUDA device is available in current runtime."
-        )

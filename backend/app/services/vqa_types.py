@@ -14,6 +14,7 @@ class EvidenceDocument:
     end: float
     source: str
     text: str
+    visual_text: str = ""
     image_path: str = ""
     language: str = "unknown"
     source_set: list[str] = field(default_factory=list)
@@ -31,6 +32,7 @@ class RetrievalHit:
     source: str
     source_set: list[str]
     image_path: str
+    visual_text: str = ""
     dense_score: float = 0.0
     sparse_score: float = 0.0
     rrf_score: float = 0.0
@@ -49,6 +51,7 @@ class RetrievalHit:
             "source": self.source,
             "source_set": list(self.source_set),
             "image_path": self.image_path,
+            "visual_text": self.visual_text,
             "dense_score": self.dense_score,
             "sparse_score": self.sparse_score,
             "rrf_score": self.rrf_score,
@@ -86,6 +89,7 @@ class Citation:
     end: float
     text: str
     image_path: str
+    visual_text: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -98,4 +102,5 @@ class Citation:
             "end": self.end,
             "text": self.text,
             "image_path": self.image_path,
+            "visual_text": self.visual_text,
         }

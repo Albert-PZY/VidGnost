@@ -48,7 +48,7 @@ async def search(
     runtime: VQARuntimeService = Depends(get_vqa_runtime),
 ) -> dict[str, object]:
     query_text = _resolve_query_text(payload.query_text, payload.question)
-    bundle = runtime.search(
+    bundle = await runtime.search(
         query_text=query_text,
         task_id=(payload.task_id or "").strip() or None,
         video_paths=payload.video_paths,

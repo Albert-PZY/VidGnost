@@ -80,35 +80,27 @@ class BlockingWhisperService:
         return None
 
 
-class CompletingHfDownloader:
+class CompletingOllamaClient:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
 
-    async def download_repo(
+    async def pull_model(
         self,
         *,
-        repo_id: str,
-        target_dir_name: str,
-        revision: str = "main",
-        required_files=None,
+        model: str,
         on_progress=None,
-        force_redownload: bool = False,
-    ):
+    ) -> None:
         self.calls.append(
             {
-                "repo_id": repo_id,
-                "target_dir_name": target_dir_name,
-                "revision": revision,
-                "required_files": required_files,
-                "force_redownload": force_redownload,
+                "model": model,
             }
         )
         if on_progress is not None:
             await on_progress(
                 {
                     "status": "downloading",
-                    "message": f"Downloading {repo_id}...",
-                    "current_file": "model.safetensors",
+                    "message": f"pulling {model}",
+                    "current_file": model,
                     "downloaded_bytes": 64,
                     "total_bytes": 128,
                     "percent": 50.0,
@@ -118,7 +110,7 @@ class CompletingHfDownloader:
             await on_progress(
                 {
                     "status": "completed",
-                    "message": f"{repo_id} downloaded and ready.",
+                    "message": f"{model} ready.",
                     "current_file": "",
                     "downloaded_bytes": 128,
                     "total_bytes": 128,
@@ -126,11 +118,6 @@ class CompletingHfDownloader:
                     "speed_bps": 256.0,
                 }
             )
-
-    def is_repo_ready(self, target_dir: Path, *, required_files=None) -> bool:
-        _ = target_dir
-        _ = required_files
-        return False
 
 
 def test_model_download_service_tracks_completion_and_force_flag(tmp_path: Path) -> None:
@@ -170,28 +157,27 @@ def test_model_download_service_cancels_running_download(tmp_path: Path) -> None
     asyncio.run(run())
 
 
-def test_model_download_service_uses_async_hf_downloader_for_non_whisper_models(tmp_path: Path) -> None:
+def test_model_download_service_uses_ollama_pull_for_non_whisper_models(tmp_path: Path) -> None:
     settings = _build_settings(tmp_path)
     whisper_service = CompletingWhisperService()
-    hf_downloader = CompletingHfDownloader()
+    ollama_client = CompletingOllamaClient()
     service = ModelDownloadService(
         settings,
         whisper_service=whisper_service,  # type: ignore[arg-type]
-        hf_downloader=hf_downloader,  # type: ignore[arg-type]
+        ollama_client=ollama_client,  # type: ignore[arg-type]
     )
 
     async def run() -> None:
         await service.start_download("embedding-default", force_redownload=True)
-        for _ in range(20):
+        for _ in range(40):
             snapshot = await service.get_snapshot("embedding-default")
             if snapshot["state"] == "completed":
                 break
             await asyncio.sleep(0.01)
         snapshot = await service.get_snapshot("embedding-default")
         assert snapshot["state"] == "completed"
-        assert hf_downloader.calls
-        assert hf_downloader.calls[0]["repo_id"] == "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-        assert hf_downloader.calls[0]["force_redownload"] is True
+        assert ollama_client.calls
+        assert ollama_client.calls[0]["model"] == "bge-m3"
         assert whisper_service.force_redownload_values == []
         await service.shutdown()
 

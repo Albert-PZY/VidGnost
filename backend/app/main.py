@@ -22,6 +22,7 @@ from app.services.llm_config_store import LLMConfigStore
 from app.services.model_catalog_store import ModelCatalogStore
 from app.services.model_download_service import ModelDownloadService
 from app.services.model_runtime_manager import ModelRuntimeManager
+from app.services.ollama_client import OllamaClient
 from app.services.prompt_template_store import PromptTemplateStore
 from app.services.resource_guard import ResourceGuard
 from app.services.runtime_metrics import RuntimeMetricsService
@@ -32,6 +33,7 @@ from app.services.task_preflight import TaskPreflightService
 from app.services.task_runner import TaskRunner
 from app.services.task_store import TaskStore
 from app.services.ui_settings_store import UISettingsStore
+from app.services.vqa_model_runtime import VQAModelRuntime
 from app.services.vqa_runtime_service import VQARuntimeService
 from app.services.whisper_gpu_runtime_service import WhisperGpuRuntimeService
 
@@ -65,9 +67,10 @@ async def lifespan(app: FastAPI):
     await llm_config_store.get()
     prompt_template_store = PromptTemplateStore(settings=settings)
     await prompt_template_store.get_bundle()
-    model_catalog_store = ModelCatalogStore(settings=settings)
+    ollama_client = OllamaClient(settings)
+    model_catalog_store = ModelCatalogStore(settings=settings, ollama_client=ollama_client)
     await model_catalog_store.list_models()
-    model_download_service = ModelDownloadService(settings=settings)
+    model_download_service = ModelDownloadService(settings=settings, ollama_client=ollama_client)
     ui_settings_store = UISettingsStore(settings=settings)
     await ui_settings_store.get()
     runtime_config_store = RuntimeConfigStore(settings)
@@ -90,6 +93,8 @@ async def lifespan(app: FastAPI):
         settings=settings,
         event_bus=event_bus,
         whisper_gpu_runtime_service=whisper_gpu_runtime_service,
+        model_catalog_store=model_catalog_store,
+        ollama_client=ollama_client,
     )
     runtime_metrics_service = RuntimeMetricsService()
     task_preflight_service = TaskPreflightService(
@@ -98,11 +103,17 @@ async def lifespan(app: FastAPI):
         runtime_config_store=runtime_config_store,
         model_catalog_store=model_catalog_store,
         whisper_gpu_runtime_service=whisper_gpu_runtime_service,
+        ollama_client=ollama_client,
+    )
+    vqa_model_runtime = VQAModelRuntime(
+        model_catalog_store=model_catalog_store,
+        ollama_client=ollama_client,
     )
     vqa_runtime = VQARuntimeService(
         task_store=task_store,
         llm_config_store=llm_config_store,
         model_catalog_store=model_catalog_store,
+        model_runtime=vqa_model_runtime,
         storage_dir=settings.storage_dir,
     )
     runner = TaskRunner(
@@ -124,6 +135,7 @@ async def lifespan(app: FastAPI):
     app.state.prompt_template_store = prompt_template_store
     app.state.model_catalog_store = model_catalog_store
     app.state.model_download_service = model_download_service
+    app.state.ollama_client = ollama_client
     app.state.ui_settings_store = ui_settings_store
     app.state.runtime_config_store = runtime_config_store
     app.state.whisper_gpu_runtime_service = whisper_gpu_runtime_service
@@ -132,6 +144,7 @@ async def lifespan(app: FastAPI):
     app.state.self_check_service = self_check_service
     app.state.runtime_metrics_service = runtime_metrics_service
     app.state.task_preflight_service = task_preflight_service
+    app.state.vqa_model_runtime = vqa_model_runtime
     app.state.vqa_runtime = vqa_runtime
     app.state.task_runner = runner
     recovered_task_ids = await runner.resume_incomplete_tasks()

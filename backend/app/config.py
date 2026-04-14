@@ -34,17 +34,18 @@ class Settings:
     task_history_max_items: int = 240
     task_artifact_budget_bytes: int = 2 * 1024 * 1024 * 1024
 
-    llm_api_key: str = ""
-    llm_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    llm_model: str = "qwen3.5-flash"
+    llm_api_key: str = "ollama"
+    llm_base_url: str = "http://127.0.0.1:11434/v1"
+    llm_model: str = "qwen2.5:3b"
     llm_mode: str = "local"
-    llm_local_model_id: str = "Qwen/Qwen2.5-7B-Instruct"
+    llm_local_model_id: str = "qwen2.5:3b"
     llm_timeout_seconds: int = 120
     llm_correction_mode: str = "strict"
     llm_correction_batch_size: int = 24
     llm_correction_overlap: int = 3
     llm_config_path: str = "./storage/model_config.json"
     runtime_config_path: str = "./storage/config.toml"
+    ollama_base_url: str = "http://127.0.0.1:11434"
     enable_mock_llm: bool = False
 
     allow_origins: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:6221,http://127.0.0.1:6221"

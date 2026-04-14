@@ -8,8 +8,9 @@ from pathlib import Path
 class ManagedModelSpec:
     model_id: str
     component: str
-    repo_id: str
-    target_dir_name: str
+    backend: str
+    remote_id: str
+    target_dir_name: str = ""
     revision: str = "main"
     required_files: tuple[str, ...] | None = None
 
@@ -18,7 +19,8 @@ MANAGED_MODEL_SPECS: dict[str, ManagedModelSpec] = {
     "whisper-default": ManagedModelSpec(
         model_id="whisper-default",
         component="whisper",
-        repo_id="Systran/faster-whisper-small",
+        backend="whisper",
+        remote_id="Systran/faster-whisper-small",
         target_dir_name="faster-whisper-small",
         required_files=(
             "config.json",
@@ -30,20 +32,26 @@ MANAGED_MODEL_SPECS: dict[str, ManagedModelSpec] = {
     "embedding-default": ManagedModelSpec(
         model_id="embedding-default",
         component="embedding",
-        repo_id="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-        target_dir_name="sentence-transformers--paraphrase-multilingual-MiniLM-L12-v2",
+        backend="ollama",
+        remote_id="bge-m3",
     ),
     "vlm-default": ManagedModelSpec(
         model_id="vlm-default",
         component="vlm",
-        repo_id="vikhyatk/moondream2",
-        target_dir_name="vikhyatk--moondream2",
+        backend="ollama",
+        remote_id="moondream",
     ),
     "rerank-default": ManagedModelSpec(
         model_id="rerank-default",
         component="rerank",
-        repo_id="BAAI/bge-reranker-v2-m3",
-        target_dir_name="BAAI--bge-reranker-v2-m3",
+        backend="ollama",
+        remote_id="sam860/qwen3-reranker:0.6b-q8_0",
+    ),
+    "llm-default": ManagedModelSpec(
+        model_id="llm-default",
+        component="llm",
+        backend="ollama",
+        remote_id="qwen2.5:3b",
     ),
 }
 

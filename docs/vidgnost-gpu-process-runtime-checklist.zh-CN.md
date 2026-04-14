@@ -44,7 +44,7 @@
 - 还未真正接入主分析阶段的 embedding GPU 推理
 - 还未真正接入主分析阶段的 rerank GPU 推理
 - 还未真正接入主分析阶段的 vlm GPU 推理
-- 需要 `torch/transformers` 完整运行时依赖与配置入口配套的本地 LLM GPU 正式交付能力
+- 需要基于 `Ollama` 管理的本地 LLM / Embedding / Rerank / VLM GPU 正式交付能力，并与当前 worker 调度框架形成统一边界
 
 这些能力后续会复用本次建立的 worker 协议与 GPU 调度框架接入，但不把尚未成熟的路径硬塞进这轮执行范围。
 

@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 from typing import TypedDict
 
 from app.config import Settings
-from app.services.huggingface_model_downloader import HuggingFaceModelDownloader
 from app.services.managed_model_registry import get_managed_model_spec, supports_managed_download
+from app.services.ollama_client import OllamaClient
 from app.services.transcription import WhisperService
 
 
@@ -52,11 +52,11 @@ class ModelDownloadService:
         self,
         settings: Settings,
         whisper_service: WhisperService | None = None,
-        hf_downloader: HuggingFaceModelDownloader | None = None,
+        ollama_client: OllamaClient | None = None,
     ) -> None:
         self._settings = settings
         self._whisper_service = whisper_service or WhisperService(settings)
-        self._hf_downloader = hf_downloader or HuggingFaceModelDownloader(settings)
+        self._ollama_client = ollama_client or OllamaClient(settings)
         self._lock = asyncio.Lock()
         self._states: dict[str, ModelDownloadSnapshot] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
@@ -82,12 +82,16 @@ class ModelDownloadService:
             if task is not None and not task.done():
                 return dict(self._states.get(model_id, _build_snapshot()))
 
+            spec = get_managed_model_spec(model_id)
+            default_message = "准备拉取默认 Ollama 模型。"
+            if spec is not None and spec.component == "whisper":
+                default_message = "准备下载默认模型目录中的 Whisper Small 模型。"
             self._states[model_id] = _build_snapshot(
                 state="downloading",
-                message="准备下载默认模型目录中的 Whisper Small 模型。",
+                message=default_message,
             )
             self._tasks[model_id] = asyncio.create_task(
-                self._run_whisper_download(model_id=model_id, force_redownload=force_redownload)
+                self._run_model_download(model_id=model_id, force_redownload=force_redownload)
             )
             return dict(self._states[model_id])
 
@@ -118,30 +122,29 @@ class ModelDownloadService:
                 continue
         self._whisper_service.shutdown()
 
-    async def _run_whisper_download(self, *, model_id: str, force_redownload: bool) -> None:
+    async def _run_model_download(self, *, model_id: str, force_redownload: bool) -> None:
         spec = get_managed_model_spec(model_id)
         if spec is None:
             raise ValueError(f"Managed model spec not found: {model_id}")
         try:
-            if spec.component == "whisper":
+            if spec.backend == "whisper":
                 await self._whisper_service.ensure_small_model_ready(
                     on_progress=lambda payload: self._handle_progress(model_id=model_id, payload=payload),
                     force_redownload=force_redownload,
                 )
-            else:
-                await self._hf_downloader.download_repo(
-                    repo_id=spec.repo_id,
-                    target_dir_name=spec.target_dir_name,
-                    revision=spec.revision,
-                    required_files=spec.required_files,
+            elif spec.backend == "ollama":
+                _ = force_redownload
+                await self._ollama_client.pull_model(
+                    model=spec.remote_id,
                     on_progress=lambda payload: self._handle_progress(model_id=model_id, payload=payload),
-                    force_redownload=force_redownload,
                 )
+            else:
+                raise RuntimeError(f"Unsupported managed model backend: {spec.backend}")
             await self._set_snapshot(
                 model_id,
                 _build_snapshot(
                     state="completed",
-                    message="模型已下载到默认目录并完成就绪。",
+                    message="模型已完成就绪。",
                     percent=100.0,
                 ),
             )

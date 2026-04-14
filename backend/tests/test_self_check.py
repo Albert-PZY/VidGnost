@@ -110,26 +110,26 @@ def _build_settings(tmp_path: Path) -> Settings:
     )
 
 
-def _materialize_vlm_cache(model_dir: Path) -> None:
-    model_dir.mkdir(parents=True, exist_ok=True)
-    for file_name in ("config.json", "tokenizer.json", "model.safetensors"):
-        (model_dir / file_name).write_text("ready", encoding="utf-8")
-    (model_dir / ".ready.json").write_text(
-        (
-            "{\n"
-            '  "repo_id": "vikhyatk/moondream2",\n'
-            '  "revision": "main",\n'
-            '  "files": ["config.json", "tokenizer.json", "model.safetensors"]\n'
-            "}\n"
-        ),
-        encoding="utf-8",
-    )
+class ReadyOllamaClient:
+    def __init__(self, *, models: dict[str, dict[str, object]] | None = None) -> None:
+        self.base_url = "http://127.0.0.1:11434"
+        self._models = models or {
+            "moondream": {"size_bytes": 123},
+            "bge-m3": {"size_bytes": 456},
+            "sam860/qwen3-reranker:0.6b-q8_0": {"size_bytes": 789},
+        }
+
+    async def list_local_models(self) -> dict[str, object]:
+        return {
+            name: type("Model", (), {"name": name, "size_bytes": int(payload.get("size_bytes", 0)), "digest": "", "modified_at": ""})()
+            for name, payload in self._models.items()
+        }
 
 
 def test_self_check_vlm_reports_ready_when_model_cache_exists(tmp_path: Path) -> None:
     settings = _build_settings(tmp_path)
-    default_dir = Path(settings.storage_dir) / "model-hub" / "vikhyatk--moondream2"
-    _materialize_vlm_cache(default_dir)
+    ollama_client = ReadyOllamaClient()
+    store = ModelCatalogStore(settings, ollama_client=ollama_client)  # type: ignore[arg-type]
 
     service = SelfCheckService(
         settings=settings,
@@ -138,18 +138,27 @@ def test_self_check_vlm_reports_ready_when_model_cache_exists(tmp_path: Path) ->
             settings=settings,
             runtime_config_store=RuntimeConfigStore(settings),
         ),
+        model_catalog_store=store,
+        ollama_client=ollama_client,  # type: ignore[arg-type]
     )
+    async def fake_probe_vlm():
+        from app.services.vqa_model_runtime import ModelProbeResult
+
+        return ModelProbeResult(ready=True, message="VLM 模型已通过 Ollama 最小推理校验", details={"probe": "ok"})
+
+    service._vqa_model_runtime.probe_vlm = fake_probe_vlm  # type: ignore[method-assign,attr-defined]
     outcome = asyncio.run(service._check_vlm())  # type: ignore[attr-defined]
 
     assert outcome.status == "passed"
-    assert outcome.message == "VLM 模型已就绪"
-    assert outcome.details["当前路径"] == str(default_dir)
+    assert outcome.message == "VLM 模型已通过 Ollama 最小推理校验"
+    assert outcome.details["当前路径"] == "ollama://moondream"
     assert outcome.details["加载策略"] == "常驻内存优先"
 
 
 def test_self_check_vlm_reports_disabled_when_model_is_turned_off(tmp_path: Path) -> None:
     settings = _build_settings(tmp_path)
-    store = ModelCatalogStore(settings)
+    ollama_client = ReadyOllamaClient()
+    store = ModelCatalogStore(settings, ollama_client=ollama_client)  # type: ignore[arg-type]
     asyncio.run(store.update_model("vlm-default", {"enabled": False}))
 
     service = SelfCheckService(
@@ -159,11 +168,13 @@ def test_self_check_vlm_reports_disabled_when_model_is_turned_off(tmp_path: Path
             settings=settings,
             runtime_config_store=RuntimeConfigStore(settings),
         ),
+        model_catalog_store=store,
+        ollama_client=ollama_client,  # type: ignore[arg-type]
     )
     outcome = asyncio.run(service._check_vlm())  # type: ignore[attr-defined]
 
     assert outcome.status == "warning"
-    assert outcome.message == "VLM 模型已停用"
+    assert outcome.message == "Ollama Moondream 已停用"
 
 
 def test_self_check_llm_reports_missing_api_key(tmp_path: Path) -> None:
@@ -176,11 +187,26 @@ def test_self_check_llm_reports_missing_api_key(tmp_path: Path) -> None:
             runtime_config_store=RuntimeConfigStore(settings),
         ),
     )
+    asyncio.run(
+        service._llm_config_store.save(  # type: ignore[attr-defined]
+            {
+                "mode": "api",
+                "load_profile": "balanced",
+                "local_model_id": "qwen2.5:3b",
+                "api_key": "",
+                "base_url": "https://example.com/v1",
+                "model": "test-model",
+                "correction_mode": "strict",
+                "correction_batch_size": 24,
+                "correction_overlap": 3,
+            }
+        )
+    )
 
     outcome = asyncio.run(service._check_llm())  # type: ignore[attr-defined]
 
     assert outcome.status == "warning"
-    assert outcome.message == "LLM API Key 未配置"
+    assert outcome.message == "LLM 服务凭据未配置"
 
 
 def test_self_check_llm_reports_connectivity_failure(
@@ -227,7 +253,7 @@ def test_self_check_llm_reports_connectivity_failure(
     outcome = asyncio.run(service._check_llm())  # type: ignore[attr-defined]
 
     assert outcome.status == "failed"
-    assert outcome.message == "LLM 在线 API 连通失败"
+    assert outcome.message == "LLM 服务连通失败"
     assert outcome.details["连通性"] == "NameResolutionError: host not found"
 
 
@@ -276,6 +302,6 @@ def test_self_check_llm_reports_invalid_model_name(
     outcome = asyncio.run(service._check_llm())  # type: ignore[attr-defined]
 
     assert outcome.status == "failed"
-    assert outcome.message == "LLM 在线 API 模型配置无效"
+    assert outcome.message == "LLM 模型配置无效"
     assert outcome.details["连通性"] == "HTTP 200"
     assert outcome.details["模型校验"] == '远端 /models 未返回当前模型 "test-model"'

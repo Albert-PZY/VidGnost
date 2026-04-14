@@ -129,7 +129,8 @@ def _build_prompts(*, query_text: str, hits: list[RetrievalHit]) -> tuple[str, s
             (
                 f"[{index}] task={hit.task_title} source={hit.source} "
                 f"time={hit.start:.2f}-{hit.end:.2f}s\n"
-                f"evidence={hit.text}"
+                f"transcript={hit.text}\n"
+                f"visual={hit.visual_text or '(无视觉描述)'}"
             )
         )
     context = "\n\n".join(context_lines)
@@ -160,6 +161,7 @@ def _build_citations(hits: list[RetrievalHit]) -> list[Citation]:
             end=item.end,
             text=item.text,
             image_path=item.image_path,
+            visual_text=item.visual_text,
         )
         for item in hits
     ]

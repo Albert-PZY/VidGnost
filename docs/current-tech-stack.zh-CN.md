@@ -1,6 +1,6 @@
 # VidGnost 当前完整技术栈（前后端）
 
-更新时间：2026-04-13
+更新时间：2026-04-14
 
 ## 1. 架构边界（已收敛）
 
@@ -73,6 +73,7 @@
 - 转写：`faster-whisper`
 - 网络调用：`httpx`
 - LLM 调用：`openai`（兼容 OpenAI 协议）
+- 本地模型编排：`Ollama`（默认本地 LLM、Embedding、VLM、Rerank 的拉取与运行）
 - 向量检索：`chromadb`（持久化向量库）
 - 稀疏检索：SQLite FTS5（本地全文索引）
 - 系统指标：`psutil` + `nvidia-smi`（GPU 信息）
@@ -93,10 +94,17 @@
 ## 4. 检索与问答（RAG）栈
 
 - 检索链路：Dense + Sparse + RRF + Rerank
-- Dense：ChromaDB PersistentClient
+- Dense：Ollama `/api/embed` + ChromaDB PersistentClient
 - Sparse：SQLite FTS5
 - 融合：RRF（`rrf_k=60`）
-- 重排：本地重排评分
+- 重排：Ollama 本地重排模型（受控 JSON 打分协议）
+- 视觉理解：Ollama Vision Chat（抽帧描述写入 `frames/index.json`）
+- 默认本地模型基线：
+  - LLM：`qwen2.5:3b`（通过本地 Ollama `/v1` 提供 OpenAI-compatible completion）
+  - Embedding：`bge-m3`
+  - VLM：`moondream`
+  - Rerank：`sam860/qwen3-reranker:0.6b-q8_0`
+- Whisper 继续使用 `faster-whisper` 独立运行时与下载链路，不走 Ollama
 - Trace：JSONL 可回放（按 `trace_id`）
 
 ## 5. 数据与存储
@@ -105,10 +113,12 @@
 - 关键路径：
   - `backend/storage/model_config.json`
   - `backend/storage/config.toml`
+  - `backend/storage/models/catalog.json`
   - `backend/storage/prompts/**`
   - `backend/storage/tasks/**`
   - `backend/storage/vector-index/**`
   - `backend/storage/event-logs/**`
+- 非 Whisper 托管模型由 Ollama 统一存储与管理，后端目录中的模型清单仅保存逻辑条目与状态快照，已安装路径使用 `ollama://<model>` 表示。
 
 ## 6. 测试与质量保障
 
@@ -116,7 +126,7 @@
 - 前端构建验证：`vite build`
 - 前端类型验证：`pnpm exec tsc --noEmit`
 - 已验证状态：
-  - 后端：`61 passed`
+  - 后端：`99 passed`
   - 前端：`pnpm exec tsc --noEmit` 成功
   - 前端：`vite build` 成功
 
