@@ -178,8 +178,8 @@ Renderer SHALL present transient `success`, `error`, and `loading` feedback thro
 - **AND** only the three newest visible notifications remain on screen
 - **AND** each newly shown visible notification triggers one playback attempt of the bundled `toast.mp3` sound effect
 
-### Requirement: Appearance settings SHALL persist theme hue, font size, autosave, and custom skin state
-UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_image`, `background_image_opacity`, `background_image_blur`, `background_image_scale`, `background_image_focus_x`, `background_image_focus_y`, and `background_image_fill_mode`, and the renderer SHALL apply them immediately to the active shell through a dedicated fixed background layer.
+### Requirement: Appearance settings SHALL persist theme hue, font size, autosave, developer-mode visibility, and custom skin state
+UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `developer_mode_enabled`, `background_image`, `background_image_opacity`, `background_image_blur`, `background_image_scale`, `background_image_focus_x`, `background_image_focus_y`, and `background_image_fill_mode`, and the renderer SHALL apply them immediately to the active shell through a dedicated fixed background layer.
 
 #### Scenario: Adjust theme hue
 - **WHEN** user changes theme hue from the appearance section and saves it
@@ -190,6 +190,12 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 #### Scenario: Adjust font size
 - **WHEN** user changes interface font size and saves it
 - **THEN** renderer applies the new root font size immediately and restores it on next launch
+
+#### Scenario: Toggle developer-mode entry visibility
+- **WHEN** user enables or disables developer mode from settings and saves it
+- **THEN** backend persists `developer_mode_enabled`
+- **AND** the left-side system navigation only renders `开发者模式` when that setting is enabled
+- **AND** if the setting is turned off while the developer-mode page is open, renderer returns the user to `设置中心`
 
 #### Scenario: Configure a custom skin image
 - **WHEN** user chooses a skin image from the Electron shell and opens the skin dialog
@@ -531,6 +537,12 @@ Workbench SHALL provide a dedicated `开发者模式` page in the main shell nav
 - **THEN** the renderer opens a standalone page instead of a modal or transient panel
 - **AND** the page header summarizes currently loaded log count, warning count, error count, and realtime subscription state
 - **AND** the page provides a direct action to open the persisted developer-log directory when runtime paths are available
+
+#### Scenario: Separate history loading from realtime connection state
+- **WHEN** the developer-mode page has already loaded matching history logs but the realtime SSE subscription is still connecting or reconnecting
+- **THEN** the loaded list remains visible instead of being replaced by a blocking loading placeholder
+- **AND** the realtime connection state is surfaced through the status summary and inline banners only
+- **AND** backend emits an immediate SSE handshake comment after subscription setup so renderer can resolve the live-connection state without waiting for a business log event
 
 #### Scenario: Filter and inspect developer logs
 - **WHEN** user uses category, minimum-level, source, task ID, trace ID, session ID, or keyword filters

@@ -18,7 +18,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Select,
   SelectContent,
@@ -28,13 +27,13 @@ import {
 } from "@/components/ui/select"
 import { getApiErrorMessage, getDeveloperLogs, streamDeveloperLogs } from "@/lib/api"
 import { formatDateTime, formatRelativeTime } from "@/lib/format"
-import { cn } from "@/lib/utils"
 import type {
   DeveloperLogCategory,
   DeveloperLogEntry,
   DeveloperLogLevel,
   RuntimePathsResponse,
 } from "@/lib/types"
+import { cn } from "@/lib/utils"
 
 type StreamState = "connecting" | "live" | "paused" | "error"
 
@@ -104,10 +103,12 @@ export function DeveloperModeView({ runtimePaths, onOpenLogsDirectory }: Develop
   const [filters, setFilters] = React.useState<FilterState>(DEFAULT_FILTERS)
   const [logs, setLogs] = React.useState<DeveloperLogEntry[]>([])
   const [selectedLogId, setSelectedLogId] = React.useState("")
-  const [isInitialLoading, setIsInitialLoading] = React.useState(true)
+  const [isHistoryLoading, setIsHistoryLoading] = React.useState(true)
+  const [isRefreshing, setIsRefreshing] = React.useState(false)
+  const [historyError, setHistoryError] = React.useState("")
   const [streamState, setStreamState] = React.useState<StreamState>("connecting")
   const [streamVersion, setStreamVersion] = React.useState(0)
-  const [lastError, setLastError] = React.useState("")
+  const [streamError, setStreamError] = React.useState("")
   const [autoFollow, setAutoFollow] = React.useState(true)
   const viewportRef = React.useRef<HTMLDivElement | null>(null)
   const logIdSetRef = React.useRef(new Set<string>())
@@ -139,7 +140,9 @@ export function DeveloperModeView({ runtimePaths, onOpenLogsDirectory }: Develop
       filters.level,
     ],
   )
+
   const isRealtimePaused = streamState === "paused"
+  const canResumeRealtime = streamState === "paused" || streamState === "error"
 
   const applyLogs = React.useEffectEvent((entries: DeveloperLogEntry[], reset = false) => {
     React.startTransition(() => {
@@ -177,29 +180,36 @@ export function DeveloperModeView({ runtimePaths, onOpenLogsDirectory }: Develop
     })
   })
 
-  const reloadLogs = React.useCallback(async () => {
-    setIsInitialLoading(true)
-    setLastError("")
-    try {
-      const response = await getDeveloperLogs(effectiveFilters)
-      applyLogs(response.items, true)
-      if (response.items.length > 0) {
-        setSelectedLogId((current) =>
-          current && response.items.some((item) => item.id === current)
-            ? current
-            : response.items[response.items.length - 1]?.id ?? "",
-        )
+  const reloadLogs = React.useCallback(
+    async ({ background = false }: { background?: boolean } = {}) => {
+      if (background) {
+        setIsRefreshing(true)
       } else {
-        setSelectedLogId("")
+        setIsHistoryLoading(true)
       }
-    } catch (error) {
-      setLastError(getApiErrorMessage(error, "加载开发者日志失败"))
-      applyLogs([], true)
-      setSelectedLogId("")
-    } finally {
-      setIsInitialLoading(false)
-    }
-  }, [applyLogs, effectiveFilters])
+      setHistoryError("")
+      try {
+        const response = await getDeveloperLogs(effectiveFilters)
+        applyLogs(response.items, true)
+        if (response.items.length > 0) {
+          setSelectedLogId((current) =>
+            current && response.items.some((item) => item.id === current)
+              ? current
+              : response.items[response.items.length - 1]?.id ?? "",
+          )
+        } else {
+          setSelectedLogId("")
+        }
+      } catch (error) {
+        const message = getApiErrorMessage(error, "加载开发者日志失败")
+        setHistoryError(message)
+      } finally {
+        setIsHistoryLoading(false)
+        setIsRefreshing(false)
+      }
+    },
+    [applyLogs, effectiveFilters],
+  )
 
   React.useEffect(() => {
     void reloadLogs()
@@ -207,17 +217,19 @@ export function DeveloperModeView({ runtimePaths, onOpenLogsDirectory }: Develop
 
   React.useEffect(() => {
     if (isRealtimePaused) {
+      setStreamError("")
       return
     }
 
     setStreamState("connecting")
+    setStreamError("")
     const source = streamDeveloperLogs(
       {
         ...effectiveFilters,
         history_limit: 0,
       },
       (entry) => {
-        setLastError("")
+        setStreamError("")
         setStreamState("live")
         applyLogs([entry])
         setSelectedLogId((current) => current || entry.id)
@@ -227,12 +239,13 @@ export function DeveloperModeView({ runtimePaths, onOpenLogsDirectory }: Develop
 
     source.onopen = () => {
       setStreamState("live")
+      setStreamError("")
     }
 
     source.onerror = () => {
       source.close()
       setStreamState("error")
-      setLastError("实时日志流连接已中断，可手动刷新或恢复订阅。")
+      setStreamError("实时日志流连接已中断，可手动刷新列表或恢复订阅。")
     }
 
     return () => {
@@ -284,7 +297,18 @@ export function DeveloperModeView({ runtimePaths, onOpenLogsDirectory }: Develop
   }, [])
 
   const developerLogDir = runtimePaths?.developer_log_dir || ""
-  const canResumeRealtime = streamState === "paused" || streamState === "error"
+  const streamDetail = React.useMemo(() => {
+    if (streamError) {
+      return streamError
+    }
+    if (streamState === "connecting") {
+      return "正在建立实时 SSE 订阅，历史日志不会被阻塞。"
+    }
+    if (streamState === "paused") {
+      return "实时订阅已暂停，当前列表仍可查看已载入日志。"
+    }
+    return autoFollow ? "新日志会自动贴底显示" : "已关闭自动跟随"
+  }, [autoFollow, streamError, streamState])
 
   return (
     <div className="flex-1 overflow-auto">
@@ -308,11 +332,7 @@ export function DeveloperModeView({ runtimePaths, onOpenLogsDirectory }: Develop
                 setStreamState("paused")
               }}
             >
-              {canResumeRealtime ? (
-                <PlayCircle className="h-4 w-4" />
-              ) : (
-                <PauseCircle className="h-4 w-4" />
-              )}
+              {canResumeRealtime ? <PlayCircle className="h-4 w-4" /> : <PauseCircle className="h-4 w-4" />}
               {canResumeRealtime ? "恢复实时" : "暂停实时"}
             </Button>
             <Button
@@ -327,17 +347,21 @@ export function DeveloperModeView({ runtimePaths, onOpenLogsDirectory }: Develop
             <Button
               variant="outline"
               onClick={() => {
-                void reloadLogs()
+                void reloadLogs({ background: true })
                 if (streamState === "error" || streamState === "paused") {
                   setStreamState("connecting")
                   setStreamVersion((value) => value + 1)
                 }
               }}
             >
-              <RefreshCw className={cn("h-4 w-4", isInitialLoading && "animate-spin")} />
+              <RefreshCw className={cn("h-4 w-4", (isHistoryLoading || isRefreshing) && "animate-spin")} />
               刷新列表
             </Button>
-            <Button variant="outline" onClick={onOpenLogsDirectory} disabled={!developerLogDir}>
+            <Button
+              variant="outline"
+              onClick={onOpenLogsDirectory}
+              disabled={!developerLogDir || !onOpenLogsDirectory}
+            >
               <FolderOpen className="h-4 w-4" />
               打开日志目录
             </Button>
@@ -367,7 +391,7 @@ export function DeveloperModeView({ runtimePaths, onOpenLogsDirectory }: Develop
             icon={streamState === "error" ? AlertTriangle : Activity}
             label="实时状态"
             value={getStreamStateLabel(streamState)}
-            detail={lastError || (autoFollow ? "新日志会自动贴底显示" : "已关闭自动跟随")}
+            detail={streamDetail}
             tone={streamState === "error" ? "error" : streamState === "live" ? "success" : "default"}
           />
         </div>
@@ -377,7 +401,7 @@ export function DeveloperModeView({ runtimePaths, onOpenLogsDirectory }: Develop
             <FilterSelect
               label="日志分类"
               value={filters.category}
-              options={CATEGORY_OPTIONS.map((item) => ({ value: item.value, label: item.label }))}
+              options={CATEGORY_OPTIONS}
               onValueChange={(value) => setFilters((current) => ({ ...current, category: value }))}
             />
             <FilterSelect
@@ -451,13 +475,16 @@ export function DeveloperModeView({ runtimePaths, onOpenLogsDirectory }: Develop
                 </div>
               </div>
 
-              {isInitialLoading ? (
-                <div className="flex flex-1 items-center justify-center px-6 py-8">
-                  <div className="flex items-center gap-3 rounded-md border border-border/60 bg-muted/25 px-4 py-3 text-sm text-muted-foreground">
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    <span>正在装载日志历史和实时订阅状态…</span>
-                  </div>
-                </div>
+              {historyError ? (
+                <StatusBanner tone="error" message={historyError} />
+              ) : null}
+              {streamError ? <StatusBanner tone="warning" message={streamError} /> : null}
+              {isRefreshing && !isHistoryLoading ? (
+                <StatusBanner tone="default" message="正在刷新历史日志，当前列表会在返回后无缝更新。" />
+              ) : null}
+
+              {isHistoryLoading && logs.length === 0 ? (
+                <DeveloperLogStreamSkeleton />
               ) : logs.length === 0 ? (
                 <div className="flex flex-1 items-center justify-center px-6 py-8">
                   <div className="max-w-md space-y-2 text-center">
@@ -471,12 +498,12 @@ export function DeveloperModeView({ runtimePaths, onOpenLogsDirectory }: Develop
                   </div>
                 </div>
               ) : (
-                <ScrollArea className="min-h-0 flex-1">
-                  <div
-                    ref={viewportRef}
-                    onScroll={handleViewportScroll}
-                    className="h-[32rem] space-y-2 overflow-y-auto px-3 py-3"
-                  >
+                <div
+                  ref={viewportRef}
+                  onScroll={handleViewportScroll}
+                  className="themed-thin-scrollbar min-h-0 flex-1 overflow-y-auto px-3 py-3"
+                >
+                  <div className="space-y-2">
                     {logs.map((entry) => (
                       <button
                         key={entry.id}
@@ -510,7 +537,7 @@ export function DeveloperModeView({ runtimePaths, onOpenLogsDirectory }: Develop
                       </button>
                     ))}
                   </div>
-                </ScrollArea>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -569,11 +596,11 @@ export function DeveloperModeView({ runtimePaths, onOpenLogsDirectory }: Develop
                     </div>
                   </div>
 
-                  <ScrollArea className="min-h-0 flex-1">
+                  <div className="themed-thin-scrollbar min-h-0 flex-1 overflow-auto">
                     <pre className="min-h-full overflow-x-auto px-4 py-4 font-mono text-[12px] leading-6 text-foreground">
                       {JSON.stringify(selectedLog.payload ?? {}, null, 2)}
                     </pre>
-                  </ScrollArea>
+                  </div>
                 </div>
               ) : (
                 <div className="flex flex-1 items-center justify-center px-6 py-8">
@@ -683,6 +710,51 @@ function DetailField({ label, value }: { label: string; value: string }) {
     <div className="rounded-md border border-border/60 bg-background/55 px-3 py-2.5">
       <div className="text-[11px] tracking-[0.08em] text-muted-foreground">{label}</div>
       <div className="mt-1 break-all font-mono text-[12px] leading-5">{value || "-"}</div>
+    </div>
+  )
+}
+
+function StatusBanner({
+  tone,
+  message,
+}: {
+  tone: "default" | "warning" | "error"
+  message: string
+}) {
+  return (
+    <div
+      className={cn(
+        "border-b px-4 py-2.5 text-xs",
+        tone === "default" && "border-border/50 bg-muted/25 text-muted-foreground",
+        tone === "warning" && "border-amber-500/20 bg-amber-500/8 text-amber-700 dark:text-amber-300",
+        tone === "error" && "border-destructive/20 bg-destructive/8 text-destructive",
+      )}
+    >
+      {message}
+    </div>
+  )
+}
+
+function DeveloperLogStreamSkeleton() {
+  return (
+    <div className="flex flex-1 flex-col gap-2 px-3 py-3">
+      {Array.from({ length: 6 }).map((_, index) => (
+        <div
+          key={`developer-log-skeleton-${index}`}
+          className="rounded-md border border-border/60 bg-background/55 p-3"
+        >
+          <div className="flex items-center gap-2">
+            <div className="app-skeleton h-5 w-14 rounded-full" />
+            <div className="app-skeleton h-5 w-12 rounded-full" />
+            <div className="app-skeleton h-3 w-28 rounded-md" />
+          </div>
+          <div className="mt-3 space-y-2">
+            <div className="app-skeleton h-4 w-3/4 rounded-md" />
+            <div className="app-skeleton h-4 w-full rounded-md" />
+            <div className="app-skeleton h-3 w-5/6 rounded-md" />
+          </div>
+        </div>
+      ))}
     </div>
   )
 }

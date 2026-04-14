@@ -95,3 +95,14 @@ def test_ui_settings_store_clamps_background_focus_and_scale(tmp_path: Path) -> 
     assert saved["background_image_scale"] == 4.0
     assert saved["background_image_focus_x"] == 0.0
     assert saved["background_image_focus_y"] == 1.0
+
+
+def test_ui_settings_store_persists_developer_mode_enabled(tmp_path: Path) -> None:
+    settings = _build_settings(tmp_path)
+    store = UISettingsStore(settings)
+
+    saved = asyncio.run(store.update({"developer_mode_enabled": True}))
+    current = asyncio.run(store.get())
+
+    assert saved["developer_mode_enabled"] is True
+    assert current["developer_mode_enabled"] is True

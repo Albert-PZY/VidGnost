@@ -51,6 +51,7 @@ const DEFAULT_UI_SETTINGS: UISettingsResponse = {
   language: "zh",
   font_size: 14,
   auto_save: true,
+  developer_mode_enabled: false,
   theme_hue: 220,
   background_image: null,
   background_image_opacity: 28,
@@ -80,6 +81,7 @@ function readStoredRuntimePaths(): RuntimePathsResponse | null {
       storage_dir: parsed.storage_dir,
       event_log_dir: parsed.event_log_dir,
       trace_log_dir: parsed.trace_log_dir,
+      developer_log_dir: parsed.developer_log_dir,
     }
   } catch {
     return null
@@ -425,6 +427,14 @@ export default function VideoMindApp() {
     }
   }, [emitDeveloperLog])
 
+  React.useEffect(() => {
+    if (uiSettings.developer_mode_enabled || viewState.type !== "developer-mode") {
+      return
+    }
+    setActiveNav("settings")
+    setViewState({ type: "settings" })
+  }, [uiSettings.developer_mode_enabled, viewState.type])
+
   const persistUiSettings = React.useCallback(
     async (patch: Partial<UISettingsResponse>) => {
       const current = uiSettingsRef.current
@@ -432,6 +442,7 @@ export default function VideoMindApp() {
         language: patch.language ?? current.language,
         font_size: patch.font_size ?? current.font_size,
         auto_save: patch.auto_save ?? current.auto_save,
+        developer_mode_enabled: patch.developer_mode_enabled ?? current.developer_mode_enabled,
         theme_hue: patch.theme_hue ?? current.theme_hue,
         background_image:
           patch.background_image !== undefined ? patch.background_image : current.background_image,
@@ -456,6 +467,11 @@ export default function VideoMindApp() {
   )
 
   const handleNavChange = (navId: string) => {
+    if (navId === "developer-mode" && !uiSettingsRef.current.developer_mode_enabled) {
+      setActiveNav("settings")
+      setViewState({ type: "settings" })
+      return
+    }
     setActiveNav(navId as NavigationId)
     switch (navId) {
       case "new-task":
@@ -705,6 +721,7 @@ export default function VideoMindApp() {
           <AppSidebar
             activeNav={activeNav}
             onNavChange={handleNavChange}
+            developerModeEnabled={effectiveUiSettings.developer_mode_enabled}
             selectedWorkflow={selectedWorkflow}
             onWorkflowChange={setSelectedWorkflow}
             historyCount={taskStats.total}

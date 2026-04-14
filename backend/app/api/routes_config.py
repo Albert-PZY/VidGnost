@@ -505,6 +505,7 @@ async def update_ui_settings(
         "language": payload.language,
         "font_size": payload.font_size,
         "auto_save": payload.auto_save,
+        "developer_mode_enabled": payload.developer_mode_enabled,
         "theme_hue": payload.theme_hue,
         "background_image": payload.background_image,
         "background_image_opacity": payload.background_image_opacity,

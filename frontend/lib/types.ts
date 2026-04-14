@@ -306,6 +306,7 @@ export interface UISettingsResponse {
   language: "zh" | "en"
   font_size: number
   auto_save: boolean
+  developer_mode_enabled: boolean
   theme_hue: number
   background_image: string | null
   background_image_opacity: number

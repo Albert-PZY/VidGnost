@@ -129,6 +129,7 @@ async def stream_developer_logs(
 
     async def event_generator():
         try:
+            yield ": connected\n\n"
             for item in subscription.history:
                 yield f"data: {orjson.dumps(item).decode('utf-8')}\n\n"
             while True:
