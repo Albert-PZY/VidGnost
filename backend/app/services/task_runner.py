@@ -1817,6 +1817,28 @@ class TaskRunner:
                     )
                 return
 
+            if event_type == "runtime_warning":
+                warning_message = str(event.get("message", "") or "").strip()
+                if warning_message:
+                    details = event.get("details")
+                    detail_suffix = ""
+                    if isinstance(details, dict) and details:
+                        try:
+                            detail_suffix = f" {orjson.dumps(details).decode('utf-8')}"
+                        except TypeError:
+                            detail_suffix = f" {details}"
+                    await self._emit_runtime_warning(
+                        task_id,
+                        "C",
+                        f"{warning_message}{detail_suffix}".strip(),
+                        stage_logs,
+                        code=_RESOURCE_GUARD_WARNING_CODE,
+                        component="whisper_worker",
+                        action="retry_with_low_memory_profile",
+                        substage="runtime",
+                    )
+                return
+
             if event_type != "chunk_complete":
                 return
 

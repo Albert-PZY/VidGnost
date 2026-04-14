@@ -36,6 +36,7 @@ class GPUStageWorkerClient:
         worker_error: str | None = None
         loop = asyncio.get_running_loop()
         request_payload = orjson.dumps(request)
+        worker_env = _build_worker_env(request)
 
         def push_event(event: dict[str, object]) -> None:
             loop.call_soon_threadsafe(event_queue.put_nowait, event)
@@ -54,10 +55,7 @@ class GPUStageWorkerClient:
                     stdin=subprocess.PIPE,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    env={
-                        **os.environ,
-                        "PYTHONUTF8": "1",
-                    },
+                    env=worker_env,
                 )
                 process_holder["process"] = process
                 if process.stdin is None:
@@ -187,3 +185,19 @@ async def _maybe_await(result: Awaitable[None] | None) -> None:
     if result is None:
         return
     await result
+
+
+def _build_worker_env(request: dict[str, object]) -> dict[str, str]:
+    env = {
+        **os.environ,
+        "PYTHONUTF8": "1",
+    }
+    payload = dict(request.get("payload") or {})
+    whisper_config = dict(payload.get("whisper_config") or {})
+    load_profile = str(whisper_config.get("model_load_profile", "balanced") or "balanced").strip().lower()
+    cpu_count = max(1, os.cpu_count() or 1)
+    thread_budget = 2 if load_profile == "memory_first" else min(4, cpu_count)
+    for env_key in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+        env[env_key] = str(max(1, thread_budget))
+    env.setdefault("OMP_WAIT_POLICY", "PASSIVE")
+    return env
