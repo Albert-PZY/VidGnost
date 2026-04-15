@@ -37,6 +37,7 @@ backend/.python-version
 backend/**/__pycache__/
 
 # Node frontend
+node_modules/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
@@ -44,6 +45,14 @@ frontend/coverage/
 frontend/.cache/
 frontend/.eslintcache
 frontend/**/*.tsbuildinfo
+backend-ts/node_modules/
+backend-ts/dist/
+backend-ts/coverage/
+backend-ts/**/*.tsbuildinfo
+packages/*/node_modules/
+packages/*/dist/
+packages/*/coverage/
+packages/*/**/*.tsbuildinfo
 
 # Build / cache
 tmp/

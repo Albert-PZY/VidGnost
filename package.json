@@ -1,0 +1,13 @@
+{
+  "name": "vidgnost-workspace",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev:frontend": "pnpm --filter @vidgnost/frontend dev --host 127.0.0.1 --port 6221",
+    "dev:backend": "pnpm --filter @vidgnost/backend-ts dev",
+    "dev:desktop": "pnpm --filter @vidgnost/frontend desktop:dev",
+    "build": "pnpm -r --if-present build",
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck"
+  }
+}

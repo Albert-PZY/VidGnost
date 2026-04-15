@@ -296,6 +296,12 @@ Frontend SHALL only render backend-provided data and call the Python backend ove
 - **AND** Electron preload APIs are used only for desktop shell interactions
 - **AND** startup progress and completion handoff between the hidden main window and the splash surface stays inside the Electron shell bridge instead of changing backend transport contracts
 
+#### Scenario: Bootstrap requests backend readiness and runtime paths
+- **WHEN** renderer enters bootstrap synchronization
+- **THEN** it requests `/health` first to confirm backend readiness before overview and configuration synchronization continue
+- **AND** it requests `/runtime/paths` through plain HTTP JSON during configuration synchronization instead of introducing a custom desktop-only transport
+- **AND** the runtime paths payload exposes `storage_dir`, `event_log_dir`, and `trace_log_dir` so degraded recovery surfaces can resolve a log directory target
+
 #### Scenario: Pick a skin image from Electron
 - **WHEN** user clicks the skin selection button in appearance settings inside Electron
 - **THEN** Electron opens the native file picker for image files
@@ -360,6 +366,11 @@ Workbench bootstrap SHALL expose a desktop splash progress state before the main
 - **AND** `打开日志目录` is shown only when the renderer has a current or cached runtime log path
 - **AND** the user can switch to `系统自检` while the degraded recovery panel remains available
 - **AND** the panel is dismissed automatically once bootstrap reaches `ready`
+
+#### Scenario: Runtime paths enable degraded log actions
+- **WHEN** bootstrap has resolved `/runtime/paths`
+- **THEN** the renderer caches `event_log_dir` and `trace_log_dir` as the preferred degraded recovery targets for `打开日志目录`
+- **AND** the degraded recovery panel keeps the log action unavailable until at least one runtime log path has been resolved
 
 ### Requirement: Task processing workbench SHALL provide a resizable evidence-driven workspace
 Task processing workbench SHALL use a horizontal resizable split layout. For notes tasks, the left workspace SHALL provide `转写片段`, `文本纠错`, `证据时间轴`, and `阶段输出` tabs. For VQA tasks, the left workspace SHALL provide `转写片段`, `证据时间轴`, `阶段输出`, and a conditional `文本纠错` tab whenever transcript correction is enabled for that task. The right workspace SHALL switch between `Markdown 工作区 / 思维导图` for notes tasks and `流式问答 / Trace Theater` for VQA tasks.

@@ -1,10 +1,44 @@
-export type WorkflowType = "notes" | "vqa"
+import type {
+  HealthResponse,
+  RuntimeMetricsResponse,
+  RuntimePathsResponse,
+  SourceType,
+  TaskBatchCreateResponse,
+  TaskCreateResponse,
+  TaskDetailResponse,
+  TaskListResponse,
+  TaskRecentItem,
+  TaskRecentResponse,
+  TaskStatsResponse,
+  TaskStatus,
+  TaskStepItem,
+  TaskStepStatus,
+  TaskSummaryItem,
+  TaskSourceCreatePayload,
+  TranscriptSegment,
+  WorkflowType,
+} from "@vidgnost/contracts"
 
-export type TaskStatus = "queued" | "running" | "paused" | "completed" | "failed" | "cancelled" | string
-
-export type TaskStepStatus = "pending" | "processing" | "completed" | "error"
-
-export type SourceType = "bilibili" | "local_file" | "local_path"
+export type {
+  HealthResponse,
+  RuntimeMetricsResponse,
+  RuntimePathsResponse,
+  SourceType,
+  TaskBatchCreateResponse,
+  TaskCreateResponse,
+  TaskDetailResponse,
+  TaskListResponse,
+  TaskRecentItem,
+  TaskRecentResponse,
+  TaskStatsResponse,
+  TaskStatus,
+  TaskStepItem,
+  TaskStepStatus,
+  TaskSummaryItem,
+  TaskSourceCreatePayload,
+  TranscriptSegment,
+  WorkflowType,
+} from "@vidgnost/contracts"
 
 export type PromptTemplateChannel = "correction" | "notes" | "mindmap" | "vqa"
 
@@ -25,110 +59,6 @@ export interface ApiErrorPayload {
   hint: string
   retryable: boolean
   detail: unknown
-}
-
-export interface TranscriptSegment {
-  start: number
-  end: number
-  text: string
-  speaker?: string | null
-}
-
-export interface TaskStepItem {
-  id: string
-  name: string
-  status: TaskStepStatus
-  progress: number
-  duration: string
-  logs: string[]
-}
-
-export interface TaskCreateResponse {
-  task_id: string
-  status: TaskStatus
-  workflow: WorkflowType
-  initial_steps: TaskStepItem[]
-}
-
-export interface TaskBatchCreateResponse {
-  strategy: "single_task_per_file" | "batch_task"
-  tasks: TaskCreateResponse[]
-}
-
-export interface TaskSummaryItem {
-  id: string
-  title: string | null
-  workflow: WorkflowType
-  source_type: SourceType
-  source_input: string
-  status: TaskStatus
-  progress: number
-  file_size_bytes: number
-  duration_seconds: number | null
-  created_at: string
-  updated_at: string
-}
-
-export interface TaskListResponse {
-  items: TaskSummaryItem[]
-  total: number
-}
-
-export interface TaskStatsResponse {
-  total: number
-  notes: number
-  vqa: number
-  completed: number
-}
-
-export interface TaskRecentItem {
-  id: string
-  title: string
-  workflow: WorkflowType
-  duration_seconds: number | null
-  updated_at: string
-}
-
-export interface TaskRecentResponse {
-  items: TaskRecentItem[]
-}
-
-export interface TaskDetailResponse {
-  id: string
-  title: string | null
-  workflow: WorkflowType
-  source_type: SourceType
-  source_input: string
-  source_local_path: string | null
-  language: string
-  model_size: string
-  status: TaskStatus
-  progress: number
-  overall_progress: number
-  eta_seconds: number | null
-  current_step_id: string
-  steps: TaskStepItem[]
-  error_message: string | null
-  duration_seconds: number | null
-  transcript_text: string | null
-  transcript_segments: TranscriptSegment[]
-  summary_markdown: string | null
-  mindmap_markdown: string | null
-  notes_markdown: string | null
-  fusion_prompt_markdown: string | null
-  stage_logs: Record<string, string[]>
-  stage_metrics: Record<string, Record<string, unknown>>
-  vm_phase_metrics: Record<string, Record<string, unknown>>
-  artifact_total_bytes: number
-  artifact_index: Array<Record<string, unknown>>
-  created_at: string
-  updated_at: string
-}
-
-export interface TaskSourceCreatePayload {
-  workflow: WorkflowType
-  language?: string
-  model_size?: "small" | "medium"
 }
 
 export interface ModelDescriptor {
@@ -348,29 +278,6 @@ export interface SelfCheckReportResponse {
   auto_fix_available: boolean
   updated_at: string
   last_error: string
-}
-
-export interface RuntimeMetricsResponse {
-  uptime_seconds: number
-  cpu_percent: number
-  memory_used_bytes: number
-  memory_total_bytes: number
-  gpu_percent: number
-  gpu_memory_used_bytes: number
-  gpu_memory_total_bytes: number
-  sampled_at: string
-}
-
-export interface RuntimePathsResponse {
-  storage_dir: string
-  event_log_dir: string
-  trace_log_dir: string
-}
-
-export interface HealthResponse {
-  status: "ok"
-  app: string
-  version: string
 }
 
 export interface TaskStreamEvent {

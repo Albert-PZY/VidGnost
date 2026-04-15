@@ -1,0 +1,26 @@
+{
+  "name": "@vidgnost/backend-ts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.2.0",
+    "@vidgnost/contracts": "workspace:*",
+    "@vidgnost/shared": "workspace:*",
+    "fastify": "^5.8.5",
+    "pino": "^10.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
+    "typescript": "5.7.3",
+    "vitest": "^4.1.4"
+  }
+}
