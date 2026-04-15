@@ -299,7 +299,6 @@
   - 存放 Zod schema
   - 导出前后端共享类型
   - 导出接口路径、SSE 事件 schema、错误码枚举
-  - 预留 RPC-friendly schema 扩展位，但第一阶段不引入 `tRPC`
 - `packages/shared`
   - 日志工具
   - 文件路径工具
