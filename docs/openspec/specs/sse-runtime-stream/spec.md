@@ -55,6 +55,16 @@ Backend SHALL expose self-check session event stream endpoint for progress and a
 - **WHEN** client connects to `/self-check/{session_id}/events`
 - **THEN** backend emits ordered self-check events until terminal state
 
+#### Scenario: Consume self-check progress incrementally
+- **WHEN** renderer receives ordered self-check events for the same session
+- **THEN** it MAY update the live diagnostics timeline and step status directly from stream payloads without reloading the full report on every event
+- **AND** it performs an additional report fetch only for initial hydration, manual refresh, or terminal-state reconciliation
+
+#### Scenario: Prune expired self-check stream topic
+- **WHEN** a self-check session is evicted from the retained session cache
+- **THEN** backend releases the corresponding topic queue, buffered history, and trace-sequence bookkeeping from memory
+- **AND** persisted JSONL event logs for that expired session MAY be deleted together with the session snapshot
+
 ### Requirement: VQA chat streaming SHALL publish typed incremental events
 `POST /chat/stream` SHALL stream structured event payloads containing trace metadata, incremental answer chunks, status updates, and completion sentinel.
 

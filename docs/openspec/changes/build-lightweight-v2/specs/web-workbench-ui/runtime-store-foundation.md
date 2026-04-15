@@ -40,4 +40,6 @@ Main exports intended for integration:
 - Transcript deltas are merged via key-based incremental indexing.
 - Correction preview stream events are reduced through a deterministic pure reducer.
 - Chat and trace slices expose minimal mutation actions for staged migration from component-local state.
+- `traceCache` uses bounded retention and trims older entries during persistence or runtime updates so per-task VQA trace snapshots do not grow without limit.
+- Bounded trace retention preserves the actively viewed or selected trace entry when pruning older cached items.
 

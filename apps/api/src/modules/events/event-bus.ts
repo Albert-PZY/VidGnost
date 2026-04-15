@@ -1,4 +1,5 @@
 import path from "node:path"
+import { rmSync } from "node:fs"
 import { appendFile, readFile } from "node:fs/promises"
 
 import { ensureDirectory } from "../../core/fs.js"
@@ -94,6 +95,21 @@ export class EventBus {
         this.terminalTopics.delete(topic)
         this.traceSequence.delete(topic)
       }
+    }
+  }
+
+  releaseTopic(topic: string, options?: { deleteEventLog?: boolean }): void {
+    const subscribers = this.subscribers.get(topic)
+    if (subscribers) {
+      subscribers.forEach((queue) => queue.close())
+      this.subscribers.delete(topic)
+    }
+    this.history.delete(topic)
+    this.terminalTopics.delete(topic)
+    this.traceSequence.delete(topic)
+    if (options?.deleteEventLog) {
+      const targetPath = path.join(this.eventLogDir, `${sanitizeTopicName(topic)}.jsonl`)
+      rmSync(targetPath, { force: true })
     }
   }
 

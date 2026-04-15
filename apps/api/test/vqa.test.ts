@@ -76,16 +76,19 @@ describe("vqa routes", () => {
     expect(streamBody).toContain("\"type\":\"citations\"")
     expect(streamBody).toContain("\"type\":\"chunk\"")
     expect(streamBody).toContain("\"type\":\"done\"")
+    const streamTraceIds = [...streamBody.matchAll(/"trace_id":"([^"]+)"/g)].map((match) => match[1])
+    expect(streamTraceIds.length).toBeGreaterThan(0)
+    expect(new Set(streamTraceIds).size).toBe(1)
+    const streamTraceId = streamTraceIds[0]
 
-    const traceId = searchPayload.trace_id
     const traceResponse = await app.inject({
       method: "GET",
-      url: `/api/traces/${traceId}`,
+      url: `/api/traces/${streamTraceId}`,
     })
 
     expect(traceResponse.statusCode).toBe(200)
     const tracePayload = vqaTraceResponseSchema.parse(traceResponse.json())
-    expect(tracePayload.trace_id).toBe(traceId)
+    expect(tracePayload.trace_id).toBe(streamTraceId)
     expect(tracePayload.records.some((item) => item.stage === "trace_started")).toBe(true)
     expect(tracePayload.records.some((item) => item.stage === "retrieval")).toBe(true)
     expect(tracePayload.records.some((item) => item.stage === "trace_finished")).toBe(true)

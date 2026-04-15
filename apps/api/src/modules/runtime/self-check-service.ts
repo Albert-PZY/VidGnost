@@ -76,7 +76,7 @@ export class SelfCheckService {
   async startCheck(): Promise<string> {
     const sessionId = generateTimeKey("self-check", (candidate) => this.sessions.has(candidate))
     this.sessions.set(sessionId, createEmptySession(sessionId))
-    pruneSessions(this.sessions)
+    this.pruneCachedSessions()
     await this.eventBus.resetTopic(this.topic(sessionId))
     void this.runCheck(sessionId)
     return sessionId
@@ -97,7 +97,7 @@ export class SelfCheckService {
   }
 
   getReport(sessionId: string): SelfCheckReportResponse | null {
-    pruneSessions(this.sessions)
+    this.pruneCachedSessions()
     const session = this.sessions.get(sessionId)
     if (!session) {
       return null
@@ -203,7 +203,7 @@ export class SelfCheckService {
       session.progress = 100
       session.auto_fix_available = session.issues.some((item) => item.auto_fixable)
       session.updated_at = nowIso()
-      pruneSessions(this.sessions)
+      this.pruneCachedSessions()
 
       await this.eventBus.publish(topic, {
         type: "self_check_complete",
@@ -217,7 +217,7 @@ export class SelfCheckService {
       session.status = "failed"
       session.last_error = error instanceof Error ? error.message : String(error)
       session.updated_at = nowIso()
-      pruneSessions(this.sessions)
+      this.pruneCachedSessions()
       await this.eventBus.publish(topic, {
         type: "self_check_failed",
         session_id: sessionId,
@@ -547,6 +547,13 @@ export class SelfCheckService {
   private topic(sessionId: string): string {
     return `self-check:${sessionId}`
   }
+
+  private pruneCachedSessions(): void {
+    const removedSessionIds = pruneSessions(this.sessions)
+    removedSessionIds.forEach((sessionId) => {
+      this.eventBus.releaseTopic(this.topic(sessionId), { deleteEventLog: true })
+    })
+  }
 }
 
 function createEmptySession(sessionId: string): SelfCheckSession {
@@ -575,18 +582,21 @@ function serializeSession(session: SelfCheckSession): SelfCheckReportResponse {
   }
 }
 
-function pruneSessions(sessions: Map<string, SelfCheckSession>): void {
+function pruneSessions(sessions: Map<string, SelfCheckSession>): string[] {
   const overflow = sessions.size - MAX_SESSION_CACHE
   if (overflow <= 0) {
-    return
+    return []
   }
   const removable = [...sessions.values()]
     .filter((item) => item.status === "completed" || item.status === "failed")
     .sort((left, right) => left.updated_at.localeCompare(right.updated_at))
     .slice(0, overflow)
+  const removedSessionIds: string[] = []
   removable.forEach((session) => {
     sessions.delete(session.id)
+    removedSessionIds.push(session.id)
   })
+  return removedSessionIds
 }
 
 async function findCommand(command: string): Promise<string> {

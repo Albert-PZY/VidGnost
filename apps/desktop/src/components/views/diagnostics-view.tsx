@@ -36,8 +36,10 @@ import {
 } from "@/lib/api"
 import { formatBytes, formatDurationSeconds } from "@/lib/format"
 import type {
+  SelfCheckIssueResponse,
   RuntimeMetricsResponse,
   SelfCheckReportResponse,
+  SelfCheckStepResponse,
   SelfCheckStreamEvent,
 } from "@/lib/types"
 
@@ -201,6 +203,120 @@ function buildChecks(report: SelfCheckReportResponse | null): DiagnosticCheck[] 
   }))
 }
 
+function createEmptySelfCheckReport(sessionId: string): SelfCheckReportResponse {
+  return {
+    session_id: sessionId,
+    status: "running",
+    progress: 0,
+    steps: INITIAL_CHECKS.map((check) => ({
+      id: check.id,
+      title: check.name,
+      status: "pending",
+      message: "",
+      details: {},
+      auto_fixable: false,
+      manual_action: "",
+    })),
+    issues: [],
+    auto_fix_available: false,
+    updated_at: new Date().toISOString(),
+    last_error: "",
+  }
+}
+
+function upsertSelfCheckStep(
+  steps: SelfCheckStepResponse[],
+  nextStep: SelfCheckStepResponse,
+): SelfCheckStepResponse[] {
+  const index = steps.findIndex((step) => step.id === nextStep.id)
+  if (index < 0) {
+    return [...steps, { ...nextStep, details: { ...nextStep.details } }]
+  }
+  const nextSteps = steps.slice()
+  nextSteps[index] = { ...nextStep, details: { ...nextStep.details } }
+  return nextSteps
+}
+
+function buildSelfCheckIssues(steps: SelfCheckStepResponse[]): SelfCheckIssueResponse[] {
+  return steps
+    .filter((step) => step.status === "warning" || step.status === "failed")
+    .map((step) => ({
+      ...step,
+      details: { ...step.details },
+    }))
+}
+
+function applySelfCheckStreamEvent(
+  currentReport: SelfCheckReportResponse | null,
+  event: SelfCheckStreamEvent,
+): SelfCheckReportResponse {
+  const baseReport =
+    currentReport && currentReport.session_id === event.session_id
+      ? currentReport
+      : createEmptySelfCheckReport(event.session_id)
+
+  let nextSteps = baseReport.steps
+  if (event.step) {
+    nextSteps = upsertSelfCheckStep(baseReport.steps, event.step)
+  }
+
+  let nextStatus = event.status || baseReport.status
+  let nextProgress = typeof event.progress === "number" ? event.progress : baseReport.progress
+  let nextLastError = baseReport.last_error
+
+  switch (event.type) {
+    case "self_check_started":
+      nextStatus = "running"
+      nextProgress = 0
+      nextLastError = ""
+      nextSteps = baseReport.steps.map((step) => ({
+        ...step,
+        status: "pending",
+        message: "",
+        details: {},
+        auto_fixable: false,
+        manual_action: "",
+      }))
+      break
+    case "self_check_step_start":
+    case "self_check_step_result":
+      nextStatus = nextStatus === "fixing" ? "fixing" : "running"
+      break
+    case "self_check_complete":
+      nextStatus = "completed"
+      nextProgress = 100
+      break
+    case "self_check_failed":
+    case "self_fix_failed":
+      nextStatus = "failed"
+      nextLastError = event.error || baseReport.last_error
+      break
+    case "self_check_fix_start":
+    case "self_check_fix_complete":
+      nextStatus = "fixing"
+      break
+    default:
+      break
+  }
+
+  const nextIssues = event.issues
+    ? event.issues.map((issue) => ({ ...issue, details: { ...issue.details } }))
+    : buildSelfCheckIssues(nextSteps)
+  const nextAutoFixAvailable =
+    event.auto_fix_available ?? nextIssues.some((issue) => issue.auto_fixable)
+
+  return {
+    session_id: event.session_id,
+    status: nextStatus,
+    progress: nextProgress,
+    steps: nextSteps,
+    issues: nextIssues,
+    auto_fix_available: nextAutoFixAvailable,
+    updated_at: new Date().toISOString(),
+    last_error: nextLastError,
+  }
+}
+
 export function DiagnosticsView() {
   const [report, setReport] = React.useState<SelfCheckReportResponse | null>(null)
   const [runtimeMetrics, setRuntimeMetrics] = React.useState<RuntimeMetricsResponse>(EMPTY_METRICS)
@@ -208,6 +324,7 @@ export function DiagnosticsView() {
   const [isStarting, setIsStarting] = React.useState(false)
   const [isFixing, setIsFixing] = React.useState(false)
   const runtimeMetricsToastShownRef = React.useRef(false)
+  const reportRequestIdRef = React.useRef(0)
 
   const loadRuntimeMetrics = React.useCallback(async () => {
     try {
@@ -223,10 +340,31 @@ export function DiagnosticsView() {
   }, [])
 
   const refreshReport = React.useCallback(async (sessionId: string) => {
+    const requestId = reportRequestIdRef.current + 1
+    reportRequestIdRef.current = requestId
     const nextReport = await getSelfCheckReport(sessionId)
+    if (requestId !== reportRequestIdRef.current) {
+      return nextReport
+    }
     setReport(nextReport)
     return nextReport
   }, [])
+
+  const handleSelfCheckStreamEvent = React.useEffectEvent((event: SelfCheckStreamEvent) => {
+    React.startTransition(() => {
+      setReport((current) => applySelfCheckStreamEvent(current, event))
+    })
+
+    if (
+      event.type === "self_check_complete" ||
+      event.type === "self_check_failed" ||
+      event.type === "self_fix_failed"
+    ) {
+      void refreshReport(event.session_id).catch(() => {
+        // Final state refresh is best-effort; SSE payload already carries the terminal snapshot.
+      })
+    }
+  })
 
   React.useEffect(() => {
     writeStoredSelfCheckSessionId(activeSessionId)
@@ -252,15 +390,16 @@ export function DiagnosticsView() {
   }, [activeSessionId, refreshReport])
 
   React.useEffect(() => {
-    if (!activeSessionId || (report && !["running", "fixing"].includes(report.status))) {
+    if (!activeSessionId) {
       return
     }
 
-    const source = streamSelfCheckEvents(activeSessionId, (_event: SelfCheckStreamEvent) => {
-      void refreshReport(activeSessionId).catch((error) => {
-        toast.error(getApiErrorMessage(error, "同步自检状态失败"))
-      })
-    })
+    const reportStatus = report?.status || ""
+    if (reportStatus && !["running", "fixing"].includes(reportStatus)) {
+      return
+    }
+
+    const source = streamSelfCheckEvents(activeSessionId, handleSelfCheckStreamEvent)
 
     source.onerror = () => {
       source.close()
@@ -269,7 +408,7 @@ export function DiagnosticsView() {
     return () => {
       source.close()
     }
-  }, [activeSessionId, refreshReport])
+  }, [activeSessionId, handleSelfCheckStreamEvent, report?.status])
 
   const runDiagnostics = async () => {
     setIsStarting(true)

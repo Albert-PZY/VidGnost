@@ -40,4 +40,6 @@ Core exports:
 - Transcript updates use incremental merge helpers.
 - Correction preview stream updates use pure reduction logic.
 - Chat and trace state updates are explicitly action-driven for phased migration.
+- `traceCache` uses bounded retention and trims older entries during persistence or runtime updates so per-task VQA trace snapshots do not grow without limit.
+- Bounded trace retention preserves the actively viewed or selected trace entry when pruning older cached items.
 

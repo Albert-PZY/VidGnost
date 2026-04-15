@@ -164,6 +164,7 @@ const TRACE_SECTIONS = [
 
 const VQA_CHAT_SESSION_STORAGE_KEY_PREFIX = "vidgnost:vqa-chat-session:v1"
 const VQA_CHAT_MAX_TURNS = 15
+const VQA_TRACE_CACHE_MAX_ITEMS = 8
 const TRANSCRIPT_SCROLL_BREAK_THRESHOLD_PX = 120
 const TRANSCRIPT_SCROLL_RESTORE_THRESHOLD_PX = 24
 
@@ -304,11 +305,11 @@ function readPersistedVqaSession(taskId: string): PersistedVqaSession {
         .map((item) => sanitizeRuntimeChatMessage(item))
         .filter((item): item is RuntimeChatMessage => item !== null)
       : []
-    const traceCache = Object.fromEntries(
+    const traceCache = limitTraceCacheEntries(Object.fromEntries(
       Object.entries(asObject(payload.traceCache))
         .map(([key, value]) => [key, sanitizeVqaTraceResponse(value)] as const)
         .filter((entry): entry is readonly [string, VqaTraceResponse] => entry[1] !== null),
-    )
+    ), asString(payload.selectedTraceId).trim())
     const selectedTraceId = asString(payload.selectedTraceId).trim()
     return {
       chatHistory,
@@ -325,18 +326,43 @@ function persistVqaSession(taskId: string, payload: PersistedVqaSession): void {
     return
   }
   try {
+    const normalizedTraceCache = limitTraceCacheEntries(payload.traceCache, payload.selectedTraceId)
     const hasContent =
       payload.chatHistory.length > 0 ||
       Boolean(payload.selectedTraceId) ||
-      Object.keys(payload.traceCache).length > 0
+      Object.keys(normalizedTraceCache).length > 0
     if (!hasContent) {
       window.localStorage.removeItem(buildVqaChatSessionStorageKey(taskId))
       return
     }
-    window.localStorage.setItem(buildVqaChatSessionStorageKey(taskId), JSON.stringify(payload))
+    window.localStorage.setItem(buildVqaChatSessionStorageKey(taskId), JSON.stringify({
+      ...payload,
+      traceCache: normalizedTraceCache,
+    }))
   } catch {
     return
   }
+}
+
+function limitTraceCacheEntries(
+  traceCache: Record<string, VqaTraceResponse>,
+  preferredTraceId = "",
+): Record<string, VqaTraceResponse> {
+  const entries = Object.entries(traceCache)
+  if (entries.length <= VQA_TRACE_CACHE_MAX_ITEMS) {
+    return traceCache
+  }
+
+  const protectedKeys = new Set([preferredTraceId].filter(Boolean))
+  const nextEntries = [...entries]
+  while (nextEntries.length > VQA_TRACE_CACHE_MAX_ITEMS) {
+    const removableIndex = nextEntries.findIndex(([traceId]) => !protectedKeys.has(traceId))
+    if (removableIndex < 0) {
+      break
+    }
+    nextEntries.splice(removableIndex, 1)
+  }
+  return Object.fromEntries(nextEntries)
 }
 
 function buildFallbackSteps(workflow: WorkflowType): TaskStepItem[] {
@@ -1288,6 +1314,10 @@ export function TaskProcessingWorkbench({
   const hasLoadedTaskRef = React.useRef(false)
   const hasHydratedPersistedVqaSessionRef = React.useRef(false)
   const latestPersistedVqaSessionRef = React.useRef<PersistedVqaSession | null>(null)
+  const isEditingNotesRef = React.useRef(isEditingNotes)
+  const onTaskLoadedRef = React.useRef(onTaskLoaded)
+  const loadTaskRequestIdRef = React.useRef(0)
+  const isWorkbenchMountedRef = React.useRef(true)
   const eventQueueRef = React.useRef<TaskStreamEvent[]>([])
   const eventFrameRef = React.useRef<number | null>(null)
 
@@ -1342,6 +1372,23 @@ export function TaskProcessingWorkbench({
   )
 
   React.useEffect(() => {
+    isEditingNotesRef.current = isEditingNotes
+  }, [isEditingNotes])
+
+  React.useEffect(() => {
+    onTaskLoadedRef.current = onTaskLoaded
+  }, [onTaskLoaded])
+
+  React.useEffect(() => {
+    isWorkbenchMountedRef.current = true
+    return () => {
+      isWorkbenchMountedRef.current = false
+      loadTaskRequestIdRef.current += 1
+    }
+  }, [])
+
+  React.useEffect(() => {
+    loadTaskRequestIdRef.current += 1
     hasLoadedTaskRef.current = false
     hasHydratedPersistedVqaSessionRef.current = false
     resetRuntime()
@@ -1383,39 +1430,53 @@ export function TaskProcessingWorkbench({
 
   const loadTask = React.useCallback(
     async (options?: { showToastOnError?: boolean; background?: boolean }) => {
+      const requestId = loadTaskRequestIdRef.current + 1
+      loadTaskRequestIdRef.current = requestId
       const showToastOnError = options?.showToastOnError ?? true
       const background = options?.background ?? hasLoadedTaskRef.current
+
+      const isActiveRequest = () =>
+        isWorkbenchMountedRef.current && requestId === loadTaskRequestIdRef.current
+
       setLoadingState({
-        isInitialLoading: background ? isInitialLoading : true,
+        isInitialLoading: background ? undefined : true,
         isRefreshing: background,
       })
+      let nextDetail: TaskDetailResponse | null = null
       try {
         const detail = await getTaskDetail(taskId)
+        if (!isActiveRequest()) {
+          return null
+        }
         setTask(detail)
         setTaskErrorMessage("")
         hasLoadedTaskRef.current = true
-        onTaskLoaded?.(detail)
-        if (!isEditingNotes) {
+        onTaskLoadedRef.current?.(detail)
+        if (!isEditingNotesRef.current) {
           setNotesDraft(detail.notes_markdown || "")
         }
+        nextDetail = detail
       } catch (error) {
+        if (!isActiveRequest()) {
+          return null
+        }
         const message = getApiErrorMessage(error, "加载任务详情失败")
         setTaskErrorMessage(message)
-        setLoadingState({
-          isInitialLoading: false,
-          isRefreshing: false,
-        })
         if (showToastOnError) {
           toast.error(message)
         }
-        return
+        return null
+      } finally {
+        if (isActiveRequest()) {
+          setLoadingState({
+            isInitialLoading: false,
+            isRefreshing: false,
+          })
+        }
       }
-      setLoadingState({
-        isInitialLoading: false,
-        isRefreshing: false,
-      })
+      return nextDetail
     },
-    [isEditingNotes, isInitialLoading, onTaskLoaded, setLoadingState, setTask, setTaskErrorMessage, taskId],
+    [setLoadingState, setTask, setTaskErrorMessage, taskId],
   )
 
   React.useEffect(() => {

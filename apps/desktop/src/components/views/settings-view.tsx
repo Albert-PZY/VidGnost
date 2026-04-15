@@ -600,23 +600,32 @@ export function SettingsView({
     })
   }, [editingModel, isModelDialogOpen, llmForm, modelForm])
 
+  const hasDownloadingModels = React.useMemo(
+    () => models.some((model) => model.download?.state === "downloading"),
+    [models],
+  )
+
   React.useEffect(() => {
-    if (!models.some((model) => model.download?.state === "downloading")) {
+    if (!hasDownloadingModels) {
       return
     }
+    let cancelled = false
     const timer = window.setInterval(() => {
       void getModels()
         .then((response) => {
-          setModels(response.items)
+          if (!cancelled) {
+            setModels(response.items)
+          }
         })
         .catch(() => {
           // Download polling is best-effort; surface errors through explicit user actions instead.
         })
     }, 1200)
     return () => {
+      cancelled = true
       window.clearInterval(timer)
     }
-  }, [models])
+  }, [hasDownloadingModels])
 
   const sections = [
     { id: "models", label: "模型配置", icon: Cpu },

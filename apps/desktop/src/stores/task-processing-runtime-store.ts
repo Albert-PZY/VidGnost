@@ -24,6 +24,7 @@ import type {
 } from "@/stores/task-processing-runtime-types"
 
 export const DEFAULT_TASK_EVENT_MAX_ITEMS = 80
+const MAX_TRACE_CACHE_ITEMS = 8
 
 function buildInitialState(
   session: TaskProcessingRuntimeSession | null = null,
@@ -162,14 +163,30 @@ function setOrClearTraceCache(
   currentCache: Record<string, VqaTraceResponse>,
   traceId: string,
   payload: VqaTraceResponse,
+  selectedTraceId = "",
 ): Record<string, VqaTraceResponse> {
   if (!traceId) {
     return currentCache
   }
-  return {
+  const nextCache = {
     ...currentCache,
     [traceId]: payload,
   }
+  const protectedKeys = new Set([traceId, selectedTraceId].filter(Boolean))
+  const entries = Object.entries(nextCache)
+  if (entries.length <= MAX_TRACE_CACHE_ITEMS) {
+    return nextCache
+  }
+
+  const prunedEntries = [...entries]
+  while (prunedEntries.length > MAX_TRACE_CACHE_ITEMS) {
+    const removableIndex = prunedEntries.findIndex(([key]) => !protectedKeys.has(key))
+    if (removableIndex < 0) {
+      break
+    }
+    prunedEntries.splice(removableIndex, 1)
+  }
+  return Object.fromEntries(prunedEntries)
 }
 
 export function createTaskProcessingRuntimeStore(
@@ -308,7 +325,7 @@ export function createTaskProcessingRuntimeStore(
     },
     upsertTraceCache: (traceId, payload) => {
       set((state) => ({
-        traceCache: setOrClearTraceCache(state.traceCache, traceId, payload),
+        traceCache: setOrClearTraceCache(state.traceCache, traceId, payload, state.selectedTraceId),
       }))
     },
     clearTraceCache: () => {

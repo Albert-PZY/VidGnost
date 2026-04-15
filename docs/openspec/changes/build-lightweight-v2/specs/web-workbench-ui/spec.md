@@ -415,6 +415,7 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 - **WHEN** user opens a task and the right-side artifact workspace still needs several seconds to load detail data
 - **THEN** the right workspace shows a compact loading placeholder surface before the final Markdown or VQA pane mounts
 - **AND** the placeholder is replaced only after detail data is ready, instead of rendering the final pane shell with incomplete content
+- **AND** if the user switches to a different task or workflow context before an earlier detail request resolves, the stale response is ignored and does not overwrite the current workbench state or in-progress local edits
 
 #### Scenario: Inspect transcript correction output in a task with correction enabled
 - **WHEN** user opens the `文本纠错` tab for a task whose transcript-correction stage is enabled
@@ -516,6 +517,7 @@ Frontend UI library SHALL provide a reusable virtual-list component under `apps/
 - **AND** remote image-capable routes keep citation thumbnails and trace panels behaviorally consistent with the local route even when the backend compresses keyframes before upload
 - **AND** per-task VQA chat history is restored when the user leaves the workbench and later reopens the same task from history or recent tasks
 - **AND** restored per-task VQA chat history normalizes unfinished assistant streaming placeholders to a completed local state instead of reviving a stale `streaming` session
+- **AND** persisted per-task VQA trace snapshots keep only a bounded recent cache window while preserving the active or selected trace entry so renderer-side storage does not grow without limit
 - **AND** once the chat reaches fifteen user turns, the sixteenth send action first asks for confirmation and explains that continuing will clear the existing conversation before starting a new one
 
 ### Requirement: Prompt settings SHALL include an experiment surface
@@ -561,6 +563,8 @@ Diagnostics view SHALL provide a direct autofix action when the backend marks is
 - **THEN** the renderer restores the last active self-check session from local persistence
 - **AND** it reloads the current report for that session
 - **AND** it resumes SSE subscription when the restored session is still running or fixing
+- **AND** while the session is still streaming, the diagnostics view applies step progress and log updates from incremental SSE payloads instead of re-fetching the full report on every event
+- **AND** once the session reaches a terminal state, the renderer retires that session's SSE subscription promptly to avoid redundant polling, network traffic, and retained listeners
 
 #### Scenario: Diagnostics self-check validates Whisper cache path from configured catalog entry
 - **WHEN** the backend runs the `FasterWhisper` or `Whisper 模型缓存` self-check step after a local-model migration
