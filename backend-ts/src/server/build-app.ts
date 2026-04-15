@@ -11,12 +11,14 @@ import { OllamaRuntimeConfigRepository } from "../modules/models/ollama-runtime-
 import { OllamaServiceManager } from "../modules/models/ollama-service-manager.js"
 import { PromptTemplateRepository } from "../modules/prompts/prompt-template-repository.js"
 import { RuntimeMetricsService } from "../modules/runtime/runtime-metrics-service.js"
+import { TaskRepository } from "../modules/tasks/task-repository.js"
 import { WhisperRuntimeConfigRepository } from "../modules/runtime/whisper-runtime-config-repository.js"
 import { WhisperRuntimeStatusService } from "../modules/runtime/whisper-runtime-status-service.js"
 import { UiSettingsRepository } from "../modules/ui/ui-settings-repository.js"
 import { registerConfigRoutes } from "../routes/config.js"
 import { registerHealthRoute } from "../routes/health.js"
 import { registerRuntimeRoutes } from "../routes/runtime.js"
+import { registerTaskRoutes } from "../routes/tasks.js"
 
 export async function buildApp(inputConfig?: Partial<AppConfig>): Promise<FastifyInstance> {
   const baseConfig = resolveConfig()
@@ -38,6 +40,7 @@ export async function buildApp(inputConfig?: Partial<AppConfig>): Promise<Fastif
   const llmConfigRepository = new LlmConfigRepository(config)
   const promptTemplateRepository = new PromptTemplateRepository(config)
   const runtimeMetricsService = new RuntimeMetricsService()
+  const taskRepository = new TaskRepository(config)
   const whisperRuntimeConfigRepository = new WhisperRuntimeConfigRepository(config)
   const ollamaRuntimeConfigRepository = new OllamaRuntimeConfigRepository(config)
   const ollamaServiceManager = new OllamaServiceManager(ollamaRuntimeConfigRepository)
@@ -47,6 +50,7 @@ export async function buildApp(inputConfig?: Partial<AppConfig>): Promise<Fastif
 
   await registerHealthRoute(app, config)
   await registerRuntimeRoutes(app, config, runtimeMetricsService)
+  await registerTaskRoutes(app, config.apiPrefix, taskRepository)
   await registerConfigRoutes(app, config.apiPrefix, {
     uiSettingsRepository,
     llmConfigRepository,
