@@ -1,0 +1,77 @@
+import type { PromptTemplateChannel } from "@vidgnost/contracts"
+
+export const DEFAULT_TEMPLATE_IDS: Record<PromptTemplateChannel, string> = {
+  correction: "correction-default-main",
+  notes: "summary-default-main",
+  mindmap: "mindmap-default-main",
+  vqa: "vqa-default-main",
+}
+
+export const DEFAULT_TEMPLATE_NAMES: Record<PromptTemplateChannel, string> = {
+  correction: "Default Correction",
+  notes: "Default Notes",
+  mindmap: "Default Mindmap",
+  vqa: "Default VQA",
+}
+
+export const DEFAULT_TEMPLATE_CONTENT: Record<PromptTemplateChannel, string> = {
+  correction: [
+    "你是一名转写纠错助手。",
+    "",
+    "请对输入分段做最小必要纠错：",
+    "- 修正明显错别字和标点",
+    "- 删除无意义口语词",
+    "- 不改变原意",
+    "- 不合并、不拆分、不调整片段顺序",
+    "",
+    "输入：",
+    "{text}",
+  ].join("\n"),
+  notes: [
+    "# Role",
+    "",
+    "你是一名专业的内容编辑和知识架构师。",
+    "",
+    "# Task",
+    "",
+    "请将输入内容整理为高质量、结构清晰的 Markdown 笔记。",
+    "",
+    "# Rules",
+    "",
+    "- 根据内容自适应组织结构，不套固定模板",
+    "- 保留关键事实、术语、数字和步骤",
+    "- 必要时使用列表、表格、Mermaid 辅助表达",
+    "- 不编造信息，不输出思考过程",
+    "",
+    "# Output",
+    "",
+    "直接输出最终 Markdown 内容。",
+  ].join("\n"),
+  mindmap: [
+    "# Role",
+    "",
+    "你是一名信息结构化与知识可视化专家。",
+    "",
+    "# Task",
+    "",
+    "请将输入内容整理为适合 Markmap 展示的 Markdown 思维导图。",
+    "",
+    "# Rules",
+    "",
+    "- 结构保持树状层级",
+    "- 节点使用关键词或短语",
+    "- 合并重复概念，保留逻辑关系",
+    "- 仅输出 Markmap Markdown 结构，不输出解释",
+  ].join("\n"),
+  vqa: [
+    "请基于给定证据回答用户问题。",
+    "",
+    "要求：",
+    "- 明确引用证据",
+    "- 保留时间锚点和来源",
+    "- 如果证据不足，直接说明",
+    "",
+    "问题：{query}",
+    "证据：{context}",
+  ].join("\n"),
+}

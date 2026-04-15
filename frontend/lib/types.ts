@@ -1,5 +1,21 @@
 import type {
+  ApiErrorPayload,
+  BackgroundImageFillMode,
   HealthResponse,
+  LLMConfigResponse,
+  LocalModelsMigrationResponse,
+  ModelComponentType,
+  ModelDescriptor,
+  ModelDownloadState,
+  ModelDownloadStatus,
+  ModelListResponse,
+  ModelRuntimeStatus,
+  OllamaModelsMigrationResponse,
+  OllamaRuntimeConfigResponse,
+  OllamaServiceStatusResponse,
+  PromptTemplateBundleResponse,
+  PromptTemplateChannel,
+  PromptTemplateItem,
   RuntimeMetricsResponse,
   RuntimePathsResponse,
   SourceType,
@@ -16,11 +32,33 @@ import type {
   TaskSummaryItem,
   TaskSourceCreatePayload,
   TranscriptSegment,
+  UISettingsResponse,
+  WhisperConfigResponse,
+  WhisperRuntimeLibrariesInstallState,
+  WhisperRuntimeLibrariesProgressResponse,
+  WhisperRuntimeLibrariesResponse,
+  WhisperRuntimeLibrariesStatus,
   WorkflowType,
 } from "@vidgnost/contracts"
 
 export type {
+  ApiErrorPayload,
+  BackgroundImageFillMode,
   HealthResponse,
+  LLMConfigResponse,
+  LocalModelsMigrationResponse,
+  ModelComponentType,
+  ModelDescriptor,
+  ModelDownloadState,
+  ModelDownloadStatus,
+  ModelListResponse,
+  ModelRuntimeStatus,
+  OllamaModelsMigrationResponse,
+  OllamaRuntimeConfigResponse,
+  OllamaServiceStatusResponse,
+  PromptTemplateBundleResponse,
+  PromptTemplateChannel,
+  PromptTemplateItem,
   RuntimeMetricsResponse,
   RuntimePathsResponse,
   SourceType,
@@ -37,212 +75,14 @@ export type {
   TaskSummaryItem,
   TaskSourceCreatePayload,
   TranscriptSegment,
+  UISettingsResponse,
+  WhisperConfigResponse,
+  WhisperRuntimeLibrariesInstallState,
+  WhisperRuntimeLibrariesProgressResponse,
+  WhisperRuntimeLibrariesResponse,
+  WhisperRuntimeLibrariesStatus,
   WorkflowType,
 } from "@vidgnost/contracts"
-
-export type PromptTemplateChannel = "correction" | "notes" | "mindmap" | "vqa"
-
-export type ModelComponentType = "whisper" | "llm" | "embedding" | "vlm" | "rerank" | "mllm"
-export type BackgroundImageFillMode = "cover" | "contain" | "repeat" | "center"
-
-export type ModelRuntimeStatus = "ready" | "loading" | "not_ready" | "error"
-
-export type ModelDownloadState = "idle" | "downloading" | "completed" | "cancelled" | "failed"
-
-export type WhisperRuntimeLibrariesStatus = "ready" | "not_ready" | "installing" | "paused" | "failed" | "unsupported"
-
-export type WhisperRuntimeLibrariesInstallState = "idle" | "installing" | "paused" | "completed" | "failed"
-
-export interface ApiErrorPayload {
-  code: string
-  message: string
-  hint: string
-  retryable: boolean
-  detail: unknown
-}
-
-export interface ModelDescriptor {
-  id: string
-  component: ModelComponentType
-  name: string
-  provider: string
-  model_id: string
-  path: string
-  default_path: string
-  status: ModelRuntimeStatus
-  quantization: string
-  load_profile: string
-  max_batch_size: number
-  rerank_top_n: number
-  frame_interval_seconds: number
-  enabled: boolean
-  size_bytes: number
-  is_installed: boolean
-  supports_managed_download: boolean
-  download?: ModelDownloadStatus | null
-  last_check_at: string
-  api_base_url: string
-  api_key: string
-  api_key_configured: boolean
-  api_model: string
-  api_protocol: string
-  api_timeout_seconds: number
-  api_image_max_bytes: number
-  api_image_max_edge: number
-}
-
-export interface ModelListResponse {
-  items: ModelDescriptor[]
-}
-
-export interface ModelDownloadStatus {
-  state: ModelDownloadState
-  message: string
-  current_file: string
-  downloaded_bytes: number
-  total_bytes: number
-  percent: number
-  speed_bps: number
-  updated_at: string
-}
-
-export interface PromptTemplateItem {
-  id: string
-  channel: PromptTemplateChannel
-  name: string
-  content: string
-  is_default: boolean
-  created_at: string
-  updated_at: string
-}
-
-export interface PromptTemplateBundleResponse {
-  templates: PromptTemplateItem[]
-  selection: Record<PromptTemplateChannel, string>
-  summary_templates: PromptTemplateItem[]
-  mindmap_templates: PromptTemplateItem[]
-  selected_summary_template_id: string
-  selected_mindmap_template_id: string
-}
-
-export interface WhisperRuntimeLibrariesProgressResponse {
-  state: WhisperRuntimeLibrariesInstallState
-  message: string
-  current_package: string
-  downloaded_bytes: number
-  total_bytes: number
-  percent: number
-  speed_bps: number
-  resumable: boolean
-  updated_at: string
-}
-
-export interface WhisperRuntimeLibrariesResponse {
-  install_dir: string
-  auto_configure_env: boolean
-  version_label: string
-  platform_supported: boolean
-  ready: boolean
-  status: WhisperRuntimeLibrariesStatus
-  message: string
-  bin_dir: string
-  missing_files: string[]
-  discovered_files: Record<string, string>
-  load_error: string
-  path_configured: boolean
-  progress: WhisperRuntimeLibrariesProgressResponse
-}
-
-export interface WhisperConfigResponse {
-  model_default: string
-  language: string
-  device: string
-  compute_type: string
-  model_load_profile: "balanced" | "memory_first"
-  beam_size: number
-  vad_filter: boolean
-  chunk_seconds: number
-  target_sample_rate: number
-  target_channels: number
-  runtime_libraries: WhisperRuntimeLibrariesResponse
-  warnings: string[]
-  rollback_applied: boolean
-}
-
-export interface LLMConfigResponse {
-  mode: "api"
-  load_profile: "balanced" | "memory_first"
-  local_model_id: string
-  api_key: string
-  api_key_configured: boolean
-  base_url: string
-  model: string
-  correction_mode: "off" | "strict" | "rewrite"
-  correction_batch_size: number
-  correction_overlap: number
-}
-
-export interface OllamaServiceStatusResponse {
-  reachable: boolean
-  process_detected: boolean
-  process_id: number | null
-  executable_path: string
-  configured_models_dir: string
-  effective_models_dir: string
-  models_dir_source: "env" | "default" | "unknown"
-  using_configured_models_dir: boolean
-  restart_required: boolean
-  can_self_restart: boolean
-  message: string
-}
-
-export interface OllamaRuntimeConfigResponse {
-  service: OllamaServiceStatusResponse
-  install_dir: string
-  executable_path: string
-  models_dir: string
-  base_url: string
-}
-
-export interface OllamaModelsMigrationResponse {
-  service: OllamaServiceStatusResponse
-  source_dir: string
-  target_dir: string
-  moved: boolean
-  message: string
-  warnings: string[]
-}
-
-export interface LocalModelsMigrationResponse {
-  target_root: string
-  message: string
-  requires_confirmation: boolean
-  planned_model_ids: string[]
-  running_tasks: Array<{
-    id: string
-    title: string | null
-    status: string
-    workflow: string
-  }>
-  moved: string[]
-  skipped: string[]
-  ollama_restarted: boolean
-  warnings: string[]
-}
-
-export interface UISettingsResponse {
-  language: "zh" | "en"
-  font_size: number
-  auto_save: boolean
-  theme_hue: number
-  background_image: string | null
-  background_image_opacity: number
-  background_image_blur: number
-  background_image_scale: number
-  background_image_focus_x: number
-  background_image_focus_y: number
-  background_image_fill_mode: BackgroundImageFillMode
-}
 
 export interface SelfCheckStepResponse {
   id: string

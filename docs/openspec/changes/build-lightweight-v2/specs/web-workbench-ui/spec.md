@@ -21,6 +21,22 @@ Settings center SHALL provide `模型配置`, `提示词模板`, `外观设置`,
 - **WHEN** user opens settings from the application shell
 - **THEN** the renderer shows the four sections with current persisted values from backend config APIs
 
+#### Scenario: Hydrate settings center through HTTP JSON config endpoints
+- **WHEN** renderer mounts the settings center during the frontend-driven backend transition
+- **THEN** it loads `模型配置` data from `/config/models`、`/config/whisper`、`/config/llm`、`/config/ollama`
+- **AND** it loads `提示词模板` data from `/config/prompts`
+- **AND** all settings requests use the shared HTTP JSON API contract rather than an Electron-only transport bridge
+
+#### Scenario: Persist appearance and language changes from settings center
+- **WHEN** user updates theme hue, font size, autosave, background skin, or UI language inside settings
+- **THEN** renderer saves the patch through `/config/ui`
+- **AND** backend returns the normalized persisted UI settings snapshot used by the renderer shell
+
+#### Scenario: Manage prompt templates from settings center
+- **WHEN** user creates, edits, deletes, or switches a prompt template in settings
+- **THEN** renderer uses `/config/prompts/templates` and `/config/prompts/selection`
+- **AND** backend returns the refreshed template bundle including channel selection and effective template lists
+
 ### Requirement: Settings center SHALL expose managed transcription CUDA runtime controls
 The settings-center model surface SHALL expose a dedicated transcription CUDA runtime area above the model list. That area SHALL use a compact summary card plus configuration dialog pattern, SHALL show install status, runtime version label, environment-configuration state, and install progress, and SHALL allow saving runtime-library config plus starting a managed install.
 
