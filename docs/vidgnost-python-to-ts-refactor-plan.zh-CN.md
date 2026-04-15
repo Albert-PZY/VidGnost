@@ -225,7 +225,7 @@
 
 #### 语言与运行时
 
-- `Node.js 22 LTS`
+- `Node.js 24 LTS`
 - `TypeScript 5.x`
 - `pnpm`
 - 开发运行：`tsx`
@@ -309,7 +309,7 @@
 | 领域 | 当前技术栈 | 推荐重构后技术栈 | 说明 |
 | --- | --- | --- | --- |
 | 后端语言 | Python 3.12 | TypeScript 5.x | 完成语言统一 |
-| 后端运行时 | Uvicorn / ASGI | Node.js 22 | 与前端同语言运行时 |
+| 后端运行时 | Uvicorn / ASGI | Node.js 24 LTS | 与前端同语言运行时 |
 | API 框架 | FastAPI | Fastify 5 | 保持轻量、适合本地服务 |
 | 数据校验 | Pydantic | Zod | 与前端共享更直接 |
 | 前后端类型 | 手写重复定义 | `packages/contracts` 共享 | 消除协议漂移 |
