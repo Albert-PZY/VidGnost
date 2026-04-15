@@ -12,12 +12,12 @@ async function main(): Promise<void> {
       port: config.port,
     })
   } catch (error) {
-    app.log.error({ error }, "Failed to start backend-ts server")
+    app.log.error({ error }, "Failed to start apps/api server")
     throw error
   }
 }
 
 main().catch((error) => {
-  console.error(`[backend-ts] ${toErrorMessage(error)}`)
+  console.error(`[apps/api] ${toErrorMessage(error)}`)
   process.exitCode = 1
 })

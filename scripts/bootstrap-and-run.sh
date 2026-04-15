@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FRONTEND_DIR="${ROOT_DIR}/frontend"
+FRONTEND_DIR="${ROOT_DIR}/apps/desktop"
 BACKEND_PORT=8666
 FRONTEND_PORT=6221
 STORAGE_DIR="${ROOT_DIR}/storage"
@@ -201,13 +201,13 @@ echo "[setup] Install workspace dependencies..."
 (cd "${ROOT_DIR}" && pnpm install)
 
 echo "[run] Starting backend at http://127.0.0.1:${BACKEND_PORT}/api ..."
-(cd "${ROOT_DIR}" && VIDGNOST_API_HOST="127.0.0.1" VIDGNOST_API_PORT="${BACKEND_PORT}" VIDGNOST_STORAGE_DIR="${STORAGE_DIR}" pnpm --filter @vidgnost/backend-ts dev) &
+(cd "${ROOT_DIR}" && VIDGNOST_API_HOST="127.0.0.1" VIDGNOST_API_PORT="${BACKEND_PORT}" VIDGNOST_STORAGE_DIR="${STORAGE_DIR}" pnpm --filter @vidgnost/api dev) &
 BACKEND_PID=$!
 wait_port_ready "${BACKEND_PORT}" "backend"
 
 stop_existing_electron_for_project
 echo "[run] Starting frontend in Electron mode ..."
-(cd "${ROOT_DIR}" && VITE_API_BASE_URL="http://127.0.0.1:${BACKEND_PORT}/api" VITE_DEV_SERVER_URL="http://127.0.0.1:${FRONTEND_PORT}" pnpm --filter @vidgnost/frontend desktop:dev) &
+(cd "${ROOT_DIR}" && VITE_API_BASE_URL="http://127.0.0.1:${BACKEND_PORT}/api" VITE_DEV_SERVER_URL="http://127.0.0.1:${FRONTEND_PORT}" pnpm --filter @vidgnost/desktop desktop:dev) &
 FRONTEND_PID=$!
 wait_electron_ready 45
 

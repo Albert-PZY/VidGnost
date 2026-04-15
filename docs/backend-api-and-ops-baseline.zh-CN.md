@@ -1,10 +1,10 @@
-# backend-ts API 与运维基线
+# apps/api API 与运维基线
 
 更新时间：2026-04-15
 
 ## 1. 运行入口
 
-- 后端目录：`backend-ts`
+- 后端目录：`apps/api`
 - 根启动脚本：
   - Windows：`start-all.ps1`
   - Linux/macOS/WSL：`start-all.sh`
@@ -132,7 +132,7 @@
 - 启动失败：
   - 检查端口 `8666`
   - 检查 `pnpm install` 是否完成
-  - 检查 `backend-ts` 类型错误或运行期异常
+  - 检查 `apps/api` 类型错误或运行期异常
 - 媒体处理失败：
   - 检查 `ffmpeg`、`ffprobe`、`yt-dlp` 是否可执行
 - Whisper 转写失败：

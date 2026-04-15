@@ -17,17 +17,17 @@ VidGnost 当前交付目标是单仓 TS 全栈桌面工作台：
 
 - 仓库不再保留 `backend/` 作为运行、开发、测试、启动、校验或回滚入口
 - 启动脚本、Git Hook、OpenSpec 校验、文档说明全部以 TS/Node 为唯一主线
-- 任务编排、配置管理、历史记录、导出、自检、VQA、SSE 均由 `backend-ts` 提供
+- 任务编排、配置管理、历史记录、导出、自检、VQA、SSE 均由 `apps/api` 提供
 
 ## 2. 当前项目真实现状
 
 截至 2026-04-15，仓库已经具备以下基础：
 
-- `backend-ts` 已具备可运行的 Fastify 服务骨架与真实业务依赖装配
+- `apps/api` 已具备可运行的 Fastify 服务骨架与真实业务依赖装配
 - 任务链已接入媒体处理、ASR、摘要生成、事件总线、模型目录与配置仓库
 - 配置读写已经切到根目录 `storage/`，并修复了 Windows 下小文件覆盖写入问题
 - `contracts` 已承载配置、任务、自检、VQA 等共享 schema
-- `frontend` 已以 TS 为主，直接消费 `@vidgnost/contracts`
+- `apps/desktop` 已以 TS 为主，直接消费 `@vidgnost/contracts`
 
 本轮执行前识别出的主要缺口如下，现已全部闭合：
 
@@ -46,7 +46,7 @@ VidGnost 当前交付目标是单仓 TS 全栈桌面工作台：
 | 桌面壳层 | `Electron 31` | 桌面窗口、路径打开、外链打开等宿主能力 |
 | 前端样式 | `Tailwind CSS 4`、`Radix UI`、`Lucide React` | 组件与视觉基础设施 |
 | 前端状态 | `Zustand 5` | 任务运行态与界面状态 |
-| 后端服务 | `Fastify 5` | `backend-ts` 的 HTTP API 与 SSE 宿主 |
+| 后端服务 | `Fastify 5` | `apps/api` 的 HTTP API 与 SSE 宿主 |
 | 后端语言 | `TypeScript 5` | 服务逻辑、任务编排、模型配置、自检与导出 |
 | 共享契约 | `packages/contracts` + `zod` | 前后端共用请求、响应和领域模型 |
 | 日志 | `pino` | 后端结构化日志 |
@@ -66,13 +66,13 @@ VidGnost 当前交付目标是单仓 TS 全栈桌面工作台：
 | 后端语言 | Python + TypeScript 并存 | TypeScript 单栈 |
 | API 框架 | FastAPI / Fastify 描述混杂 | Fastify 5 |
 | 开发启动 | `uv` + `uvicorn` + `pnpm` | `pnpm` 单入口 |
-| 任务编排 | Python 旧链 + TS 新链并存 | `backend-ts` 单实现 |
+| 任务编排 | Python 旧链 + TS 新链并存 | `apps/api` 单实现 |
 | 配置校验脚本 | Python | Node `.mjs` |
 | Git Hook 守卫 | Python | Node `.mjs` |
 | 存储目录 | `backend/storage` 与 `storage/` 并存描述 | `storage/` 单目录 |
 | 文档说明 | Python/FastAPI/faster-whisper 旧表述 | TS/Fastify/whisper.cpp 现状表述 |
 | 运行时回退 | Python 可回退 | 无 Python 回退通道 |
-| 仓库结构 | `backend/` + `backend-ts/` | 仅保留 TS 服务目录 |
+| 仓库结构 | `backend/` + `apps/api/` | `apps/* + packages/*` 标准单仓结构 |
 
 ## 5. 执行清单
 
@@ -105,7 +105,7 @@ VidGnost 当前交付目标是单仓 TS 全栈桌面工作台：
 - [x] 更新 `scripts/bootstrap-and-run.sh`
 - [x] 去除 `uv sync`
 - [x] 去除 `uv run python -m uvicorn ...`
-- [x] 改为 `pnpm install + pnpm --filter @vidgnost/backend-ts dev + pnpm --filter @vidgnost/frontend desktop:dev`
+- [x] 改为 `pnpm install + pnpm --filter @vidgnost/api dev + pnpm --filter @vidgnost/desktop desktop:dev`
 - [x] 启动脚本统一注入 `VIDGNOST_STORAGE_DIR=storage`
 
 ## 5.4 阶段 D：同步文档与规范
@@ -168,7 +168,7 @@ VidGnost 当前交付目标是单仓 TS 全栈桌面工作台：
 以下条件全部满足时，本次重构视为完成：
 
 - 根目录启动脚本能够在无 Python 环境下启动完整桌面开发链
-- `frontend` 和 `backend-ts` 的开发、测试、构建均只依赖 Node/pnpm
+- `apps/desktop` 和 `apps/api` 的开发、测试、构建均只依赖 Node/pnpm
 - `storage/` 成为唯一运行时持久化目录
 - 仓库中不再保留任何 Python 后端、Python 脚本与 Python 测试资产
 - 文档、README、OpenSpec、Git Hook 与清理脚本均不再引用 Python 后端链路

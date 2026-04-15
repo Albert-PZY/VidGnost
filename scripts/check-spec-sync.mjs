@@ -3,8 +3,8 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 
-const CODE_PREFIXES = ["backend-ts/", "frontend/", "packages/", "scripts/", ".githooks/"];
-const IGNORED_PREFIXES = ["storage/", "frontend/dist/", "backend-ts/dist/"];
+const CODE_PREFIXES = ["apps/", "packages/", "scripts/", ".githooks/"];
+const IGNORED_PREFIXES = ["storage/", "apps/desktop/dist/", "apps/api/dist/"];
 const ROOT_CODE_FILES = new Set([
   "package.json",
   "pnpm-lock.yaml",

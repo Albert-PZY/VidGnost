@@ -23,7 +23,7 @@ describe("config routes", () => {
   let storageDir = ""
 
   beforeAll(async () => {
-    storageDir = await mkdtemp(path.join(os.tmpdir(), "vidgnost-backend-ts-"))
+    storageDir = await mkdtemp(path.join(os.tmpdir(), "vidgnost-api-"))
     app = await buildApp({
       apiPrefix: "/api",
       storageDir,

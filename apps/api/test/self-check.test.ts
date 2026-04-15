@@ -16,7 +16,7 @@ describe("self-check routes", () => {
   let storageDir = ""
 
   beforeAll(async () => {
-    storageDir = await mkdtemp(path.join(os.tmpdir(), "vidgnost-backend-ts-self-check-"))
+    storageDir = await mkdtemp(path.join(os.tmpdir(), "vidgnost-api-self-check-"))
     app = await buildApp({
       apiPrefix: "/api",
       storageDir,

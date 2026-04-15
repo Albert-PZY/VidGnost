@@ -11,10 +11,10 @@
 
 本文档讨论对象主要包括以下模块：
 
-- `frontend/components/views/task-processing-workbench.tsx`
-- `frontend/components/editors/prompt-markdown-editor.tsx`
-- `frontend/components/ui/markdown-artifact-viewer.tsx`
-- `frontend/app/globals.css`
+- `apps/desktop/src/components/views/task-processing-workbench.tsx`
+- `apps/desktop/src/components/editors/prompt-markdown-editor.tsx`
+- `apps/desktop/src/components/ui/markdown-artifact-viewer.tsx`
+- `apps/desktop/src/app/globals.css`
 
 ## 当前问题总览
 
@@ -44,8 +44,8 @@
 
 **原因**
 
-- `TaskProcessingWorkbench` 根组件集中持有大量状态，见 `frontend/components/views/task-processing-workbench.tsx:962-994`。
-- SSE 事件在 `frontend/components/views/task-processing-workbench.tsx:1086-1149` 中直接触发多路 `setState`：
+- `TaskProcessingWorkbench` 根组件集中持有大量状态，见 `apps/desktop/src/components/views/task-processing-workbench.tsx:962-994`。
+- SSE 事件在 `apps/desktop/src/components/views/task-processing-workbench.tsx:1086-1149` 中直接触发多路 `setState`：
   - `setLiveTranscriptSegments`
   - `setCorrectionPreview`
   - `setTask`
@@ -78,7 +78,7 @@
 
 **原因**
 
-- `mergeTranscriptSegments` 位于 `frontend/components/views/task-processing-workbench.tsx:647-670`。
+- `mergeTranscriptSegments` 位于 `apps/desktop/src/components/views/task-processing-workbench.tsx:647-670`。
 - 当前实现每次接收到新片段时都会：
   - 重建 `Map`
   - 合并历史数组与新增数组
@@ -115,9 +115,9 @@
 
 **原因**
 
-- 转写片段在 `frontend/components/views/task-processing-workbench.tsx:2507-2532` 直接全量 `map`。
-- 流式问答列表在 `frontend/components/views/task-processing-workbench.tsx:2862-2911` 直接全量 `map`。
-- 现有 `.workbench-collection-item` 在 `frontend/app/globals.css:1437-1440` 已经启用：
+- 转写片段在 `apps/desktop/src/components/views/task-processing-workbench.tsx:2507-2532` 直接全量 `map`。
+- 流式问答列表在 `apps/desktop/src/components/views/task-processing-workbench.tsx:2862-2911` 直接全量 `map`。
+- 现有 `.workbench-collection-item` 在 `apps/desktop/src/app/globals.css:1437-1440` 已经启用：
   - `content-visibility: auto`
   - `contain: layout paint style`
   - `contain-intrinsic-size`
@@ -149,8 +149,8 @@
 
 **原因**
 
-- `PromptMarkdownEditor` 在 `frontend/components/editors/prompt-markdown-editor.tsx:67-84` 采用 `preview="live"`。
-- `MarkdownArtifactViewer` 在 `frontend/components/ui/markdown-artifact-viewer.tsx` 中会执行：
+- `PromptMarkdownEditor` 在 `apps/desktop/src/components/editors/prompt-markdown-editor.tsx:67-84` 采用 `preview="live"`。
+- `MarkdownArtifactViewer` 在 `apps/desktop/src/components/ui/markdown-artifact-viewer.tsx` 中会执行：
   - 相对图片路径重写
   - 时间戳装饰
   - Markdown 渲染
@@ -181,7 +181,7 @@
 
 **原因**
 
-- `frontend/app/globals.css:1804-1825` 为阅读面板与高频内容卡片叠加了多层：
+- `apps/desktop/src/app/globals.css:1804-1825` 为阅读面板与高频内容卡片叠加了多层：
   - 半透明背景
   - `backdrop-filter`
   - 阴影

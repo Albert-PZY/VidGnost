@@ -6,9 +6,9 @@ This addendum documents the runtime-state foundation added for the task processi
 
 Implementation files:
 
-- `frontend/stores/task-processing-runtime-types.ts`
-- `frontend/stores/task-processing-runtime-store.ts`
-- `frontend/lib/task-processing-runtime-helpers.ts`
+- `apps/desktop/src/stores/task-processing-runtime-types.ts`
+- `apps/desktop/src/stores/task-processing-runtime-store.ts`
+- `apps/desktop/src/lib/task-processing-runtime-helpers.ts`
 
 ## Runtime State Domains
 

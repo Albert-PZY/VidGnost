@@ -15,7 +15,7 @@ describe("vqa routes", () => {
   let storageDir = ""
 
   beforeAll(async () => {
-    storageDir = await mkdtemp(path.join(os.tmpdir(), "vidgnost-backend-ts-vqa-"))
+    storageDir = await mkdtemp(path.join(os.tmpdir(), "vidgnost-api-vqa-"))
     await seedVqaFixture(storageDir)
     app = await buildApp({
       apiPrefix: "/api",

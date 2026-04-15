@@ -8,7 +8,7 @@ importers:
 
   .: {}
 
-  backend-ts:
+  apps/api:
     dependencies:
       '@fastify/cors':
         specifier: ^11.2.0
@@ -18,10 +18,10 @@ importers:
         version: 10.0.0
       '@vidgnost/contracts':
         specifier: workspace:*
-        version: link:../packages/contracts
+        version: link:../../packages/contracts
       '@vidgnost/shared':
         specifier: workspace:*
-        version: link:../packages/shared
+        version: link:../../packages/shared
       fastify:
         specifier: ^5.8.5
         version: 5.8.5
@@ -48,7 +48,7 @@ importers:
         specifier: ^4.1.4
         version: 4.1.4(@types/node@25.6.0)(vite@6.4.2(@types/node@25.6.0)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0))
 
-  frontend:
+  apps/desktop:
     dependencies:
       '@radix-ui/react-accordion':
         specifier: 1.2.12
@@ -103,7 +103,7 @@ importers:
         version: 4.1.0(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       '@vidgnost/contracts':
         specifier: workspace:*
-        version: link:../packages/contracts
+        version: link:../../packages/contracts
       autoprefixer:
         specifier: ^10.4.20
         version: 10.5.0(postcss@8.5.9)

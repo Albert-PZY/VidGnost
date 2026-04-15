@@ -6,9 +6,9 @@
     "check:openspec": "node scripts/check-openspec.mjs",
     "check:spec-sync": "node scripts/check-spec-sync.mjs",
     "check:staged-secrets": "node scripts/sanitize-staged-secrets.mjs",
-    "dev:frontend": "pnpm --filter @vidgnost/frontend dev --host 127.0.0.1 --port 6221",
-    "dev:backend": "pnpm --filter @vidgnost/backend-ts dev",
-    "dev:desktop": "pnpm --filter @vidgnost/frontend desktop:dev",
+    "dev:frontend": "pnpm --filter @vidgnost/desktop dev --host 127.0.0.1 --port 6221",
+    "dev:backend": "pnpm --filter @vidgnost/api dev",
+    "dev:desktop": "pnpm --filter @vidgnost/desktop desktop:dev",
     "build": "pnpm -r --if-present build",
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck"

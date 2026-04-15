@@ -49,14 +49,22 @@
 
 ### 3.2 核心后端模块
 
-- `backend-ts/src/modules/media/`
-- `backend-ts/src/modules/asr/`
-- `backend-ts/src/modules/summary/`
-- `backend-ts/src/modules/tasks/`
-- `backend-ts/src/modules/runtime/`
-- `backend-ts/src/modules/models/`
-- `backend-ts/src/modules/vqa/`
-- `backend-ts/src/modules/events/`
+- `apps/api/src/modules/media/`
+- `apps/api/src/modules/asr/`
+- `apps/api/src/modules/summary/`
+- `apps/api/src/modules/tasks/`
+- `apps/api/src/modules/runtime/`
+- `apps/api/src/modules/models/`
+- `apps/api/src/modules/vqa/`
+- `apps/api/src/modules/events/`
+
+### 3.3 标准单仓目录边界
+
+- `apps/api/`：服务端应用
+- `apps/desktop/`：桌面端应用
+- `apps/desktop/src/`：统一承载渲染层源码
+- `packages/contracts/`：共享 schema
+- `packages/shared/`：共享常量与通用类型
 
 ## 4. AI 与外部运行时
 

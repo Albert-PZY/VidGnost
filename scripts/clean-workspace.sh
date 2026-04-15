@@ -25,12 +25,12 @@ while IFS= read -r log_file; do
   remove_workspace_item "${log_file}"
 done < <(find "${ROOT_DIR}" -maxdepth 1 -type f -name '*.log' -print)
 
-remove_workspace_item "${ROOT_DIR}/backend-ts/dist"
-remove_workspace_item "${ROOT_DIR}/backend-ts/coverage"
-remove_workspace_item "${ROOT_DIR}/frontend/.vite"
-remove_workspace_item "${ROOT_DIR}/frontend/node_modules/.vite"
-remove_workspace_item "${ROOT_DIR}/frontend/dist"
-remove_workspace_item "${ROOT_DIR}/frontend/coverage"
+remove_workspace_item "${ROOT_DIR}/apps/api/dist"
+remove_workspace_item "${ROOT_DIR}/apps/api/coverage"
+remove_workspace_item "${ROOT_DIR}/apps/desktop/.vite"
+remove_workspace_item "${ROOT_DIR}/apps/desktop/node_modules/.vite"
+remove_workspace_item "${ROOT_DIR}/apps/desktop/dist"
+remove_workspace_item "${ROOT_DIR}/apps/desktop/coverage"
 remove_workspace_item "${ROOT_DIR}/packages/contracts/dist"
 remove_workspace_item "${ROOT_DIR}/packages/contracts/coverage"
 remove_workspace_item "${ROOT_DIR}/packages/shared/dist"

@@ -189,7 +189,7 @@ Repository maintenance scripts SHALL provide Windows and shell entry points that
 
 #### Scenario: Run workspace cleanup script
 - **WHEN** maintainer executes `scripts/clean-workspace.ps1` or `scripts/clean-workspace.sh`
-- **THEN** root-level transient `.log` files, frontend build output, and local cache directories such as `backend-ts/dist`, `backend-ts/coverage`, `frontend/.vite`, and `frontend/node_modules/.vite` are removed
+- **THEN** root-level transient `.log` files, desktop build output, and local cache directories such as `apps/api/dist`, `apps/api/coverage`, `apps/desktop/.vite`, and `apps/desktop/node_modules/.vite` are removed
 - **AND** persisted runtime data under `storage/` remains untouched
 
 ### Requirement: Workbench SHALL surface transient notifications through a compact toast stack
@@ -295,7 +295,7 @@ Header theme controls SHALL show the current selected theme mode with explicit s
 - **AND** only the selected theme option shows the explicit selection indicator
 
 ### Requirement: Workbench branding SHALL use the project logo asset
-Renderer branding surfaces, desktop splash branding, and favicon SHALL use `frontend/public/icon.svg` as the canonical project logo asset. The desktop package MAY include a synchronized raster companion asset at `frontend/public/icon.png` for runtime or distribution compatibility, and branding assets SHALL NOT depend on a separate legacy light-icon file.
+Renderer branding surfaces, desktop splash branding, and favicon SHALL use `apps/desktop/public/icon.svg` as the canonical project logo asset. The desktop package MAY include a synchronized raster companion asset at `apps/desktop/public/icon.png` for runtime or distribution compatibility, and branding assets SHALL NOT depend on a separate legacy light-icon file.
 
 #### Scenario: Open application shell
 - **WHEN** application renderer loads
@@ -485,7 +485,7 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 - **AND** transcript-row highlighting updates with the active segment while unchanged transcript rows remain stable
 
 ### Requirement: UI library SHALL provide a reusable virtual-list primitive for long evidence surfaces
-Frontend UI library SHALL provide a reusable virtual-list component under `frontend/components/ui` implemented with `@tanstack/react-virtual`. The primitive SHALL support dynamic item-height measurement, configurable `overscan`, caller-supplied stable `itemKey`, and customizable empty-state rendering so transcript and evidence surfaces can share one virtualization contract.
+Frontend UI library SHALL provide a reusable virtual-list component under `apps/desktop/src/components/ui` implemented with `@tanstack/react-virtual`. The primitive SHALL support dynamic item-height measurement, configurable `overscan`, caller-supplied stable `itemKey`, and customizable empty-state rendering so transcript and evidence surfaces can share one virtualization contract.
 
 #### Scenario: Render a large transcript or evidence collection
 - **WHEN** a workbench surface renders hundreds of transcript or evidence rows

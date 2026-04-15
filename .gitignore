@@ -28,17 +28,13 @@ storage/
 
 # Node workspace
 node_modules/
-frontend/node_modules/
-frontend/dist/
-frontend/.vite/
-frontend/coverage/
-frontend/.cache/
-frontend/.eslintcache
-frontend/**/*.tsbuildinfo
-backend-ts/node_modules/
-backend-ts/dist/
-backend-ts/coverage/
-backend-ts/**/*.tsbuildinfo
+apps/*/node_modules/
+apps/*/dist/
+apps/*/.vite/
+apps/*/coverage/
+apps/*/.cache/
+apps/*/.eslintcache
+apps/*/**/*.tsbuildinfo
 packages/*/node_modules/
 packages/*/dist/
 packages/*/coverage/

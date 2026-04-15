@@ -1,6 +1,5 @@
 packages:
-  - frontend
-  - backend-ts
+  - apps/*
   - packages/*
 
 allowBuilds:

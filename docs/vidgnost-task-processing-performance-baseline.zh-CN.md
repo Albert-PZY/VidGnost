@@ -61,8 +61,8 @@ pnpm build
 
 执行方式：
 
-1. 启动后端：`pnpm --filter @vidgnost/backend-ts dev`
-2. 启动前端：`pnpm --filter @vidgnost/frontend dev --host 127.0.0.1 --port 6221`
+1. 启动后端：`pnpm --filter @vidgnost/api dev`
+2. 启动前端：`pnpm --filter @vidgnost/desktop dev --host 127.0.0.1 --port 6221`
 3. 打开一个长视频任务详情页
 4. 记录：
 
@@ -75,7 +75,7 @@ pnpm build
 ### 3.3 Electron 开发态基线
 
 ```powershell
-pnpm --filter @vidgnost/frontend desktop:dev
+pnpm --filter @vidgnost/desktop desktop:dev
 ```
 
 录制动作：

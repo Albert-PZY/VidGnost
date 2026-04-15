@@ -6,7 +6,7 @@ Scope: this file is an internal navigation index for coding agents and maintaine
 - Response language: Simplified Chinese
 - Workspace package manager: use `pnpm` (do not use `npm`)
 - Generated file encoding: UTF-8 without BOM
-- Runtime stack baseline: `frontend + backend-ts + packages/*`
+- Runtime stack baseline: `apps/desktop + apps/api + packages/*`
 - GitHub operations: prefer using `gh` CLI commands when possible
 - Documentation style: write all project docs as current baseline statements and keep them aligned with implementation
 - Spec sync rule: whenever project code changes, automatically review the impacted OpenSpec docs and sync their information density to the implementation in the same delivery. New or changed interfaces, states, parameters, constraints, error handling, and UI behavior must be reflected in spec updates; if no spec text changes are needed, explicitly verify that the existing spec already matches the latest code detail.

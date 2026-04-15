@@ -1,5 +1,5 @@
 {
-  "name": "@vidgnost/backend-ts",
+  "name": "@vidgnost/api",
   "version": "0.1.0",
   "private": true,
   "type": "module",

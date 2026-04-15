@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./frontend/public/icon.png" alt="VidGnost Logo" width="120" />
+  <img src="./apps/desktop/public/icon.png" alt="VidGnost Logo" width="120" />
   <h1>VidGnost</h1>
   <p><strong>Local-first video analysis workbench for Electron desktop</strong></p>
   <p>Ingest videos, transcribe, generate structured notes, search evidence, stream task state, and export reproducible artifacts.</p>
@@ -25,10 +25,10 @@
 
 ## Overview
 
-VidGnost is a local-first Electron workbench for video analysis. The repository now follows a TS fullstack layout:
+VidGnost is a local-first Electron workbench for video analysis. The repository now follows a standard TS fullstack monorepo layout:
 
-- `frontend` provides the React renderer and Electron shell
-- `backend-ts` provides the Fastify API, task orchestration, config center, event streaming, diagnostics, and exports
+- `apps/desktop` provides the React renderer and Electron shell
+- `apps/api` provides the Fastify API, task orchestration, config center, event streaming, diagnostics, and exports
 - `packages/contracts` provides shared schemas across frontend and backend
 - runtime data is persisted under the repository-root `storage/`
 
@@ -73,8 +73,20 @@ Task execution stays organized as `A -> B -> C -> D`:
 
 ```text
 VidGnost/
-├─ backend-ts/                   # Fastify + TypeScript backend
-├─ frontend/                     # React renderer + Electron shell
+├─ apps/
+│  ├─ api/                       # Fastify + TypeScript backend
+│  │  ├─ src/                    # backend source
+│  │  └─ test/                   # backend tests
+│  └─ desktop/                   # Electron desktop app
+│     ├─ electron/               # main/preload/splash host files
+│     ├─ public/                 # static assets
+│     └─ src/                    # renderer source
+│        ├─ app/                 # app composition and globals
+│        ├─ components/          # UI and feature components
+│        ├─ hooks/               # renderer hooks
+│        ├─ lib/                 # client-side services and helpers
+│        ├─ stores/              # Zustand runtime stores
+│        └─ workers/             # renderer workers
 ├─ packages/
 │  ├─ contracts/                 # shared schemas
 │  └─ shared/                    # shared constants
@@ -129,19 +141,19 @@ pnpm install
 Start the backend:
 
 ```bash
-pnpm --filter @vidgnost/backend-ts dev
+pnpm --filter @vidgnost/api dev
 ```
 
 Start the frontend in web debug mode:
 
 ```bash
-pnpm --filter @vidgnost/frontend dev --host 127.0.0.1 --port 6221
+pnpm --filter @vidgnost/desktop dev --host 127.0.0.1 --port 6221
 ```
 
 Start Electron desktop development mode:
 
 ```bash
-pnpm --filter @vidgnost/frontend desktop:dev
+pnpm --filter @vidgnost/desktop desktop:dev
 ```
 
 Default local endpoints:

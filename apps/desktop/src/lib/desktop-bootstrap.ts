@@ -1,4 +1,4 @@
-import bootstrapStepDefinitionsJson from "@/electron/bootstrap-steps.json"
+import bootstrapStepDefinitionsJson from "../../electron/bootstrap-steps.json"
 
 export type DesktopBootstrapStepStatus = "pending" | "active" | "complete" | "error"
 

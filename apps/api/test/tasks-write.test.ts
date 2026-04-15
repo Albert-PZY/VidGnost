@@ -16,7 +16,7 @@ describe("task mutation routes", () => {
   let unmatchedVideoPath = ""
 
   beforeAll(async () => {
-    storageDir = await mkdtemp(path.join(os.tmpdir(), "vidgnost-backend-ts-write-"))
+    storageDir = await mkdtemp(path.join(os.tmpdir(), "vidgnost-api-write-"))
     const seeded = await seedMutationFixtures(storageDir)
     sourceVideoPath = seeded.sourceVideoPath
     unmatchedVideoPath = seeded.unmatchedVideoPath

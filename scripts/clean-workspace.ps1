@@ -40,12 +40,12 @@ function Remove-WorkspaceLogs {
 Remove-WorkspaceLogs
 
 $targets = @(
-    (Join-Path $RepoRoot "backend-ts\dist"),
-    (Join-Path $RepoRoot "backend-ts\coverage"),
-    (Join-Path $RepoRoot "frontend\.vite"),
-    (Join-Path $RepoRoot "frontend\node_modules\.vite"),
-    (Join-Path $RepoRoot "frontend\dist"),
-    (Join-Path $RepoRoot "frontend\coverage"),
+    (Join-Path $RepoRoot "apps\api\dist"),
+    (Join-Path $RepoRoot "apps\api\coverage"),
+    (Join-Path $RepoRoot "apps\desktop\.vite"),
+    (Join-Path $RepoRoot "apps\desktop\node_modules\.vite"),
+    (Join-Path $RepoRoot "apps\desktop\dist"),
+    (Join-Path $RepoRoot "apps\desktop\coverage"),
     (Join-Path $RepoRoot "packages\contracts\dist"),
     (Join-Path $RepoRoot "packages\contracts\coverage"),
     (Join-Path $RepoRoot "packages\shared\dist"),

@@ -19,7 +19,7 @@ describe("task read routes", () => {
   let storageDir = ""
 
   beforeAll(async () => {
-    storageDir = await mkdtemp(path.join(os.tmpdir(), "vidgnost-backend-ts-tasks-"))
+    storageDir = await mkdtemp(path.join(os.tmpdir(), "vidgnost-api-tasks-"))
     await seedTaskFixtures(storageDir)
     app = await buildApp({
       apiPrefix: "/api",

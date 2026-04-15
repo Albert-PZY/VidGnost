@@ -40,7 +40,7 @@ VidGnost defines a practical video-analysis workbench for local execution plus o
 
 ## Impact
 
-- Repository modules: `backend-ts/`, `frontend/`, `packages/`, `docs/`, `scripts/`.
+- Repository modules: `apps/api/`, `apps/desktop/`, `packages/`, `docs/`, `scripts/`.
 - Runtime persistence files:
   - `storage/model_config.json`
   - `storage/config.toml`

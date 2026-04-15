@@ -275,7 +275,7 @@ function Wait-ElectronReady {
 }
 
 $RootDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$FrontendDir = Join-Path $RootDir "frontend"
+$FrontendDir = Join-Path $RootDir "apps\desktop"
 $BackendPort = 8666
 $FrontendPort = 6221
 $StorageDir = Join-Path $RootDir "storage"
@@ -313,7 +313,7 @@ Set-Location -LiteralPath '$escapedRootDir'
 `$env:VIDGNOST_STORAGE_DIR = '$escapedStorageDir'
 Write-Host '[run] Backend live logs (Ctrl+C to stop this window).'
 Write-Host '[run] Backend URL: http://127.0.0.1:$BackendPort/api'
-pnpm --filter @vidgnost/backend-ts dev
+pnpm --filter @vidgnost/api dev
 "@
 
 Stop-ElectronAppProcesses -FrontendPath $FrontendDir
@@ -324,7 +324,7 @@ Set-Location -LiteralPath '$escapedRootDir'
 Write-Host '[run] Frontend desktop live logs (Ctrl+C to stop this window).'
 Write-Host '[run] Backend API base: http://127.0.0.1:$BackendPort/api'
 Write-Host '[run] Frontend dev server: http://127.0.0.1:$FrontendPort'
-pnpm --filter @vidgnost/frontend desktop:dev
+pnpm --filter @vidgnost/desktop desktop:dev
 "@
 
 $encodedBackendCommand = Convert-ToEncodedCommand -CommandText $backendCommand

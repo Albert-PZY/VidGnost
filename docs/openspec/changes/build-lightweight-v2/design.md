@@ -2,7 +2,7 @@
 
 VidGnost 当前以 Electron 桌面工作台形态交付：
 - 渲染层使用 React + Vite，只负责渲染 TS 后端返回的数据与状态
-- `backend-ts` 负责任务编排、模型管理、存储读写、实时事件与数据处理
+- `apps/api` 负责任务编排、模型管理、存储读写、实时事件与数据处理
 
 ## Goals / Non-Goals
 
@@ -55,7 +55,7 @@ VidGnost 当前以 Electron 桌面工作台形态交付：
 - GPU 重计算阶段使用统一的独占执行租约，不再以组件级 LRU 驱逐作为主显存管理策略。
 
 ### 8. Brand application
-- 项目品牌资源统一使用 `frontend/public/light.svg`。
+- 项目品牌资源统一使用 `apps/desktop/public/icon.svg`。
 - Logo 应用到侧栏品牌位与渲染器 favicon，保持桌面工作台识别一致性。
 
 ## Risks / Trade-offs
