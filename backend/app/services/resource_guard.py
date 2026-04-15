@@ -6,12 +6,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict
 
+import psutil
+
 from app.config import Settings
 from app.services.llm_config_store import LLMConfig
 from app.services.runtime_config_store import WhisperRuntimeConfig
 
 _GIB = 1024 * 1024 * 1024
 _MIB = 1024 * 1024
+_WHISPER_MEMORY_SOFT_LIMIT_BYTES = 4 * _GIB
+_WHISPER_MEMORY_HARD_LIMIT_BYTES = 3 * _GIB
 
 _MIN_BASELINE_ANALYSIS_BYTES = 3 * _GIB
 _MIN_BASELINE_SYSTEM_MEMORY_BYTES = 2 * _GIB
@@ -41,6 +45,34 @@ class ResourceGuard:
         adjusted: WhisperRuntimeConfig = dict(config)
         warnings: list[str] = []
         rollback_applied = False
+        available_memory = self._available_system_memory_bytes()
+
+        if available_memory is not None and available_memory < _WHISPER_MEMORY_SOFT_LIMIT_BYTES:
+            if str(adjusted.get("model_load_profile", "")).strip().lower() != "memory_first":
+                adjusted["model_load_profile"] = "memory_first"
+                rollback_applied = True
+                warnings.append(
+                    "检测到系统可用内存偏低，转写已自动切换到低内存加载策略。"
+                    f" 当前约 {_format_bytes(available_memory)} 可用。"
+                )
+
+            beam_size = int(adjusted.get("beam_size", 5) or 5)
+            recommended_beam_size = 2 if available_memory >= _WHISPER_MEMORY_HARD_LIMIT_BYTES else 1
+            if beam_size > recommended_beam_size:
+                adjusted["beam_size"] = recommended_beam_size
+                rollback_applied = True
+                warnings.append(
+                    "检测到系统可用内存偏低，已自动下调 Whisper Beam Size 以降低峰值内存占用。"
+                )
+
+            chunk_seconds = int(adjusted.get("chunk_seconds", 180) or 180)
+            max_chunk_seconds = 180 if available_memory >= _WHISPER_MEMORY_HARD_LIMIT_BYTES else 120
+            if chunk_seconds > max_chunk_seconds:
+                adjusted["chunk_seconds"] = max_chunk_seconds
+                rollback_applied = True
+                warnings.append(
+                    "检测到系统可用内存偏低，已自动缩短转写音频分片时长以降低内存压力。"
+                )
 
         return {
             "config": adjusted,
@@ -92,6 +124,13 @@ class ResourceGuard:
 
     @staticmethod
     def _available_system_memory_bytes() -> int | None:
+        try:
+            memory = psutil.virtual_memory()
+            available = int(getattr(memory, "available", 0) or 0)
+            if available > 0:
+                return available
+        except Exception:  # noqa: BLE001
+            pass
         if not hasattr(os, "sysconf"):
             return None
         names = getattr(os, "sysconf_names", {})

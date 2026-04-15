@@ -138,3 +138,48 @@ def test_vqa_chat_stream_route_returns_structured_error_instead_of_broken_chunk(
         assert '"type":"error"' in response.text
         assert '"code":"VQA_STREAM_TRANSPORT_ERROR"' in response.text
         assert "[DONE]" in response.text
+
+
+def test_build_trace_payload_strips_legacy_non_frame_image_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    settings = _build_settings(tmp_path)
+    runtime = VQARuntimeService(
+        task_store=TaskStore(settings.storage_dir),
+        llm_config_store=LLMConfigStore(settings),
+        storage_dir=settings.storage_dir,
+    )
+
+    frame_dir = (
+        Path(settings.storage_dir)
+        / "tasks"
+        / "stage-artifacts"
+        / "task-1"
+        / "D"
+        / "fusion"
+        / "frames"
+    )
+    frame_dir.mkdir(parents=True, exist_ok=True)
+    (frame_dir / "frame-0001.jpg").write_bytes(b"frame")
+
+    monkeypatch.setattr(
+        runtime,
+        "read_trace",
+        lambda _trace_id: [
+            {
+                "stage": "retrieval",
+                "payload": {
+                    "dense_hits": [{"task_id": "task-1", "image_path": "notes-images/mermaid-002.png"}],
+                    "sparse_hits": [],
+                    "rrf_hits": [],
+                    "rerank_hits": [{"task_id": "task-1", "image_path": "frames/frame-0001.jpg"}],
+                },
+            }
+        ],
+    )
+
+    payload = runtime.build_trace_payload("trace-test-1")
+    retrieval = payload["records"][0]["payload"]
+    assert retrieval["dense_hits"][0]["image_path"] == ""
+    assert retrieval["rerank_hits"][0]["image_path"] == "frames/frame-0001.jpg"

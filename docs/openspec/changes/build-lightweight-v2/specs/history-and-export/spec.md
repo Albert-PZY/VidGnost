@@ -11,6 +11,8 @@ Backend SHALL persist task metadata, source info, phase logs, transcript, notes,
 #### Scenario: Query task detail
 - **WHEN** client requests task detail by ID
 - **THEN** backend returns persisted logs, artifacts, metrics, and artifact index metadata
+- **AND** task-detail markdown keeps only task-relative image references whose artifact files still exist on disk
+- **AND** stale task-relative image references are removed before the renderer receives the payload so the client does not request missing artifact files
 
 ### Requirement: Runtime snapshots SHALL be persisted by stage
 Backend SHALL persist per-stage analysis snapshots under `analysis-results/<task_id>/<stage>.json`.

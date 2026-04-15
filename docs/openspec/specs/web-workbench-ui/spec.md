@@ -66,6 +66,7 @@ The settings-center model surface SHALL expose dedicated `Ollama 运行时与模
 #### Scenario: Model list data is still loading
 - **WHEN** the settings view has entered `模型配置` but the backend model list has not yet returned
 - **THEN** the renderer shows skeleton rows in the model list region
+- **AND** the skeleton placeholders use the shared neutral loading surface instead of a theme-hue accented variant
 - **AND** it does not flash an empty-state card before the first model payload arrives
 
 ### Requirement: Configuration dialogs SHALL stay within viewport with fixed chrome
@@ -109,6 +110,7 @@ Prompt template list and editor SHALL use channel-specific labels for `correctio
 - **WHEN** user opens the prompt template section
 - **THEN** each template card shows the channel label and a distinct icon marker
 - **AND** the editor dialog reflects the currently selected channel visually
+- **AND** system default templates expose a read-only inspect action instead of edit and delete actions
 
 ### Requirement: Prompt template editor SHALL provide split markdown editing with live preview
 Prompt template editor SHALL use a markdown editor that keeps the source editor and rendered preview visible at the same time. The editor theme SHALL follow the application light/dark theme, editor-side scrolling SHALL remain synchronized with the preview pane during editing, and helper text above the editor SHALL stay concise without repeating nearby labels.
@@ -118,6 +120,12 @@ Prompt template editor SHALL use a markdown editor that keeps the source editor 
 - **THEN** the dialog shows a markdown editor with source editing on the left and live rendered preview on the right
 - **AND** the editor applies the same light or dark color mode as the renderer shell
 - **AND** scrolling one pane keeps the other pane aligned for long prompt content
+
+#### Scenario: View a default prompt template in the settings center
+- **WHEN** user opens a system default prompt template from the prompt-template list
+- **THEN** the dialog reuses the markdown editor with the template content already populated
+- **AND** the source pane remains read-only while the preview pane keeps live rendered output visible
+- **AND** the dialog omits editable form fields and extra helper copy unrelated to reading the template body
 
 ### Requirement: Workbench notes editor SHALL prefer a wide split layout
 The task-workbench Markdown notes editor dialog SHALL use a wide split layout that prioritizes side-by-side editing and preview over vertical height. On desktop widths, the dialog SHALL expand toward a wide landscape presentation instead of a tall narrow panel, and the editor viewport SHALL stay visually compact enough to avoid pushing the action area below the fold.
@@ -258,6 +266,7 @@ Header language controls SHALL show the current selected language with explicit 
 #### Scenario: Open header language menu
 - **WHEN** user opens the language menu in the title bar
 - **THEN** the active language option is visually highlighted
+- **AND** pointing to the title-bar language trigger opens the dropdown without requiring an extra click, while click and focus access remain available
 - **AND** changing the option updates persisted UI settings
 
 ### Requirement: Shell controls SHALL expose explicit theme selection state
@@ -266,6 +275,7 @@ Header theme controls SHALL show the current selected theme mode with explicit s
 #### Scenario: Open header theme menu
 - **WHEN** user opens the theme menu in the title bar
 - **THEN** the active theme option is visually highlighted
+- **AND** pointing to the title-bar theme trigger opens the dropdown without requiring an extra click, while click and focus access remain available
 - **AND** only the selected theme option shows the explicit selection indicator
 
 ### Requirement: Workbench branding SHALL use the project logo asset
@@ -313,9 +323,24 @@ New-task view SHALL expose `Upload`, `URL`, and `Path` intake modes inside the s
 - **THEN** the renderer shows responsive workflow step cards without horizontal scrolling, a value-preview summary, and the three intake modes
 - **AND** workflow-step and value-preview content keep a compact flat structure inside the surrounding shell cards instead of reintroducing nested heavyweight sub-cards
 - **AND** the upload mode supports drag-and-drop plus batch file selection
+- **AND** upload selection, drag-and-drop intake, and absolute local-path entry only accept `MP4`、`MOV`、`AVI`、`MKV` video inputs
+- **AND** the renderer blocks other file extensions before request submission instead of relying only on backend rejection
 - **AND** selected local video files attempt to read media duration from local metadata and show the detected duration when the browser can resolve it
 - **AND** upload helper copy keeps a higher-contrast foreground treatment in dark theme so the prompt remains readable during idle and importing states
 - **AND** the user can switch to URL or absolute local-path input without leaving the page
+
+### Requirement: History view SHALL keep compact overview and batch-delete controls
+History view SHALL present a compact summary strip and a flat batch-delete toolbar that preserve quick task access while reducing unnecessary visual chrome.
+
+#### Scenario: Open history view with no persisted tasks
+- **WHEN** user opens `历史记录` before any task has been created
+- **THEN** the `批量删除` entry action is visibly disabled
+- **AND** the disabled presentation follows the same affordance family used by the history pagination controls
+
+#### Scenario: Enter batch-delete mode from history view
+- **WHEN** user clicks `批量删除` in history view while deletable tasks are available
+- **THEN** the renderer enters selection mode for terminal tasks that support deletion
+- **AND** the toolbar keeps a compact flat presentation while exposing `全选本页`、`退出选择`、`删除已选` actions
 
 ### Requirement: Bootstrap surfaces SHALL provide startup progress and backend recovery actions
 Workbench bootstrap SHALL expose a desktop splash progress state before the main window reveal and a renderer overlay state machine for `initializing`, `connecting`, `degraded`, and `ready` after the main window becomes visible. Initializing states SHALL keep an explicit loading affordance, while degraded states SHALL switch to a non-blocking recovery panel.
@@ -385,6 +410,7 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 #### Scenario: Preview imported source media inside the workbench
 - **WHEN** user opens a task whose detail payload includes a persisted `source_local_path`
 - **THEN** the left video panel requests the playable source through `GET /tasks/{task_id}/source-media` instead of a renderer-side `file://` URL
+- **AND** if backend detects that the stored `source_local_path` points to a cleaned temporary workspace, it repairs the task detail path from the retained source asset before the panel requests playback
 - **AND** the video element resets stale playback time and duration state when the task or media source changes
 - **AND** if the source file can no longer be opened, the panel shows a readable preview-failure hint instead of leaving a silent black frame
 
@@ -444,6 +470,7 @@ Frontend UI library SHALL provide a reusable virtual-list component under `front
 #### Scenario: Open a VQA task and ask a question
 - **WHEN** user submits a question from the VQA workbench
 - **THEN** before retrieval hits or answer tokens arrive, the assistant bubble shows a temporary loading placeholder with business-language progress copy instead of a blank bubble
+- **AND** while the answer stream is active, the composer action switches from `发送` to `停止`
 - **AND** if the task has already completed its persisted `D/vqa-prewarm` preparation, the first question reuses that prepared retrieval corpus and frame descriptions instead of rebuilding embeddings or visual evidence on demand
 - **AND** if the backend has a ready multimodal retrieval route, the same chat surface can answer from joint text-image evidence without changing the user interaction flow
 - **THEN** the renderer streams incremental answer chunks into the chat surface
@@ -454,12 +481,14 @@ Frontend UI library SHALL provide a reusable virtual-list component under `front
 - **AND** each answer may expose a retrieval trace identifier, citations, and citation jump actions
 - **AND** retrieval-trace and citation actions use compact icon buttons with hover tooltips instead of long inline labels
 - **AND** citations prefer related frame thumbnails from the task video rather than Mermaid summary images
+- **AND** citations and Trace Theater thumbnails only render task-relative `frames/...` evidence images and ignore legacy non-frame artifact paths
 - **AND** clicking a citation thumbnail opens a modal large-image preview with zoom and rotation controls
 - **AND** opening Trace Theater reveals Dense, Sparse, RRF, and final rerank panels with per-stage deduplicated candidates
 - **AND** Trace Theater states that retrieval uses the original user question directly without query expansion
 - **AND** Trace Theater shows human-readable normalized scores instead of raw backend magnitude values that collapse visually to zero
 - **AND** remote image-capable routes keep citation thumbnails and trace panels behaviorally consistent with the local route even when the backend compresses keyframes before upload
 - **AND** per-task VQA chat history is restored when the user leaves the workbench and later reopens the same task from history or recent tasks
+- **AND** restored per-task VQA chat history normalizes unfinished assistant streaming placeholders to a completed local state instead of reviving a stale `streaming` session
 - **AND** once the chat reaches fifteen user turns, the sixteenth send action first asks for confirmation and explains that continuing will clear the existing conversation before starting a new one
 
 ### Requirement: Prompt settings SHALL include an experiment surface
@@ -494,6 +523,12 @@ Diagnostics view SHALL provide a direct autofix action when the backend marks is
 - **AND** it lists missing runtime DLLs or load errors when the bundle is not ready
 - **AND** the diagnostics issue summary tells the user to return to the settings-center model section to install or repair the runtime bundle
 
+#### Scenario: Diagnostics self-check validates remote VLM inference with a representative probe sample
+- **WHEN** the backend runs the `VLM 模型` self-check step for a configured remote vision model
+- **THEN** it sends a representative text-bearing probe image instead of a degenerate pixel sample
+- **AND** it only reports success when the remote provider returns a non-empty inference result for that image-bearing probe request
+- **AND** any provider-side inference failure is surfaced as a step-level diagnostics issue rather than aborting the full self-check session
+
 #### Scenario: Diagnostics view survives page navigation during self-check
 - **WHEN** user starts a self-check, leaves the diagnostics page, and later returns within the same desktop session
 - **THEN** the renderer restores the last active self-check session from local persistence
@@ -504,3 +539,5 @@ Diagnostics view SHALL provide a direct autofix action when the backend marks is
 - **WHEN** the backend runs the `FasterWhisper` or `Whisper 模型缓存` self-check step after a local-model migration
 - **THEN** it resolves the Whisper cache directory from the current model-catalog path instead of assuming the storage default directory
 - **AND** the reported cache path matches the migrated absolute directory when the catalog has already been updated
+
+- **AND** Windows-unsafe topic characters are sanitized when generating persisted event-log filenames so self-check sessions and other non-task topics are still retained on disk

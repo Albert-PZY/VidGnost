@@ -3,11 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, AsyncIterator
 
+from app.services.async_utils import gather_limited
 from app.services.llm_config_store import LLMConfigStore
 from app.services.model_catalog_store import ModelCatalogStore
 from app.services.remote_model_client import RemoteModelClient
 from app.services.vqa_model_runtime import VQAModelRuntime
 from app.services.vqa_types import Citation, RetrievalHit
+
+_MULTIMODAL_IMAGE_BUILD_CONCURRENCY = 4
 
 
 @dataclass(slots=True)
@@ -157,23 +160,31 @@ class VQAChatService:
             }
         ]
         image_hits = [item for item in hits if str(item.image_path).strip()][:4]
-        for index, hit in enumerate(image_hits, start=1):
+
+        async def build_image_blocks(item: tuple[int, RetrievalHit]) -> list[dict[str, object]]:
+            index, hit = item
             absolute_path = self._model_runtime.resolve_task_image_path(task_id=hit.task_id, image_path=hit.image_path)
             if not absolute_path:
-                continue
+                return []
             encoded = await self._model_runtime.encode_image_for_model(model=model, image_path=absolute_path)
-            content.append(
+            return [
                 {
                     "type": "text",
                     "text": f"证据图 {index} 对应片段：{hit.task_title} {hit.start:.2f}-{hit.end:.2f}s",
-                }
-            )
-            content.append(
+                },
                 {
                     "type": "image_url",
                     "image_url": {"url": encoded},
-                }
-            )
+                },
+            ]
+
+        image_blocks = await gather_limited(
+            list(enumerate(image_hits, start=1)),
+            limit=min(len(image_hits), _MULTIMODAL_IMAGE_BUILD_CONCURRENCY) if image_hits else 1,
+            worker=build_image_blocks,
+        )
+        for block in image_blocks:
+            content.extend(block)
         return [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": content},

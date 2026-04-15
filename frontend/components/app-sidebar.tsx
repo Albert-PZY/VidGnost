@@ -112,7 +112,6 @@ export function AppSidebar({
       ),
     [historyCount],
   )
-
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="p-4">

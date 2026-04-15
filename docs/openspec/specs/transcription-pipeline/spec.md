@@ -71,6 +71,12 @@ Transcription runtime SHALL apply persisted whisper `device` and `compute_type` 
 - **THEN** backend uses effective whisper `device=auto|cpu|cuda` and `compute_type=int8|float32`
 - **AND** the isolated transcription worker receives those effective runtime preferences as its execution payload
 
+#### Scenario: Apply low-memory runtime guard before transcription
+- **WHEN** phase `C` starts while available system memory is below the transcription safety threshold
+- **THEN** backend automatically switches Whisper runtime to a lower-memory profile before chunk execution begins
+- **AND** the effective runtime MAY reduce beam size and chunk duration to lower peak memory usage
+- **AND** the task emits runtime-warning events so the operator can see that a protective downgrade was applied
+
 ### Requirement: Phase C SHALL execute inside an isolated worker process
 Phase `C` SHALL run Faster-Whisper transcription inside a dedicated worker process rather than holding the runtime in the main orchestration process.
 
@@ -84,6 +90,12 @@ Phase `C` SHALL run Faster-Whisper transcription inside a dedicated worker proce
 - **WHEN** the final missing transcript chunk finishes
 - **THEN** the worker process exits after returning completion status
 - **AND** the main process continues into phase `D` using the persisted transcript state
+
+#### Scenario: Retry a chunk after memory allocation failure
+- **WHEN** the isolated transcription worker encounters `mkl_malloc` or another memory-allocation failure while transcribing a chunk
+- **THEN** the worker lowers CPU thread budget and retries that chunk once with a low-memory Whisper profile
+- **AND** if the retry succeeds, the main process continues checkpoint persistence in normal chunk order
+- **AND** if the retry still fails, the task terminates with actionable failure metadata
 
 ### Requirement: Phase C SHALL persist chunk checkpoints and resume from persisted transcription state
 Phase `C` SHALL persist transcript progress after each completed audio chunk and SHALL resume from persisted chunk checkpoints when an unfinished task is recovered.
@@ -112,6 +124,11 @@ Tasks created from uploaded files or explicit local paths SHALL retain a stable 
 - **WHEN** a task starts from `local_file` or `local_path`
 - **THEN** task detail keeps `source_local_path` pointed at the retained source asset rather than a per-run temporary workspace copy
 - **AND** per-run temporary workspaces are cleaned after execution without deleting the retained source asset
+
+#### Scenario: Recover a legacy local-source record that still points to a temporary workspace copy
+- **WHEN** task detail or source-media retrieval encounters a `local_file` or `local_path` record whose persisted `source_local_path` no longer exists because it points at a cleaned per-run temporary workspace
+- **THEN** backend attempts to resolve the retained source asset from the original local path or retained upload directory candidate for that task
+- **AND** when a retained source asset is found, backend refreshes the task record so `source_local_path` points back to that stable asset path before returning task detail or source media
 
 ### Requirement: Downloaded-source task records SHALL retain a previewable source path
 Tasks created from downloadable remote inputs such as `bilibili` URLs SHALL move the fetched source media into a stable retained asset path before temporary workspaces are cleaned, so the completed task remains previewable in the workbench until deletion.

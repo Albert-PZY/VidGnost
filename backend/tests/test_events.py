@@ -58,3 +58,22 @@ async def test_event_bus_adds_trace_id_and_writes_jsonl(tmp_path) -> None:
     assert len(entries) == 2
     assert entries[0]["message"] == "hello"
     assert entries[1]["message"] == "world"
+
+
+@pytest.mark.asyncio
+async def test_event_bus_sanitizes_topic_log_file_and_notifies_observer(tmp_path) -> None:
+    bus = EventBus(history_size=8, event_log_dir=str(tmp_path))
+    observed: list[tuple[str, dict]] = []
+
+    async def observer(topic: str, event: dict) -> None:
+        observed.append((topic, event))
+
+    bus.add_observer(observer)
+
+    await bus.publish("self-check:session-1", {"type": "self_check_complete", "session_id": "session-1"})
+
+    log_path = tmp_path / "self-check_session-1.jsonl"
+
+    assert observed
+    assert observed[0][0] == "self-check:session-1"
+    assert log_path.exists()

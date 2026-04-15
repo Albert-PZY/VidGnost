@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -100,19 +101,54 @@ async def _run_whisper_transcribe_stage(payload: dict[str, object]) -> None:
                     }
                 )
 
-            result = await whisper_service.transcribe(
-                audio_path=chunk_path,
-                model_size=selected_model,
-                language=selected_language,
-                model_default=str(whisper_config.get("model_default", "small") or "small"),
-                device=str(whisper_config.get("device", "auto") or "auto"),
-                compute_type=str(whisper_config.get("compute_type", "int8") or "int8"),
-                beam_size=int(whisper_config.get("beam_size", 5) or 5),
-                vad_filter=bool(whisper_config.get("vad_filter", True)),
-                model_load_profile=str(whisper_config.get("model_load_profile", "balanced") or "balanced"),
-                timestamp_offset_seconds=chunk_start,
-                on_segment=on_segment,
-            )
+            effective_whisper_config = dict(whisper_config)
+            retried_for_memory_pressure = False
+            _apply_thread_budget(effective_whisper_config)
+
+            while True:
+                try:
+                    result = await whisper_service.transcribe(
+                        audio_path=chunk_path,
+                        model_size=selected_model,
+                        language=selected_language,
+                        model_default=str(effective_whisper_config.get("model_default", "small") or "small"),
+                        device=str(effective_whisper_config.get("device", "auto") or "auto"),
+                        compute_type=str(effective_whisper_config.get("compute_type", "int8") or "int8"),
+                        beam_size=int(effective_whisper_config.get("beam_size", 5) or 5),
+                        vad_filter=bool(effective_whisper_config.get("vad_filter", True)),
+                        model_load_profile=str(
+                            effective_whisper_config.get("model_load_profile", "balanced") or "balanced"
+                        ),
+                        timestamp_offset_seconds=chunk_start,
+                        on_segment=on_segment,
+                    )
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    if retried_for_memory_pressure or not _looks_like_memory_pressure(exc):
+                        raise
+                    retried_for_memory_pressure = True
+                    whisper_service.release_runtime_models()
+                    effective_whisper_config = _build_low_memory_whisper_config(effective_whisper_config)
+                    _apply_thread_budget(effective_whisper_config)
+                    _emit(
+                        {
+                            "type": "runtime_warning",
+                            "task_id": task_id,
+                            "chunk_index": chunk_index,
+                            "chunk_total": total_chunks,
+                            "worker_position": worker_position,
+                            "file_name": chunk_path.name,
+                            "message": "检测到转写阶段内存压力，已自动切换到低内存模式并重试当前音频分片。",
+                            "details": {
+                                "error": str(exc),
+                                "beam_size": int(effective_whisper_config.get("beam_size", 1) or 1),
+                                "model_load_profile": str(
+                                    effective_whisper_config.get("model_load_profile", "memory_first")
+                                ),
+                                "compute_type": str(effective_whisper_config.get("compute_type", "int8")),
+                            },
+                        }
+                    )
             if result.language and not detected_language:
                 detected_language = str(result.language).strip()
             _emit(
@@ -156,6 +192,38 @@ def _to_float(value: object) -> float:
         return float(value)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _looks_like_memory_pressure(error: BaseException) -> bool:
+    message = str(error).strip().lower()
+    if not message:
+        return False
+    patterns = (
+        "mkl_malloc",
+        "failed to allocate memory",
+        "out of memory",
+        "cannot allocate memory",
+        "bad allocation",
+        "std::bad_alloc",
+        "memory allocation",
+    )
+    return any(pattern in message for pattern in patterns)
+
+
+def _build_low_memory_whisper_config(whisper_config: dict[str, object]) -> dict[str, object]:
+    adjusted = dict(whisper_config)
+    adjusted["model_load_profile"] = "memory_first"
+    adjusted["beam_size"] = 1
+    adjusted["compute_type"] = "int8"
+    return adjusted
+
+
+def _apply_thread_budget(whisper_config: dict[str, object]) -> None:
+    load_profile = str(whisper_config.get("model_load_profile", "balanced") or "balanced").strip().lower()
+    cpu_count = max(1, os.cpu_count() or 1)
+    thread_budget = 2 if load_profile == "memory_first" else min(4, cpu_count)
+    for env_key in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+        os.environ[env_key] = str(max(1, thread_budget))
 
 
 if __name__ == "__main__":

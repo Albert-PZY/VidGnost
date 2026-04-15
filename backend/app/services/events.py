@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
+import re
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Awaitable, Callable
 
 import orjson
 
@@ -32,6 +35,7 @@ class EventBus:
         self._history_size = history_size
         self._history: dict[str, deque[dict]] = defaultdict(lambda: deque(maxlen=self._history_size))
         self._subscribers: dict[str, list[asyncio.Queue[dict]]] = defaultdict(list)
+        self._observers: list[Callable[[str, dict], Awaitable[None] | None]] = []
         self._terminal_tasks: set[str] = set()
         self._trace_sequence: dict[str, int] = defaultdict(int)
         self._event_log_dir = Path(event_log_dir).resolve() if event_log_dir else None
@@ -39,27 +43,32 @@ class EventBus:
             self._event_log_dir.mkdir(parents=True, exist_ok=True)
         self._lock = asyncio.Lock()
 
-    async def publish(self, task_id: str, payload: dict) -> dict:
+    def add_observer(self, observer: Callable[[str, dict], Awaitable[None] | None]) -> None:
+        self._observers.append(observer)
+
+    async def publish(self, topic: str, payload: dict) -> dict:
         trace_id = str(payload.get("trace_id", "")).strip()
         if not trace_id:
-            self._trace_sequence[task_id] += 1
-            trace_id = f"{task_id}-{self._trace_sequence[task_id]}"
+            self._trace_sequence[topic] += 1
+            trace_id = f"{topic}-{self._trace_sequence[topic]}"
         event = {
-            "task_id": task_id,
+            "topic": topic,
+            "task_id": str(payload.get("task_id", "")).strip() or topic,
             "ts": datetime.now(timezone.utc).isoformat(),
             "trace_id": trace_id,
             **payload,
         }
         event_type = str(payload.get("type", ""))
         async with self._lock:
-            self._history[task_id].append(event)
-            queues = tuple(self._subscribers.get(task_id, []))
+            self._history[topic].append(event)
+            queues = tuple(self._subscribers.get(topic, []))
             if event_type in TERMINAL_EVENT_TYPES:
-                self._terminal_tasks.add(task_id)
+                self._terminal_tasks.add(topic)
                 if not queues:
-                    self._history.pop(task_id, None)
-                    self._terminal_tasks.discard(task_id)
-        await self._append_event_log(task_id, event)
+                    self._history.pop(topic, None)
+                    self._terminal_tasks.discard(topic)
+        await self._append_event_log(topic, event)
+        await self._notify_observers(topic, event)
         for queue in queues:
             if queue.full():
                 try:
@@ -76,45 +85,45 @@ class EventBus:
                     pass
         return event
 
-    async def subscribe(self, task_id: str) -> EventSubscription:
+    async def subscribe(self, topic: str) -> EventSubscription:
         queue: asyncio.Queue[dict] = asyncio.Queue(maxsize=512)
         async with self._lock:
-            self._subscribers[task_id].append(queue)
-            history = list(self._history.get(task_id, deque()))
+            self._subscribers[topic].append(queue)
+            history = list(self._history.get(topic, deque()))
         return EventSubscription(queue=queue, history=history)
 
-    async def unsubscribe(self, task_id: str, queue: asyncio.Queue[dict]) -> None:
+    async def unsubscribe(self, topic: str, queue: asyncio.Queue[dict]) -> None:
         async with self._lock:
-            subscribers = self._subscribers.get(task_id)
+            subscribers = self._subscribers.get(topic)
             if not subscribers:
                 return
-            self._subscribers[task_id] = [subscriber for subscriber in subscribers if subscriber is not queue]
-            if not self._subscribers[task_id]:
-                self._subscribers.pop(task_id, None)
-                if task_id in self._terminal_tasks:
-                    self._terminal_tasks.discard(task_id)
-                    self._history.pop(task_id, None)
+            self._subscribers[topic] = [subscriber for subscriber in subscribers if subscriber is not queue]
+            if not self._subscribers[topic]:
+                self._subscribers.pop(topic, None)
+                if topic in self._terminal_tasks:
+                    self._terminal_tasks.discard(topic)
+                    self._history.pop(topic, None)
 
-    async def reset_task(self, task_id: str, *, clear_pending_queues: bool = True) -> None:
+    async def reset_task(self, topic: str, *, clear_pending_queues: bool = True) -> None:
         async with self._lock:
-            self._history.pop(task_id, None)
-            self._terminal_tasks.discard(task_id)
-            self._trace_sequence.pop(task_id, None)
+            self._history.pop(topic, None)
+            self._terminal_tasks.discard(topic)
+            self._trace_sequence.pop(topic, None)
             if not clear_pending_queues:
                 return
-            for queue in self._subscribers.get(task_id, []):
+            for queue in self._subscribers.get(topic, []):
                 while True:
                     try:
                         queue.get_nowait()
                     except asyncio.QueueEmpty:
                         break
 
-    async def _append_event_log(self, task_id: str, event: dict) -> None:
+    async def _append_event_log(self, topic: str, event: dict) -> None:
         if self._event_log_dir is None:
             return
 
         def _write_line() -> None:
-            path = self._event_log_dir / f"{task_id}.jsonl"
+            path = self._event_log_dir / f"{_safe_topic_name(topic)}.jsonl"
             payload = orjson.dumps(event) + b"\n"
             with path.open("ab") as handle:
                 handle.write(payload)
@@ -123,3 +132,17 @@ class EventBus:
             await asyncio.to_thread(_write_line)
         except OSError:
             return
+
+    async def _notify_observers(self, topic: str, event: dict) -> None:
+        for observer in tuple(self._observers):
+            try:
+                result = observer(topic, event)
+                if inspect.isawaitable(result):
+                    await result
+            except Exception:
+                continue
+
+
+def _safe_topic_name(topic: str) -> str:
+    sanitized = re.sub(r"[<>:\"/\\\\|?*]+", "_", topic).strip(" .")
+    return sanitized or "event-stream"

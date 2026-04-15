@@ -378,7 +378,13 @@ class VQAOllamaRetriever:
         documents: list[EvidenceDocument] = []
         for item in raw_documents:
             try:
-                documents.append(_deserialize_evidence_document(item))
+                documents.append(
+                    _deserialize_evidence_document(
+                        item,
+                        storage_dir=self._storage_dir,
+                        task_id=task_id,
+                    )
+                )
             except ValueError:
                 continue
         embeddings_by_doc_id: dict[str, list[float]] = {}
@@ -558,12 +564,16 @@ class VQAOllamaRetriever:
         if not hits:
             return []
         grouped_paths: dict[str, set[str]] = {}
+        normalized_hits: list[RetrievalHit] = []
         for hit in hits:
-            if not hit.image_path:
+            item = _clone_hit(hit)
+            item.image_path = _normalize_task_frame_image_path(self._storage_dir, item.task_id, item.image_path)
+            normalized_hits.append(item)
+            if not item.image_path:
                 continue
-            grouped_paths.setdefault(hit.task_id, set()).add(hit.image_path)
+            grouped_paths.setdefault(item.task_id, set()).add(item.image_path)
         if not grouped_paths:
-            return hits
+            return normalized_hits
         record_map = {
             record.id: record
             for record in self._task_store.list_all()
@@ -585,7 +595,7 @@ class VQAOllamaRetriever:
                 if relative_path and relative_path in image_paths:
                     hydrated_visual_text[(task_id, relative_path)] = str(asset.get("visual_text", "")).strip()
         result: list[RetrievalHit] = []
-        for hit in hits:
+        for hit in normalized_hits:
             item = _clone_hit(hit)
             if not item.visual_text and item.image_path:
                 item.visual_text = hydrated_visual_text.get((item.task_id, item.image_path), "")
@@ -880,13 +890,22 @@ def _serialize_evidence_document(doc: EvidenceDocument) -> dict[str, object]:
     }
 
 
-def _deserialize_evidence_document(payload: object) -> EvidenceDocument:
+def _deserialize_evidence_document(
+    payload: object,
+    *,
+    storage_dir: Path | None = None,
+    task_id: str | None = None,
+) -> EvidenceDocument:
     if not isinstance(payload, dict):
         raise ValueError("Invalid evidence document payload")
     source_set = payload.get("source_set")
+    resolved_task_id = str(payload.get("task_id", task_id or "")).strip()
+    image_path = str(payload.get("image_path", "")).strip()
+    if storage_dir is not None and resolved_task_id:
+        image_path = _normalize_task_frame_image_path(storage_dir, resolved_task_id, image_path)
     return EvidenceDocument(
         doc_id=str(payload.get("doc_id", "")).strip(),
-        task_id=str(payload.get("task_id", "")).strip(),
+        task_id=resolved_task_id,
         task_title=str(payload.get("task_title", "")).strip(),
         video_path=str(payload.get("video_path", "")).strip(),
         start=_to_float(payload.get("start")),
@@ -894,7 +913,7 @@ def _deserialize_evidence_document(payload: object) -> EvidenceDocument:
         source=str(payload.get("source", "")).strip(),
         text=str(payload.get("text", "")).strip(),
         visual_text=str(payload.get("visual_text", "")).strip(),
-        image_path=str(payload.get("image_path", "")).strip(),
+        image_path=image_path,
         language=str(payload.get("language", "unknown")).strip() or "unknown",
         source_set=_parse_source_set(source_set) if not isinstance(source_set, list) else [str(item).strip() for item in source_set if str(item).strip()],
     )
@@ -960,10 +979,14 @@ def _load_frame_manifest(manifest_path: Path, *, frame_interval_seconds: float) 
     if not isinstance(raw_frames, list):
         return []
     assets: list[dict[str, object]] = []
+    task_id = manifest_path.parents[3].name if len(manifest_path.parents) >= 4 else ""
+    storage_dir = manifest_path.parents[6] if len(manifest_path.parents) >= 7 else None
     for item in raw_frames:
         if not isinstance(item, dict):
             continue
         relative_path = str(item.get("relative_path", "")).strip()
+        if storage_dir is not None and task_id:
+            relative_path = _normalize_task_frame_image_path(storage_dir, task_id, relative_path)
         if not relative_path:
             continue
         assets.append(
@@ -1123,13 +1146,52 @@ def _normalize_retrieval_text(text: str) -> str:
     return " ".join(str(text or "").split()).strip().lower()
 
 
-def _resolve_hit_image_path(storage_dir: Path, task_id: str, image_path: str) -> str:
-    candidate = Path(str(image_path or "").strip())
-    if not str(candidate):
+def _normalize_relative_artifact_path(image_path: str) -> str:
+    normalized = str(image_path or "").replace("\\", "/").strip()
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    normalized = normalized.lstrip("/")
+    return normalized
+
+
+def _task_fusion_artifact_root(storage_dir: Path, task_id: str) -> Path:
+    return (storage_dir / "tasks" / "stage-artifacts" / str(task_id).strip() / "D" / "fusion").resolve()
+
+
+def _normalize_task_frame_image_path(storage_dir: Path, task_id: str, image_path: str) -> str:
+    artifact_root = _task_fusion_artifact_root(storage_dir, task_id)
+    frames_root = (artifact_root / "frames").resolve()
+    raw_value = str(image_path or "").strip()
+    if not raw_value:
         return ""
+
+    candidate = Path(raw_value)
     if candidate.is_absolute():
-        return str(candidate.resolve())
-    return str((storage_dir / "tasks" / "stage-artifacts" / str(task_id).strip() / "D" / "fusion" / candidate).resolve())
+        resolved_candidate = candidate.resolve()
+        if frames_root not in resolved_candidate.parents:
+            return ""
+        return f"frames/{resolved_candidate.relative_to(frames_root).as_posix()}"
+
+    normalized = _normalize_relative_artifact_path(raw_value)
+    if not normalized:
+        return ""
+    normalized_path = Path(normalized)
+    if ".." in normalized_path.parts:
+        return ""
+    normalized_posix = normalized_path.as_posix()
+    if not normalized_posix.lower().startswith("frames/"):
+        return ""
+    resolved_candidate = (artifact_root / normalized_path).resolve()
+    if frames_root not in resolved_candidate.parents or not resolved_candidate.is_file():
+        return ""
+    return normalized_posix
+
+
+def _resolve_hit_image_path(storage_dir: Path, task_id: str, image_path: str) -> str:
+    normalized = _normalize_task_frame_image_path(storage_dir, task_id, image_path)
+    if not normalized:
+        return ""
+    return str((_task_fusion_artifact_root(storage_dir, task_id) / normalized).resolve())
 
 
 def _to_float(value: Any) -> float:

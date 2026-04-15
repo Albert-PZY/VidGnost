@@ -371,3 +371,45 @@ def test_self_check_llm_missing_api_key_is_not_auto_fixable(tmp_path: Path) -> N
 
     assert outcome.status == "warning"
     assert outcome.auto_fixable is False
+
+
+def test_self_check_vlm_probe_failure_is_reported_as_failed_step(tmp_path: Path) -> None:
+    settings = _build_settings(tmp_path)
+    store = ModelCatalogStore(settings)
+    asyncio.run(
+        store.update_model(
+            "vlm-default",
+            {
+                "provider": "openai_compatible",
+                "enabled": True,
+                "is_installed": True,
+                "api_base_url": "https://api.siliconflow.cn/v1",
+                "api_key": "sk-test",
+                "api_key_configured": True,
+                "api_model": "PaddlePaddle/PaddleOCR-VL-1.5",
+            },
+        )
+    )
+
+    service = SelfCheckService(
+        settings=settings,
+        event_bus=EventBus(),
+        whisper_gpu_runtime_service=WhisperGpuRuntimeService(
+            settings=settings,
+            runtime_config_store=RuntimeConfigStore(settings),
+        ),
+        model_catalog_store=store,
+    )
+
+    async def failing_probe_vlm():
+        raise RuntimeError(
+            "Error code: 500 - {'code': 50507, 'message': 'Request processing failed due to an unknown error.', 'data': None}"
+        )
+
+    service._vqa_model_runtime.probe_vlm = failing_probe_vlm  # type: ignore[method-assign,attr-defined]
+    outcome = asyncio.run(service._check_vlm())  # type: ignore[attr-defined]
+
+    assert outcome.status == "failed"
+    assert outcome.message.endswith("推理校验失败")
+    assert "50507" in outcome.details["错误"]
+    assert outcome.manual_action == "检查远端 API 协议、鉴权和模型名配置后重试。"

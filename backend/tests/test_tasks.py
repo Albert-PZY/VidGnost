@@ -155,6 +155,136 @@ def test_task_detail_includes_fusion_prompt_markdown() -> None:
         assert detail["fusion_prompt_markdown"] == "## Fusion Prompt"
 
 
+def test_task_detail_strips_missing_markdown_artifact_images() -> None:
+    with TestClient(app) as client:
+        async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
+            return
+
+        client.app.state.task_runner.submit = fake_submit
+        create_response = client.post(
+            "/api/tasks/url",
+            json={
+                "url": "BV1xx411c7mD",
+                "model_size": "small",
+                "language": "zh",
+            },
+        )
+        assert create_response.status_code == 202
+        task_id = create_response.json()["task_id"]
+
+        artifact_root = (
+            Path(client.app.state.settings.storage_dir)
+            / "tasks"
+            / "stage-artifacts"
+            / task_id
+            / "D"
+            / "fusion"
+        )
+        notes_images_dir = artifact_root / "notes-images"
+        notes_images_dir.mkdir(parents=True, exist_ok=True)
+        existing_image = notes_images_dir / "mermaid-001.png"
+        existing_image.write_bytes(b"png")
+
+        task_store = client.app.state.task_store
+        task_store.update(
+            task_id,
+            status=TaskStatus.COMPLETED.value,
+            summary_markdown=(
+                "![有效图片](./notes-images/mermaid-001.png)\n"
+                "![缺失图片](notes-images/mermaid-002.png)"
+            ),
+            notes_markdown="图示：![缺失图片](notes-images/mermaid-003.png)",
+        )
+
+        detail_response = client.get(f"/api/tasks/{task_id}")
+        assert detail_response.status_code == 200
+        detail = detail_response.json()
+        assert "notes-images/mermaid-001.png" in detail["summary_markdown"]
+        assert "./notes-images/mermaid-001.png" not in detail["summary_markdown"]
+        assert "mermaid-002.png" not in detail["summary_markdown"]
+        assert "mermaid-003.png" not in detail["notes_markdown"]
+
+
+def test_task_detail_repairs_broken_local_file_source_media_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    with TestClient(app) as client:
+        async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
+            return
+
+        client.app.state.task_runner.submit = fake_submit
+        create_response = client.post(
+            "/api/tasks/url",
+            json={
+                "url": "BV1xx411c7mD",
+                "model_size": "small",
+                "language": "zh",
+            },
+        )
+        assert create_response.status_code == 202
+        task_id = create_response.json()["task_id"]
+
+        upload_dir = tmp_path / "uploads"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        repaired_path = upload_dir / f"{task_id}_demo.mp4"
+        repaired_path.write_bytes(b"video-bytes")
+        monkeypatch.setattr(client.app.state.settings, "upload_dir", str(upload_dir))
+
+        broken_temp_path = tmp_path / "tmp" / task_id / f"{task_id}.mp4"
+        client.app.state.task_store.update(
+            task_id,
+            source_type="local_file",
+            source_input="demo.mp4",
+            source_local_path=str(broken_temp_path),
+            status=TaskStatus.COMPLETED.value,
+        )
+
+        detail_response = client.get(f"/api/tasks/{task_id}")
+        assert detail_response.status_code == 200
+        detail = detail_response.json()
+        assert detail["source_local_path"] == str(repaired_path)
+        assert client.app.state.task_store.get(task_id).source_local_path == str(repaired_path)
+
+        media_response = client.get(f"/api/tasks/{task_id}/source-media")
+        assert media_response.status_code == 200
+        assert media_response.content == b"video-bytes"
+
+
+def test_task_source_media_falls_back_to_local_source_input_path(tmp_path: Path) -> None:
+    with TestClient(app) as client:
+        async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
+            return
+
+        client.app.state.task_runner.submit = fake_submit
+        create_response = client.post(
+            "/api/tasks/url",
+            json={
+                "url": "BV1xx411c7mD",
+                "model_size": "small",
+                "language": "zh",
+            },
+        )
+        assert create_response.status_code == 202
+        task_id = create_response.json()["task_id"]
+
+        stable_source_path = tmp_path / "source.mp4"
+        stable_source_path.write_bytes(b"stable-video")
+        broken_temp_path = tmp_path / "tmp" / task_id / f"{task_id}.mp4"
+        client.app.state.task_store.update(
+            task_id,
+            source_type="local_path",
+            source_input=str(stable_source_path),
+            source_local_path=str(broken_temp_path),
+            status=TaskStatus.COMPLETED.value,
+        )
+
+        media_response = client.get(f"/api/tasks/{task_id}/source-media")
+        assert media_response.status_code == 200
+        assert media_response.content == b"stable-video"
+        assert client.app.state.task_store.get(task_id).source_local_path == str(stable_source_path)
+
+
 def test_remove_analysis_results_by_prefix() -> None:
     with TestClient(app) as client:
         async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
@@ -750,6 +880,34 @@ def test_upload_batch_creates_multiple_tasks() -> None:
         assert payload["strategy"] == "single_task_per_file"
         assert len(payload["tasks"]) == 2
         assert len(submitted) == 2
+
+
+def test_upload_rejects_unsupported_video_extension() -> None:
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tasks/upload",
+            data={"workflow": "notes"},
+            files={"file": ("video.webm", b"dummy", "video/webm")},
+        )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["code"] == "UNSUPPORTED_VIDEO_EXTENSION"
+
+
+def test_create_task_from_path_rejects_unsupported_video_extension(tmp_path: Path) -> None:
+    local_path = tmp_path / "demo.webm"
+    local_path.write_bytes(b"dummy")
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/tasks/path",
+            json={"local_path": str(local_path), "workflow": "notes", "language": "zh"},
+        )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["code"] == "UNSUPPORTED_VIDEO_EXTENSION"
 
 
 def test_task_events_stream_maps_frontend_event_contract() -> None:

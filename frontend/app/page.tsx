@@ -139,7 +139,6 @@ export default function VideoMindApp() {
     }),
     [uiSettings, uiSettingsPreviewPatch],
   )
-
   React.useEffect(() => {
     uiSettingsRef.current = uiSettings
   }, [uiSettings])

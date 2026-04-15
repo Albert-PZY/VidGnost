@@ -151,6 +151,7 @@ class WhisperService:
             model = self._get_or_create_model(
                 device=device,
                 compute_type=compute_type,
+                load_profile=load_profile,
             )
             segments, info = model.transcribe(
                 str(audio_path),
@@ -186,10 +187,11 @@ class WhisperService:
         *,
         device: str,
         compute_type: str,
+        load_profile: LoadProfile,
     ):
         normalized_device = self._normalize_device(device)
         normalized_compute_type = compute_type.strip() or "int8"
-        cache_key = f"small|{normalized_device}|{normalized_compute_type}"
+        cache_key = f"small|{normalized_device}|{normalized_compute_type}|{load_profile}"
         stale_models: list[object] = []
         with self._models_lock:
             model = self._models.get(cache_key)
@@ -203,6 +205,7 @@ class WhisperService:
                 WhisperModel=WhisperModel,
                 normalized_device=normalized_device,
                 normalized_compute_type=normalized_compute_type,
+                load_profile=load_profile,
             )
             self._models[cache_key] = model
             self._models.move_to_end(cache_key)
@@ -218,6 +221,7 @@ class WhisperService:
         WhisperModel: object,
         normalized_device: str,
         normalized_compute_type: str,
+        load_profile: LoadProfile,
     ):
         model_path = self.small_model_dir()
         if not self.is_small_model_ready():
@@ -227,11 +231,17 @@ class WhisperService:
             )
         model_ctor = WhisperModel  # type: ignore[assignment]
         try:
+            model_kwargs: dict[str, object] = {
+                "model_size_or_path": str(model_path),
+                "device": normalized_device,
+                "compute_type": normalized_compute_type,
+                "local_files_only": True,
+            }
+            if normalized_device == "cpu":
+                model_kwargs["cpu_threads"] = self._resolve_cpu_threads(load_profile)
+                model_kwargs["num_workers"] = 1
             return model_ctor(
-                model_size_or_path=str(model_path),
-                device=normalized_device,
-                compute_type=normalized_compute_type,
-                local_files_only=True,
+                **model_kwargs,
             )
         except Exception:
             raise
@@ -609,6 +619,13 @@ class WhisperService:
         if normalized in {"", "auto", "cpu", "cuda"}:
             return normalized or "auto"
         return "cpu"
+
+    @staticmethod
+    def _resolve_cpu_threads(load_profile: LoadProfile) -> int:
+        cpu_count = max(1, os.cpu_count() or 1)
+        if load_profile == "memory_first":
+            return max(1, min(2, cpu_count))
+        return max(1, min(4, cpu_count))
 
 
 def _normalize_load_profile(raw: object) -> LoadProfile:

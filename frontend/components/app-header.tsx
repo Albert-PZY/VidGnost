@@ -42,6 +42,7 @@ const dragRegionStyle = { WebkitAppRegion: "drag" } as React.CSSProperties
 const noDragRegionStyle = { WebkitAppRegion: "no-drag" } as React.CSSProperties
 const titlebarButtonClass =
   "app-header-control h-7 w-7 rounded-md transition-colors hover:bg-accent hover:text-accent-foreground active:bg-accent/80 data-[state=open]:bg-accent data-[state=open]:text-accent-foreground"
+type HeaderMenuKey = "language" | "theme"
 
 export function AppHeader({
   title,
@@ -54,6 +55,39 @@ export function AppHeader({
   const { theme, setTheme } = useTheme()
   const [isDesktopShell, setIsDesktopShell] = React.useState(false)
   const [isMaximized, setIsMaximized] = React.useState(false)
+  const [openMenuKey, setOpenMenuKey] = React.useState<HeaderMenuKey | null>(null)
+  const menuCloseTimerRef = React.useRef<number | null>(null)
+
+  const clearMenuCloseTimer = React.useCallback(() => {
+    if (menuCloseTimerRef.current === null) {
+      return
+    }
+    window.clearTimeout(menuCloseTimerRef.current)
+    menuCloseTimerRef.current = null
+  }, [])
+
+  const openHeaderMenu = React.useCallback((menuKey: HeaderMenuKey) => {
+    clearMenuCloseTimer()
+    setOpenMenuKey(menuKey)
+  }, [clearMenuCloseTimer])
+
+  const scheduleHeaderMenuClose = React.useCallback((menuKey: HeaderMenuKey) => {
+    clearMenuCloseTimer()
+    menuCloseTimerRef.current = window.setTimeout(() => {
+      setOpenMenuKey((current) => (current === menuKey ? null : current))
+      menuCloseTimerRef.current = null
+    }, 120)
+  }, [clearMenuCloseTimer])
+
+  const handleHeaderMenuOpenChange = React.useCallback((menuKey: HeaderMenuKey, nextOpen: boolean) => {
+    clearMenuCloseTimer()
+    setOpenMenuKey((current) => {
+      if (nextOpen) {
+        return menuKey
+      }
+      return current === menuKey ? null : current
+    })
+  }, [clearMenuCloseTimer])
 
   const openProjectRepository = React.useCallback(async () => {
     if (window.vidGnostDesktop?.openExternal) {
@@ -100,6 +134,12 @@ export function AppHeader({
     }
   }, [])
 
+  React.useEffect(() => {
+    return () => {
+      clearMenuCloseTimer()
+    }
+  }, [clearMenuCloseTimer])
+
   return (
     <header
       style={dragRegionStyle}
@@ -117,77 +157,107 @@ export function AppHeader({
       </div>
 
       <div style={noDragRegionStyle} className="flex items-center gap-1">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className={titlebarButtonClass}>
-              <Languages className="h-4 w-4" />
-              <span className="sr-only">切换语言</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="app-header-menu">
-            <DropdownMenuItem
-              data-selected={language === "zh"}
-              className="app-header-menu-item flex items-center justify-between gap-3 rounded-md"
-              onClick={() => onLanguageChange("zh")}
+        <div
+          className="flex"
+          onMouseEnter={() => openHeaderMenu("language")}
+          onMouseLeave={() => scheduleHeaderMenuClose("language")}
+        >
+          <DropdownMenu
+            modal={false}
+            open={openMenuKey === "language"}
+            onOpenChange={(nextOpen) => handleHeaderMenuOpenChange("language", nextOpen)}
+          >
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className={titlebarButtonClass}>
+                <Languages className="h-4 w-4" />
+                <span className="sr-only">切换语言</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="app-header-menu"
+              onMouseEnter={() => openHeaderMenu("language")}
+              onMouseLeave={() => scheduleHeaderMenuClose("language")}
             >
-              <span className={language === "zh" ? "font-medium" : ""}>中文</span>
-              <Check className={cn("h-4 w-4 opacity-0", language === "zh" && "opacity-100")} />
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              data-selected={language === "en"}
-              className="app-header-menu-item flex items-center justify-between gap-3 rounded-md"
-              onClick={() => onLanguageChange("en")}
-            >
-              <span className={language === "en" ? "font-medium" : ""}>English</span>
-              <Check className={cn("h-4 w-4 opacity-0", language === "en" && "opacity-100")} />
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <DropdownMenuItem
+                data-selected={language === "zh"}
+                className="app-header-menu-item flex items-center justify-between gap-3 rounded-md"
+                onClick={() => onLanguageChange("zh")}
+              >
+                <span className={language === "zh" ? "font-medium" : ""}>中文</span>
+                <Check className={cn("h-4 w-4 opacity-0", language === "zh" && "opacity-100")} />
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                data-selected={language === "en"}
+                className="app-header-menu-item flex items-center justify-between gap-3 rounded-md"
+                onClick={() => onLanguageChange("en")}
+              >
+                <span className={language === "en" ? "font-medium" : ""}>English</span>
+                <Check className={cn("h-4 w-4 opacity-0", language === "en" && "opacity-100")} />
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className={cn("relative", titlebarButtonClass)}>
-              <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-              <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-              <span className="sr-only">切换主题</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="app-header-menu">
-            <DropdownMenuItem
-              data-selected={theme === "light"}
-              className="app-header-menu-item flex items-center justify-between gap-3 rounded-md"
-              onClick={() => setTheme("light")}
+        <div
+          className="flex"
+          onMouseEnter={() => openHeaderMenu("theme")}
+          onMouseLeave={() => scheduleHeaderMenuClose("theme")}
+        >
+          <DropdownMenu
+            modal={false}
+            open={openMenuKey === "theme"}
+            onOpenChange={(nextOpen) => handleHeaderMenuOpenChange("theme", nextOpen)}
+          >
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className={cn("relative", titlebarButtonClass)}>
+                <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+                <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+                <span className="sr-only">切换主题</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="app-header-menu"
+              onMouseEnter={() => openHeaderMenu("theme")}
+              onMouseLeave={() => scheduleHeaderMenuClose("theme")}
             >
-              <div className="flex items-center gap-2">
-              <Sun className="mr-2 h-4 w-4" />
-              浅色
-              </div>
-              <Check className={cn("h-4 w-4 opacity-0", theme === "light" && "opacity-100")} />
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              data-selected={theme === "dark"}
-              className="app-header-menu-item flex items-center justify-between gap-3 rounded-md"
-              onClick={() => setTheme("dark")}
-            >
-              <div className="flex items-center gap-2">
-              <Moon className="mr-2 h-4 w-4" />
-              深色
-              </div>
-              <Check className={cn("h-4 w-4 opacity-0", theme === "dark" && "opacity-100")} />
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              data-selected={theme === "system"}
-              className="app-header-menu-item flex items-center justify-between gap-3 rounded-md"
-              onClick={() => setTheme("system")}
-            >
-              <div className="flex items-center gap-2">
-              <Monitor className="mr-2 h-4 w-4" />
-              跟随系统
-              </div>
-              <Check className={cn("h-4 w-4 opacity-0", theme === "system" && "opacity-100")} />
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <DropdownMenuItem
+                data-selected={theme === "light"}
+                className="app-header-menu-item flex items-center justify-between gap-3 rounded-md"
+                onClick={() => setTheme("light")}
+              >
+                <div className="flex items-center gap-2">
+                  <Sun className="mr-2 h-4 w-4" />
+                  浅色
+                </div>
+                <Check className={cn("h-4 w-4 opacity-0", theme === "light" && "opacity-100")} />
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                data-selected={theme === "dark"}
+                className="app-header-menu-item flex items-center justify-between gap-3 rounded-md"
+                onClick={() => setTheme("dark")}
+              >
+                <div className="flex items-center gap-2">
+                  <Moon className="mr-2 h-4 w-4" />
+                  深色
+                </div>
+                <Check className={cn("h-4 w-4 opacity-0", theme === "dark" && "opacity-100")} />
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                data-selected={theme === "system"}
+                className="app-header-menu-item flex items-center justify-between gap-3 rounded-md"
+                onClick={() => setTheme("system")}
+              >
+                <div className="flex items-center gap-2">
+                  <Monitor className="mr-2 h-4 w-4" />
+                  跟随系统
+                </div>
+                <Check className={cn("h-4 w-4 opacity-0", theme === "system" && "opacity-100")} />
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
 
         <Button
           variant="ghost"
