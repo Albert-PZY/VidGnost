@@ -523,6 +523,12 @@ Diagnostics view SHALL provide a direct autofix action when the backend marks is
 - **AND** it lists missing runtime DLLs or load errors when the bundle is not ready
 - **AND** the diagnostics issue summary tells the user to return to the settings-center model section to install or repair the runtime bundle
 
+#### Scenario: Diagnostics self-check validates remote VLM inference with a representative probe sample
+- **WHEN** the backend runs the `VLM 模型` self-check step for a configured remote vision model
+- **THEN** it sends a representative text-bearing probe image instead of a degenerate pixel sample
+- **AND** it only reports success when the remote provider returns a non-empty inference result for that image-bearing probe request
+- **AND** any provider-side inference failure is surfaced as a step-level diagnostics issue rather than aborting the full self-check session
+
 #### Scenario: Diagnostics view survives page navigation during self-check
 - **WHEN** user starts a self-check, leaves the diagnostics page, and later returns within the same desktop session
 - **THEN** the renderer restores the last active self-check session from local persistence
