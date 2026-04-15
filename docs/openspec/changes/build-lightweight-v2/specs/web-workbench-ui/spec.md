@@ -470,6 +470,7 @@ Frontend UI library SHALL provide a reusable virtual-list component under `front
 #### Scenario: Open a VQA task and ask a question
 - **WHEN** user submits a question from the VQA workbench
 - **THEN** before retrieval hits or answer tokens arrive, the assistant bubble shows a temporary loading placeholder with business-language progress copy instead of a blank bubble
+- **AND** while the answer stream is active, the composer action switches from `发送` to `停止`
 - **AND** if the task has already completed its persisted `D/vqa-prewarm` preparation, the first question reuses that prepared retrieval corpus and frame descriptions instead of rebuilding embeddings or visual evidence on demand
 - **AND** if the backend has a ready multimodal retrieval route, the same chat surface can answer from joint text-image evidence without changing the user interaction flow
 - **THEN** the renderer streams incremental answer chunks into the chat surface
@@ -480,12 +481,14 @@ Frontend UI library SHALL provide a reusable virtual-list component under `front
 - **AND** each answer may expose a retrieval trace identifier, citations, and citation jump actions
 - **AND** retrieval-trace and citation actions use compact icon buttons with hover tooltips instead of long inline labels
 - **AND** citations prefer related frame thumbnails from the task video rather than Mermaid summary images
+- **AND** citations and Trace Theater thumbnails only render task-relative `frames/...` evidence images and ignore legacy non-frame artifact paths
 - **AND** clicking a citation thumbnail opens a modal large-image preview with zoom and rotation controls
 - **AND** opening Trace Theater reveals Dense, Sparse, RRF, and final rerank panels with per-stage deduplicated candidates
 - **AND** Trace Theater states that retrieval uses the original user question directly without query expansion
 - **AND** Trace Theater shows human-readable normalized scores instead of raw backend magnitude values that collapse visually to zero
 - **AND** remote image-capable routes keep citation thumbnails and trace panels behaviorally consistent with the local route even when the backend compresses keyframes before upload
 - **AND** per-task VQA chat history is restored when the user leaves the workbench and later reopens the same task from history or recent tasks
+- **AND** restored per-task VQA chat history normalizes unfinished assistant streaming placeholders to a completed local state instead of reviving a stale `streaming` session
 - **AND** once the chat reaches fifteen user turns, the sixteenth send action first asks for confirmation and explains that continuing will clear the existing conversation before starting a new one
 
 ### Requirement: Prompt settings SHALL include an experiment surface

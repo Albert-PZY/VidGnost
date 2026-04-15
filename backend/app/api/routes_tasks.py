@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import io
 import mimetypes
+import re
 import shutil
 import tarfile
 import zipfile
@@ -49,6 +50,10 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 StageKey = Literal["A", "B", "C", "D"]
 STAGE_KEYS: tuple[StageKey, StageKey, StageKey, StageKey] = ("A", "B", "C", "D")
 D_SUBSTAGE_KEYS: tuple[str, ...] = ("transcript_optimize", "fusion_delivery")
+_MARKDOWN_IMAGE_PATTERN = re.compile(
+    r"(!\[[^\]]*]\()(?P<path>(?:\.{1,2}/)?[^)\s]+\.(?:png|jpg|jpeg|gif|webp|svg))(\))",
+    re.IGNORECASE,
+)
 
 
 def get_runner(request: Request) -> TaskRunner:
@@ -308,7 +313,7 @@ def get_task(
         task_store=task_store,
         upload_dir=str(request.app.state.settings.upload_dir),
     )
-    return _to_detail(record)
+    return _to_detail(record, storage_dir=str(request.app.state.settings.storage_dir))
 
 
 @router.get("/{task_id}/source-media")
@@ -388,6 +393,7 @@ def update_task_title(
 @router.patch("/{task_id}/artifacts", response_model=TaskDetailResponse)
 def update_task_artifacts(
     task_id: str,
+    request: Request,
     payload: TaskArtifactsUpdateRequest,
     task_store: TaskStore = Depends(get_task_store),
 ) -> TaskDetailResponse:
@@ -399,7 +405,7 @@ def update_task_artifacts(
         )
 
     if payload.summary_markdown is None and payload.notes_markdown is None and payload.mindmap_markdown is None:
-        return _to_detail(record)
+        return _to_detail(record, storage_dir=str(request.app.state.settings.storage_dir))
 
     if payload.summary_markdown is not None:
         record.summary_markdown = payload.summary_markdown
@@ -419,7 +425,7 @@ def update_task_artifacts(
     record.artifact_total_bytes = artifact_total_bytes
     record.updated_at = datetime.now(timezone.utc)
     task_store.replace(record)
-    return _to_detail(record)
+    return _to_detail(record, storage_dir=str(request.app.state.settings.storage_dir))
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -947,7 +953,34 @@ def _to_summary_item(record: TaskRecord) -> TaskSummaryItem:
     )
 
 
-def _to_detail(record: TaskRecord) -> TaskDetailResponse:
+def _normalize_task_markdown_image_path(path_value: str) -> str:
+    normalized = str(path_value or "").replace("\\", "/").strip()
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
+    return normalized.lstrip("/")
+
+
+def _sanitize_markdown_artifact_images(*, storage_dir: str | None, task_id: str, markdown: str | None) -> str | None:
+    if markdown is None or not storage_dir:
+        return markdown
+    artifact_root = Path(storage_dir) / "tasks" / "stage-artifacts" / task_id / "D" / "fusion"
+    artifact_root_resolved = artifact_root.resolve()
+
+    def replace(match: re.Match[str]) -> str:
+        relative_path = _normalize_task_markdown_image_path(match.group("path"))
+        if not relative_path or ".." in Path(relative_path).parts:
+            return ""
+        target_path = (artifact_root / relative_path).resolve()
+        if artifact_root_resolved not in target_path.parents:
+            return ""
+        if not target_path.is_file():
+            return ""
+        return f"{match.group(1)}{relative_path}{match.group(3)}"
+
+    return _MARKDOWN_IMAGE_PATTERN.sub(replace, markdown)
+
+
+def _to_detail(record: TaskRecord, *, storage_dir: str | None = None) -> TaskDetailResponse:
     workflow = _normalize_workflow(record.workflow)
     transcript_segments = _parse_transcript_segments(record.transcript_segments_json)
     stage_logs = _parse_stage_logs(record.stage_logs_json)
@@ -989,9 +1022,17 @@ def _to_detail(record: TaskRecord) -> TaskDetailResponse:
         duration_seconds=_resolve_effective_duration_seconds(record),
         transcript_text=record.transcript_text,
         transcript_segments=transcript_segments,
-        summary_markdown=record.summary_markdown,
+        summary_markdown=_sanitize_markdown_artifact_images(
+            storage_dir=storage_dir,
+            task_id=record.id,
+            markdown=record.summary_markdown,
+        ),
         mindmap_markdown=record.mindmap_markdown,
-        notes_markdown=record.notes_markdown,
+        notes_markdown=_sanitize_markdown_artifact_images(
+            storage_dir=storage_dir,
+            task_id=record.id,
+            markdown=record.notes_markdown,
+        ),
         fusion_prompt_markdown=record.fusion_prompt_markdown,
         stage_logs=stage_logs,
         stage_metrics=stage_metrics,

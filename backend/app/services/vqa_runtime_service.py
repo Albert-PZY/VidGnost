@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, AsyncIterator
 
 from app.services.llm_config_store import LLMConfigStore
@@ -9,9 +10,11 @@ from app.services.ollama_client import OllamaClient
 from app.services.task_store import TaskStore
 from app.services.vqa_chat_service import ChatResult, VQAChatService
 from app.services.vqa_model_runtime import VQAModelRuntime
-from app.services.vqa_ollama_retriever import VQAOllamaRetriever
+from app.services.vqa_ollama_retriever import VQAOllamaRetriever, _normalize_task_frame_image_path
 from app.services.vqa_trace_store import VQATraceStore
 from app.services.vqa_types import SearchResult
+
+_TRACE_RETRIEVAL_SECTIONS = ("dense_hits", "sparse_hits", "rrf_hits", "rerank_hits")
 
 
 @dataclass(slots=True)
@@ -56,6 +59,7 @@ class VQARuntimeService:
             model_catalog_store=resolved_model_catalog_store,
             model_runtime=resolved_model_runtime,
         )
+        self._storage_dir = Path(storage_dir).resolve()
         self._model_catalog_store = resolved_model_catalog_store
         self._trace = VQATraceStore(log_dir=f"{storage_dir}/event-logs/traces")
 
@@ -253,7 +257,7 @@ class VQARuntimeService:
         }
 
     def build_trace_payload(self, trace_id: str) -> dict[str, Any]:
-        return {"trace_id": trace_id, "records": self.read_trace(trace_id)}
+        return {"trace_id": trace_id, "records": _sanitize_trace_records(self._storage_dir, self.read_trace(trace_id))}
 
 
 def _build_user_visible_stream_error(error: dict[str, str] | None) -> dict[str, str]:
@@ -278,3 +282,37 @@ def _build_user_visible_stream_error(error: dict[str, str] | None) -> dict[str, 
         "code": raw_code,
         "message": raw_message or "流式回答失败，请稍后重试。",
     }
+
+
+def _sanitize_trace_records(storage_dir: Path, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    sanitized: list[dict[str, Any]] = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        next_record = dict(record)
+        if str(record.get("stage", "")).strip() == "retrieval":
+            payload = record.get("payload")
+            if isinstance(payload, dict):
+                next_payload = dict(payload)
+                for section in _TRACE_RETRIEVAL_SECTIONS:
+                    hits = payload.get(section)
+                    if isinstance(hits, list):
+                        next_payload[section] = [
+                            _sanitize_trace_hit(storage_dir, hit)
+                            for hit in hits
+                            if isinstance(hit, dict)
+                        ]
+                next_record["payload"] = next_payload
+        sanitized.append(next_record)
+    return sanitized
+
+
+def _sanitize_trace_hit(storage_dir: Path, hit: dict[str, Any]) -> dict[str, Any]:
+    next_hit = dict(hit)
+    task_id = str(hit.get("task_id", "")).strip()
+    next_hit["image_path"] = _normalize_task_frame_image_path(
+        storage_dir,
+        task_id,
+        str(hit.get("image_path", "")).strip(),
+    ) if task_id else ""
+    return next_hit

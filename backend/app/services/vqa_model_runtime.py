@@ -3,9 +3,11 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 import orjson
 
+from app.services.async_utils import gather_limited
 from app.services.model_catalog_store import ModelCatalogStore
 from app.services.ollama_client import OllamaClient
 from app.services.remote_model_client import RemoteModelClient, infer_remote_api_protocol
@@ -17,6 +19,8 @@ _INLINE_THINK_PATTERN = re.compile(r"<think>[\s\S]*", re.IGNORECASE)
 _PROBE_IMAGE_BASE64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9s0X8dUAAAAASUVORK5CYII="
 )
+_REMOTE_CONTENT_PREP_CONCURRENCY = 4
+_REMOTE_IMAGE_DESCRIPTION_CONCURRENCY = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,7 +79,11 @@ class VQAModelRuntime:
         if not documents:
             return []
         if _is_remote_model_ready(model) and multimodal and _supports_multimodal_embedding(model):
-            items = [await self._build_embedding_contents(model=model, document=item, multimodal=True) for item in documents]
+            items = await gather_limited(
+                documents,
+                limit=min(len(documents), _REMOTE_CONTENT_PREP_CONCURRENCY),
+                worker=lambda item: self._build_embedding_contents(model=model, document=item, multimodal=True),
+            )
             return await self._remote_model_client.embed_contents(
                 config=model,
                 items=items,
@@ -101,14 +109,15 @@ class VQAModelRuntime:
             return []
         model = await self._resolve_model("rerank-default")
         if _is_remote_model_ready(model):
-            document_contents = [
-                await self._build_rerank_contents(
+            document_contents = await gather_limited(
+                list(enumerate(normalized_docs)),
+                limit=min(len(normalized_docs), _REMOTE_CONTENT_PREP_CONCURRENCY),
+                worker=lambda item: self._build_rerank_contents(
                     model=model,
-                    text=text,
-                    image_path=image_paths[index] if image_paths and index < len(image_paths) else "",
-                )
-                for index, text in enumerate(normalized_docs)
-            ]
+                    text=item[1],
+                    image_path=image_paths[item[0]] if image_paths and item[0] < len(image_paths) else "",
+                ),
+            )
             try:
                 scores = await self._remote_model_client.rerank(
                     config=model,
@@ -175,8 +184,7 @@ class VQAModelRuntime:
             return []
         model = await self._resolve_model("vlm-default")
         if _is_remote_model_ready(model):
-            descriptions: list[str] = []
-            for image_path in normalized_paths:
+            async def describe_remote_image(image_path: str) -> str:
                 encoded = await self.encode_image_for_model(model=model, image_path=image_path)
                 content = await self._remote_model_client.chat_text(
                     config=model,
@@ -195,8 +203,13 @@ class VQAModelRuntime:
                     ],
                     temperature=0.1,
                 )
-                descriptions.append(_normalize_chat_text(content))
-            return descriptions
+                return _normalize_chat_text(content)
+
+            return await gather_limited(
+                normalized_paths,
+                limit=min(len(normalized_paths), _REMOTE_IMAGE_DESCRIPTION_CONCURRENCY),
+                worker=describe_remote_image,
+            )
 
         descriptions: list[str] = []
         for image_path in normalized_paths:

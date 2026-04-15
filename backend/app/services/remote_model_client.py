@@ -11,8 +11,11 @@ import httpx
 import orjson
 from openai import AsyncOpenAI
 
+from app.services.async_utils import gather_limited
+
 _DEFAULT_TIMEOUT_SECONDS = 120.0
 _BAILIAN_PROTOCOL_COMPONENTS = {"embedding", "rerank"}
+_DEFAULT_REMOTE_PARALLELISM = 4
 
 
 class RemoteModelClient:
@@ -92,23 +95,37 @@ class RemoteModelClient:
             return []
 
         if protocol == "aliyun_bailian":
-            vectors: list[list[float]] = []
-            for contents in normalized_items:
-                payload = {
-                    "model": self._model_name(config),
-                    "input": {"contents": contents},
-                    "parameters": {
-                        "text_type": input_type,
-                        "enable_fusion": enable_fusion,
-                    },
-                }
-                response = await self._post_json(
-                    url=f"{_dashscope_api_root(str(config.get('api_base_url', '')))}/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding",
-                    api_key=str(config.get("api_key", "")).strip(),
-                    payload=payload,
-                    timeout_seconds=float(config.get("api_timeout_seconds", _DEFAULT_TIMEOUT_SECONDS) or _DEFAULT_TIMEOUT_SECONDS),
+            timeout_seconds = float(config.get("api_timeout_seconds", _DEFAULT_TIMEOUT_SECONDS) or _DEFAULT_TIMEOUT_SECONDS)
+            url = (
+                f"{_dashscope_api_root(str(config.get('api_base_url', '')))}"
+                "/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding"
+            )
+            api_key = str(config.get("api_key", "")).strip()
+
+            async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+                async def request_embedding(contents: list[dict[str, str]]) -> list[float]:
+                    payload = {
+                        "model": self._model_name(config),
+                        "input": {"contents": contents},
+                        "parameters": {
+                            "text_type": input_type,
+                            "enable_fusion": enable_fusion,
+                        },
+                    }
+                    response = await self._post_json(
+                        url=url,
+                        api_key=api_key,
+                        payload=payload,
+                        timeout_seconds=timeout_seconds,
+                        client=client,
+                    )
+                    return _parse_dashscope_embedding(response)
+
+                vectors = await gather_limited(
+                    normalized_items,
+                    limit=min(len(normalized_items), _DEFAULT_REMOTE_PARALLELISM),
+                    worker=request_embedding,
                 )
-                vectors.append(_parse_dashscope_embedding(response))
             return [_normalize_embedding(vector) for vector in vectors]
 
         client = self._build_openai_client(config)
@@ -231,12 +248,18 @@ class RemoteModelClient:
         api_key: str,
         payload: dict[str, object],
         timeout_seconds: float,
+        client: httpx.AsyncClient | None = None,
     ) -> dict[str, object]:
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
-        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+        if client is None:
+            async with httpx.AsyncClient(timeout=timeout_seconds) as session:
+                response = await session.post(url, headers=headers, json=payload)
+                response.raise_for_status()
+                data = response.json()
+        else:
             response = await client.post(url, headers=headers, json=payload)
             response.raise_for_status()
             data = response.json()

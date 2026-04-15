@@ -181,6 +181,22 @@ function buildVqaChatSessionStorageKey(taskId: string): string {
   return `${VQA_CHAT_SESSION_STORAGE_KEY_PREFIX}:${taskId}`
 }
 
+function normalizeVqaEvidenceImagePath(value: unknown): string {
+  let normalized = asString(value).replace(/\\/g, "/").trim()
+  while (normalized.startsWith("./")) {
+    normalized = normalized.slice(2)
+  }
+  normalized = normalized.replace(/^\/+/, "")
+  if (!normalized || !normalized.toLowerCase().startsWith("frames/")) {
+    return ""
+  }
+  const parts = normalized.split("/")
+  if (parts.some((part) => !part || part === "." || part === "..")) {
+    return ""
+  }
+  return normalized
+}
+
 function sanitizeVqaCitationItem(value: unknown): VqaCitationItem | null {
   const payload = asObject(value)
   const docId = asString(payload.doc_id).trim()
@@ -197,7 +213,7 @@ function sanitizeVqaCitationItem(value: unknown): VqaCitationItem | null {
     start: asNumber(payload.start) ?? 0,
     end: asNumber(payload.end) ?? 0,
     text: asString(payload.text),
-    image_path: asString(payload.image_path),
+    image_path: normalizeVqaEvidenceImagePath(payload.image_path),
   }
 }
 
@@ -213,7 +229,7 @@ function sanitizeRuntimeChatMessage(value: unknown): RuntimeChatMessage | null {
     id,
     role,
     content: asString(payload.content),
-    status: status === "streaming" || status === "error" ? status : "done",
+    status: status === "error" ? "error" : "done",
     citations: asRecordArray(payload.citations)
       .map((item) => sanitizeVqaCitationItem(item))
       .filter((item): item is VqaCitationItem => item !== null),
@@ -222,6 +238,34 @@ function sanitizeRuntimeChatMessage(value: unknown): RuntimeChatMessage | null {
     statusMessage: asString(payload.statusMessage).trim() || undefined,
     errorMessage: asString(payload.errorMessage).trim() || undefined,
   }
+}
+
+function sanitizeTraceHitRecord(value: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...value,
+    image_path: normalizeVqaEvidenceImagePath(value.image_path),
+  }
+}
+
+function sanitizeVqaTraceRecord(
+  value: unknown,
+): VqaTraceResponse["records"][number] | null {
+  const payload = asObject(value)
+  if (Object.keys(payload).length === 0) {
+    return null
+  }
+  const nextRecord: Record<string, unknown> = { ...payload }
+  if (asString(payload.stage).trim() === "retrieval") {
+    const rawStagePayload = asObject(payload.payload)
+    const nextStagePayload: Record<string, unknown> = { ...rawStagePayload }
+    TRACE_SECTIONS.forEach((section) => {
+      nextStagePayload[section.key] = asRecordArray(rawStagePayload[section.key]).map((item) =>
+        sanitizeTraceHitRecord(item),
+      )
+    })
+    nextRecord.payload = nextStagePayload
+  }
+  return nextRecord as VqaTraceResponse["records"][number]
 }
 
 function sanitizeVqaTraceResponse(value: unknown): VqaTraceResponse | null {
@@ -233,9 +277,15 @@ function sanitizeVqaTraceResponse(value: unknown): VqaTraceResponse | null {
   return {
     trace_id: traceId,
     records: Array.isArray(payload.records)
-      ? payload.records.filter((item) => item && typeof item === "object") as VqaTraceResponse["records"]
+      ? payload.records
+        .map((item) => sanitizeVqaTraceRecord(item))
+        .filter((item): item is VqaTraceResponse["records"][number] => item !== null)
       : [],
   }
+}
+
+function hasActiveAssistantStream(messages: RuntimeChatMessage[]): boolean {
+  return messages.some((message) => message.role === "assistant" && message.status === "streaming")
 }
 
 function readPersistedVqaSession(taskId: string): PersistedVqaSession {
@@ -1520,6 +1570,19 @@ export function TaskProcessingWorkbench({
   const videoUrl = effectiveTask?.source_local_path ? buildTaskSourceMediaUrl(effectiveTask.id) : ""
   const canEditArtifacts = isTerminalTask(effectiveTask?.status)
   const transcriptOptimizeStatus = asString(effectiveTask?.vm_phase_metrics?.transcript_optimize?.status).trim().toLowerCase()
+  const closeStreamingAssistantMessages = React.useCallback((statusMessage: string) => {
+    const { chatHistory: currentChatHistory } = getTaskProcessingRuntimeState()
+    currentChatHistory
+      .filter((message) => message.role === "assistant" && message.status === "streaming")
+      .forEach((message) => {
+        upsertChatMessage(message.id, (current) => ({
+          ...current,
+          content: current.content.trim() || "本次流式回答已停止。",
+          status: current.errorMessage ? "error" : "done",
+          statusMessage,
+        }))
+      })
+  }, [upsertChatMessage])
 
   const jumpToTime = React.useCallback(
     (time: number) => {
@@ -1536,7 +1599,8 @@ export function TaskProcessingWorkbench({
     options?: { resetBeforeSend?: boolean },
   ) => {
     const trimmedQuestion = questionText.trim()
-    if (!trimmedQuestion || getTaskProcessingRuntimeState().isChatStreaming || !effectiveTask) {
+    const runtimeState = getTaskProcessingRuntimeState()
+    if (!trimmedQuestion || runtimeState.isChatStreaming || hasActiveAssistantStream(runtimeState.chatHistory) || !effectiveTask) {
       return
     }
     if (options?.resetBeforeSend) {
@@ -1570,9 +1634,11 @@ export function TaskProcessingWorkbench({
           onEvent: (event: VqaChatStreamEvent) => {
             upsertChatMessage(assistantId, (current) => {
               const next = { ...current }
-              if (event.trace_id) next.traceId = event.trace_id
+              if (event.trace_id) next.traceId = asString(event.trace_id).trim() || undefined
               if (event.type === "citations") {
-                next.citations = event.citations ?? []
+                next.citations = asRecordArray(event.citations)
+                  .map((item) => sanitizeVqaCitationItem(item))
+                  .filter((item): item is VqaCitationItem => item !== null)
                 next.contextTokensApprox = event.context_tokens_approx
               }
               if (event.type === "chunk" && event.delta) {
@@ -1649,7 +1715,8 @@ export function TaskProcessingWorkbench({
 
   const handleAskQuestion = React.useCallback(async () => {
     const trimmedQuestion = question.trim()
-    if (!trimmedQuestion || getTaskProcessingRuntimeState().isChatStreaming || !effectiveTask) {
+    const runtimeState = getTaskProcessingRuntimeState()
+    if (!trimmedQuestion || runtimeState.isChatStreaming || hasActiveAssistantStream(runtimeState.chatHistory) || !effectiveTask) {
       return
     }
     const userTurnCount = chatHistory.filter((message) => message.role === "user").length
@@ -1685,7 +1752,11 @@ export function TaskProcessingWorkbench({
       setTraceLoadingId(traceId)
       try {
         const payload = await getChatTrace(traceId)
-        upsertTraceCache(traceId, payload)
+        const sanitizedPayload = sanitizeVqaTraceResponse(payload)
+        if (!sanitizedPayload) {
+          throw new Error("Trace 数据格式无效")
+        }
+        upsertTraceCache(traceId, sanitizedPayload)
       } catch (error) {
         setTraceError(getApiErrorMessage(error, "加载 Trace 明细失败"))
       } finally {
@@ -1771,7 +1842,9 @@ export function TaskProcessingWorkbench({
 
   const handleStopAnswer = React.useCallback(() => {
     chatAbortRef.current?.abort()
-  }, [])
+    setChatStreaming(false)
+    closeStreamingAssistantMessages("已手动停止")
+  }, [closeStreamingAssistantMessages, setChatStreaming])
 
   const handleCancelTask = React.useCallback(async () => {
     if (!effectiveTask || !isRunningTask(effectiveTask.status)) {
@@ -3279,6 +3352,10 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
   )
   const [previewImage, setPreviewImage] = React.useState<{ src: string; title: string } | null>(null)
   const selectedTrace = selectedTraceId ? traceCache[selectedTraceId] ?? null : null
+  const showStopAnswer = React.useMemo(
+    () => isSearching || hasActiveAssistantStream(chatHistory),
+    [chatHistory, isSearching],
+  )
   const traceStartedPayload = React.useMemo(() => getTraceStagePayload(selectedTrace, "trace_started"), [selectedTrace])
   const traceRetrievalPayload = React.useMemo(() => getTraceStagePayload(selectedTrace, "retrieval"), [selectedTrace])
   const traceLlmPayload = React.useMemo(() => getTraceStagePayload(selectedTrace, "llm_stream"), [selectedTrace])
@@ -3423,7 +3500,7 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
             <div className="vqa-chat-composer-row flex items-center gap-2">
               <VqaMessageAvatar role="user" />
               <Input value={question} onChange={(event) => onQuestionChange(event.target.value)} placeholder="输入你的问题，系统会实时输出回答..." onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void onAskQuestion() } }} />
-              {isSearching ? <Button variant="outline" onClick={onStopAnswer}><Square className="h-4 w-4" /></Button> : <Button onClick={() => void onAskQuestion()} disabled={!question.trim()}><Send className="h-4 w-4" /></Button>}
+              {showStopAnswer ? <Button variant="outline" onClick={onStopAnswer}><Square className="h-4 w-4" /></Button> : <Button onClick={() => void onAskQuestion()} disabled={!question.trim()}><Send className="h-4 w-4" /></Button>}
             </div>
           </div>
         </div>

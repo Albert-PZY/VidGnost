@@ -155,6 +155,56 @@ def test_task_detail_includes_fusion_prompt_markdown() -> None:
         assert detail["fusion_prompt_markdown"] == "## Fusion Prompt"
 
 
+def test_task_detail_strips_missing_markdown_artifact_images() -> None:
+    with TestClient(app) as client:
+        async def fake_submit(_) -> None:  # type: ignore[no-untyped-def]
+            return
+
+        client.app.state.task_runner.submit = fake_submit
+        create_response = client.post(
+            "/api/tasks/url",
+            json={
+                "url": "BV1xx411c7mD",
+                "model_size": "small",
+                "language": "zh",
+            },
+        )
+        assert create_response.status_code == 202
+        task_id = create_response.json()["task_id"]
+
+        artifact_root = (
+            Path(client.app.state.settings.storage_dir)
+            / "tasks"
+            / "stage-artifacts"
+            / task_id
+            / "D"
+            / "fusion"
+        )
+        notes_images_dir = artifact_root / "notes-images"
+        notes_images_dir.mkdir(parents=True, exist_ok=True)
+        existing_image = notes_images_dir / "mermaid-001.png"
+        existing_image.write_bytes(b"png")
+
+        task_store = client.app.state.task_store
+        task_store.update(
+            task_id,
+            status=TaskStatus.COMPLETED.value,
+            summary_markdown=(
+                "![有效图片](./notes-images/mermaid-001.png)\n"
+                "![缺失图片](notes-images/mermaid-002.png)"
+            ),
+            notes_markdown="图示：![缺失图片](notes-images/mermaid-003.png)",
+        )
+
+        detail_response = client.get(f"/api/tasks/{task_id}")
+        assert detail_response.status_code == 200
+        detail = detail_response.json()
+        assert "notes-images/mermaid-001.png" in detail["summary_markdown"]
+        assert "./notes-images/mermaid-001.png" not in detail["summary_markdown"]
+        assert "mermaid-002.png" not in detail["summary_markdown"]
+        assert "mermaid-003.png" not in detail["notes_markdown"]
+
+
 def test_task_detail_repairs_broken_local_file_source_media_path(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

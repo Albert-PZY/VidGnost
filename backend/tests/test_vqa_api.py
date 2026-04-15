@@ -41,6 +41,26 @@ def stub_vqa_models(monkeypatch: pytest.MonkeyPatch) -> None:
             )
         return vectors
 
+    async def fake_embed_query_text(_self: VQAModelRuntime, query_text: str) -> list[float]:
+        vectors = await fake_embed_texts(_self, [query_text])
+        return vectors[0] if vectors else []
+
+    async def fake_embed_documents(
+        _self: VQAModelRuntime,
+        documents: list[object],
+        *,
+        multimodal: bool,
+    ) -> list[list[float]]:
+        _ = multimodal
+        texts = [
+            f"{str(getattr(item, 'text', '')).strip()} {str(getattr(item, 'visual_text', '')).strip()}".strip()
+            for item in documents
+        ]
+        return await fake_embed_texts(_self, texts)
+
+    async def fake_use_multimodal_retrieval_route(_self: VQAModelRuntime) -> bool:
+        return False
+
     async def fake_score_rerank_pairs(
         _self: VQAModelRuntime,
         *,
@@ -56,6 +76,9 @@ def stub_vqa_models(monkeypatch: pytest.MonkeyPatch) -> None:
         return [f"测试关键帧 {index + 1}" for index, _ in enumerate(image_paths)]
 
     monkeypatch.setattr(VQAModelRuntime, "embed_texts", fake_embed_texts)
+    monkeypatch.setattr(VQAModelRuntime, "embed_query_text", fake_embed_query_text)
+    monkeypatch.setattr(VQAModelRuntime, "embed_documents", fake_embed_documents)
+    monkeypatch.setattr(VQAModelRuntime, "use_multimodal_retrieval_route", fake_use_multimodal_retrieval_route)
     monkeypatch.setattr(VQAModelRuntime, "score_rerank_pairs", fake_score_rerank_pairs)
     monkeypatch.setattr(VQAModelRuntime, "describe_images", fake_describe_images)
 
