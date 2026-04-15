@@ -217,6 +217,7 @@ The VQA runtime SHALL open a joint text-image retrieval route when `mllm-default
 - **THEN** backend encodes images as base64 or data-URL payloads compatible with the selected provider
 - **AND** backend compresses oversized images toward the configured `api_image_max_bytes` and `api_image_max_edge` bounds before upload
 - **AND** provider-specific protocol differences such as Alibaba Bailian embedding or rerank payload shape are normalized behind the runtime client
+- **AND** OpenAI-compatible vision providers that require a single `user` message with `content[]` receive a normalized multimodal request shape even when the internal prompt builder starts from `system + user` messages
 
 ### Requirement: Runtime config APIs SHALL ignore unsupported fields
 Runtime config APIs SHALL process documented fields and ignore unsupported extra fields in payloads.

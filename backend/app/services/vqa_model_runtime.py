@@ -186,17 +186,21 @@ class VQAModelRuntime:
         if _is_remote_model_ready(model):
             async def describe_remote_image(image_path: str) -> str:
                 encoded = await self.encode_image_for_model(model=model, image_path=image_path)
+                system_prompt, user_prompt = _build_remote_vlm_prompts(
+                    model_name=_display_model_name(model),
+                    task="describe_frame",
+                )
                 content = await self._remote_model_client.chat_text(
                     config=model,
                     messages=[
                         {
                             "role": "system",
-                            "content": "你是视频关键帧理解助手。请用简洁中文描述画面主体、场景、动作和字幕，不要编造。",
+                            "content": system_prompt,
                         },
                         {
                             "role": "user",
                             "content": [
-                                {"type": "text", "text": "请概括这张视频帧画面的关键信息，控制在一到两句话内。"},
+                                {"type": "text", "text": user_prompt},
                                 {"type": "image_url", "image_url": {"url": encoded}},
                             ],
                         },
@@ -296,14 +300,18 @@ class VQAModelRuntime:
     async def probe_vlm(self) -> ModelProbeResult:
         model = await self._resolve_model("vlm-default")
         if _is_remote_model_ready(model):
+            system_prompt, user_prompt = _build_remote_vlm_prompts(
+                model_name=_display_model_name(model),
+                task="probe",
+            )
             response = await self._remote_model_client.chat_text(
                 config=model,
                 messages=[
-                    {"role": "system", "content": "你是图像理解助手，请简洁描述图像。"},
+                    {"role": "system", "content": system_prompt},
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": "请用一句中文描述这张图片。"},
+                            {"type": "text", "text": user_prompt},
                             {
                                 "type": "image_url",
                                 "image_url": {"url": f"data:image/png;base64,{_PROBE_IMAGE_BASE64}"},
@@ -586,6 +594,23 @@ def _display_endpoint(model: dict[str, object], ollama_client: OllamaClient) -> 
     if _is_remote_provider(model):
         return str(model.get("api_base_url", "")).strip()
     return ollama_client.base_url
+
+
+def _build_remote_vlm_prompts(*, model_name: str, task: str) -> tuple[str, str]:
+    normalized_model_name = str(model_name or "").strip().lower()
+    if "paddleocr-vl" in normalized_model_name:
+        system_prompt = (
+            "你是 OCR 与图像理解助手。"
+            "请优先提取图片中的可见文字、数字、标题和界面标签，"
+            "再补充概括主要场景和主体，不要编造。"
+        )
+        if task == "probe":
+            return system_prompt, "请读取这张图片中的可见文字；如果几乎没有文字，再用一句中文概括可见内容。"
+        return system_prompt, "请先提取这张视频帧中的可见文字，再用一到两句中文概括主体场景、动作和关键信息。"
+    system_prompt = "你是视频关键帧理解助手。请用简洁中文描述画面主体、场景、动作和字幕，不要编造。"
+    if task == "probe":
+        return system_prompt, "请用一句中文描述这张图片。"
+    return system_prompt, "请概括这张视频帧画面的关键信息，控制在一到两句话内。"
 
 
 def _compose_retrieval_text(*, text: str, visual_text: str) -> str:

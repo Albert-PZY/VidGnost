@@ -27,9 +27,10 @@ class RemoteModelClient:
         temperature: float = 0.2,
     ) -> str:
         client = self._build_openai_client(config)
+        normalized_messages = _normalize_openai_chat_messages(config=config, messages=messages)
         response = await client.chat.completions.create(
             model=self._model_name(config),
-            messages=messages,  # type: ignore[arg-type]
+            messages=normalized_messages,  # type: ignore[arg-type]
             temperature=temperature,
             stream=False,
         )
@@ -45,9 +46,10 @@ class RemoteModelClient:
         temperature: float = 0.2,
     ) -> AsyncIterator[str]:
         client = self._build_openai_client(config)
+        normalized_messages = _normalize_openai_chat_messages(config=config, messages=messages)
         stream = await client.chat.completions.create(
             model=self._model_name(config),
-            messages=messages,  # type: ignore[arg-type]
+            messages=normalized_messages,  # type: ignore[arg-type]
             temperature=temperature,
             stream=True,
         )
@@ -292,6 +294,11 @@ def _is_dashscope_compatible_base_url(base_url: str) -> bool:
     return bool(normalized and "dashscope.aliyuncs.com" in normalized)
 
 
+def _is_siliconflow_base_url(base_url: str) -> bool:
+    normalized = str(base_url or "").strip().lower()
+    return bool(normalized and "api.siliconflow.cn" in normalized)
+
+
 def _parse_dashscope_embedding(payload: dict[str, object]) -> list[float]:
     output = payload.get("output")
     if isinstance(output, dict):
@@ -379,3 +386,109 @@ def _guess_image_media_type(path: Path) -> str:
         ".webp": "image/webp",
         ".gif": "image/gif",
     }.get(suffix, "image/jpeg")
+
+
+def _normalize_openai_chat_messages(
+    *,
+    config: dict[str, object],
+    messages: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    if not _should_flatten_multimodal_messages(config=config, messages=messages):
+        return messages
+
+    merged_content: list[dict[str, object]] = []
+    for message in messages:
+        role = str(message.get("role", "")).strip().lower()
+        content = _coerce_message_content_parts(message.get("content"))
+        if not content:
+            continue
+        if role == "system":
+            merged_content.append(
+                {
+                    "type": "text",
+                    "text": f"系统要求：{_flatten_content_parts(content)}",
+                }
+            )
+            continue
+        merged_content.extend(content)
+    if not merged_content:
+        return messages
+    return [{"role": "user", "content": merged_content}]
+
+
+def _should_flatten_multimodal_messages(
+    *,
+    config: dict[str, object],
+    messages: list[dict[str, object]],
+) -> bool:
+    base_url = str(config.get("api_base_url", "")).strip()
+    if not _is_siliconflow_base_url(base_url):
+        return False
+    return any(_message_contains_multimodal_parts(message) for message in messages)
+
+
+def _message_contains_multimodal_parts(message: dict[str, object]) -> bool:
+    content = message.get("content")
+    if isinstance(content, list):
+        return any(
+            isinstance(item, dict)
+            and str(item.get("type", "")).strip().lower() in {"image_url", "input_image", "video_url", "input_video"}
+            for item in content
+        )
+    return False
+
+
+def _coerce_message_content_parts(content: object) -> list[dict[str, object]]:
+    if isinstance(content, str):
+        text = content.strip()
+        return [{"type": "text", "text": text}] if text else []
+    if not isinstance(content, list):
+        return []
+
+    normalized_parts: list[dict[str, object]] = []
+    for item in content:
+        if not isinstance(item, dict):
+            continue
+        part_type = str(item.get("type", "")).strip().lower()
+        if part_type in {"text", "input_text"}:
+            text = str(item.get("text", "")).strip() or str(item.get("input_text", "")).strip()
+            if text:
+                normalized_parts.append({"type": "text", "text": text})
+            continue
+        if part_type == "image_url":
+            image_url = item.get("image_url")
+            if isinstance(image_url, dict):
+                url = str(image_url.get("url", "")).strip()
+                if url:
+                    normalized_parts.append({"type": "image_url", "image_url": {"url": url}})
+            continue
+        if part_type == "input_image":
+            image_url = item.get("image_url")
+            if isinstance(image_url, dict):
+                url = str(image_url.get("url", "")).strip()
+                if url:
+                    normalized_parts.append({"type": "image_url", "image_url": {"url": url}})
+            else:
+                url = str(item.get("input_image", "")).strip()
+                if url:
+                    normalized_parts.append({"type": "image_url", "image_url": {"url": url}})
+            continue
+        if part_type in {"video_url", "input_video"}:
+            video_url = item.get("video_url")
+            if isinstance(video_url, dict):
+                url = str(video_url.get("url", "")).strip()
+                if url:
+                    normalized_parts.append({"type": "video_url", "video_url": {"url": url}})
+            continue
+    return normalized_parts
+
+
+def _flatten_content_parts(parts: list[dict[str, object]]) -> str:
+    text_fragments: list[str] = []
+    for part in parts:
+        if str(part.get("type", "")).strip().lower() != "text":
+            continue
+        text = str(part.get("text", "")).strip()
+        if text:
+            text_fragments.append(text)
+    return "\n".join(text_fragments).strip()
