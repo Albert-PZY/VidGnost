@@ -21,6 +21,14 @@ export class LlmConfigRepository {
     return this.#buildConfig(await readJsonFile<Record<string, unknown>>(this.#path, {}))
   }
 
+  async isUserConfigured(): Promise<boolean> {
+    if (!(await pathExists(this.#path))) {
+      return false
+    }
+    const payload = await readJsonFile<Record<string, unknown>>(this.#path, {})
+    return payload.user_configured === true
+  }
+
   async save(payload: LLMConfigResponse): Promise<LLMConfigResponse> {
     const current = await this.get()
     const resolvedBaseUrl = normalizeBaseUrl(payload.base_url, this.#config.llmBaseUrl)
@@ -36,6 +44,7 @@ export class LlmConfigRepository {
       correction_mode: normalizeCorrectionMode(payload.correction_mode, this.#config.llmCorrectionMode),
       correction_batch_size: clampInteger(payload.correction_batch_size, this.#config.llmCorrectionBatchSize, 6, 80),
       correction_overlap: clampInteger(payload.correction_overlap, this.#config.llmCorrectionOverlap, 0, 20),
+      user_configured: true,
     }
 
     await writeJsonFile(this.#path, filePayload)
@@ -57,6 +66,7 @@ export class LlmConfigRepository {
       correction_mode: this.#config.llmCorrectionMode,
       correction_batch_size: this.#config.llmCorrectionBatchSize,
       correction_overlap: this.#config.llmCorrectionOverlap,
+      user_configured: false,
     })
   }
 

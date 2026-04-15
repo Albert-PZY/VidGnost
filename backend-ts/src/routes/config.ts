@@ -5,6 +5,7 @@ import {
   localModelsMigrationRequestSchema,
   modelReloadRequestSchema,
   modelUpdateRequestSchema,
+  ollamaModelsMigrationRequestSchema,
   ollamaRuntimeConfigUpdateRequestSchema,
   promptTemplateCreateRequestSchema,
   promptTemplateSelectionUpdateRequestSchema,
@@ -14,6 +15,7 @@ import {
   type LLMConfigResponse,
   type LocalModelsMigrationResponse,
   type ModelListResponse,
+  type OllamaModelsMigrationResponse,
   type OllamaRuntimeConfigResponse,
   type PromptTemplateBundleResponse,
   type UISettingsResponse,
@@ -182,6 +184,38 @@ export async function registerConfigRoutes(
     }
   })
 
+  app.post(`${apiPrefix}/config/ollama/migrate-models`, async (request): Promise<OllamaModelsMigrationResponse> => {
+    const body = parseBody(
+      request,
+      ollamaModelsMigrationRequestSchema,
+      "OLLAMA_MODELS_MIGRATION_INVALID",
+      "Invalid Ollama models migration payload",
+    )
+    const current = await dependencies.ollamaRuntimeConfigRepository.get()
+    const normalizedTargetDir = body.target_dir.trim()
+    if (normalizedTargetDir && normalizedTargetDir !== current.models_dir) {
+      await dependencies.ollamaRuntimeConfigRepository.save({
+        models_dir: normalizedTargetDir,
+      })
+      await dependencies.ollamaServiceManager.synchronizeRuntimeEnvironment()
+    }
+    const service = await dependencies.ollamaServiceManager.getStatus()
+    return {
+      service,
+      source_dir: current.models_dir,
+      target_dir: normalizedTargetDir || current.models_dir,
+      moved: false,
+      message:
+        normalizedTargetDir === current.models_dir
+          ? "Ollama 模型目录已指向目标路径，无需额外迁移。"
+          : "已更新 Ollama 模型目录配置；现有模型文件请按需手动迁移。",
+      warnings:
+        normalizedTargetDir === current.models_dir
+          ? []
+          : ["当前 TS 运行时不会直接搬运 Ollama 模型文件，请在目标目录完成文件迁移后再刷新状态。"],
+    }
+  })
+
   app.get(`${apiPrefix}/config/models`, async (): Promise<ModelListResponse> => {
     return dependencies.modelCatalogRepository.listModels()
   })
@@ -201,6 +235,48 @@ export async function registerConfigRoutes(
         detail: toRouteErrorDetail(error),
       })
     }
+  })
+
+  app.post(`${apiPrefix}/config/models/:modelId/download`, async (request): Promise<ModelListResponse> => {
+    const modelId = String((request.params as { modelId?: string }).modelId || "").trim()
+    const models = await dependencies.modelCatalogRepository.listModels()
+    const target = models.items.find((item) => item.id === modelId)
+    if (!target) {
+      throw AppError.notFound("Model not found", {
+        code: "MODEL_NOT_FOUND",
+      })
+    }
+
+    if (target.is_installed) {
+      return dependencies.modelCatalogRepository.updateDownloadState(modelId, {
+        state: "completed",
+        message: "当前模型已经就绪，无需重复下载。",
+        percent: 100,
+      })
+    }
+
+    return dependencies.modelCatalogRepository.updateDownloadState(modelId, {
+      state: "failed",
+      message: buildManagedDownloadUnavailableMessage(target),
+      percent: 0,
+    })
+  })
+
+  app.delete(`${apiPrefix}/config/models/:modelId/download`, async (request): Promise<ModelListResponse> => {
+    const modelId = String((request.params as { modelId?: string }).modelId || "").trim()
+    const models = await dependencies.modelCatalogRepository.listModels()
+    const target = models.items.find((item) => item.id === modelId)
+    if (!target) {
+      throw AppError.notFound("Model not found", {
+        code: "MODEL_NOT_FOUND",
+      })
+    }
+
+    return dependencies.modelCatalogRepository.updateDownloadState(modelId, {
+      state: "cancelled",
+      message: "当前模型下载任务已取消。",
+      percent: 0,
+    })
   })
 
   app.post(`${apiPrefix}/config/models/migrate-local`, async (request): Promise<LocalModelsMigrationResponse> => {
@@ -248,4 +324,19 @@ function toRouteErrorDetail(error: unknown): unknown {
     return error.message
   }
   return error
+}
+
+function buildManagedDownloadUnavailableMessage(
+  model: Awaited<ReturnType<ModelCatalogRepository["listModels"]>>["items"][number],
+): string {
+  if (model.component === "whisper") {
+    return "当前 TS 全栈版本不内置 Whisper 模型托管下载，请在 storage/models/whisper 放置 ggml 模型文件，或切换为远程转写提供方。"
+  }
+  if (model.provider === "ollama") {
+    return "当前 TS 全栈版本不接管 Ollama 模型拉取，请先在 Ollama 侧执行 pull，或切换为在线 API 提供方。"
+  }
+  if (model.provider === "openai_compatible") {
+    return "当前模型使用在线 API，请直接配置 Base URL、模型名和 API Key。"
+  }
+  return "当前模型提供方不支持托管下载，请手动完成模型准备。"
 }

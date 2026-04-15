@@ -2,36 +2,53 @@ import path from "node:path"
 
 import type { WhisperRuntimeLibrariesResponse } from "@vidgnost/contracts"
 
-import { pathExists } from "../../core/fs.js"
-import type { OllamaRuntimeConfigRepository } from "../models/ollama-runtime-config-repository.js"
+import type { AppConfig } from "../../core/config.js"
+import { findCommand } from "../../core/process.js"
+import type { ModelCatalogRepository } from "../models/model-catalog-repository.js"
 
 export class WhisperRuntimeStatusService {
-  readonly #ollamaRuntimeConfigRepository: OllamaRuntimeConfigRepository
-
-  constructor(ollamaRuntimeConfigRepository: OllamaRuntimeConfigRepository) {
-    this.#ollamaRuntimeConfigRepository = ollamaRuntimeConfigRepository
-  }
+  constructor(
+    private readonly config: AppConfig,
+    private readonly modelCatalogRepository: ModelCatalogRepository,
+  ) {}
 
   async getStatus(): Promise<WhisperRuntimeLibrariesResponse> {
-    const ollamaConfig = await this.#ollamaRuntimeConfigRepository.get()
-    const executablePath = ollamaConfig.executable_path
-    const executableExists = await pathExists(executablePath)
-    const installDir = ollamaConfig.install_dir
-    const executableName = path.basename(executablePath)
+    const catalog = await this.modelCatalogRepository.listModels()
+    const whisperModel = catalog.items.find((item) => item.id === "whisper-default")
+    const executablePath =
+      await findCommand([this.config.whisperExecutable, "whisper-cli", "whisper-cli.exe"])
+    const modelPath = String(whisperModel?.path || whisperModel?.default_path || "").trim()
+    const discoveredFiles: Record<string, string> = {}
+    const missingFiles: string[] = []
 
+    if (executablePath) {
+      discoveredFiles.executable = executablePath
+    } else {
+      missingFiles.push("whisper-cli")
+    }
+
+    if (modelPath) {
+      discoveredFiles.model = modelPath
+    } else {
+      missingFiles.push("ggml model")
+    }
+
+    const ready = Boolean(executablePath && modelPath)
     return {
-      install_dir: installDir,
+      install_dir: modelPath ? path.dirname(modelPath) : this.config.runtimeBinDir,
       auto_configure_env: true,
-      version_label: "ollama-runtime-probe",
+      version_label: ready ? "whisper.cpp" : "whisper.cpp-missing",
       platform_supported: true,
-      ready: executableExists,
-      status: executableExists ? "ready" : "not_ready",
-      message: executableExists ? "已检测到可复用的本地运行时目录。" : "未检测到可复用的本地运行时目录。",
-      bin_dir: installDir,
-      missing_files: executableExists ? [] : [executableName],
-      discovered_files: executableExists ? { executable: executablePath } : {},
+      ready,
+      status: ready ? "ready" : "not_ready",
+      message: ready
+        ? "已检测到 whisper.cpp CLI 与模型目录。"
+        : "未检测到完整的 whisper.cpp 运行时，请在设置中配置本地模型并安装 whisper-cli。",
+      bin_dir: executablePath ? path.dirname(executablePath) : this.config.runtimeBinDir,
+      missing_files: missingFiles,
+      discovered_files: discoveredFiles,
       load_error: "",
-      path_configured: executableExists,
+      path_configured: Boolean(executablePath),
       progress: {
         state: "idle",
         message: "",

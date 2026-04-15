@@ -1,140 +1,106 @@
-# VidGnost 当前完整技术栈（前后端）
+# VidGnost 当前完整技术栈
 
-更新时间：2026-04-14
+更新时间：2026-04-15
 
-## 1. 架构边界（已收敛）
+## 1. 架构边界
 
-- 前端：纯客户端渲染（CSR），只负责界面渲染与交互，不承担服务端渲染。
-- 前端运行形态：仅 Electron 桌面壳层启动（内部加载本地 CSR 页面）。
-- 后端：Python 服务，负责任务编排、模型调用、数据处理、检索与存储、接口输出。
-- 通信方式：HTTP JSON + SSE（任务流与问答流）。
+- 前端：`React 19 + Vite 6 + Electron 31 + TypeScript 5`
+- 后端：`Fastify 5 + TypeScript 5`
+- 契约层：`packages/contracts`
+- 共享常量：`packages/shared`
+- 通信方式：HTTP JSON + SSE
+- 运行时持久化：仓库根 `storage/`
 
 ## 2. 前端技术栈
 
-## 2.1 运行与构建
+### 2.1 运行与构建
 
-- Node.js（运行环境）
-- pnpm（包管理）
-- Vite 6（开发与打包）
-- React 19（UI 渲染）
-- TypeScript 5（类型系统）
-- Electron 31（桌面容器）
+- Node.js
+- pnpm
+- Vite 6
+- React 19
+- TypeScript 5
+- Electron 31
 
-## 2.2 UI 与交互
+### 2.2 UI 与交互
 
 - Tailwind CSS 4
-- tw-animate-css
-- Radix UI（Accordion/Dialog/Select/Tabs 等）
-- Lucide React（图标）
-- next-themes（主题切换，仅前端主题管理，不依赖 Next SSR）
-- react-hot-toast（通知）
-- react-resizable-panels（可拖拽工作区分栏）
-- Zustand 5（任务处理页 task-scoped runtime store）
-- @tanstack/react-virtual（长列表虚拟化）
-- @uiw/react-md-editor + @uiw/react-markdown-preview（提示词编辑与 Markdown 结果渲染）
-
-## 2.3 前端工程事实
-
-- 不使用 Next.js 运行链路
-- 无 SSR/SSG 服务端渲染职责
-- Electron 启动链路采用独立 splash 窗口，主窗口默认隐藏，前端通过 preload IPC 上报启动阶段进度后再显示主界面
-- 启动阶段一次性预热核心页面与提示词 Markdown 编辑器，不使用页面级或编辑器级懒加载骨架屏占位
-- 主界面显示后仍保留降级启动覆盖层，用于后端不可用时承接诊断、重试和日志目录打开动作
-- 任务处理页将转写、纠错、阶段动态、问答、Trace 等高频运行态数据收拢到 task-scoped Zustand store，并通过 selector 订阅隔离重渲染范围
-- 任务处理页中的转写片段、证据时间轴、阶段动态、VQA 消息与引用列表使用虚拟化列表，避免长任务期间 DOM 持续膨胀
-- Markdown 时间戳装饰、任务相对图片路径改写等预处理通过独立 Web Worker 执行，Mermaid 预览采用可视区惰性渲染、空闲调度与 SVG 缓存
-- 前端入口：
-  - `frontend/index.html`
-  - `frontend/src/main.tsx`
-  - `frontend/src/App.tsx`
-  - `frontend/electron/main.cjs`
-  - `frontend/electron/preload.cjs`
-  - `frontend/electron/splash-preload.cjs`
-  - `frontend/electron/splash.html`
-- 常用命令：
-  - `pnpm desktop:dev`
-  - `pnpm build`
-  - `pnpm preview`
+- Radix UI
+- Lucide React
+- Zustand 5
+- next-themes
+- react-hot-toast
+- react-resizable-panels
+- @tanstack/react-virtual
+- @uiw/react-md-editor
+- @uiw/react-markdown-preview
 
 ## 3. 后端技术栈
 
-## 3.1 运行与框架
+### 3.1 运行与框架
 
-- Python 3.12
-- uv（虚拟环境与依赖管理）
-- FastAPI（API 框架）
-- Uvicorn（ASGI 服务）
-- Pydantic v2（数据模型与校验）
-- orjson（高性能 JSON）
+- TypeScript 5
+- Fastify 5
+- `@fastify/cors`
+- `@fastify/multipart`
+- tsx
+- tsup
+- pino
 
-## 3.2 核心能力组件
+### 3.2 核心后端模块
 
-- 视频下载与处理：`yt-dlp`、`ffmpeg-python`
-- 转写：`faster-whisper`
-- 网络调用：`httpx`
-- LLM 调用：`openai`（兼容 OpenAI 协议）
-- 本地模型编排：`Ollama`（默认本地 LLM、Embedding、VLM、Rerank 的拉取与运行）
-- 向量检索：`chromadb`（持久化向量库）
-- 稀疏检索：SQLite FTS5（本地全文索引）
-- 系统指标：`psutil` + `nvidia-smi`（GPU 信息）
-- 加密存储：`cryptography`（密钥与密文）
+- `backend-ts/src/modules/media/`
+- `backend-ts/src/modules/asr/`
+- `backend-ts/src/modules/summary/`
+- `backend-ts/src/modules/tasks/`
+- `backend-ts/src/modules/runtime/`
+- `backend-ts/src/modules/models/`
+- `backend-ts/src/modules/vqa/`
+- `backend-ts/src/modules/events/`
 
-## 3.3 后端接口与流式
+## 4. AI 与外部运行时
 
-- REST：任务、配置、历史、自检、VQA、运行指标
-- SSE：
-  - 任务事件流：`/api/tasks/{task_id}/events`
-  - 问答流：`/api/chat/stream`
-  - 自检流：`/api/self-check/{session_id}/events`
-- GPU 重计算执行模型：
-  - 主进程只负责任务编排、checkpoint 持久化、SSE 分发
-  - 阶段 C Whisper 转写通过独立 Python worker 进程执行
-  - 阶段完成后通过 worker 进程退出回收运行时资源
-
-## 4. 检索与问答（RAG）栈
-
-- 检索链路：Dense + Sparse + RRF + Rerank
-- Dense：Ollama `/api/embed` + ChromaDB PersistentClient
-- Sparse：SQLite FTS5
-- 融合：RRF（`rrf_k=60`）
-- 重排：Ollama 本地重排模型（受控 JSON 打分协议）
-- 视觉理解：Ollama Vision Chat（抽帧描述写入 `frames/index.json`）
-- 默认本地模型基线：
-  - LLM：`qwen2.5:3b`（通过本地 Ollama `/v1` 提供 OpenAI-compatible completion）
-  - Embedding：`bge-m3`
-  - VLM：`moondream`
-  - Rerank：`sam860/qwen3-reranker:0.6b-q8_0`
-- Whisper 继续使用 `faster-whisper` 独立运行时与下载链路，不走 Ollama
-- Trace：JSONL 可回放（按 `trace_id`）
+- 媒体处理：`ffmpeg`、`ffprobe`
+- 来源拉取：`yt-dlp`
+- ASR：`whisper.cpp` CLI 或兼容 ASR API
+- LLM：Ollama / OpenAI-compatible API
+- Embedding：Ollama / OpenAI-compatible API
+- VLM：Ollama / OpenAI-compatible API
+- Rerank：Ollama / OpenAI-compatible API
 
 ## 5. 数据与存储
 
-- 主目录：`backend/storage`
-- 关键路径：
-  - `backend/storage/model_config.json`
-  - `backend/storage/config.toml`
-  - `backend/storage/models/catalog.json`
-  - `backend/storage/prompts/**`
-  - `backend/storage/tasks/**`
-  - `backend/storage/vector-index/**`
-  - `backend/storage/event-logs/**`
-- 非 Whisper 托管模型由 Ollama 统一存储与管理，后端目录中的模型清单会持久化当前检测到的绝对模型目录，便于迁移后的路径回写、自检和设置中心统一展示。
+- 主目录：`storage/`
+- 关键文件：
+  - `storage/model_config.json`
+  - `storage/config.toml`
+  - `storage/models/catalog.json`
+  - `storage/ollama-runtime.json`
+  - `storage/prompts/templates/*.json`
+  - `storage/prompts/selection.json`
+- 关键目录：
+  - `storage/tasks/records/`
+  - `storage/tasks/analysis-results/`
+  - `storage/tasks/stage-artifacts/`
+  - `storage/vector-index/`
+  - `storage/event-logs/`
+  - `storage/uploads/`
+  - `storage/tmp/`
 
 ## 6. 测试与质量保障
 
-- 后端测试：`pytest` + `pytest-asyncio`
-- 前端构建验证：`vite build`
-- 前端类型验证：`pnpm exec tsc --noEmit`
-- 已验证状态：
-  - 后端：`99 passed`
-  - 前端：`pnpm exec tsc --noEmit` 成功
-  - 前端：`vite build` 成功
+- 类型检查：`pnpm typecheck`
+- 单元测试：`pnpm test`
+- 生产构建：`pnpm build`
+- OpenSpec 校验：`node scripts/check-openspec.mjs`
+- 后端测试框架：`vitest`
+- contracts 测试框架：`vitest`
 
 ## 7. 结论
 
-当前项目已明确为：
+当前项目已经定义为：
 
-- 前端：CSR 可视化与交互层
-- 后端：Python 统一业务与数据处理层
-
-不存在前端 SSR 框架承担后端职责的链路。
+- 前端：桌面工作台渲染层
+- 后端：TS 本地服务
+- 契约：共享 TypeScript schema
+- 存储：根目录 `storage/`

@@ -23,20 +23,10 @@ yarn-error.log*
 .env.*
 !.env.example
 
-# Python backend
-backend/.venv/
-backend/__pycache__/
-backend/.pytest_cache/
-backend/.mypy_cache/
-backend/.ruff_cache/
-backend/.coverage
-backend/htmlcov/
-backend/storage/
-backend/*.sqlite3
-backend/.python-version
-backend/**/__pycache__/
+# Runtime storage
+storage/
 
-# Node frontend
+# Node workspace
 node_modules/
 frontend/node_modules/
 frontend/dist/
@@ -53,6 +43,8 @@ packages/*/node_modules/
 packages/*/dist/
 packages/*/coverage/
 packages/*/**/*.tsbuildinfo
+.turbo/
+.eslintcache
 
 # Build / cache
 tmp/

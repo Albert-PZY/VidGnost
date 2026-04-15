@@ -1,8 +1,8 @@
 ## Context
 
 VidGnost 当前以 Electron 桌面工作台形态交付：
-- 渲染层使用 React + Vite，只负责渲染 Python 后端返回的数据与状态
-- Python FastAPI 后端负责任务编排、模型管理、存储读写、实时事件与数据处理
+- 渲染层使用 React + Vite，只负责渲染 TS 后端返回的数据与状态
+- `backend-ts` 负责任务编排、模型管理、存储读写、实时事件与数据处理
 
 ## Goals / Non-Goals
 
@@ -22,7 +22,7 @@ VidGnost 当前以 Electron 桌面工作台形态交付：
 ### 1. Host and shell
 - Electron 是当前交付宿主。
 - 渲染层使用 Vite + React，桌面壳层只暴露窗口控制、打开路径、打开外链等桌面能力。
-- 前端数据访问统一走 Python 后端 HTTP API。
+- 前端数据访问统一走 TS 后端 HTTP API。
 
 ### 2. Workbench shell layout
 - 顶部标题栏与下方页面滚动区域分离，标题栏保持吸顶可见。
@@ -38,13 +38,13 @@ VidGnost 当前以 Electron 桌面工作台形态交付：
 - 语言切换与外观设置都应在当前会话立即生效，并在重启后恢复。
 
 ### 5. Runtime config model
-- 在线 LLM 采用 OpenAI 兼容接口模式，配置项持久化到 `backend/storage/model_config.json`。
+- 在线 LLM 采用 OpenAI 兼容接口模式，配置项持久化到 `storage/model_config.json`。
 - 在线 LLM 有效字段包括 `base_url`、`api_key`、`model`、`load_profile`、`local_model_id`、文本纠错参数。
-- Whisper 运行时配置持久化到 `backend/storage/config.toml`，保留 `auto|cpu|cuda` 设备策略和 `int8|float32` 精度选项。
+- Whisper 运行时配置持久化到 `storage/config.toml`，保留 `auto|cpu|cuda` 设备策略和 `int8|float32` 精度选项。
 
 ### 6. Managed local model workflow
 - `/config/models` 负责向前端暴露托管模型目录、安装状态、下载状态和默认路径。
-- 本地托管模型下载统一走 `httpx + asyncio` 异步链路，并向设置页回传下载进度与取消状态。
+- 本地托管模型下载统一走 TS runtime + CLI / service-manager 链路，并向设置页回传下载进度与取消状态。
 - 当前转写运行链路实际准备的是托管 Whisper small 本地缓存。
 
 ### 7. Pipeline contract

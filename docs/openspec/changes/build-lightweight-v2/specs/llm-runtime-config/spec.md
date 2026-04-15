@@ -19,7 +19,7 @@ Generation runtime SHALL operate in OpenAI-compatible API mode.
 - **THEN** backend returns effective `mode=api`
 
 ### Requirement: System SHALL persist LLM config in local model_config.json
-LLM runtime config SHALL be stored in `backend/storage/model_config.json`.
+LLM runtime config SHALL be stored in `storage/model_config.json`.
 
 #### Scenario: Save LLM config
 - **WHEN** update API succeeds
@@ -69,7 +69,7 @@ The system SHALL expose `/config/ollama` and `/config/ollama/migrate-models` so 
 
 #### Scenario: Save current Ollama runtime config
 - **WHEN** client updates `/config/ollama`
-- **THEN** backend persists the effective runtime config into `backend/storage/ollama-runtime.json`
+- **THEN** backend persists the effective runtime config into `storage/ollama-runtime.json`
 - **AND** subsequent Ollama-backed model path resolution uses the configured `models_dir`
 - **AND** backend synchronizes the local process and Windows environment entries for `PATH` and `OLLAMA_MODELS` against the saved install directory and model directory
 - **AND** if `llm-default` currently uses `provider=ollama`, backend re-synchronizes `/config/llm` against the updated Ollama service address
@@ -89,7 +89,7 @@ The system SHALL expose `/config/ollama` and `/config/ollama/migrate-models` so 
 - **AND** backend returns the current runtime config plus refreshed `service` status after the reachability check succeeds
 
 ### Requirement: System SHALL expose editable Whisper runtime config API
-The system SHALL expose `/config/whisper` read/update endpoints and persist effective values into `backend/storage/config.toml`.
+The system SHALL expose `/config/whisper` read/update endpoints and persist effective values into `storage/config.toml`.
 
 #### Scenario: Read Whisper config
 - **WHEN** client requests `/config/whisper`
@@ -165,7 +165,7 @@ The system SHALL keep `whisper-default` on the managed local runtime path, allow
 - **WHEN** frontend requests `/config/models/{model_id}/download` for `llm-default`, `embedding-default`, `vlm-default`, or `rerank-default`
 - **THEN** backend starts `Ollama pull` for the configured managed model id
 - **AND** download progress is merged back into subsequent `/config/models` responses
-- **AND** completion marks the entry ready without copying model weights into `backend/storage/model-hub`
+- **AND** completion marks the entry ready without copying model weights into `storage/models/`
 
 #### Scenario: Skip duplicate pull when current Ollama already recognizes the model
 - **WHEN** frontend requests `/config/models/{model_id}/download` for an Ollama-backed managed entry and the active Ollama service already exposes that model in `/api/tags`

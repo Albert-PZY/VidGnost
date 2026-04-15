@@ -9,6 +9,7 @@ import {
   apiErrorPayloadSchema,
   llmConfigResponseSchema,
   modelListResponseSchema,
+  ollamaModelsMigrationResponseSchema,
   ollamaRuntimeConfigResponseSchema,
   promptTemplateBundleResponseSchema,
   uiSettingsResponseSchema,
@@ -183,6 +184,42 @@ describe("config routes", () => {
       provider: "openai_compatible",
       api_key_configured: true,
       status: "ready",
+    })
+
+    const downloadResponse = await app.inject({
+      method: "POST",
+      url: "/api/config/models/whisper-default/download",
+      payload: {},
+    })
+    expect(downloadResponse.statusCode).toBe(200)
+    expect(modelListResponseSchema.parse(downloadResponse.json()).items.find((item) => item.id === "whisper-default")).toMatchObject({
+      download: {
+        state: "failed",
+      },
+    })
+
+    const cancelDownloadResponse = await app.inject({
+      method: "DELETE",
+      url: "/api/config/models/whisper-default/download",
+    })
+    expect(cancelDownloadResponse.statusCode).toBe(200)
+    expect(modelListResponseSchema.parse(cancelDownloadResponse.json()).items.find((item) => item.id === "whisper-default")).toMatchObject({
+      download: {
+        state: "cancelled",
+      },
+    })
+
+    const migrateOllamaModelsResponse = await app.inject({
+      method: "POST",
+      url: "/api/config/ollama/migrate-models",
+      payload: {
+        target_dir: path.join(storageDir, "custom-ollama-models"),
+      },
+    })
+    expect(migrateOllamaModelsResponse.statusCode).toBe(200)
+    expect(ollamaModelsMigrationResponseSchema.parse(migrateOllamaModelsResponse.json())).toMatchObject({
+      moved: false,
+      target_dir: path.join(storageDir, "custom-ollama-models"),
     })
   })
 })

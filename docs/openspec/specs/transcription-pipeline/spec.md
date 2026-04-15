@@ -26,7 +26,7 @@ The backend SHALL process each task asynchronously and preserve explicit phase o
 The pipeline SHALL keep these phase boundaries:
 - `A`: source ingestion and normalization
 - `B`: audio preprocessing and chunk planning
-- `C`: Faster-Whisper transcription streaming
+- `C`: Whisper transcription streaming
 - `D`: transcript optimization and fusion delivery
 
 #### Scenario: Phase ordering
@@ -78,7 +78,7 @@ Transcription runtime SHALL apply persisted whisper `device` and `compute_type` 
 - **AND** the task emits runtime-warning events so the operator can see that a protective downgrade was applied
 
 ### Requirement: Phase C SHALL execute inside an isolated worker process
-Phase `C` SHALL run Faster-Whisper transcription inside a dedicated worker process rather than holding the runtime in the main orchestration process.
+Phase `C` SHALL run Whisper transcription inside a dedicated worker process rather than holding the runtime in the main orchestration process.
 
 #### Scenario: Start isolated transcription worker
 - **WHEN** phase `C` begins and at least one transcript chunk still needs transcription
@@ -139,12 +139,12 @@ Tasks created from downloadable remote inputs such as `bilibili` URLs SHALL move
 - **AND** cleanup of the per-run temporary workspace does not delete the retained downloaded media asset
 
 ### Requirement: Transcription CUDA runtime SHALL be prepared before GPU transcription begins
-When persisted whisper device strategy is `auto` or `cuda`, backend SHALL configure the current process environment from the persisted transcription CUDA runtime-library install directory and SHALL only enter Faster-Whisper GPU loading after required runtime DLLs pass readiness validation. The isolated transcription worker SHALL inherit that prepared environment before loading the GPU runtime.
+When persisted whisper device strategy is `auto` or `cuda`, backend SHALL configure the current process environment from the persisted transcription CUDA runtime-library install directory and SHALL only enter GPU-enabled Whisper runtime loading after required runtime DLLs pass readiness validation. The isolated transcription worker SHALL inherit that prepared environment before loading the GPU runtime.
 
 #### Scenario: Start transcription with ready GPU runtime
 - **WHEN** persisted whisper `device` is `auto` or `cuda`
 - **AND** required runtime DLLs such as `cublas64_12.dll` and `cudnn64*.dll` are discoverable and loadable from the configured managed runtime-library directory after backend applies that directory to the current process environment
-- **THEN** backend starts Faster-Whisper model loading with GPU-capable process environment already configured
+- **THEN** backend starts GPU-enabled Whisper runtime loading with GPU-capable process environment already configured
 
 #### Scenario: Start transcription with missing GPU runtime
 - **WHEN** persisted whisper `device` is `auto` or `cuda`

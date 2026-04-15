@@ -1,6 +1,12 @@
 import path from "node:path"
 
-import type { ModelDescriptor, ModelListResponse, ModelReloadRequest, ModelUpdateRequest } from "@vidgnost/contracts"
+import type {
+  ModelDescriptor,
+  ModelDownloadStatus,
+  ModelListResponse,
+  ModelReloadRequest,
+  ModelUpdateRequest,
+} from "@vidgnost/contracts"
 
 import type { AppConfig } from "../../core/config.js"
 import { pathExists, readJsonFile, writeJsonFile } from "../../core/fs.js"
@@ -15,9 +21,9 @@ const DEFAULT_MODELS: ModelDescriptor[] = [
   {
     id: "whisper-default",
     component: "whisper",
-    name: "FasterWhisper Small",
+    name: "Whisper.cpp Small",
     provider: "local",
-    model_id: "faster-whisper/small",
+    model_id: "ggml-small.bin",
     path: "",
     default_path: "",
     status: "not_ready",
@@ -284,6 +290,52 @@ export class ModelCatalogRepository {
     }
   }
 
+  async updateDownloadState(
+    modelId: string,
+    patch: {
+      current_file?: string
+      downloaded_bytes?: number
+      message: string
+      percent?: number
+      speed_bps?: number
+      state: ModelDownloadStatus["state"]
+      total_bytes?: number
+    },
+  ): Promise<ModelListResponse> {
+    const models = await this.#readModels()
+    const target = models.find((item) => item.id === modelId)
+    if (!target) {
+      throw new Error("Model not found")
+    }
+
+    const current = target.download || createDefaultDownloadStatus()
+    const nextTotalBytes = Math.max(0, patch.total_bytes ?? current.total_bytes)
+    const nextDownloadedBytes = Math.max(0, patch.downloaded_bytes ?? current.downloaded_bytes)
+    const nextPercent = clampNumber(
+      patch.percent ?? (nextTotalBytes > 0 ? (nextDownloadedBytes / nextTotalBytes) * 100 : current.percent),
+      0,
+      100,
+    )
+
+    target.download = {
+      ...current,
+      current_file: patch.current_file ?? current.current_file,
+      downloaded_bytes: nextDownloadedBytes,
+      message: patch.message,
+      percent: nextPercent,
+      speed_bps: Math.max(0, patch.speed_bps ?? current.speed_bps),
+      state: patch.state,
+      total_bytes: nextTotalBytes,
+      updated_at: new Date().toISOString(),
+    }
+    target.last_check_at = new Date().toISOString()
+
+    await this.#writeModels(models)
+    return {
+      items: await this.#hydrate(models),
+    }
+  }
+
   async #ensureFile(): Promise<void> {
     if (await pathExists(this.#path)) {
       return
@@ -337,7 +389,7 @@ export class ModelCatalogRepository {
 function resolveDefaultPath(item: ModelDescriptor, storageDir: string, ollamaModelsDir: string): string {
   if (item.provider === "local") {
     if (item.component === "whisper") {
-      return path.join(storageDir, "models", "whisper", item.model_id.replace(/[/:]+/g, "-"))
+      return path.join(storageDir, "models", "whisper")
     }
     return item.path
   }
@@ -350,7 +402,7 @@ function resolveDefaultPath(item: ModelDescriptor, storageDir: string, ollamaMod
 function normalizeProvider(component: ModelDescriptor["component"], provider: string): string {
   const candidate = provider.trim().toLowerCase()
   if (component === "whisper") {
-    return "local"
+    return candidate === REMOTE_PROVIDER ? REMOTE_PROVIDER : "local"
   }
   if (component === "mllm") {
     return candidate === "ollama" ? "ollama" : REMOTE_PROVIDER
@@ -374,4 +426,24 @@ function clampInteger(value: number, fallback: number, minimum: number, maximum:
     return fallback
   }
   return Math.max(minimum, Math.min(maximum, Math.trunc(value)))
+}
+
+function clampNumber(value: number, minimum: number, maximum: number): number {
+  if (!Number.isFinite(value)) {
+    return minimum
+  }
+  return Math.max(minimum, Math.min(maximum, value))
+}
+
+function createDefaultDownloadStatus(): ModelDownloadStatus {
+  return {
+    state: "idle",
+    message: "",
+    current_file: "",
+    downloaded_bytes: 0,
+    total_bytes: 0,
+    percent: 0,
+    speed_bps: 0,
+    updated_at: "",
+  }
 }

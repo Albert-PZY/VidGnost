@@ -48,13 +48,13 @@
   - `bash scripts/check-openspec.sh`
 - Windows PowerShell:
   - `powershell -ExecutionPolicy Bypass -File scripts/check-openspec.ps1`
-- 直接运行 Python:
-  - `python scripts/check-openspec.py`
+- 直接运行 Node:
+  - `node scripts/check-openspec.mjs`
 
 提交与远程校验守卫：
 
 - Git pre-commit hook:
-  - `scripts/check_spec_sync.py`
+  - `scripts/check-spec-sync.mjs`
 - GitHub Actions workflow:
   - `.github/workflows/spec-sync.yml`
 

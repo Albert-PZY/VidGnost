@@ -46,7 +46,7 @@ The settings-center model surface SHALL expose a dedicated transcription CUDA ru
 - **AND** the user-facing card title and feedback copy describe the surface as `本地 GPU 加速运行库`, while still explaining that the current primary acceleration target is the transcription chain
 - **AND** the card exposes an install action plus a `配置` action that opens a dialog
 - **AND** the dialog allows editing the runtime install directory directly or by opening a native directory picker from Electron
-- **AND** the dialog allows toggling automatic user-environment-variable configuration and the Faster-Whisper GPU acceleration switch
+- **AND** the dialog allows toggling automatic user-environment-variable configuration and the Whisper GPU acceleration switch
 - **AND** the dialog exposes `保存配置`, an install action, a pause-or-resume action that changes with the current runtime install state, and `刷新状态`
 - **AND** the card condenses runtime information into a current-status summary and compact progress feedback so users can act without first parsing low-level diagnostics fields
 - **AND** managed-runtime readiness detection accepts the versioned `nvJitLink*.dll` naming used by current CUDA 12 redist bundles and also searches managed subdirectories such as `bin/x64` when the official package layout keeps cuDNN DLLs there
@@ -189,8 +189,8 @@ Repository maintenance scripts SHALL provide Windows and shell entry points that
 
 #### Scenario: Run workspace cleanup script
 - **WHEN** maintainer executes `scripts/clean-workspace.ps1` or `scripts/clean-workspace.sh`
-- **THEN** root-level transient `.log` files, frontend build output, and local cache directories such as `.pytest_cache`, `.ruff_cache`, `.mypy_cache`, `frontend/.vite`, and `frontend/node_modules/.vite` are removed
-- **AND** persisted runtime data under `backend/storage/` remains untouched
+- **THEN** root-level transient `.log` files, frontend build output, and local cache directories such as `backend-ts/dist`, `backend-ts/coverage`, `frontend/.vite`, and `frontend/node_modules/.vite` are removed
+- **AND** persisted runtime data under `storage/` remains untouched
 
 ### Requirement: Workbench SHALL surface transient notifications through a compact toast stack
 Renderer SHALL present transient `success`, `error`, and `loading` feedback through a single top-centered toast stack. The stack SHALL keep at most three visible notifications and SHALL retire older visible items when newer notifications overflow the cap.
@@ -304,7 +304,7 @@ Renderer branding surfaces, desktop splash branding, and favicon SHALL use `fron
 - **AND** any packaged raster companion icon stays visually aligned with the canonical SVG branding
 
 ### Requirement: Renderer SHALL consume backend data through plain HTTP APIs
-Frontend SHALL only render backend-provided data and call the Python backend over HTTP APIs. Electron bridge SHALL be limited to desktop shell integrations such as open path, open external link, image-file selection, startup progress handoff between splash and main windows, and window controls.
+Frontend SHALL only render backend-provided data and call the TypeScript backend over HTTP APIs. Electron bridge SHALL be limited to desktop shell integrations such as open path, open external link, image-file selection, startup progress handoff between splash and main windows, and window controls.
 
 #### Scenario: Load the workbench in Electron
 - **WHEN** renderer starts inside Electron

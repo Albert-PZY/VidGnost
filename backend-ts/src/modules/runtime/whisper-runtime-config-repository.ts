@@ -74,11 +74,9 @@ export class WhisperRuntimeConfigRepository {
   }
 
   async #writeRaw(payload: StoredWhisperConfig): Promise<void> {
-    const { mkdir, rename, writeFile } = await import("node:fs/promises")
+    const { mkdir, writeFile } = await import("node:fs/promises")
     await mkdir(path.dirname(this.#path), { recursive: true })
-    const tempPath = `${this.#path}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`
-    await writeFile(tempPath, buildToml(payload), "utf8")
-    await rename(tempPath, this.#path)
+    await writeFile(this.#path, buildToml(payload), "utf8")
   }
 
   #parse(rawToml: string): StoredWhisperConfig {

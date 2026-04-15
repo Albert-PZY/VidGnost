@@ -1,5 +1,5 @@
 import path from "node:path"
-import { readdir, stat } from "node:fs/promises"
+import { cp, readdir, readFile, rm, stat, unlink, writeFile } from "node:fs/promises"
 
 import type {
   TaskDetailResponse,
@@ -15,7 +15,8 @@ import type {
 } from "@vidgnost/contracts"
 
 import type { AppConfig } from "../../core/config.js"
-import { pathExists, readJsonFile } from "../../core/fs.js"
+import { ensureDirectory, pathExists, readJsonFile, writeJsonFile } from "../../core/fs.js"
+import { buildArtifactIndex } from "./task-support.js"
 
 type SortBy = "date" | "name" | "size"
 
@@ -28,7 +29,7 @@ interface ListTaskOptions {
   workflow?: WorkflowType
 }
 
-interface StoredTaskRecord {
+export interface StoredTaskRecord {
   artifact_index_json?: string | null
   artifact_total_bytes?: number
   created_at?: string
@@ -63,12 +64,16 @@ const MARKDOWN_IMAGE_PATTERN =
 
 export class TaskRepository {
   private readonly recordsDir: string
+  private readonly eventLogsDir: string
   private readonly stageArtifactsDir: string
+  private readonly tasksRootDir: string
   private readonly uploadDir: string
 
   constructor(private readonly config: AppConfig) {
-    this.recordsDir = path.join(config.storageDir, "tasks", "records")
-    this.stageArtifactsDir = path.join(config.storageDir, "tasks", "stage-artifacts")
+    this.tasksRootDir = path.join(config.storageDir, "tasks")
+    this.recordsDir = path.join(this.tasksRootDir, "records")
+    this.stageArtifactsDir = path.join(this.tasksRootDir, "stage-artifacts")
+    this.eventLogsDir = path.join(config.storageDir, "event-logs")
     this.uploadDir = path.join(config.storageDir, "uploads")
   }
 
@@ -168,6 +173,184 @@ export class TaskRepository {
     }
   }
 
+  async getStoredRecord(taskId: string): Promise<StoredTaskRecord | null> {
+    return this.getRecord(taskId)
+  }
+
+  async create(record: StoredTaskRecord): Promise<StoredTaskRecord> {
+    const taskId = normalizeString(record.id)
+    if (!taskId) {
+      throw new Error("Task id is required")
+    }
+    if (await this.getRecord(taskId)) {
+      throw new Error(`Task already exists: ${taskId}`)
+    }
+
+    const now = new Date().toISOString()
+    const nextRecord = normalizeWritableRecord({
+      ...record,
+      id: taskId,
+      created_at: normalizeNullableString(record.created_at) || now,
+      updated_at: normalizeNullableString(record.updated_at) || now,
+    })
+
+    await writeJsonFile(this.recordPath(taskId), nextRecord)
+    return (await this.getRecord(taskId)) as StoredTaskRecord
+  }
+
+  async update(taskId: string, patch: Partial<StoredTaskRecord>): Promise<StoredTaskRecord> {
+    const record = await this.getRecord(taskId)
+    if (!record) {
+      throw new Error(`Task not found: ${taskId}`)
+    }
+
+    const nextRecord = normalizeWritableRecord({
+      ...record,
+      ...patch,
+      id: taskId,
+      created_at: normalizeNullableString(record.created_at) || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+
+    await writeJsonFile(this.recordPath(taskId), nextRecord)
+    return (await this.getRecord(taskId)) as StoredTaskRecord
+  }
+
+  async replace(record: StoredTaskRecord): Promise<StoredTaskRecord> {
+    const taskId = normalizeString(record.id)
+    if (!taskId) {
+      throw new Error("Task id is required")
+    }
+
+    const nextRecord = normalizeWritableRecord({
+      ...record,
+      id: taskId,
+      created_at: normalizeNullableString(record.created_at) || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+
+    await writeJsonFile(this.recordPath(taskId), nextRecord)
+    return (await this.getRecord(taskId)) as StoredTaskRecord
+  }
+
+  async delete(taskId: string): Promise<boolean> {
+    const targets = [
+      this.recordPath(taskId),
+      this.eventLogPath(taskId),
+      this.stageArtifactsTaskDir(taskId),
+      this.analysisResultsTaskDir(taskId),
+      this.runtimeWarningsPath(taskId),
+      this.stageMetricsPath(taskId),
+    ]
+
+    let removed = false
+    for (const target of targets) {
+      if (!(await pathExists(target))) {
+        continue
+      }
+      await rm(target, { recursive: true, force: true })
+      removed = true
+    }
+
+    if (await pathExists(this.uploadDir)) {
+      const entries = await readdir(this.uploadDir, { withFileTypes: true })
+      await Promise.all(
+        entries
+          .filter((entry) => entry.name.startsWith(`${taskId}_`) || entry.name.startsWith(`${taskId}-`))
+          .map(async (entry) => {
+            await rm(path.join(this.uploadDir, entry.name), { recursive: true, force: true })
+          }),
+      )
+    }
+
+    return removed
+  }
+
+  async findReusableCompletedTask(input: {
+    excludeTaskId?: string
+    fileSizeBytes?: number
+    sourceInput?: string
+    sourceLocalPath?: string | null
+    workflow: WorkflowType
+  }): Promise<StoredTaskRecord | null> {
+    const records = await this.listAllRecords()
+    const sourceInput = normalizeNullableString(input.sourceInput)?.trim().toLowerCase() || ""
+    const sourceLocalPath = normalizeNullableString(input.sourceLocalPath)?.trim().toLowerCase() || ""
+
+    return (
+      records.find((record) => {
+        if (normalizeString(record.id) === normalizeString(input.excludeTaskId)) {
+          return false
+        }
+        if (normalizeWorkflow(record.workflow) !== input.workflow) {
+          return false
+        }
+        if (toPublicStatus(record.status) !== "completed") {
+          return false
+        }
+        if (input.fileSizeBytes && normalizeNonNegativeInteger(record.file_size_bytes) !== input.fileSizeBytes) {
+          return false
+        }
+        const recordSourceInput = normalizeNullableString(record.source_input)?.trim().toLowerCase() || ""
+        const recordSourceLocalPath = normalizeNullableString(record.source_local_path)?.trim().toLowerCase() || ""
+        return Boolean(
+          (sourceLocalPath && recordSourceLocalPath === sourceLocalPath) ||
+            (sourceInput && recordSourceInput === sourceInput),
+        )
+      }) || null
+    )
+  }
+
+  async cloneTaskArtifacts(sourceTaskId: string, targetTaskId: string): Promise<void> {
+    const sourceDir = this.stageArtifactsTaskDir(sourceTaskId)
+    const targetDir = this.stageArtifactsTaskDir(targetTaskId)
+    if (!(await pathExists(sourceDir))) {
+      return
+    }
+    await rm(targetDir, { recursive: true, force: true })
+    await ensureDirectory(path.dirname(targetDir))
+    await cp(sourceDir, targetDir, { recursive: true })
+  }
+
+  async writeTaskArtifactText(taskId: string, relativePath: string, content: string): Promise<void> {
+    const targetPath = this.resolveTaskArtifactWritePath(taskId, relativePath)
+    await ensureDirectory(path.dirname(targetPath))
+    await writeFile(targetPath, content, "utf8")
+  }
+
+  async readTaskArtifactText(taskId: string, relativePath: string): Promise<string | null> {
+    const targetPath = this.resolveTaskArtifactWritePath(taskId, relativePath)
+    try {
+      return await readFile(targetPath, "utf8")
+    } catch {
+      return null
+    }
+  }
+
+  async syncArtifactIndex(taskId: string): Promise<StoredTaskRecord> {
+    const record = await this.getRecord(taskId)
+    if (!record) {
+      throw new Error(`Task not found: ${taskId}`)
+    }
+
+    const updatedAt = new Date().toISOString()
+    const artifactIndex = buildArtifactIndex({
+      taskId,
+      transcriptText: normalizeNullableString(record.transcript_text),
+      transcriptSegmentsJson: normalizeNullableString(record.transcript_segments_json),
+      summaryMarkdown: normalizeNullableString(record.summary_markdown),
+      notesMarkdown: normalizeNullableString(record.notes_markdown),
+      mindmapMarkdown: normalizeNullableString(record.mindmap_markdown),
+      updatedAt,
+    })
+
+    return this.update(taskId, {
+      artifact_index_json: artifactIndex.artifactIndexJson,
+      artifact_total_bytes: artifactIndex.artifactTotalBytes,
+      updated_at: updatedAt,
+    })
+  }
+
   async resolveSourceMediaPath(taskId: string): Promise<string | null> {
     const record = await this.getRecord(taskId)
     if (!record) {
@@ -209,8 +392,46 @@ export class TaskRepository {
     return targetPath
   }
 
+  private recordPath(taskId: string): string {
+    return path.join(this.recordsDir, `${taskId}.json`)
+  }
+
+  private stageArtifactsTaskDir(taskId: string): string {
+    return path.join(this.stageArtifactsDir, taskId)
+  }
+
+  private analysisResultsTaskDir(taskId: string): string {
+    return path.join(this.tasksRootDir, "analysis-results", taskId)
+  }
+
+  private runtimeWarningsPath(taskId: string): string {
+    return path.join(this.tasksRootDir, "runtime-warnings", `${taskId}.jsonl`)
+  }
+
+  private stageMetricsPath(taskId: string): string {
+    return path.join(this.tasksRootDir, "stage-metrics", `${taskId}.json`)
+  }
+
+  private eventLogPath(taskId: string): string {
+    return path.join(this.eventLogsDir, `${taskId}.jsonl`)
+  }
+
+  private resolveTaskArtifactWritePath(taskId: string, relativePath: string): string {
+    const normalized = String(relativePath || "").replace(/\\/g, "/").trim().replace(/^\/+/, "")
+    if (!normalized || normalized.split("/").includes("..")) {
+      throw new Error("Invalid artifact path")
+    }
+
+    const artifactRoot = path.resolve(this.stageArtifactsDir, taskId)
+    const targetPath = path.resolve(artifactRoot, normalized)
+    if (targetPath !== artifactRoot && !isWithinRoot(artifactRoot, targetPath)) {
+      throw new Error("Artifact path escaped task root")
+    }
+    return targetPath
+  }
+
   private async getRecord(taskId: string): Promise<StoredTaskRecord | null> {
-    const recordPath = path.join(this.recordsDir, `${taskId}.json`)
+    const recordPath = this.recordPath(taskId)
     const payload = await readJsonFile<StoredTaskRecord | null>(recordPath, null)
     if (!payload || typeof payload !== "object") {
       return null
@@ -879,4 +1100,8 @@ function formatDuration(elapsedSeconds: number | null): string {
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
   return `${minutes}:${String(seconds).padStart(2, "0")}`
+}
+
+function normalizeWritableRecord(record: StoredTaskRecord): StoredTaskRecord {
+  return JSON.parse(JSON.stringify(record)) as StoredTaskRecord
 }

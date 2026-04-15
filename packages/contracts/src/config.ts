@@ -257,6 +257,12 @@ export const ollamaModelsMigrationResponseSchema = z.object({
 
 export type OllamaModelsMigrationResponse = z.infer<typeof ollamaModelsMigrationResponseSchema>
 
+export const ollamaModelsMigrationRequestSchema = z.object({
+  target_dir: z.string().min(1),
+})
+
+export type OllamaModelsMigrationRequest = z.infer<typeof ollamaModelsMigrationRequestSchema>
+
 export const localModelsMigrationTaskItemSchema = z.object({
   id: z.string().min(1),
   title: z.string().nullable(),

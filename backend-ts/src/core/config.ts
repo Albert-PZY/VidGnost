@@ -13,6 +13,9 @@ export interface AppConfig {
   appName: string
   apiPrefix: string
   allowOrigins: string[]
+  eventLogDir: string
+  ffmpegExecutable: string
+  ffprobeExecutable: string
   host: string
   llmApiKey: string
   llmBaseUrl: string
@@ -21,10 +24,16 @@ export interface AppConfig {
   llmCorrectionOverlap: number
   llmLocalModelId: string
   llmModel: string
+  maxUploadMb: number
   ollamaBaseUrl: string
   port: number
+  runtimeBinDir: string
   storageDir: string
+  tempDir: string
+  uploadDir: string
   version: string
+  whisperExecutable: string
+  ytdlpExecutable: string
 }
 
 export function resolveConfig(): AppConfig {
@@ -32,6 +41,9 @@ export function resolveConfig(): AppConfig {
     appName: process.env.VIDGNOST_APP_NAME?.trim() || DEFAULT_APP_NAME,
     apiPrefix: process.env.VIDGNOST_API_PREFIX?.trim() || DEFAULT_API_PREFIX,
     allowOrigins: parseOrigins(process.env.VIDGNOST_ALLOW_ORIGINS),
+    eventLogDir: resolvePath(process.env.VIDGNOST_EVENT_LOG_DIR, ["storage", "event-logs"]),
+    ffmpegExecutable: String(process.env.VIDGNOST_FFMPEG_BIN || "").trim(),
+    ffprobeExecutable: String(process.env.VIDGNOST_FFPROBE_BIN || "").trim(),
     host: process.env.VIDGNOST_API_HOST?.trim() || DEFAULT_API_HOST,
     llmApiKey: process.env.VIDGNOST_LLM_API_KEY?.trim() || "ollama",
     llmBaseUrl: process.env.VIDGNOST_LLM_BASE_URL?.trim() || "http://127.0.0.1:11434/v1",
@@ -40,10 +52,16 @@ export function resolveConfig(): AppConfig {
     llmCorrectionOverlap: parseBoundedInt(process.env.VIDGNOST_LLM_CORRECTION_OVERLAP, 3, 0, 20),
     llmLocalModelId: process.env.VIDGNOST_LLM_LOCAL_MODEL_ID?.trim() || "qwen2.5:3b",
     llmModel: process.env.VIDGNOST_LLM_MODEL?.trim() || "qwen2.5:3b",
+    maxUploadMb: parseBoundedInt(process.env.VIDGNOST_MAX_UPLOAD_MB, 2048, 1, 10240),
     ollamaBaseUrl: process.env.VIDGNOST_OLLAMA_BASE_URL?.trim() || "http://127.0.0.1:11434",
     port: parsePort(process.env.VIDGNOST_API_PORT, DEFAULT_API_PORT),
-    storageDir: resolvePath(process.env.VIDGNOST_STORAGE_DIR, ["backend", "storage"]),
+    runtimeBinDir: resolvePath(process.env.VIDGNOST_RUNTIME_BIN_DIR, ["storage", "runtime-bin"]),
+    storageDir: resolvePath(process.env.VIDGNOST_STORAGE_DIR, ["storage"]),
+    tempDir: resolvePath(process.env.VIDGNOST_TEMP_DIR, ["storage", "tmp"]),
+    uploadDir: resolvePath(process.env.VIDGNOST_UPLOAD_DIR, ["storage", "uploads"]),
     version: process.env.VIDGNOST_APP_VERSION?.trim() || API_VERSION,
+    whisperExecutable: String(process.env.VIDGNOST_WHISPER_BIN || "").trim(),
+    ytdlpExecutable: String(process.env.VIDGNOST_YTDLP_BIN || "").trim(),
   }
 }
 

@@ -136,3 +136,49 @@ export const taskSourceCreatePayloadSchema = z.object({
 })
 
 export type TaskSourceCreatePayload = z.infer<typeof taskSourceCreatePayloadSchema>
+
+export const taskCreateFromUrlRequestSchema = taskSourceCreatePayloadSchema.extend({
+  url: z.string().url(),
+})
+
+export type TaskCreateFromUrlRequest = z.infer<typeof taskCreateFromUrlRequestSchema>
+
+export const taskCreateFromPathRequestSchema = taskSourceCreatePayloadSchema.extend({
+  local_path: z.string().min(1),
+})
+
+export type TaskCreateFromPathRequest = z.infer<typeof taskCreateFromPathRequestSchema>
+
+export const taskTitleUpdateRequestSchema = z.object({
+  title: z.string().min(1),
+})
+
+export type TaskTitleUpdateRequest = z.infer<typeof taskTitleUpdateRequestSchema>
+
+export const taskArtifactsUpdateRequestSchema = z.object({
+  summary_markdown: z.string().nullable().optional(),
+  notes_markdown: z.string().nullable().optional(),
+  mindmap_markdown: z.string().nullable().optional(),
+})
+
+export type TaskArtifactsUpdateRequest = z.infer<typeof taskArtifactsUpdateRequestSchema>
+
+export const taskExportKindSchema = z.enum(["transcript", "notes", "mindmap", "srt", "vtt", "bundle"])
+export type TaskExportKind = z.infer<typeof taskExportKindSchema>
+
+export const taskStreamEventSchema = z.object({
+  type: z.string().min(1),
+  task_id: z.string().min(1),
+  workflow: workflowTypeSchema,
+  timestamp: z.string().min(1),
+  original_type: z.string().optional(),
+  text: z.string().optional(),
+  stage: z.string().optional(),
+  substage: z.string().optional(),
+  title: z.string().optional(),
+  message: z.string().optional(),
+  progress: z.number().optional(),
+  overall_progress: z.number().optional(),
+}).catchall(z.unknown())
+
+export type TaskStreamEvent = z.infer<typeof taskStreamEventSchema>

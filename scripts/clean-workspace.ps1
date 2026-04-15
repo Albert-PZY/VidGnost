@@ -40,15 +40,18 @@ function Remove-WorkspaceLogs {
 Remove-WorkspaceLogs
 
 $targets = @(
-    (Join-Path $RepoRoot "backend\.mypy_cache"),
-    (Join-Path $RepoRoot "backend\.pytest_cache"),
-    (Join-Path $RepoRoot "backend\.ruff_cache"),
-    (Join-Path $RepoRoot "backend\app\__pycache__"),
-    (Join-Path $RepoRoot "backend\app\api\__pycache__"),
-    (Join-Path $RepoRoot "backend\app\services\__pycache__"),
+    (Join-Path $RepoRoot "backend-ts\dist"),
+    (Join-Path $RepoRoot "backend-ts\coverage"),
     (Join-Path $RepoRoot "frontend\.vite"),
     (Join-Path $RepoRoot "frontend\node_modules\.vite"),
-    (Join-Path $RepoRoot "frontend\dist")
+    (Join-Path $RepoRoot "frontend\dist"),
+    (Join-Path $RepoRoot "frontend\coverage"),
+    (Join-Path $RepoRoot "packages\contracts\dist"),
+    (Join-Path $RepoRoot "packages\contracts\coverage"),
+    (Join-Path $RepoRoot "packages\shared\dist"),
+    (Join-Path $RepoRoot "packages\shared\coverage"),
+    (Join-Path $RepoRoot ".turbo"),
+    (Join-Path $RepoRoot ".cache")
 )
 
 foreach ($target in $targets) {

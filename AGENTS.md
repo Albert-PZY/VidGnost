@@ -4,24 +4,25 @@ Scope: this file is an internal navigation index for coding agents and maintaine
 
 ## 1) Global Collaboration Rules
 - Response language: Simplified Chinese
-- Frontend package manager: use `pnpm` (do not use `npm`)
+- Workspace package manager: use `pnpm` (do not use `npm`)
 - Generated file encoding: UTF-8 without BOM
-- Python dependency management: use `uv` with project-level venv; add/remove deps via `uv add` / `uv remove`
+- Runtime stack baseline: `frontend + backend-ts + packages/*`
 - GitHub operations: prefer using `gh` CLI commands when possible
-- Documentation style: write all project docs as first-release baseline statements; avoid migration/history wording such as “删除/弃用/改为/不再/removed/deprecated/replaced”
+- Documentation style: write all project docs as current baseline statements and keep them aligned with implementation
 - Spec sync rule: whenever project code changes, automatically review the impacted OpenSpec docs and sync their information density to the implementation in the same delivery. New or changed interfaces, states, parameters, constraints, error handling, and UI behavior must be reflected in spec updates; if no spec text changes are needed, explicitly verify that the existing spec already matches the latest code detail.
 - After completing a requirement change, automatically determine whether a commit is needed; if needed, commit and push following `docs/git-commit-convention.md` without additional confirmation
 
 ## 2) Core Product Docs
 - Project overview (EN): `README.md`
 - Project overview (ZH): `README.zh-CN.md`
+- TS fullstack refactor checklist: `docs/vidgnost-ts-fullstack-refactor-checklist.zh-CN.md`
 - Frontend-driven backend checklist: `docs/frontend-driven-backend-execution-checklist.zh-CN.md`
 - Current technical stack: `docs/current-tech-stack.zh-CN.md`
 - Frontend design prompt: `docs/vidgnost-system-design-prompt.md`
 
 ## 3) Git Workflow Doc
 - Commit convention guide (Conventional Commits aligned): `docs/git-commit-convention.md`
-- Default delivery branch: create and use `fix` for ongoing requirement work, commit and push there by default, and do not auto-merge into `master` unless the user explicitly requests it.
+- Delivery branch: use the user-designated working branch for the current requirement and do not auto-merge into `master` unless the user explicitly requests it.
 
 ## 4) OpenSpec Entry
 - OpenSpec index: `docs/openspec/README.md`
@@ -73,16 +74,17 @@ Scope: this file is an internal navigation index for coding agents and maintaine
   - `scripts/clean-workspace.sh`
 
 ## 10) OpenSpec Checker Scripts
-- Python checker: `scripts/check-openspec.py`
+- Node checker: `scripts/check-openspec.mjs`
 - Shell wrapper: `scripts/check-openspec.sh`
 - PowerShell wrapper: `scripts/check-openspec.ps1`
-- Spec sync guard: `scripts/check_spec_sync.py`
+- Spec sync guard: `scripts/check-spec-sync.mjs`
+- Staged secret guard: `scripts/sanitize-staged-secrets.mjs`
 
 ## 11) Maintenance Rules
 - Keep `AGENTS.md` as an index file (navigation + global constraints).
 - Keep active change specs and baseline specs aligned for stable capability contracts.
 - Treat code change and spec densification as a single maintenance action; do not leave updated code behind coarser or stale specs.
 - Before merging major doc/spec changes, run:
-  - `scripts/check-openspec.py`
-  - `scripts/check-openspec.sh`
-  - `scripts/check-openspec.ps1`
+  - `node scripts/check-openspec.mjs`
+  - `bash scripts/check-openspec.sh`
+  - `powershell -ExecutionPolicy Bypass -File .\scripts\check-openspec.ps1`

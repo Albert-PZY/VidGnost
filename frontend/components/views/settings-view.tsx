@@ -661,11 +661,11 @@ export function SettingsView({
     if (model.component === "whisper") {
       return {
         title: "语音转写模型配置",
-        description: "调整 Faster-Whisper 模型目录与加载策略，并在当前弹窗内切换 GPU 加速。",
+        description: "调整 Whisper 模型目录与加载策略，并在当前弹窗内切换 GPU 加速。",
         note: "Whisper GPU 模式会自动复用 Ollama 自带的 CUDA 运行库，无需单独安装额外运行库。",
         fields: ["path", "load_profile", "quantization", "enabled"],
         pathLabel: "模型目录",
-        pathPlaceholder: "可选：指定 Faster-Whisper 模型目录",
+        pathPlaceholder: "可选：指定 Whisper 模型目录",
         quantizationLabel: "推理精度",
         quantizationPlaceholder: "如 int8 / float16 / float32",
       }
