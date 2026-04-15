@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./frontend/public/light.svg" alt="VidGnost Logo" width="120" />
+  <img src="./frontend/public/icon.png" alt="VidGnost Logo" width="120" />
   <h1>VidGnost</h1>
   <p><strong>面向 Electron 桌面的本地优先多模态视频分析工作台</strong></p>
   <p>支持视频接入、本地转写、结构化笔记生成、检索问答、实时追踪与可复现导出。</p>

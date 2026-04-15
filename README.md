@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./frontend/public/light.svg" alt="VidGnost Logo" width="120" />
+  <img src="./frontend/public/icon.png" alt="VidGnost Logo" width="120" />
   <h1>VidGnost</h1>
   <p><strong>Local-first multimodal video analysis workbench for Electron and web debugging</strong></p>
   <p>Ingest videos, transcribe locally, generate structured notes, search evidence, chat over results, and export reproducible artifacts.</p>
