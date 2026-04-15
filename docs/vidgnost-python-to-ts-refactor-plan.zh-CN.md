@@ -277,14 +277,15 @@
 - 稀疏检索：`SQLite FTS5`
 - Dense 检索：
   - 第一阶段：文件缓存向量 + TS 余弦相似度检索
-  - 第二阶段：按性能数据决定是否接入 `hnswlib-node` 或其他 ANN 方案
+  - 第二阶段：按性能数据决定是否接入 `hnswlib-node`、`LanceDB`（JS）或其他 ANN 方案
 - 融合逻辑：TS 实现 `RRF + Rerank`
 
 #### 日志与可观测
 
 - `pino`
-- 结构化 JSON 日志
+- 结构化 JSON / JSONL 日志
 - 任务事件日志继续以 JSONL 方式落盘
+- Trace 与运行日志建议保留可选 SQLite 索引层，便于前端调试回放与快速筛查
 
 #### 测试
 
@@ -298,6 +299,7 @@
   - 存放 Zod schema
   - 导出前后端共享类型
   - 导出接口路径、SSE 事件 schema、错误码枚举
+  - 预留 RPC-friendly schema 扩展位，但第一阶段不引入 `tRPC`
 - `packages/shared`
   - 日志工具
   - 文件路径工具
@@ -371,6 +373,7 @@
 | `self_check.py` | `backend-ts/src/modules/runtime/self-check-service.ts` | 自检主流程 |
 | `runtime_metrics.py` | `backend-ts/src/modules/runtime/runtime-metrics-service.ts` | CPU/GPU/内存指标 |
 | `whisper_gpu_runtime_service.py` | `backend-ts/src/modules/runtime/whisper-runtime-service.ts` | Windows 运行库探测 |
+| `windows_env_manager.py` | `backend-ts/src/modules/runtime/windows-guard.ts` | 管理员权限、PATH、DLL、`nvidia-smi` 等 Windows 专用治理逻辑集中收口 |
 | `resource_guard.py` | `backend-ts/src/modules/runtime/resource-guard.ts` | 启动告警、配置守护 |
 | `ui_settings_store.py` | `backend-ts/src/modules/ui/ui-settings-repository.ts` | UI 设置配置仓储 |
 
@@ -466,12 +469,41 @@ VidGnost/
   - `server lifecycle`
   - `health route`
 - [ ] 保持端口不变，先让 TS 服务能在 `8666` 启动
+- [ ] 在阶段 1 末建立一次 Python vs TS 基线对比：
+  - CPU 占用
+  - 内存占用
+  - 单任务耗时
+- [ ] 明确 Worker 使用策略并写入设计说明：
+  - ASR 独立 Worker
+  - 总结/工件生成独立 Worker
+  - 主线程只保留 API、编排和轻量 IO
 
 验收标准：
 
 - TS 后端可以独立启动
 - `/api/health` 返回结构与旧服务兼容
 - 根脚本可以以 `pnpm` 为唯一入口驱动开发环境
+- 已有一份可复用的 Python vs TS 运行资源基线对比记录
+
+### 阶段 6.5：ASR 可行性验证（POC）
+
+目标：在正式迁移 C 阶段前，先验证 `whisper.cpp` 是否满足当前产品的中文长视频场景。
+
+- [ ] 选择 1 个 `30-60` 分钟中文视频作为固定样本
+- [ ] 使用 `whisper.cpp` 跑通完整流程，不做手工补救
+- [ ] 对比当前 `faster-whisper` 输出：
+  - segments 数量
+  - 时间戳偏移
+  - 长音频分块稳定性
+  - 中文标点与断句可读性
+- [ ] 记录 `whisper.cpp` 的模型格式、命令行参数、输出结构差异
+- [ ] 明确第一阶段是否接受“先 CPU 跑通，GPU 优化放第二阶段”
+
+验收标准：
+
+- 形成一份可以指导阶段 7 设计的 POC 记录
+- 明确 CPU-first 是否可接受
+- 如果 `whisper.cpp` 不满足关键要求，必须在阶段 7 前重新评估替代方案
 
 ### 阶段 2：抽取共享契约，消除类型重复
 
@@ -602,6 +634,7 @@ VidGnost/
 - 第一阶段使用 `whisper.cpp` 二进制 + TS 适配层
 - 使用 Node Worker 或子进程隔离长时任务
 - 保留流式片段回传与中间 checkpoint
+- 第一阶段优先接受 CPU 路径跑通，GPU 优化与更激进的绑定方案放到第二阶段
 
 详细清单：
 
@@ -624,12 +657,17 @@ VidGnost/
   - CPU 路径
   - GPU 路径
   - 长视频稳定性
+- [ ] 建立 `faster-whisper` vs `whisper.cpp` 对照样本：
+  - segment 边界
+  - 时间戳准确率
+  - 中文标点与可读性
 
 验收标准：
 
 - 在至少一条 CPU 路径上完成无 Python 转写
 - 在 Windows 目标环境下完成 GPU 可用性评估
 - 转写结果字段兼容前端与后续 D 阶段
+- 已明确哪些差异可以接受，哪些差异必须在阶段 7 内消除
 
 风险提示：
 
@@ -692,6 +730,9 @@ VidGnost/
   - visual text
 - [ ] 迁移 SQLite FTS5 稀疏索引
 - [ ] 迁移向量缓存与 Dense 检索
+- [ ] 评估第二阶段 ANN 落点：
+  - `hnswlib-node`
+  - `LanceDB`（JS）
 - [ ] 迁移 RRF
 - [ ] 迁移 Rerank
 - [ ] 迁移 `analyze`
@@ -703,11 +744,16 @@ VidGnost/
   - top-k 命中
   - citation 格式
   - trace 结构
+- [ ] 增加检索质量回归指标：
+  - Recall@k / top-k 命中率
+  - MRR
+  - rerank 后命中稳定性
 
 验收标准：
 
 - TS 后端能完成 task-based 检索与流式回答
 - Trace 可被前端 debug 视图正常消费
+- 检索质量指标达到预设下限，不接受只“接口能返回结果”的迁移完成定义
 
 ### 阶段 10：迁移模型目录、下载、迁移和 Ollama 管理
 
@@ -718,6 +764,12 @@ VidGnost/
 - [ ] 迁移 `model catalog`
 - [ ] 迁移 `model download service`
 - [ ] 迁移 `model migration service`
+- [ ] 确保 TS 版 Ollama 客户端完整支持：
+  - 服务启动 / 停止 / 重启
+  - 端口探测与存活检测
+  - 模型列表读取
+  - 下载进度流
+  - GPU 相关参数透传
 - [ ] 保留：
   - 模型状态
   - 下载进度
@@ -729,6 +781,7 @@ VidGnost/
 
 - 设置中心的模型页可用
 - Ollama 安装目录、模型目录、服务状态、下载与迁移都可在 TS 后端下正常工作
+- GPU 参数透传与下载进度流已经过联调验证
 
 ### 阶段 11：迁移自检、资源守护和运行指标
 
@@ -740,6 +793,11 @@ VidGnost/
 - [ ] 迁移资源守护逻辑
 - [ ] 迁移 CPU / 内存 / GPU 指标采集
 - [ ] 迁移 Windows 环境探测逻辑
+- [ ] 把以下 Windows 专用逻辑集中收口到 `runtime/windows-guard.ts`：
+  - `nvidia-smi`
+  - DLL / PATH 注入
+  - 端口占用探测
+  - 管理员权限相关检查
 - [ ] 校正提示文案与错误码
 
 验收标准：
@@ -785,6 +843,10 @@ VidGnost/
 - [ ] 更新 OpenSpec 中受影响的运行时、接口、状态、配置说明
 - [ ] 将 `backend-ts/` 收敛命名为正式后端目录
 - [ ] 清理前端中遗留的旧类型和兼容层
+- [ ] 在 Electron 打包前完成原生依赖核查：
+  - `better-sqlite3`
+  - `whisper.cpp` 二进制或绑定
+  - 其他需要预构建或随包分发的本地依赖
 
 验收标准：
 
@@ -813,6 +875,14 @@ VidGnost/
 - 单元测试：`Vitest`
 - 路由集成测试：Fastify 注入测试
 - 前后端联调回归：`Playwright`
+- 资源基线回归：
+  - Python vs TS 内存占用
+  - Python vs TS CPU 占用
+  - Python vs TS 单任务耗时
+- 检索质量回归：
+  - Recall@k
+  - MRR
+  - rerank 后 top-k 命中稳定性
 - Golden fixtures：
   - transcript segments
   - task detail payload
@@ -831,6 +901,8 @@ VidGnost/
 | 数据兼容风险 | 任务记录和工件结构若变化，会直接打坏前端 | 第一阶段保持路径和返回结构兼容 |
 | SSE 事件漂移 | 前端运行态高度依赖事件字段和顺序 | 把 SSE 契约放入 `packages/contracts` |
 | Windows 环境问题 | 当前有 DLL、PATH、端口、管理员权限等逻辑 | 把 Windows 专用能力独立成 runtime 模块 |
+| Node 长任务资源压力 | Node 主线程处理长任务时，内存与 CPU 行为和 Python 不同 | 在阶段 1 建立资源基线，并把重任务下沉到 Worker |
+| 原生依赖打包风险 | `better-sqlite3`、`whisper.cpp` 等在 Electron 打包时可能出现预构建或分发问题 | 在阶段 13 前完成打包验证，不把发布验证留到最后一天 |
 | 一次性大重写失控 | 当前后端功能面过大 | 必须采用并行后端、阶段切换、影子比对 |
 
 ### 11.2 明确不建议的做法
