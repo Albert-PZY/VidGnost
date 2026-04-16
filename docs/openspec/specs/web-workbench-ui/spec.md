@@ -37,24 +37,19 @@ Settings center SHALL provide `模型配置`, `提示词模板`, `外观设置`,
 - **THEN** renderer uses `/config/prompts/templates` and `/config/prompts/selection`
 - **AND** backend returns the refreshed template bundle including channel selection and effective template lists
 
-### Requirement: Settings center SHALL expose managed transcription CUDA runtime controls
-The settings-center model surface SHALL expose a dedicated transcription CUDA runtime area above the model list. That area SHALL use a compact summary card plus configuration dialog pattern, SHALL show install status, runtime version label, environment-configuration state, and install progress, and SHALL allow saving runtime-library config plus starting a managed install.
+### Requirement: Whisper model configuration SHALL expose GPU readiness controls without implying managed install
+The settings-center Whisper model dialog SHALL expose the current GPU-readiness summary, configured path hints, and a GPU mode toggle while keeping the backend contract aligned with the current probe-first runtime.
 
-#### Scenario: Configure transcription CUDA runtime from settings
-- **WHEN** user opens settings and visits `模型配置`
-- **THEN** the renderer shows a compact transcription CUDA runtime card near the top of the model section
-- **AND** the user-facing card title and feedback copy describe the surface as `本地 GPU 加速运行库`, while still explaining that the current primary acceleration target is the transcription chain
-- **AND** the card exposes an install action plus a `配置` action that opens a dialog
-- **AND** the dialog allows editing the runtime install directory directly or by opening a native directory picker from Electron
-- **AND** the dialog allows toggling automatic user-environment-variable configuration and the Whisper GPU acceleration switch
-- **AND** the dialog exposes `保存配置`, an install action, a pause-or-resume action that changes with the current runtime install state, and `刷新状态`
-- **AND** the card condenses runtime information into a current-status summary and compact progress feedback so users can act without first parsing low-level diagnostics fields
-- **AND** managed-runtime readiness detection accepts the versioned `nvJitLink*.dll` naming used by current CUDA 12 redist bundles and also searches managed subdirectories such as `bin/x64` when the official package layout keeps cuDNN DLLs there
-- **AND** when installation is active or paused, the card renders a compact progress surface with current package label and percent, while the dialog keeps the detailed install state visible
-- **AND** when installation is in progress, the card polls backend runtime-library status until the backend leaves the active install state
+#### Scenario: Configure Whisper GPU readiness from settings
+- **WHEN** user opens `whisper-default` 的模型配置
+- **THEN** the renderer shows a `Whisper GPU 加速` section with readiness summary, configured `whisper-cli` / model path hints, and environment-sync state
+- **AND** the user-facing copy explains that the current acceleration target is the transcription chain
+- **AND** the section allows toggling Whisper GPU mode and refreshing runtime detection
+- **AND** the readiness copy only promises probe results based on executable and model-path availability, not CUDA runtime-bundle DLL validation or a managed runtime install flow
+- **AND** current UI contract does not require a managed runtime install, pause, or resume workflow before the dialog can be used
 
 ### Requirement: Settings center SHALL expose Ollama runtime and model migration controls
-The settings-center model surface SHALL expose dedicated `Ollama 运行时与模型目录` and `本地模型批量迁移` cards so users can control Ollama installation paths, model-storage paths, service address, and safe relocation of existing local model files.
+The settings-center model surface SHALL expose dedicated `Ollama 运行时与模型目录` and `本地模型批量迁移` cards so users can control Ollama installation paths, model-storage paths, service address, and manual migration guidance for existing local model files.
 
 #### Scenario: Configure Ollama runtime from settings
 - **WHEN** user opens settings and visits `模型配置`
@@ -62,22 +57,21 @@ The settings-center model surface SHALL expose dedicated `Ollama 运行时与模
 - **AND** the card exposes a `配置` action that opens a dialog with `安装目录`、`可执行文件`、`模型安装目录`、`服务地址` fields
 - **AND** the dialog allows opening native directory pickers for install and model directories
 - **AND** the card keeps `启动/重启` action separate from the dialog save action
-- **AND** the same card shows current Ollama service reachability, whether a local process was detected, the configured model directory, the effective directory currently used by the running service, and a backend-supplied status message
-- **AND** the card states that later Ollama model pulls follow the configured model directory instead of an implicit default path
+- **AND** the same card shows current Ollama service reachability, whether a local process was detected, the configured model directory, the latest config or probe snapshot, and a backend-supplied status message
+- **AND** the card states that the configured model directory is the desired target for later manual migration or manual pull guidance rather than a guaranteed reflection of the running service
+- **AND** when backend reports `can_self_restart=false`, renderer surfaces the probe-only status instead of implying that restart is already self-managed
 
-#### Scenario: Attempt managed download after Ollama model migration
-- **WHEN** user clicks a managed Ollama model download action after model files have already been moved into the configured directory
-- **THEN** renderer surfaces the backend download snapshot message instead of always showing a generic `已开始通过 Ollama 安装模型`
-- **AND** if backend reports that the running Ollama service still has not switched to the configured directory, the toast tells the user to start or restart Ollama rather than suggesting a duplicate install
+#### Scenario: Prompt manual pull after Ollama model migration
+- **WHEN** user clicks an Ollama model pull guidance action after model files have already been moved into the configured directory
+- **THEN** renderer surfaces the backend status or guidance message instead of always showing a generic `已开始通过 Ollama 安装模型`
+- **AND** if backend reports that the running Ollama service may still be using another directory, the toast tells the user to start or restart Ollama manually rather than implying a managed pull or duplicate install
 
 #### Scenario: Batch migrate local-directory model entries from settings
 - **WHEN** user opens the local-model migration config dialog, reviews the configured local model list, enters a target root directory, and starts migration
 - **THEN** the renderer submits the backend migration request and refreshes the model list after completion
-- **AND** the dialog only supports migrating all configured local models together
-- **AND** if backend reports that there are active tasks, the renderer requires a second confirmation before the migration actually starts
-- **AND** successful migration triggers backend Ollama restart when restart is available
-- **AND** the card reports moved and skipped items through toast or status feedback instead of silently swallowing conflicts
-- **AND** model cards thereafter display updated absolute paths rather than logical URI-like placeholders
+- **AND** the dialog only supports submitting the shared migration action for all configured local models together
+- **AND** renderer surfaces backend `message` and `warnings` directly, including placeholder responses where no files were moved
+- **AND** renderer treats migration results as file-operation feedback only and prompts for manual restart or manual verification when the backend does not explicitly report a runtime outcome
 
 #### Scenario: Model list data is still loading
 - **WHEN** the settings view has entered `模型配置` but the backend model list has not yet returned
@@ -106,6 +100,7 @@ Model configuration dialog SHALL use a responsive split layout with a left overv
 - **WHEN** user changes a model entry between `本地目录`、`Ollama`、`在线 API`
 - **THEN** the dialog updates the visible fields to match that route instead of showing one generic mixed form
 - **AND** `在线 API` shows Base URL、API Key、模型名、协议、超时和图像上传上限 fields for image-capable components
+- **AND** the `图像上传上限` field uses `MB` as its display and input unit in the renderer while persisted backend config remains `api_image_max_bytes`
 - **AND** `本地目录` and `Ollama` routes keep model path or logical model-id controls visible while hiding remote-only fields
 - **AND** `mllm-default` only offers the online API route
 
@@ -336,6 +331,7 @@ Diagnostics view SHALL render runtime metrics in a single compact strip that exp
 - **THEN** the diagnostics page shows a compact runtime strip with uptime, CPU, memory, and GPU summaries
 - **AND** the strip shows the latest sample timestamp
 - **AND** memory and GPU rows expose usage detail without expanding into secondary cards
+- **AND** byte-derived capacity values use `MB` as the minimum display unit while values that already reach `GB` or `TB` remain in those larger units
 
 ### Requirement: New-task view SHALL expose multi-source intake with value preview
 New-task view SHALL expose `Upload`, `URL`, and `Path` intake modes inside the same workbench surface and SHALL show workflow-specific value preview blocks before the user starts analysis.
@@ -427,13 +423,10 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 - **AND** `rewrite` mode shows the rewritten transcript as a single streaming text surface instead of a per-segment diff
 - **AND** if correction is skipped or disabled, the tab explains that downstream notes generation is using the raw transcript directly
 
-#### Scenario: Follow live transcript output while reviewing a running task
-- **WHEN** transcript cards continue streaming into the `转写片段` tab
-- **THEN** the transcript list keeps the viewport pinned to the bottom by default so the newest chunk stays visible
-- **AND** user can manually scroll upward without the renderer fighting that gesture immediately
-- **AND** once the user scrolls upward beyond a configured threshold, auto-follow is suspended
-- **AND** when the user scrolls back to the bottom threshold, auto-follow resumes automatically
-- **AND** renderer-driven bottom-alignment scrolls do not accidentally count as a user break gesture while new transcript cards are still appending
+#### Scenario: Review transcript output while task state continues updating
+- **WHEN** task state, progress, or transcript artifacts refresh while the user is staying on the `转写片段` tab
+- **THEN** the transcript list keeps stable scroll behavior instead of jumping unexpectedly
+- **AND** the renderer can append or replace transcript content without fighting manual user scrolling
 
 #### Scenario: Preview imported source media inside the workbench
 - **WHEN** user opens a task whose detail payload includes a persisted `source_local_path`
@@ -443,10 +436,9 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 - **AND** if the source file can no longer be opened, the panel shows a readable preview-failure hint instead of leaving a silent black frame
 
 #### Scenario: Open a running task during transcript production
-- **WHEN** a running task has started streaming transcript chunks but task-detail polling is still refreshing in the background
+- **WHEN** a running task is still executing phase `C` and persisted transcript artifacts are not yet complete
 - **THEN** the transcript tab keeps a stable loading or processing hint instead of alternating between contradictory empty states
-- **AND** streamed transcript chunks appear in order before the next detail refresh completes
-- **AND** once persisted transcript segments arrive from the detail API, the renderer merges them with streamed chunks without duplicating cards
+- **AND** once persisted transcript segments arrive from the detail API, the renderer replaces that hint with ordered transcript content without duplicating cards
 
 #### Scenario: Read a long stage-output timeline
 - **WHEN** the stage-output tab contains more content than the available panel height
@@ -459,15 +451,14 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 - **AND** non-critical note imagery or Mermaid preview paint MAY defer until the drag interaction completes
 - **AND** the workbench uses a lower-cost visual mode for high-frequency surfaces during the drag interaction instead of keeping every decorative layer live
 
-#### Scenario: Render a high-frequency transcription stream without workspace flicker
-- **WHEN** phase `C` emits frequent `transcript_delta` and `progress` events
-- **THEN** the renderer appends transcript cards and updates the visible overall progress from stream data without forcing a full task-detail refresh on every delta
+#### Scenario: Render high-frequency runtime updates without workspace flicker
+- **WHEN** phase `C` emits frequent `progress` or stage events while the task workbench is open
+- **THEN** the renderer updates the visible overall progress from stream data without forcing a full task-detail refresh on every event
 - **AND** background task-detail refresh is reserved for stage transitions, milestone logs, and terminal events
 - **AND** stream-driven progress updates do not recreate the task SSE subscription or cancel already scheduled milestone refreshes
 - **AND** task runtime stream state is buffered in a dedicated Zustand workbench runtime store instead of staying in root-component local state
 - **AND** transcript, correction, stage-output, chat, and trace panels subscribe to their own selectors so high-frequency updates do not force the whole workbench shell to commit together
-- **AND** streamed transcript segments and persisted transcript segments are merged through one stable runtime merge contract so transcript-driven panes do not need duplicate merge pipelines
-- **AND** unchanged right-side Markdown or VQA workspaces remain stable while transcript deltas continue arriving, unless their own displayed artifact data has changed
+- **AND** unchanged right-side Markdown or VQA workspaces remain stable while those progress events continue arriving, unless their own displayed artifact data has changed
 - **AND** the running-state badge summarizes the active workflow step in business language instead of showing a raw generic backend status string
 - **AND** recent stage activity omits repetitive raw progress spam and keeps milestone-focused readable updates
 - **AND** when transcript optimization is skipped for long content or timeout fallback is used, recent stage activity explains that the task continues with the current transcript to shorten waiting time instead of exposing raw pipeline wording
@@ -499,8 +490,7 @@ Frontend UI library SHALL provide a reusable virtual-list component under `apps/
 - **WHEN** user submits a question from the VQA workbench
 - **THEN** before retrieval hits or answer tokens arrive, the assistant bubble shows a temporary loading placeholder with business-language progress copy instead of a blank bubble
 - **AND** while the answer stream is active, the composer action switches from `发送` to `停止`
-- **AND** if the task has already completed its persisted `D/vqa-prewarm` preparation, the first question reuses that prepared retrieval corpus and frame descriptions instead of rebuilding embeddings or visual evidence on demand
-- **AND** if the backend has a ready multimodal retrieval route, the same chat surface can answer from joint text-image evidence without changing the user interaction flow
+- **AND** if the task has already completed its persisted `D/vqa-prewarm` preparation, the first question reuses that prepared transcript retrieval corpus instead of rebuilding the index on demand
 - **THEN** the renderer streams incremental answer chunks into the chat surface
 - **AND** while answer chunks are still streaming, the assistant bubble keeps a lightweight plain-text surface instead of re-running full Markdown rendering on every chunk
 - **AND** streamed assistant answers render as Markdown instead of plain paragraph text
@@ -508,13 +498,10 @@ Frontend UI library SHALL provide a reusable virtual-list component under `apps/
 - **AND** user and assistant bubbles both use explicit avatar affordances instead of rendering the user side as an anonymous color block
 - **AND** each answer may expose a retrieval trace identifier, citations, and citation jump actions
 - **AND** retrieval-trace and citation actions use compact icon buttons with hover tooltips instead of long inline labels
-- **AND** citations prefer related frame thumbnails from the task video rather than Mermaid summary images
-- **AND** citations and Trace Theater thumbnails only render task-relative `frames/...` evidence images and ignore legacy non-frame artifact paths
-- **AND** clicking a citation thumbnail opens a modal large-image preview with zoom and rotation controls
+- **AND** citations are primarily transcript-text and timestamp oriented in the current baseline, so the chat flow does not depend on frame-thumbnail evidence to remain usable
 - **AND** opening Trace Theater reveals Dense, Sparse, RRF, and final rerank panels with per-stage deduplicated candidates
 - **AND** Trace Theater states that retrieval uses the original user question directly without query expansion
 - **AND** Trace Theater shows human-readable normalized scores instead of raw backend magnitude values that collapse visually to zero
-- **AND** remote image-capable routes keep citation thumbnails and trace panels behaviorally consistent with the local route even when the backend compresses keyframes before upload
 - **AND** per-task VQA chat history is restored when the user leaves the workbench and later reopens the same task from history or recent tasks
 - **AND** restored per-task VQA chat history normalizes unfinished assistant streaming placeholders to a completed local state instead of reviving a stale `streaming` session
 - **AND** persisted per-task VQA trace snapshots keep only a bounded recent cache window while preserving the active or selected trace entry so renderer-side storage does not grow without limit
@@ -545,18 +532,16 @@ Diagnostics view SHALL provide a direct autofix action when the backend marks is
 - **AND** it only reports success when the `/models` response is a valid model list and the configured `model` is present in that remote list
 - **AND** the diagnostics issue summary reports the concrete connectivity result instead of only checking whether the config file exists
 
-#### Scenario: Diagnostics self-check validates transcription CUDA runtime
-- **WHEN** the backend runs the `转写 CUDA 运行库` self-check step
-- **THEN** it reports the configured install directory, effective runtime-library directory, and environment-variable state
-- **AND** it treats versioned `nvJitLink*.dll` files and managed `bin/x64` cuDNN locations as valid parts of the installed bundle when the NVIDIA package layout uses those forms
-- **AND** it lists missing runtime DLLs or load errors when the bundle is not ready
-- **AND** the diagnostics issue summary tells the user to return to the settings-center model section to install or repair the runtime bundle
+#### Scenario: Diagnostics self-check validates Whisper runtime readiness
+- **WHEN** the backend runs the `Whisper 转写` self-check step
+- **THEN** it reports current runtime readiness based on `whisper-cli` availability and the configured model directory
+- **AND** the diagnostics issue summary tells the user whether the current problem is missing executable, missing model path, or both
 
-#### Scenario: Diagnostics self-check validates remote VLM inference with a representative probe sample
+#### Scenario: Diagnostics self-check validates remote VLM connectivity
 - **WHEN** the backend runs the `VLM 模型` self-check step for a configured remote vision model
-- **THEN** it sends a representative text-bearing probe image instead of a degenerate pixel sample
-- **AND** it only reports success when the remote provider returns a non-empty inference result for that image-bearing probe request
-- **AND** any provider-side inference failure is surfaced as a step-level diagnostics issue rather than aborting the full self-check session
+- **THEN** it reuses the shared remote model-readiness probe against the configured `/models` endpoint
+- **AND** it only reports success when the remote model list contains the configured model entry
+- **AND** any provider-side connectivity failure is surfaced as a step-level diagnostics issue rather than aborting the full self-check session
 
 #### Scenario: Diagnostics view survives page navigation during self-check
 - **WHEN** user starts a self-check, leaves the diagnostics page, and later returns within the same desktop session
@@ -567,8 +552,10 @@ Diagnostics view SHALL provide a direct autofix action when the backend marks is
 - **AND** once the session reaches a terminal state, the renderer retires that session's SSE subscription promptly to avoid redundant polling, network traffic, and retained listeners
 
 #### Scenario: Diagnostics self-check validates Whisper cache path from configured catalog entry
-- **WHEN** the backend runs the `FasterWhisper` or `Whisper 模型缓存` self-check step after a local-model migration
+- **WHEN** the backend runs the `Whisper 模型缓存` self-check step after a local-model migration
 - **THEN** it resolves the Whisper cache directory from the current model-catalog path instead of assuming the storage default directory
 - **AND** the reported cache path matches the migrated absolute directory when the catalog has already been updated
 
-- **AND** Windows-unsafe topic characters are sanitized when generating persisted event-log filenames so self-check sessions and other non-task topics are still retained on disk
+#### Scenario: Diagnostics event logs stay Windows-safe
+- **WHEN** backend persists self-check or other non-task event topics to JSONL
+- **THEN** Windows-unsafe topic characters are sanitized before the event-log filename is generated

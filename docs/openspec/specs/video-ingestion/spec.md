@@ -33,18 +33,15 @@ The system SHALL accept local path input, validate path existence and extension,
 - **WHEN** client submits non-existing local file path
 - **THEN** server returns validation error and does not create task
 
-### Requirement: Task submission SHALL pass runtime preflight before enqueue
-Before the backend creates or enqueues a task, it SHALL verify that the current workflow can actually start with the available runtime environment and required model set.
+### Requirement: Task submission SHALL create records before runtime validation completes
+The backend SHALL validate request payload shape at submission time, create the task record, and enqueue analysis work without requiring a submission-time runtime preflight gate.
 
-#### Scenario: Submit task when runtime preflight passes
-- **WHEN** client submits a URL, local path, or uploaded file and the required runtime checks pass
+#### Scenario: Submit task with valid input
+- **WHEN** client submits a URL, local path, or uploaded file with a valid request payload
 - **THEN** server creates the task record
 - **AND** server enqueues the task for analysis
 
-#### Scenario: Reject task when runtime preflight fails
-- **WHEN** client submits a task and the required runtime checks fail because FFmpeg is unavailable, disk space is too low, the LLM service is unreachable, or a required model is not ready
-- **AND** runtime preflight treats an OpenAI-compatible LLM as unavailable when `/models` is unreachable, returns an invalid payload, or does not include the configured `model`
-- **AND** runtime preflight treats whisper GPU mode as unavailable when persisted whisper `device` is `auto|cuda` but the configured transcription CUDA runtime-library bundle is missing required DLLs or fails load validation
-- **THEN** server returns a conflict response with a clear remediation hint
-- **AND** server does not create the task record
-- **AND** server does not enqueue the task
+#### Scenario: Surface runtime dependency failure after task creation
+- **WHEN** client submits a task successfully but runtime checks later find that FFmpeg, Whisper, or LLM dependencies are unavailable
+- **THEN** the task remains recorded and queued or running according to the current pipeline state machine
+- **AND** runtime errors are surfaced through later task status, runtime warnings, or self-check diagnostics instead of a submission-time conflict response
