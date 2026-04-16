@@ -117,7 +117,7 @@ VidGnost 当前交付目标是单仓 TS 全栈桌面工作台：
 - [x] 重写 `docs/frontend-driven-backend-execution-checklist.zh-CN.md`
 - [x] 重写 `docs/backend-api-and-ops-baseline.zh-CN.md`
 - [x] 重写 `docs/frontend-backend-field-mapping.zh-CN.md`
-- [x] 重写 `docs/vidgnost-task-processing-performance-baseline.zh-CN.md`
+- [x] 清理任务处理页性能相关历史方案文档
 - [x] 清理 `docs/vidgnost-python-to-ts-refactor-plan.zh-CN.md`
 - [x] 更新 `AGENTS.md` 中的脚本索引与技术栈描述
 
