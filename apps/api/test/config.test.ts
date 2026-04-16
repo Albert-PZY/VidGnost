@@ -188,7 +188,7 @@ describe("config routes", () => {
       base_url: expect.any(String),
       service: {
         reachable: expect.any(Boolean),
-        can_self_restart: false,
+        can_self_restart: expect.any(Boolean),
       },
     })
 

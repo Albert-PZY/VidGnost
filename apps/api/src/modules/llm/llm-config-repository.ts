@@ -103,8 +103,7 @@ function normalizeApiKey(rawValue: unknown, baseUrl: string, fallbackKey: string
     return candidate
   }
 
-  const normalizedBaseUrl = baseUrl.toLowerCase()
-  if (normalizedBaseUrl.startsWith("http://127.0.0.1:11434") || normalizedBaseUrl.startsWith("http://localhost:11434")) {
+  if (isLoopbackUrl(baseUrl)) {
     return fallbackKey.trim() || "ollama"
   }
 
@@ -122,4 +121,13 @@ function normalizeCorrectionMode(rawValue: unknown, fallback: "off" | "strict" |
     return candidate
   }
   return fallback === "off" || fallback === "rewrite" ? fallback : "strict"
+}
+
+function isLoopbackUrl(baseUrl: string): boolean {
+  try {
+    const target = new URL(baseUrl)
+    return target.hostname === "127.0.0.1" || target.hostname === "localhost" || target.hostname === "::1"
+  } catch {
+    return false
+  }
 }

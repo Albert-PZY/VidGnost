@@ -38,7 +38,7 @@ Settings center SHALL provide `模型配置`, `提示词模板`, `外观设置`,
 - **AND** backend returns the refreshed template bundle including channel selection and effective template lists
 
 ### Requirement: Whisper model configuration SHALL expose GPU readiness controls without implying managed install
-The settings-center Whisper model dialog SHALL expose the current GPU-readiness summary, configured path hints, and a GPU mode toggle while keeping the backend contract aligned with the current probe-first runtime.
+The settings-center Whisper model dialog SHALL expose the current GPU-readiness summary, configured path hints, and a GPU mode toggle while keeping the backend contract aligned with the current runtime contract.
 
 #### Scenario: Configure Whisper GPU readiness from settings
 - **WHEN** user opens `whisper-default` 的模型配置

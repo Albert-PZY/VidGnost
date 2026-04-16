@@ -45,7 +45,7 @@ VidGnost 当前以 Electron 桌面工作台形态交付：
 ### 6. Managed local model workflow
 - `/config/models` 负责向前端暴露模型目录、安装状态、说明性下载快照和默认路径。
 - 当前 TS 运行时不接管 Ollama pull，也不内置 Whisper 模型自动下载；相关按钮返回说明性 download snapshot 或手动操作指引。
-- `/config/ollama/restart-service` 与 `/config/ollama/migrate-models` 当前以配置更新和状态探测为主，不承诺自动重启或自动搬迁现有模型文件。
+- `/config/ollama/restart-service` 在 Windows 上负责按当前运行时配置重启 `ollama serve`；`/config/ollama/migrate-models` 仍只更新目标目录配置，不自动搬迁现有模型文件。
 
 ### 7. Pipeline contract
 - 运行链路仍保持 `A -> B -> C -> D` 四阶段模型。

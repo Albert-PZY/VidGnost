@@ -172,6 +172,7 @@ export async function registerConfigRoutes(
     )
     await dependencies.ollamaRuntimeConfigRepository.save(body)
     await dependencies.ollamaServiceManager.synchronizeRuntimeEnvironment()
+    await synchronizeManagedLlmRuntime(dependencies)
     return buildOllamaRuntimeConfigResponse(dependencies)
   })
 
@@ -228,7 +229,12 @@ export async function registerConfigRoutes(
   app.patch(`${apiPrefix}/config/models/:modelId`, async (request): Promise<ModelListResponse> => {
     const body = parseBody(request, modelUpdateRequestSchema, "MODEL_UPDATE_INVALID", "Invalid model update payload")
     try {
-      return await dependencies.modelCatalogRepository.updateModel(String((request.params as { modelId?: string }).modelId || ""), body)
+      const modelId = String((request.params as { modelId?: string }).modelId || "")
+      const response = await dependencies.modelCatalogRepository.updateModel(modelId, body)
+      if (modelId === "llm-default") {
+        await synchronizeManagedLlmRuntime(dependencies, response)
+      }
+      return response
     } catch (error) {
       throw AppError.badRequest("Model update is invalid", {
         code: "MODEL_UPDATE_INVALID",
@@ -301,6 +307,42 @@ async function buildOllamaRuntimeConfigResponse(
     ...config,
     service,
   }
+}
+
+async function synchronizeManagedLlmRuntime(
+  dependencies: Pick<
+    ConfigRouteDependencies,
+    "llmConfigRepository" | "modelCatalogRepository" | "ollamaRuntimeConfigRepository"
+  >,
+  modelListResponse?: ModelListResponse,
+): Promise<LLMConfigResponse | null> {
+  const models = modelListResponse || await dependencies.modelCatalogRepository.listModels()
+  const llmModel = models.items.find((item) => item.id === "llm-default")
+  if (!llmModel) {
+    return null
+  }
+
+  const current = await dependencies.llmConfigRepository.get()
+  if (llmModel.provider === "ollama") {
+    const ollamaRuntimeConfig = await dependencies.ollamaRuntimeConfigRepository.get()
+    return dependencies.llmConfigRepository.save({
+      ...current,
+      load_profile: llmModel.load_profile === "memory_first" ? "memory_first" : "balanced",
+      local_model_id: llmModel.model_id,
+      api_key: "",
+      base_url: `${ollamaRuntimeConfig.base_url.replace(/\/+$/, "")}/v1`,
+      model: llmModel.model_id,
+    })
+  }
+
+  return dependencies.llmConfigRepository.save({
+    ...current,
+    load_profile: llmModel.load_profile === "memory_first" ? "memory_first" : "balanced",
+    local_model_id: llmModel.model_id,
+    api_key: llmModel.api_key,
+    base_url: llmModel.api_base_url.trim() || current.base_url,
+    model: llmModel.api_model.trim() || llmModel.model_id,
+  })
 }
 
 function parseBody<T>(

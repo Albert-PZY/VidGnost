@@ -114,12 +114,15 @@
 ### 3.4 Ollama / 模型管理
 
 - `/config/ollama`：配置持久化 + 状态探测
-- `/config/ollama/restart-service`：刷新 probe 结果；当前不是完整自托管重启
+- `/config/ollama/restart-service`：Windows 下会按当前 `executable_path`、`models_dir`、`base_url` 执行项目内重启并轮询可达性
 - `/config/ollama/migrate-models`：更新目标目录配置并返回说明；当前不搬迁现有模型文件
 - `/config/models/:modelId/download`：
   - 已就绪模型返回 completed snapshot
   - 未就绪模型返回说明性 failed / guidance snapshot
   - 当前不触发 `Ollama pull`
+- Ollama 模型安装状态：
+  - 以 `/api/tags` 返回的真实模型标签为准
+  - 不再通过 `models_dir/<model-id-sanitized>` 伪路径判断是否已安装
 
 ### 3.5 自检
 

@@ -103,7 +103,8 @@
 - 当前实现边界：
   - 不接管 Ollama pull
   - 不自动搬迁 Ollama 现有模型文件
-  - `restart-service` 当前是 probe-first 行为，不是完整自托管进程管理
+  - `restart-service` 当前支持在 Windows 上按已配置的 `OLLAMA_MODELS` 与服务地址执行项目内重启
+  - Ollama 模型就绪状态基于 `/api/tags` 真实探测，而不是伪造的本地目录占位路径
 
 ## 5. 数据与存储
 

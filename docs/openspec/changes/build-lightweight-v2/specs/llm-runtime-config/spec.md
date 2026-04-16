@@ -74,10 +74,10 @@ Persisted `/config/llm` runtime values SHALL remain aligned with the `llm-defaul
 - **THEN** backend synchronizes `/config/llm.base_url` and `/config/llm.model` from `api_base_url` and `api_model`
 - **AND** existing correction controls in `/config/llm` remain effective
 
-### Requirement: System SHALL expose editable Ollama runtime config with probe-first behavior
+### Requirement: System SHALL expose editable Ollama runtime config with managed restart hooks
 Status: `implemented`
 
-The system SHALL expose `/config/ollama`、`/config/ollama/migrate-models` and `/config/ollama/restart-service` so frontend settings can manage the Ollama install location, executable path, model directory, service base URL, and current probe status.
+The system SHALL expose `/config/ollama`、`/config/ollama/migrate-models` and `/config/ollama/restart-service` so frontend settings can manage the Ollama install location, executable path, model directory, service base URL, and current runtime status.
 
 #### Scenario: Read current Ollama runtime config
 - **WHEN** client requests `/config/ollama`
@@ -90,6 +90,7 @@ The system SHALL expose `/config/ollama`、`/config/ollama/migrate-models` and `
 - **THEN** backend persists the effective runtime config into `storage/ollama-runtime.json`
 - **AND** subsequent Ollama-backed model path resolution uses the configured `models_dir`
 - **AND** backend refreshes the probe result returned in the `service` block
+- **AND** when managed `llm-default` currently uses Ollama, backend synchronizes `/config/llm.base_url` to `<configured_ollama_base_url>/v1`
 
 #### Scenario: Update Ollama model directory configuration
 - **WHEN** client posts `/config/ollama/migrate-models` with a new target directory
@@ -100,7 +101,8 @@ The system SHALL expose `/config/ollama`、`/config/ollama/migrate-models` and `
 #### Scenario: Refresh Ollama service state after runtime changes
 - **WHEN** client posts `/config/ollama/restart-service`
 - **THEN** backend returns the refreshed probe status together with the persisted runtime config
-- **AND** when self-managed restart is unavailable, response keeps `can_self_restart=false` and explains that the current implementation only performs status probing
+- **AND** on supported local runtimes, backend restarts `ollama serve` with the configured executable path, service address, and `OLLAMA_MODELS`
+- **AND** when self-managed restart is unavailable, response keeps `can_self_restart=false` and explains the required manual action
 
 ### Requirement: System SHALL expose editable Whisper runtime config API
 Status: `implemented`

@@ -12,6 +12,7 @@ import type { AppConfig } from "../../core/config.js"
 import { pathExists, readJsonFile, writeJsonFile } from "../../core/fs.js"
 import { clampInteger, clampNumber } from "../../core/number.js"
 import type { OllamaRuntimeConfigRepository } from "./ollama-runtime-config-repository.js"
+import { listOllamaModelIds } from "./ollama-service-manager.js"
 
 const DEFAULT_API_TIMEOUT_SECONDS = 120
 const DEFAULT_IMAGE_MAX_BYTES = 512 * 1024
@@ -363,13 +364,16 @@ export class ModelCatalogRepository {
 
   async #hydrate(models: ModelDescriptor[]): Promise<ModelDescriptor[]> {
     const ollamaRuntimeConfig = await this.#ollamaRuntimeConfigRepository.get()
+    const ollamaModelIds = new Set(await listOllamaModelIds(ollamaRuntimeConfig.base_url))
     const hydrated: ModelDescriptor[] = []
     for (const item of models) {
       const defaultPath = resolveDefaultPath(item, this.#config.storageDir, ollamaRuntimeConfig.models_dir)
       const effectivePath = item.path.trim() || defaultPath
       const installed = item.provider === REMOTE_PROVIDER
         ? Boolean(item.api_base_url.trim() && item.api_model.trim() && item.api_key.trim())
-        : Boolean(effectivePath && await pathExists(effectivePath))
+        : item.provider === "ollama"
+          ? isOllamaModelInstalled(item.model_id, ollamaModelIds)
+          : Boolean(effectivePath && await pathExists(effectivePath))
 
       hydrated.push({
         ...item,
@@ -438,6 +442,65 @@ function resolveDefaultPath(item: ModelDescriptor, storageDir: string, ollamaMod
     return path.join(ollamaModelsDir, item.model_id.replace(/[:/]+/g, "-"))
   }
   return ""
+}
+
+function isOllamaModelInstalled(modelId: string, installedModelIds: Set<string>): boolean {
+  const targetAliases = buildOllamaModelAliases(modelId)
+  for (const installedModelId of installedModelIds) {
+    const installedAliases = buildOllamaModelAliases(installedModelId)
+    for (const alias of targetAliases) {
+      if (installedAliases.has(alias)) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+function buildOllamaModelAliases(rawModelId: string): Set<string> {
+  const normalized = String(rawModelId || "").trim().replace(/^\/+|\/+$/g, "").toLowerCase()
+  const aliases = new Set<string>()
+  if (!normalized) {
+    return aliases
+  }
+
+  aliases.add(normalized)
+  if (normalized.endsWith(":latest")) {
+    aliases.add(normalized.slice(0, -":latest".length))
+  } else {
+    aliases.add(`${normalized}:latest`)
+  }
+
+  const slashSegments = normalized.split("/")
+  if (slashSegments.length > 2) {
+    const withoutRegistry = slashSegments.slice(1).join("/")
+    aliases.add(withoutRegistry)
+    if (withoutRegistry.endsWith(":latest")) {
+      aliases.add(withoutRegistry.slice(0, -":latest".length))
+    } else {
+      aliases.add(`${withoutRegistry}:latest`)
+    }
+  }
+
+  const lastTwoSegments = slashSegments.slice(-2).join("/")
+  if (lastTwoSegments && lastTwoSegments !== normalized) {
+    aliases.add(lastTwoSegments)
+    if (lastTwoSegments.endsWith(":latest")) {
+      aliases.add(lastTwoSegments.slice(0, -":latest".length))
+    } else {
+      aliases.add(`${lastTwoSegments}:latest`)
+    }
+  }
+
+  const tail = slashSegments[slashSegments.length - 1] || normalized
+  aliases.add(tail)
+  if (tail.endsWith(":latest")) {
+    aliases.add(tail.slice(0, -":latest".length))
+  } else {
+    aliases.add(`${tail}:latest`)
+  }
+
+  return aliases
 }
 
 function normalizeProvider(component: ModelDescriptor["component"], provider: string): string {
