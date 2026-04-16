@@ -714,9 +714,7 @@ export class TaskOrchestrator {
         ...input.patch,
       }
       stageMetric.substage_metrics = substageMetrics
-      if (!("status" in input.patch) && stageMetric.status === "pending") {
-        stageMetric.status = "running"
-      }
+      syncStageMetricFromSubstages(stageMetric, substageMetrics)
     } else {
       Object.assign(stageMetric, input.patch)
     }
@@ -742,4 +740,61 @@ function normalizeNullableTitle(value: unknown): string | null {
 
 function toErrorMessage(error: unknown): string {
   return error instanceof Error && error.message.trim() ? error.message : "任务执行失败"
+}
+
+function syncStageMetricFromSubstages(
+  stageMetric: Record<string, unknown>,
+  substageMetrics: Record<string, Record<string, unknown>>,
+): void {
+  const entries = Object.values(substageMetrics)
+  if (entries.length === 0) {
+    return
+  }
+
+  const statuses = entries.map((metric) => String(metric.status || "").trim().toLowerCase())
+  const fusionMetric = substageMetrics.fusion_delivery || {}
+  const fusionStatus = String(fusionMetric.status || "").trim().toLowerCase()
+
+  if (!stageMetric.started_at) {
+    const startedAt = entries
+      .map((metric) => String(metric.started_at || "").trim())
+      .filter(Boolean)
+      .sort()[0]
+    if (startedAt) {
+      stageMetric.started_at = startedAt
+    }
+  }
+
+  if (fusionStatus === "completed") {
+    stageMetric.status = "completed"
+    stageMetric.completed_at = fusionMetric.completed_at ?? stageMetric.completed_at ?? null
+    stageMetric.reason = fusionMetric.reason ?? null
+    return
+  }
+
+  if (statuses.some((status) => status === "failed" || status === "cancelled")) {
+    const failureMetric = entries.find((metric) => {
+      const status = String(metric.status || "").trim().toLowerCase()
+      return status === "failed" || status === "cancelled"
+    })
+    stageMetric.status = String(failureMetric?.status || "failed").trim().toLowerCase()
+    stageMetric.completed_at = failureMetric?.completed_at ?? stageMetric.completed_at ?? null
+    stageMetric.reason = failureMetric?.reason ?? null
+    return
+  }
+
+  if (statuses.some((status) => status === "running" || status === "paused")) {
+    stageMetric.status = statuses.includes("paused") ? "paused" : "running"
+    stageMetric.completed_at = null
+    return
+  }
+
+  if (statuses.some((status) => status === "completed" || status === "skipped")) {
+    stageMetric.status = "running"
+    stageMetric.completed_at = null
+    return
+  }
+
+  stageMetric.status = "pending"
+  stageMetric.completed_at = null
 }

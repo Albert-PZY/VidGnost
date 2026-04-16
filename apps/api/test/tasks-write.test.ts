@@ -143,6 +143,8 @@ describe("task mutation routes", () => {
     await waitForFile(correctionIndexPath)
     await waitForFile(correctionTextPath)
 
+    const detail = await waitForTaskStatus(app, "task-seed-rerun", "completed")
+
     const correctionIndex = JSON.parse(await readFile(correctionIndexPath, "utf8")) as {
       mode: string
       status: string
@@ -154,6 +156,12 @@ describe("task mutation routes", () => {
       status: "skipped",
     })
     expect(correctionText).toContain("seed transcript")
+    expect(detail.stage_metrics.D).toMatchObject({
+      status: "completed",
+    })
+    expect(detail.vm_phase_metrics.D).toMatchObject({
+      status: "completed",
+    })
   })
 
   it("prewarms vqa retrieval index during stage d rerun for vqa tasks", async () => {
