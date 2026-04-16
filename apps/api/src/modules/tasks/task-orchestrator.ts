@@ -203,6 +203,7 @@ export class TaskOrchestrator {
 
     const reusableSource = await this.findReusableSource(record)
     if (reusableSource) {
+      const shouldReuseStageDOutputs = await this.shouldReuseStageDOutputs(reusableSource)
       await this.completeStage(input.taskId, "A", 10, "已匹配可复用的历史输入")
       await this.startStage(input.taskId, "B", "Artifact Reuse", 15)
       await this.waitForControl(execution)
@@ -210,7 +211,18 @@ export class TaskOrchestrator {
       await this.startStage(input.taskId, "C", "Transcript Restore", 30, "transcribing")
       await this.waitForControl(execution)
       await this.completeStage(input.taskId, "C", 68, "已复用历史转写结果")
-      await this.runStageDReplay(input.taskId, execution, reusableSource)
+      if (shouldReuseStageDOutputs) {
+        await this.runStageDReplay(input.taskId, execution, reusableSource)
+        return
+      }
+
+      await this.prepareReusableTranscriptState(input.taskId, reusableSource)
+      await this.appendStageLog(
+        input.taskId,
+        "D",
+        `历史任务 ${reusableSource.id} 的融合产物包含回退结果，已基于复用转写重新生成阶段 D`,
+      )
+      await this.runStageD(input.taskId, execution)
       return
     }
 
@@ -460,6 +472,48 @@ export class TaskOrchestrator {
       sourceInput: String(record.source_input || ""),
       sourceLocalPath: sourceLocalPath || null,
       workflow: normalizeWorkflow(record.workflow),
+    })
+  }
+
+  private async shouldReuseStageDOutputs(sourceRecord: StoredTaskRecord): Promise<boolean> {
+    const llmGenerationEnabled = await this.dependencies.summaryService.isLlmGenerationEnabled()
+    if (!llmGenerationEnabled) {
+      return true
+    }
+
+    const sourceTaskId = String(sourceRecord.id || "")
+    if (!sourceTaskId) {
+      return true
+    }
+
+    const manifestRaw = await this.taskRepository.readTaskArtifactText(sourceTaskId, "D/fusion/manifest.json")
+    if (!manifestRaw) {
+      return true
+    }
+
+    try {
+      const manifest = JSON.parse(manifestRaw) as Record<string, { generated_by?: string }>
+      return !Object.values(manifest).some((artifact) => String(artifact?.generated_by || "").trim() === "fallback")
+    } catch {
+      return true
+    }
+  }
+
+  private async prepareReusableTranscriptState(taskId: string, sourceRecord: StoredTaskRecord): Promise<void> {
+    const sourceTaskId = String(sourceRecord.id || "")
+    if (!sourceTaskId) {
+      return
+    }
+
+    if (sourceTaskId !== taskId) {
+      await this.taskRepository.cloneTaskArtifacts(sourceTaskId, taskId)
+    }
+
+    await this.taskRepository.update(taskId, {
+      duration_seconds: sourceRecord.duration_seconds,
+      transcript_segments_json: sourceRecord.transcript_segments_json,
+      transcript_text: sourceRecord.transcript_text,
+      title: normalizeNullableTitle(sourceRecord.title),
     })
   }
 

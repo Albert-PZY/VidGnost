@@ -6,7 +6,7 @@ export type PromptTemplateChannel = z.infer<typeof promptTemplateChannelSchema>
 export const backgroundImageFillModeSchema = z.enum(["cover", "contain", "repeat", "center"])
 export type BackgroundImageFillMode = z.infer<typeof backgroundImageFillModeSchema>
 
-export const modelComponentTypeSchema = z.enum(["whisper", "llm", "embedding", "vlm", "rerank", "mllm"])
+export const modelComponentTypeSchema = z.enum(["whisper", "llm", "embedding", "rerank"])
 export type ModelComponentType = z.infer<typeof modelComponentTypeSchema>
 
 export const modelRuntimeStatusSchema = z.enum(["ready", "loading", "not_ready", "error"])
@@ -319,7 +319,6 @@ export const modelDescriptorSchema = z.object({
   load_profile: z.string(),
   max_batch_size: z.number().int().min(1),
   rerank_top_n: z.number().int().min(1),
-  frame_interval_seconds: z.number().int().min(1),
   enabled: z.boolean(),
   size_bytes: z.number().int().nonnegative(),
   is_installed: z.boolean(),
@@ -332,8 +331,6 @@ export const modelDescriptorSchema = z.object({
   api_model: z.string(),
   api_protocol: z.string(),
   api_timeout_seconds: z.number().int().min(10),
-  api_image_max_bytes: z.number().int().min(32768),
-  api_image_max_edge: z.number().int().min(256),
 })
 
 export type ModelDescriptor = z.infer<typeof modelDescriptorSchema>
@@ -360,15 +357,12 @@ export const modelUpdateRequestSchema = z.object({
   quantization: z.string().optional(),
   max_batch_size: z.number().int().min(1).max(64).optional(),
   rerank_top_n: z.number().int().min(1).max(20).optional(),
-  frame_interval_seconds: z.number().int().min(1).max(600).optional(),
   enabled: z.boolean().optional(),
   api_base_url: z.string().optional(),
   api_key: z.string().optional(),
   api_model: z.string().optional(),
   api_protocol: z.string().optional(),
   api_timeout_seconds: z.number().int().min(10).max(600).optional(),
-  api_image_max_bytes: z.number().int().min(32768).max(8388608).optional(),
-  api_image_max_edge: z.number().int().min(256).max(4096).optional(),
 })
 
 export type ModelUpdateRequest = z.infer<typeof modelUpdateRequestSchema>

@@ -72,7 +72,7 @@ import {
   updatePromptTemplate,
   updateWhisperConfig,
 } from "@/lib/api"
-import { formatBytes, formatMegabytesInput, parseMegabytesInputToBytes } from "@/lib/format"
+import { formatBytes } from "@/lib/format"
 import { getImageLayout } from "@/lib/ui-skin"
 import type {
   LLMConfigResponse,
@@ -96,9 +96,7 @@ const modelTypeLabels: Record<string, string> = {
   whisper: "语音转写",
   llm: "大语言模型",
   embedding: "嵌入模型",
-  vlm: "视觉语言模型",
   rerank: "重排序模型",
-  mllm: "全模态模型",
 }
 
 const promptTypeLabels: Record<PromptTemplateChannel, string> = {
@@ -119,9 +117,7 @@ const modelTypeTagClassNames: Record<string, string> = {
   whisper: "border-indigo-800/75 text-indigo-700 dark:border-indigo-400/55 dark:text-indigo-300",
   llm: "border-cyan-800/75 text-cyan-700 dark:border-cyan-400/55 dark:text-cyan-300",
   embedding: "border-emerald-800/75 text-emerald-700 dark:border-emerald-400/55 dark:text-emerald-300",
-  vlm: "border-rose-800/75 text-rose-700 dark:border-rose-400/55 dark:text-rose-300",
   rerank: "border-amber-800/75 text-amber-700 dark:border-amber-400/55 dark:text-amber-300",
-  mllm: "border-fuchsia-800/75 text-fuchsia-700 dark:border-fuchsia-400/55 dark:text-fuchsia-300",
 }
 
 const promptTagClassNames: Record<PromptTemplateChannel, string> = {
@@ -141,11 +137,6 @@ const themeHuePresets = [
 ] as const
 const DEFAULT_THEME_HUE = themeHuePresets[0].value
 const BACKGROUND_IMAGE_FILE_SIZE_LIMIT = 12 * 1024 * 1024
-const DEFAULT_REMOTE_IMAGE_MAX_BYTES = 512 * 1024
-const MIN_REMOTE_IMAGE_MAX_BYTES = 32 * 1024
-const MAX_REMOTE_IMAGE_MAX_BYTES = 8 * 1024 * 1024
-const MIN_REMOTE_IMAGE_MAX_MB = MIN_REMOTE_IMAGE_MAX_BYTES / (1024 ** 2)
-const MAX_REMOTE_IMAGE_MAX_MB = MAX_REMOTE_IMAGE_MAX_BYTES / (1024 ** 2)
 
 const EMPTY_PROMPT_FORM = {
   channel: "correction" as PromptTemplateChannel,
@@ -163,14 +154,11 @@ type ModelConfigFormState = {
   quantization: string
   max_batch_size: string
   rerank_top_n: string
-  frame_interval_seconds: string
   enabled: boolean
   api_base_url: string
   api_key: string
   api_model: string
   api_timeout_seconds: string
-  api_image_max_bytes: string
-  api_image_max_edge: string
 }
 
 type ModelConfigField = keyof ModelConfigFormState
@@ -196,14 +184,11 @@ const EMPTY_MODEL_FORM: ModelConfigFormState = {
   quantization: "",
   max_batch_size: "1",
   rerank_top_n: "8",
-  frame_interval_seconds: "10",
   enabled: true,
   api_base_url: "",
   api_key: "",
   api_model: "",
   api_timeout_seconds: "120",
-  api_image_max_bytes: formatMegabytesInput(DEFAULT_REMOTE_IMAGE_MAX_BYTES),
-  api_image_max_edge: "1280",
 }
 
 type LLMConfigFormState = {
@@ -265,18 +250,8 @@ const modelVisuals: Record<
     iconClassName: "text-primary",
     surfaceClassName: "bg-primary/10",
   },
-  vlm: {
-    icon: Cpu,
-    iconClassName: "text-primary",
-    surfaceClassName: "bg-primary/10",
-  },
   rerank: {
     icon: Cpu,
-    iconClassName: "text-primary",
-    surfaceClassName: "bg-primary/10",
-  },
-  mllm: {
-    icon: Sparkles,
     iconClassName: "text-primary",
     surfaceClassName: "bg-primary/10",
   },
@@ -302,10 +277,8 @@ const providerLabels: Record<string, string> = {
 
 const recommendedRemoteModels: Partial<Record<ModelDescriptor["component"], string[]>> = {
   llm: ["qwen3.5-plus"],
-  vlm: ["qwen-image-2.0"],
-  embedding: ["qwen3-vl-embedding"],
-  rerank: ["qwen3-vl-rerank"],
-  mllm: ["qwen3.5-omni-flash"],
+  embedding: ["text-embedding-v4"],
+  rerank: ["gte-rerank-v2"],
 }
 
 async function readFileAsDataUrl(file: File): Promise<string> {
@@ -365,17 +338,7 @@ function writeModelConfigDraftMap(nextMap: Record<string, ModelConfigDraftEntry>
 
 function readModelConfigDraft(modelId: string): ModelConfigDraftEntry | null {
   const draftMap = readModelConfigDraftMap()
-  const draft = draftMap[modelId] ?? null
-  if (!draft) {
-    return null
-  }
-  return {
-    ...draft,
-    model_form: {
-      ...draft.model_form,
-      api_image_max_bytes: normalizeImageMaxMegabytesFieldValue(draft.model_form.api_image_max_bytes),
-    },
-  }
+  return draftMap[modelId] ?? null
 }
 
 function saveModelConfigDraft(entry: ModelConfigDraftEntry): void {
@@ -391,20 +354,6 @@ function clearModelConfigDraft(modelId: string): void {
   }
   delete draftMap[modelId]
   writeModelConfigDraftMap(draftMap)
-}
-
-function normalizeImageMaxMegabytesFieldValue(value: string | number | null | undefined): string {
-  const rawValue = String(value ?? "").trim()
-  const parsed = Number.parseFloat(rawValue)
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return formatMegabytesInput(DEFAULT_REMOTE_IMAGE_MAX_BYTES)
-  }
-
-  if (parsed > MAX_REMOTE_IMAGE_MAX_MB) {
-    return formatMegabytesInput(parsed)
-  }
-
-  return formatMegabytesInput(parseMegabytesInputToBytes(rawValue, DEFAULT_REMOTE_IMAGE_MAX_BYTES))
 }
 
 type PickedSkinImage = {
@@ -686,9 +635,6 @@ export function SettingsView({
     if (model.component === "whisper") {
       return [{ value: "local", label: providerLabels.local }]
     }
-    if (model.component === "mllm") {
-      return [{ value: "openai_compatible", label: providerLabels.openai_compatible }]
-    }
     return [
       { value: "ollama", label: providerLabels.ollama },
       { value: "openai_compatible", label: providerLabels.openai_compatible },
@@ -736,32 +682,6 @@ export function SettingsView({
       }
     }
 
-    if (model.component === "vlm") {
-      return {
-        title: "视觉语言模型配置",
-        description: "控制关键帧语义识别模型的本地目录、量化方式和抽帧节奏。",
-        note: "抽帧间隔会直接影响检索时附带的画面证据密度，数值越小越细，但生成和存储开销也越高。",
-        fields: ["path", "load_profile", "quantization", "frame_interval_seconds", "enabled"],
-        pathLabel: "模型目录",
-        pathPlaceholder: "可选：指定 VLM 模型目录",
-        quantizationLabel: "权重量化",
-        quantizationPlaceholder: "如 4bit / 8bit / fp16",
-        batchLabel: "抽帧间隔（秒）",
-        batchDescription: "用于控制问答证据图的抽帧频率，默认每 10 秒抽取一张。",
-      }
-    }
-
-    if (model.component === "mllm") {
-      return {
-        title: "全模态模型配置",
-        description: "控制图文联合问答模型的路由启用与在线接口参数。",
-        note: "当全模态模型与多模态 Embedding 同时就绪时，RAG 会切换到图文联合检索路线。",
-        fields: ["load_profile", "max_batch_size", "enabled"],
-        batchLabel: "并发请求上限",
-        batchDescription: "控制图文联合请求的并发规模，避免远端接口抖动。",
-      }
-    }
-
     return {
       title: "重排序模型配置",
       description: "控制 rerank 模型的本地目录、批处理规模与最终返回条数。",
@@ -779,10 +699,7 @@ export function SettingsView({
     const payload: Parameters<typeof updateModel>[1] = {}
     const parsedBatchSize = Number.parseInt(form.max_batch_size, 10)
     const parsedRerankTopN = Number.parseInt(form.rerank_top_n, 10)
-    const parsedFrameInterval = Number.parseInt(form.frame_interval_seconds, 10)
     const parsedTimeoutSeconds = Number.parseInt(form.api_timeout_seconds, 10)
-    const parsedImageMaxBytes = parseMegabytesInputToBytes(form.api_image_max_bytes, DEFAULT_REMOTE_IMAGE_MAX_BYTES)
-    const parsedImageMaxEdge = Number.parseInt(form.api_image_max_edge, 10)
 
     payload.provider = form.provider
     payload.model_id = form.model_id.trim() || model.model_id
@@ -801,9 +718,6 @@ export function SettingsView({
     if (preset.fields.includes("rerank_top_n")) {
       payload.rerank_top_n = Number.isFinite(parsedRerankTopN) ? parsedRerankTopN : 8
     }
-    if (preset.fields.includes("frame_interval_seconds")) {
-      payload.frame_interval_seconds = Number.isFinite(parsedFrameInterval) ? parsedFrameInterval : 10
-    }
     if (preset.fields.includes("enabled")) {
       payload.enabled = form.enabled
     }
@@ -811,8 +725,6 @@ export function SettingsView({
     payload.api_key = form.api_key.trim()
     payload.api_model = form.api_model.trim()
     payload.api_timeout_seconds = Number.isFinite(parsedTimeoutSeconds) ? parsedTimeoutSeconds : 120
-    payload.api_image_max_bytes = Number.isFinite(parsedImageMaxBytes) ? parsedImageMaxBytes : DEFAULT_REMOTE_IMAGE_MAX_BYTES
-    payload.api_image_max_edge = Number.isFinite(parsedImageMaxEdge) ? parsedImageMaxEdge : 1280
 
     return payload
   }
@@ -903,14 +815,11 @@ export function SettingsView({
       quantization: model.quantization || "",
       max_batch_size: String(model.max_batch_size || 1),
       rerank_top_n: String(model.rerank_top_n || 8),
-      frame_interval_seconds: String(model.frame_interval_seconds || 10),
       enabled: model.enabled,
       api_base_url: model.api_base_url || "",
       api_key: model.api_key || "",
       api_model: model.api_model || "",
       api_timeout_seconds: String(model.api_timeout_seconds || 120),
-      api_image_max_bytes: formatMegabytesInput(model.api_image_max_bytes || DEFAULT_REMOTE_IMAGE_MAX_BYTES),
-      api_image_max_edge: String(model.api_image_max_edge || 1280),
     }
     const nextLlmForm: LLMConfigFormState =
       model.component === "llm" && llmConfig
@@ -1356,14 +1265,10 @@ export function SettingsView({
   const modelDialogHasQuantization = Boolean(activeModelPreset?.fields.includes("quantization"))
   const modelDialogHasBatchSize = Boolean(activeModelPreset?.fields.includes("max_batch_size"))
   const modelDialogHasRerankTopN = Boolean(activeModelPreset?.fields.includes("rerank_top_n"))
-  const modelDialogHasFrameInterval = Boolean(activeModelPreset?.fields.includes("frame_interval_seconds"))
   const modelProviderOptions = editingModel ? getModelProviderOptions(editingModel) : []
   const showRemoteApiFields = Boolean(modelForm.provider === "openai_compatible" && editingModel)
   const showLlmCorrectionFields = Boolean(editingModel?.component === "llm")
   const showModelPathField = Boolean(activeModelPreset?.fields.includes("path") && modelForm.provider !== "openai_compatible")
-  const showImageApiFields = Boolean(
-    showRemoteApiFields && editingModel && ["embedding", "vlm", "rerank", "mllm"].includes(editingModel.component),
-  )
   const remoteModelRecommendations = editingModel ? recommendedRemoteModels[editingModel.component] || [] : []
   const isWhisperDialog = editingModel?.component === "whisper"
   const hasSkinImage = Boolean(uiSettings.background_image)
@@ -2059,19 +1964,17 @@ export function SettingsView({
                                     </div>
                                     <div className="rounded-xl border bg-muted/30 p-4">
                                       <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                                        {modelDialogHasFrameInterval ? "抽帧间隔" : modelDialogHasRerankTopN ? "返回条数 / 批大小" : "批大小"}
+                                        {modelDialogHasRerankTopN ? "返回条数 / 批大小" : "批大小"}
                                       </div>
                                       <div className="mt-2 text-base font-semibold leading-tight text-foreground">
-                                        {modelDialogHasFrameInterval
-                                          ? `${modelForm.frame_interval_seconds || "10"} 秒`
-                                          : modelDialogHasRerankTopN
-                                            ? `${modelForm.rerank_top_n || "8"} 条 / 批 ${modelForm.max_batch_size || "1"}`
+                                        {modelDialogHasRerankTopN
+                                          ? `${modelForm.rerank_top_n || "8"} 条 / 批 ${modelForm.max_batch_size || "1"}`
                                           : modelDialogHasBatchSize
                                             ? modelForm.max_batch_size || "1"
                                             : "默认"}
                                       </div>
                                       <p className="mt-1 text-xs text-muted-foreground">
-                                        {modelDialogHasFrameInterval ? "影响证据帧密度" : modelDialogHasRerankTopN ? "控制最终候选数量与重排吞吐" : "越高越吃资源"}
+                                        {modelDialogHasRerankTopN ? "控制最终候选数量与重排吞吐" : "越高越吃资源"}
                                       </p>
                                     </div>
                                   </div>
@@ -2319,38 +2222,6 @@ export function SettingsView({
                                   </div>
                                 ) : null}
 
-                                {modelDialogHasFrameInterval ? (
-                                  <div
-                                    className={cn(
-                                      "space-y-2",
-                                      !activeModelPreset?.fields.includes("load_profile") && !modelDialogHasQuantization
-                                        ? "md:col-span-2"
-                                        : "",
-                                    )}
-                                  >
-                                    <Label htmlFor="model-frame-interval">
-                                      {activeModelPreset?.batchLabel || "抽帧间隔（秒）"}
-                                    </Label>
-                                    <Input
-                                      id="model-frame-interval"
-                                      className="bg-background/80"
-                                      type="number"
-                                      min={1}
-                                      max={600}
-                                      value={modelForm.frame_interval_seconds}
-                                      onChange={(event) =>
-                                        setModelForm((current) => ({
-                                          ...current,
-                                          frame_interval_seconds: event.target.value,
-                                        }))
-                                      }
-                                    />
-                                    <p className="text-xs text-muted-foreground">
-                                      {activeModelPreset?.batchDescription || "控制证据图抽帧频率。"}
-                                    </p>
-                                  </div>
-                                ) : null}
-
                                 {modelDialogHasBatchSize ? (
                                   <div
                                     className={cn(
@@ -2515,52 +2386,6 @@ export function SettingsView({
                                     </p>
                                   </div>
 
-                                  {showImageApiFields ? (
-                                    <>
-                                      <div className="space-y-2">
-                                        <Label htmlFor="remote-image-max-bytes">图片压缩上限（MB）</Label>
-                                        <Input
-                                          id="remote-image-max-bytes"
-                                          className="bg-background/80"
-                                          type="number"
-                                          min={MIN_REMOTE_IMAGE_MAX_MB}
-                                          max={MAX_REMOTE_IMAGE_MAX_MB}
-                                          step="0.01"
-                                          value={modelForm.api_image_max_bytes}
-                                          onChange={(event) =>
-                                            setModelForm((current) => ({
-                                              ...current,
-                                              api_image_max_bytes: event.target.value,
-                                            }))
-                                          }
-                                        />
-                                        <p className="text-xs text-muted-foreground">
-                                          在线图像理解前会先按这里的 MB 上限压缩图片，降低带宽占用并提升响应速度。
-                                        </p>
-                                      </div>
-
-                                      <div className="space-y-2">
-                                        <Label htmlFor="remote-image-max-edge">图片最长边</Label>
-                                        <Input
-                                          id="remote-image-max-edge"
-                                          className="bg-background/80"
-                                          type="number"
-                                          min={256}
-                                          max={4096}
-                                          value={modelForm.api_image_max_edge}
-                                          onChange={(event) =>
-                                            setModelForm((current) => ({
-                                              ...current,
-                                              api_image_max_edge: event.target.value,
-                                            }))
-                                          }
-                                        />
-                                        <p className="text-xs text-muted-foreground">
-                                          用于控制发送到远端接口的图像尺寸上限。
-                                        </p>
-                                      </div>
-                                    </>
-                                  ) : null}
                                 </div>
                               </div>
                             ) : null}

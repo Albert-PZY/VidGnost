@@ -28,8 +28,6 @@ const STEP_IDS = [
   "whisper",
   "llm",
   "embedding",
-  "vlm",
-  "chromadb",
   "storage",
   "ffmpeg",
   "model-cache",
@@ -121,7 +119,6 @@ export class SelfCheckService {
       await ensureDirectory(this.config.eventLogDir)
       await ensureDirectory(this.config.uploadDir)
       await ensureDirectory(this.config.tempDir)
-      await ensureDirectory(path.join(this.config.storageDir, "vector-index", "chroma-db"))
       const whisperPath = await this.resolveWhisperModelPath()
       if (whisperPath) {
         await ensureDirectory(whisperPath)
@@ -281,8 +278,6 @@ export class SelfCheckService {
       { id: "whisper", title: "Whisper 转写", run: () => this.checkWhisper() },
       { id: "llm", title: "LLM 模型", run: () => this.checkLlm() },
       { id: "embedding", title: "嵌入模型", run: () => this.checkModel("embedding-default", "默认嵌入模型") },
-      { id: "vlm", title: "VLM 模型", run: () => this.checkModel("vlm-default", "默认 VLM") },
-      { id: "chromadb", title: "检索索引", run: () => this.checkChromaDb() },
       { id: "storage", title: "存储空间", run: () => this.checkStorage() },
       { id: "ffmpeg", title: "FFmpeg", run: () => this.checkFfmpeg() },
       { id: "model-cache", title: "Whisper 模型缓存", run: () => this.checkModelCache() },
@@ -469,31 +464,6 @@ export class SelfCheckService {
       check_depth: "runtime_ready",
       message: `${label} 已就绪。`,
       details,
-    }
-  }
-
-  private async checkChromaDb(): Promise<SelfCheckOutcome> {
-    const chromaDir = path.join(this.config.storageDir, "vector-index", "chroma-db")
-    const exists = await pathExists(chromaDir)
-    if (exists) {
-      return {
-        status: "passed",
-        check_depth: "runtime_ready",
-        message: "向量索引目录可用。",
-        details: {
-          路径: chromaDir,
-        },
-      }
-    }
-    return {
-      status: "warning",
-      check_depth: "config_only",
-      message: "向量索引目录尚未初始化。",
-      details: {
-        路径: chromaDir,
-      },
-      auto_fixable: true,
-      manual_action: "可执行自动修复创建目录，首次构建索引时也会自动生成。",
     }
   }
 

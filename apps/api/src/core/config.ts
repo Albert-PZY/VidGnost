@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs"
 import path from "node:path"
 
 import { API_VERSION, DEFAULT_API_HOST, DEFAULT_API_PORT, DEFAULT_API_PREFIX, DEFAULT_APP_NAME } from "@vidgnost/shared"
@@ -8,6 +9,7 @@ const DEFAULT_ALLOW_ORIGINS = [
   "http://localhost:6221",
   "http://127.0.0.1:6221",
 ]
+const PATH_RESOLUTION_BASE_DIR = resolvePathBaseDir()
 
 export interface AppConfig {
   appName: string
@@ -41,7 +43,7 @@ export function resolveConfig(): AppConfig {
     appName: process.env.VIDGNOST_APP_NAME?.trim() || DEFAULT_APP_NAME,
     apiPrefix: process.env.VIDGNOST_API_PREFIX?.trim() || DEFAULT_API_PREFIX,
     allowOrigins: parseOrigins(process.env.VIDGNOST_ALLOW_ORIGINS),
-    eventLogDir: resolvePath(process.env.VIDGNOST_EVENT_LOG_DIR, ["storage", "event-logs"]),
+    eventLogDir: resolveAppPath(process.env.VIDGNOST_EVENT_LOG_DIR, ["storage", "event-logs"]),
     ffmpegExecutable: String(process.env.VIDGNOST_FFMPEG_BIN || "").trim(),
     ffprobeExecutable: String(process.env.VIDGNOST_FFPROBE_BIN || "").trim(),
     host: process.env.VIDGNOST_API_HOST?.trim() || DEFAULT_API_HOST,
@@ -55,10 +57,10 @@ export function resolveConfig(): AppConfig {
     maxUploadMb: parseBoundedInt(process.env.VIDGNOST_MAX_UPLOAD_MB, 2048, 1, 10240),
     ollamaBaseUrl: process.env.VIDGNOST_OLLAMA_BASE_URL?.trim() || "http://127.0.0.1:11434",
     port: parsePort(process.env.VIDGNOST_API_PORT, DEFAULT_API_PORT),
-    runtimeBinDir: resolvePath(process.env.VIDGNOST_RUNTIME_BIN_DIR, ["storage", "runtime-bin"]),
-    storageDir: resolvePath(process.env.VIDGNOST_STORAGE_DIR, ["storage"]),
-    tempDir: resolvePath(process.env.VIDGNOST_TEMP_DIR, ["storage", "tmp"]),
-    uploadDir: resolvePath(process.env.VIDGNOST_UPLOAD_DIR, ["storage", "uploads"]),
+    runtimeBinDir: resolveAppPath(process.env.VIDGNOST_RUNTIME_BIN_DIR, ["storage", "runtime-bin"]),
+    storageDir: resolveAppPath(process.env.VIDGNOST_STORAGE_DIR, ["storage"]),
+    tempDir: resolveAppPath(process.env.VIDGNOST_TEMP_DIR, ["storage", "tmp"]),
+    uploadDir: resolveAppPath(process.env.VIDGNOST_UPLOAD_DIR, ["storage", "uploads"]),
     version: process.env.VIDGNOST_APP_VERSION?.trim() || API_VERSION,
     whisperExecutable: String(process.env.VIDGNOST_WHISPER_BIN || "").trim(),
     ytdlpExecutable: String(process.env.VIDGNOST_YTDLP_BIN || "").trim(),
@@ -97,10 +99,28 @@ function parseOrigins(rawValue: string | undefined): string[] {
   return entries.length > 0 ? entries : [...DEFAULT_ALLOW_ORIGINS]
 }
 
-function resolvePath(rawValue: string | undefined, fallbackSegments: string[]): string {
+export function resolveAppPath(rawValue: string | undefined, fallbackSegments: string[] = []): string {
   const candidate = String(rawValue || "").trim()
   if (!candidate) {
-    return path.resolve(process.cwd(), ...fallbackSegments)
+    return path.resolve(PATH_RESOLUTION_BASE_DIR, ...fallbackSegments)
   }
-  return path.isAbsolute(candidate) ? path.normalize(candidate) : path.resolve(process.cwd(), candidate)
+  return path.isAbsolute(candidate) ? path.normalize(candidate) : path.resolve(PATH_RESOLUTION_BASE_DIR, candidate)
+}
+
+function resolvePathBaseDir(startDir = process.cwd()): string {
+  let currentDir = path.resolve(startDir)
+  while (true) {
+    if (hasWorkspaceMarker(currentDir)) {
+      return currentDir
+    }
+    const parentDir = path.dirname(currentDir)
+    if (parentDir === currentDir) {
+      return path.resolve(startDir)
+    }
+    currentDir = parentDir
+  }
+}
+
+function hasWorkspaceMarker(targetDir: string): boolean {
+  return ["pnpm-workspace.yaml", ".git"].some((marker) => existsSync(path.join(targetDir, marker)))
 }

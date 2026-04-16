@@ -11,22 +11,20 @@ import type {
 import { AppError } from "../../core/errors.js"
 import type { ModelCatalogRepository } from "../models/model-catalog-repository.js"
 import type { TaskRepository } from "../tasks/task-repository.js"
-import { RetrievalIndexService } from "./retrieval-index-service.js"
+import {
+  RetrievalIndexService,
+  type RetrievalIndexPayload,
+  type RetrievalSearchHit,
+} from "./retrieval-index-service.js"
 import { VqaTraceStore } from "./trace-store.js"
 
 interface RetrievalHit extends VqaCitationItem {
-  dense_score: number
   final_score: number
-  rrf_score: number
-  sparse_score: number
 }
 
 interface SearchBundle {
-  dense_hits: RetrievalHit[]
+  hits: RetrievalHit[]
   query_text: string
-  rerank_hits: RetrievalHit[]
-  rrf_hits: RetrievalHit[]
-  sparse_hits: RetrievalHit[]
   trace_id: string
 }
 
@@ -42,21 +40,15 @@ interface AnalyzeBundle {
   search: SearchBundle
 }
 
-interface EvidenceCandidate {
-  end: number
-  source: string
-  source_set: string[]
-  start: number
-  task_id: string
-  task_title: string
-  text: string
+interface PreparedIndexCacheEntry {
+  updatedAt: string
+  index: RetrievalIndexPayload
 }
-
-const RRF_K = 60
 
 export class VqaRuntimeService {
   private readonly traceStore: VqaTraceStore
   private readonly retrievalIndexService: RetrievalIndexService
+  private readonly preparedIndexCache = new Map<string, PreparedIndexCacheEntry>()
 
   constructor(
     private readonly taskRepository: TaskRepository,
@@ -75,100 +67,66 @@ export class VqaRuntimeService {
   }): Promise<SearchBundle> {
     const queryText = resolveQueryText(input.queryText)
     const topK = await this.resolveTopK(input.topK)
+    const videoPaths = input.videoPaths || []
     const tasks = await this.resolveTasks({
       taskId: input.taskId,
-      videoPaths: input.videoPaths || [],
+      videoPaths,
     })
     const preparedIndexes = await Promise.all(tasks.map((task) => this.ensurePreparedIndex(task)))
     const vectorItems = preparedIndexes.flatMap((item) => item.items)
-    if (vectorItems.length > 0) {
-      const index = {
-        version: 1 as const,
-        retrieval_mode: "vector-index" as const,
-        item_count: vectorItems.length,
-        items: vectorItems,
-      }
-      const result = this.retrievalIndexService.searchIndex({
-        index,
-        queryText,
-        topK: Math.max(topK, topK * 2),
-        rerankTopN: topK,
-      })
-      const denseHits = result.initialHits.map((item) =>
-        toHit({
-          candidate: item,
-          dense_score: item.vector_score,
-          sparse_score: item.lexical_score,
-          rrf_score: item.vector_score,
-          final_score: item.vector_score,
-        }),
-      )
-      const sparseHits = [...result.rerankedHits]
-        .sort((left, right) => right.lexical_score - left.lexical_score)
-        .map((item) =>
-          toHit({
-            candidate: item,
-            dense_score: item.vector_score,
-            sparse_score: item.lexical_score,
-            rrf_score: item.rerank_score,
-            final_score: item.final_score,
-          }),
-        )
-      const rerankHits = result.rerankedHits.map((item) =>
-        toHit({
-          candidate: item,
-          dense_score: item.vector_score,
-          sparse_score: item.lexical_score,
-          rrf_score: item.rerank_score,
-          final_score: item.final_score,
-        }),
-      )
-      const traceId = this.traceStore.newTrace({
-        metadata: {
-          query_text: queryText,
-          task_id: input.taskId || null,
-          video_paths: input.videoPaths || [],
-          top_k: topK,
-        },
-        configSnapshot: {
-          retrieval: {
-            mode: "vector-index",
-            rrf: false,
-            rerank: true,
-            query_expansion: false,
-            dedupe: "segment-doc-id",
-            rerank_top_n: topK,
-          },
-        },
-      })
-      await this.traceStore.write(traceId, "retrieval", {
-        query_text: queryText,
-        task_id: input.taskId || null,
-        video_paths: input.videoPaths || [],
-        top_k: topK,
-        query_expansion: false,
-        dedupe: "segment-doc-id",
-        dense_hits: denseHits,
-        sparse_hits: sparseHits,
-        rrf_hits: rerankHits,
-        rerank_hits: rerankHits,
-      })
-      return {
-        trace_id: traceId,
-        query_text: queryText,
-        dense_hits: denseHits,
-        sparse_hits: sparseHits,
-        rrf_hits: rerankHits,
-        rerank_hits: rerankHits,
-      }
+    if (vectorItems.length === 0) {
+      throw buildTaskNotReadyError()
     }
 
-    return this.searchHeuristic(tasks, {
+    const candidatePoolSize = Math.min(vectorItems.length, Math.max(topK * 3, topK + 4))
+    const result = this.retrievalIndexService.searchIndex({
+      index: {
+        version: 2,
+        retrieval_mode: "vector-index",
+        item_count: vectorItems.length,
+        items: vectorItems,
+      },
       queryText,
-      taskId: input.taskId,
-      videoPaths: input.videoPaths || [],
-      topK,
+      topK: candidatePoolSize,
+      rerankTopN: topK,
     })
+    const hits = result.rerankedHits.map((item) => toHit(item))
+    const traceId = this.traceStore.newTrace({
+      metadata: {
+        query_text: queryText,
+        task_id: input.taskId || null,
+        video_paths: videoPaths,
+        top_k: topK,
+      },
+      configSnapshot: {
+        retrieval: {
+          mode: "vector-index",
+          rerank: true,
+          query_expansion: false,
+          dedupe: "segment-doc-id",
+          candidate_pool_size: candidatePoolSize,
+          rerank_top_n: topK,
+        },
+      },
+    })
+
+    await this.traceStore.write(traceId, "retrieval", {
+      query_text: queryText,
+      task_id: input.taskId || null,
+      video_paths: videoPaths,
+      top_k: topK,
+      query_expansion: false,
+      dedupe: "segment-doc-id",
+      candidate_pool_size: candidatePoolSize,
+      hit_count: hits.length,
+      hits,
+    })
+
+    return {
+      trace_id: traceId,
+      query_text: queryText,
+      hits,
+    }
   }
 
   async analyze(input: {
@@ -178,7 +136,7 @@ export class VqaRuntimeService {
     videoPaths?: string[]
   }): Promise<AnalyzeBundle> {
     const search = await this.search(input)
-    const chat = buildChatBundle(search.query_text, search.rerank_hits)
+    const chat = buildChatBundle(search.query_text, search.hits)
     await this.traceStore.write(search.trace_id, "llm_stream", {
       answer_preview: chat.answer.slice(0, 800),
       citation_count: chat.citations.length,
@@ -186,7 +144,7 @@ export class VqaRuntimeService {
     })
     await this.traceStore.finalize(search.trace_id, {
       ok: chat.error === null,
-      result_count: search.rerank_hits.length,
+      result_count: search.hits.length,
       citation_count: chat.citations.length,
       answer_size: chat.answer.length,
     })
@@ -212,8 +170,8 @@ export class VqaRuntimeService {
       trace_id: search.trace_id,
       type: "status",
       status: "generating",
-      hit_count: search.rerank_hits.length,
-      message: search.rerank_hits.length > 0 ? "已完成证据检索，正在组织回答..." : "未检索到直接证据，正在组织回答...",
+      hit_count: search.hits.length,
+      message: search.hits.length > 0 ? "已完成证据检索，正在组织回答..." : "未检索到直接证据，正在组织回答...",
     }
     yield {
       trace_id: search.trace_id,
@@ -248,19 +206,9 @@ export class VqaRuntimeService {
     return {
       trace_id: bundle.trace_id,
       query_text: bundle.query_text,
-      dense_hits: bundle.dense_hits,
-      sparse_hits: bundle.sparse_hits,
-      rrf_hits: bundle.rrf_hits,
-      rerank_hits: bundle.rerank_hits,
-      hits: bundle.rerank_hits,
-      results: bundle.rerank_hits.map((item) => ({
-        timestamp: item.start,
-        relevance: item.final_score,
-        context: item.text,
-        source: item.source,
-        start: item.start,
-        end: item.end,
-      })),
+      hit_count: bundle.hits.length,
+      hits: bundle.hits,
+      results: mapHitsToResults(bundle.hits),
     }
   }
 
@@ -275,15 +223,8 @@ export class VqaRuntimeService {
         error: bundle.chat.error,
         context_tokens_approx: bundle.chat.context_tokens_approx,
       },
-      hits: bundle.search.rerank_hits,
-      results: bundle.search.rerank_hits.map((item) => ({
-        timestamp: item.start,
-        relevance: item.final_score,
-        context: item.text,
-        source: item.source,
-        start: item.start,
-        end: item.end,
-      })),
+      hits: bundle.search.hits,
+      results: mapHitsToResults(bundle.search.hits),
     }
   }
 
@@ -294,15 +235,8 @@ export class VqaRuntimeService {
       citations: bundle.chat.citations,
       error: bundle.chat.error,
       context_tokens_approx: bundle.chat.context_tokens_approx,
-      hits: bundle.search.rerank_hits,
-      results: bundle.search.rerank_hits.map((item) => ({
-        timestamp: item.start,
-        relevance: item.final_score,
-        context: item.text,
-        source: item.source,
-        start: item.start,
-        end: item.end,
-      })),
+      hits: bundle.search.hits,
+      results: mapHitsToResults(bundle.search.hits),
     }
   }
 
@@ -310,7 +244,6 @@ export class VqaRuntimeService {
     taskId?: string | null
     videoPaths: string[]
   }): Promise<TaskDetailResponse[]> {
-    const details: TaskDetailResponse[] = []
     const taskIds = new Set<string>()
     const directTaskId = String(input.taskId || "").trim()
     if (directTaskId) {
@@ -333,27 +266,37 @@ export class VqaRuntimeService {
       })
     }
 
-    for (const taskId of taskIds) {
-      const detail = await this.taskRepository.getDetail(taskId)
-      if (!detail) {
-        throw AppError.notFound(`Task not found: ${taskId}`, {
-          code: "TASK_NOT_FOUND",
-        })
-      }
-      details.push(detail)
-    }
-
-    return details
+    return Promise.all(
+      [...taskIds].map(async (taskId) => {
+        const detail = await this.taskRepository.getDetail(taskId)
+        if (!detail) {
+          throw AppError.notFound(`Task not found: ${taskId}`, {
+            code: "TASK_NOT_FOUND",
+          })
+        }
+        return detail
+      }),
+    )
   }
 
   private async ensurePreparedIndex(task: TaskDetailResponse) {
+    const cached = this.preparedIndexCache.get(task.id)
+    if (cached && cached.updatedAt === task.updated_at) {
+      this.rememberPreparedIndex(task.id, cached)
+      return cached.index
+    }
+
     const persisted = await this.taskRepository.readTaskArtifactText(task.id, "D/vqa-prewarm/index.json")
     const parsed = persisted ? this.retrievalIndexService.parseIndex(persisted) : null
     if (parsed && parsed.items.length > 0) {
+      this.rememberPreparedIndex(task.id, {
+        updatedAt: task.updated_at,
+        index: parsed,
+      })
       return parsed
     }
 
-    const built = this.retrievalIndexService.buildIndex({
+    const built = await this.retrievalIndexService.buildIndexAsync({
       taskId: task.id,
       taskTitle: task.title || path.basename(task.source_input) || task.id,
       transcriptSegments: task.transcript_segments,
@@ -361,6 +304,15 @@ export class VqaRuntimeService {
     })
     if (built.items.length > 0) {
       await this.taskRepository.writeTaskArtifactText(task.id, "D/vqa-prewarm/index.json", built.indexJson)
+      this.rememberPreparedIndex(task.id, {
+        updatedAt: task.updated_at,
+        index: {
+          version: built.version,
+          retrieval_mode: built.retrieval_mode,
+          item_count: built.item_count,
+          items: built.items,
+        },
+      })
     }
     return built
   }
@@ -374,129 +326,16 @@ export class VqaRuntimeService {
     return clampTopK(rerankModel?.rerank_top_n)
   }
 
-  private async searchHeuristic(
-    tasks: TaskDetailResponse[],
-    input: {
-      queryText: string
-      taskId?: string | null
-      topK: number
-      videoPaths: string[]
-    },
-  ): Promise<SearchBundle> {
-    const candidates = collectCandidates(tasks)
-    if (candidates.length === 0) {
-      throw AppError.conflict("当前任务还没有可用于问答的转写证据。", {
-        code: "VQA_TASK_NOT_READY",
-        hint: "请先等待任务完成转写，再执行视频问答。",
-      })
-    }
+  private rememberPreparedIndex(taskId: string, entry: PreparedIndexCacheEntry): void {
+    this.preparedIndexCache.delete(taskId)
+    this.preparedIndexCache.set(taskId, entry)
 
-    const queryTokens = tokenize(input.queryText)
-    const scored = candidates
-      .map((candidate, index) => ({
-        candidate,
-        dense_score: scoreDense(input.queryText, candidate.text, queryTokens),
-        index,
-        sparse_score: scoreSparse(input.queryText, candidate.text, queryTokens),
-      }))
-      .filter((item) => item.dense_score > 0 || item.sparse_score > 0)
-
-    const traceId = this.traceStore.newTrace({
-      metadata: {
-        query_text: input.queryText,
-        task_id: input.taskId || null,
-        video_paths: input.videoPaths,
-        top_k: input.topK,
-      },
-      configSnapshot: {
-        retrieval: {
-          mode: "heuristic_fallback",
-          rrf: true,
-          rerank: true,
-          query_expansion: false,
-          dedupe: "segment-doc-id",
-          rerank_top_n: input.topK,
-        },
-      },
-    })
-
-    if (scored.length === 0) {
-      const emptyBundle: SearchBundle = {
-        trace_id: traceId,
-        query_text: input.queryText,
-        dense_hits: [],
-        sparse_hits: [],
-        rrf_hits: [],
-        rerank_hits: [],
+    while (this.preparedIndexCache.size > 12) {
+      const oldestKey = this.preparedIndexCache.keys().next().value
+      if (!oldestKey) {
+        break
       }
-      await this.traceStore.write(traceId, "retrieval", {
-        query_text: input.queryText,
-        task_id: input.taskId || null,
-        video_paths: input.videoPaths,
-        top_k: input.topK,
-        query_expansion: false,
-        dedupe: "segment-doc-id",
-        dense_hits: [],
-        sparse_hits: [],
-        rrf_hits: [],
-        rerank_hits: [],
-      })
-      return emptyBundle
-    }
-
-    const denseRank = rankBy(scored, "dense_score")
-    const sparseRank = rankBy(scored, "sparse_score")
-    const enriched = scored.map((item) => {
-      const denseRankIndex = denseRank.get(item.index) || 9999
-      const sparseRankIndex = sparseRank.get(item.index) || 9999
-      const rrfScore = roundScore((1 / (RRF_K + denseRankIndex)) + (1 / (RRF_K + sparseRankIndex)))
-      const finalScore = roundScore(rrfScore + item.dense_score * 0.35 + item.sparse_score * 0.35)
-      return {
-        ...item,
-        final_score: finalScore,
-        rrf_score: rrfScore,
-      }
-    })
-
-    const denseHits = enriched
-      .filter((item) => item.dense_score > 0)
-      .sort((left, right) => right.dense_score - left.dense_score)
-      .slice(0, input.topK)
-      .map((item) => toHit(item))
-    const sparseHits = enriched
-      .filter((item) => item.sparse_score > 0)
-      .sort((left, right) => right.sparse_score - left.sparse_score)
-      .slice(0, input.topK)
-      .map((item) => toHit(item))
-    const rrfHits = enriched
-      .sort((left, right) => right.rrf_score - left.rrf_score)
-      .slice(0, input.topK)
-      .map((item) => toHit(item))
-    const rerankHits = enriched
-      .sort((left, right) => right.final_score - left.final_score)
-      .slice(0, input.topK)
-      .map((item) => toHit(item))
-
-    await this.traceStore.write(traceId, "retrieval", {
-      query_text: input.queryText,
-      task_id: input.taskId || null,
-      video_paths: input.videoPaths,
-      top_k: input.topK,
-      query_expansion: false,
-      dedupe: "segment-doc-id",
-      dense_hits: denseHits,
-      sparse_hits: sparseHits,
-      rrf_hits: rrfHits,
-      rerank_hits: rerankHits,
-    })
-
-    return {
-      trace_id: traceId,
-      query_text: input.queryText,
-      dense_hits: denseHits,
-      sparse_hits: sparseHits,
-      rrf_hits: rrfHits,
-      rerank_hits: rerankHits,
+      this.preparedIndexCache.delete(oldestKey)
     }
   }
 }
@@ -528,141 +367,36 @@ function resolveTaskIdsFromVideoPaths(target: Set<string>, videoPaths: string[],
   }
 }
 
-function collectCandidates(tasks: TaskDetailResponse[]): EvidenceCandidate[] {
-  const items: EvidenceCandidate[] = []
-  for (const task of tasks) {
-    const title = task.title || path.basename(task.source_input) || task.id
-    if (task.transcript_segments.length > 0) {
-      task.transcript_segments.forEach((segment) => {
-        const text = String(segment.text || "").trim()
-        if (!text) {
-          return
-        }
-        items.push({
-          task_id: task.id,
-          task_title: title,
-          source: "transcript",
-          source_set: ["transcript"],
-          start: Number(segment.start) || 0,
-          end: Number(segment.end) || 0,
-          text,
-        })
-      })
-      continue
-    }
-    const transcriptText = String(task.transcript_text || "").trim()
-    if (!transcriptText) {
-      continue
-    }
-    items.push({
-      task_id: task.id,
-      task_title: title,
-      source: "transcript",
-      source_set: ["transcript"],
-      start: 0,
-      end: task.duration_seconds || 0,
-      text: transcriptText,
-    })
-  }
-  return items
-}
-
-function rankBy(
-  items: Array<{ index: number; dense_score: number; sparse_score: number }>,
-  key: "dense_score" | "sparse_score",
-): Map<number, number> {
-  return new Map(
-    [...items]
-      .sort((left, right) => right[key] - left[key])
-      .map((item, index) => [item.index, index + 1] as const),
-  )
-}
-
-function toHit(input: {
-  candidate: EvidenceCandidate
-  dense_score: number
-  final_score: number
-  rrf_score: number
-  sparse_score: number
-}): RetrievalHit {
+function toHit(item: RetrievalSearchHit): RetrievalHit {
   return {
-    doc_id: buildDocId(input.candidate),
-    task_id: input.candidate.task_id,
-    task_title: input.candidate.task_title,
-    source: input.candidate.source,
-    source_set: [...input.candidate.source_set],
-    start: input.candidate.start,
-    end: input.candidate.end,
-    text: input.candidate.text,
-    image_path: "",
-    dense_score: input.dense_score,
-    sparse_score: input.sparse_score,
-    rrf_score: input.rrf_score,
-    final_score: input.final_score,
+    doc_id: item.doc_id,
+    task_id: item.task_id,
+    task_title: item.task_title,
+    source: item.source,
+    source_set: [...item.source_set],
+    start: item.start,
+    end: item.end,
+    text: item.text,
+    final_score: item.final_score,
   }
 }
 
-function buildDocId(candidate: EvidenceCandidate): string {
-  return `${candidate.task_id}:${candidate.start.toFixed(2)}:${candidate.end.toFixed(2)}:${candidate.source}`
+function mapHitsToResults(hits: RetrievalHit[]) {
+  return hits.map((item) => ({
+    timestamp: item.start,
+    relevance: item.final_score,
+    context: item.text,
+    source: item.source,
+    start: item.start,
+    end: item.end,
+  }))
 }
 
-function scoreSparse(queryText: string, text: string, queryTokens: string[]): number {
-  if (queryTokens.length === 0) {
-    return 0
-  }
-  const candidateTokens = new Set(tokenize(text))
-  const overlap = queryTokens.filter((token) => candidateTokens.has(token)).length
-  const containsWholeQuery = text.includes(queryText) ? 0.35 : 0
-  return roundScore((overlap / queryTokens.length) + containsWholeQuery)
-}
-
-function scoreDense(queryText: string, text: string, queryTokens: string[]): number {
-  const queryBigrams = buildCharacterNgrams(queryText, 2)
-  const textBigrams = new Set(buildCharacterNgrams(text, 2))
-  const overlap = queryBigrams.filter((token) => textBigrams.has(token)).length
-  const tokenCoverage = Math.min(1, queryTokens.length === 0 ? 0 : overlap / Math.max(queryTokens.length, 1))
-  const jaccard = computeJaccard(queryBigrams, [...textBigrams])
-  return roundScore((tokenCoverage * 0.55) + (jaccard * 0.45))
-}
-
-function tokenize(text: string): string[] {
-  const normalized = String(text || "").toLowerCase()
-  const latinTokens = normalized.match(/[a-z0-9]{2,}/g) || []
-  const cjkText = [...normalized].filter((char) => /\p{Script=Han}/u.test(char)).join("")
-  const cjkBigrams = buildCharacterNgrams(cjkText, 2)
-  const cjkUnigrams = cjkText ? [...cjkText] : []
-  return [...new Set([...latinTokens, ...cjkBigrams, ...cjkUnigrams])]
-}
-
-function buildCharacterNgrams(text: string, size: number): string[] {
-  const chars = [...String(text || "").replace(/\s+/g, "")]
-  if (chars.length === 0) {
-    return []
-  }
-  if (chars.length <= size) {
-    return [chars.join("")]
-  }
-  const items: string[] = []
-  for (let index = 0; index <= chars.length - size; index += 1) {
-    items.push(chars.slice(index, index + size).join(""))
-  }
-  return items
-}
-
-function computeJaccard(left: string[], right: string[]): number {
-  const leftSet = new Set(left)
-  const rightSet = new Set(right)
-  if (leftSet.size === 0 || rightSet.size === 0) {
-    return 0
-  }
-  let overlap = 0
-  leftSet.forEach((token) => {
-    if (rightSet.has(token)) {
-      overlap += 1
-    }
+function buildTaskNotReadyError(): AppError {
+  return AppError.conflict("当前任务还没有可用于问答的转写证据。", {
+    code: "VQA_TASK_NOT_READY",
+    hint: "请先等待任务完成转写，再执行视频问答。",
   })
-  const union = new Set([...leftSet, ...rightSet]).size
-  return union === 0 ? 0 : overlap / union
 }
 
 function buildChatBundle(queryText: string, hits: RetrievalHit[]): ChatBundle {
@@ -700,7 +434,6 @@ function buildChatBundle(queryText: string, hits: RetrievalHit[]): ChatBundle {
       start: item.start,
       end: item.end,
       text: item.text,
-      image_path: item.image_path,
     })),
     context_tokens_approx: Math.max(
       1,
@@ -752,8 +485,4 @@ function splitAnswer(answer: string): string[] {
 function normalizePathKey(value: string): string {
   const normalized = path.normalize(String(value || "").trim())
   return process.platform === "win32" ? normalized.toLowerCase() : normalized
-}
-
-function roundScore(value: number): number {
-  return Math.round(Math.max(0, value) * 1000) / 1000
 }

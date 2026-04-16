@@ -29,7 +29,6 @@ export const vqaCitationItemSchema = z.object({
   start: z.number(),
   end: z.number(),
   text: z.string(),
-  image_path: z.string(),
 })
 
 export type VqaCitationItem = z.infer<typeof vqaCitationItemSchema>

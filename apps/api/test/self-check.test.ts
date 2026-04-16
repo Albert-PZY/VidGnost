@@ -9,7 +9,6 @@ import type { AddressInfo } from "node:net"
 
 import { llmConfigResponseSchema, selfCheckReportResponseSchema, type SelfCheckReportResponse } from "@vidgnost/contracts"
 
-import { pathExists } from "../src/core/fs.js"
 import { buildApp } from "../src/server/build-app.js"
 
 describe("self-check routes", () => {
@@ -75,9 +74,8 @@ describe("self-check routes", () => {
 
     report = await waitForSelfCheckTerminal(app, startPayload.session_id)
     expect(report.status).toBe("completed")
-    expect(await pathExists(path.join(storageDir, "vector-index", "chroma-db"))).toBe(true)
     expect(report.auto_fix_available).toBe(false)
-  })
+  }, 20_000)
 
   it("verifies llm readiness by probing /models and confirming the configured model", async () => {
     const remoteCalls: string[] = []

@@ -108,8 +108,7 @@
 - 默认主链：transcript-only `vector-index`
 - 预热产物：`D/vqa-prewarm/index.json`
 - 当前边界：
-  - 不依赖 keyframe / multimodal retrieval
-  - 保留 `heuristic_fallback` 兜底路径
+  - 统一使用 transcript 向量索引 + rerank 的单路线检索
 
 ### 3.4 Ollama / 模型管理
 
@@ -126,9 +125,8 @@
 
 ### 3.5 自检
 
-- LLM / Embedding / VLM 会复用 `/models` 远程探测
+- LLM / Embedding 会复用 `/models` 远程探测
 - 自检结果包含 `check_depth`
-- 检索索引检查当前面向 `storage/vector-index/` 运行态目录，而不是外部 Chroma 服务
 
 ## 4. 存储基线
 
@@ -144,7 +142,6 @@
   - `storage/tasks/records/`
   - `storage/tasks/analysis-results/`
   - `storage/tasks/stage-artifacts/`
-  - `storage/vector-index/`
   - `storage/event-logs/`
   - `storage/uploads/`
   - `storage/tmp/`

@@ -145,12 +145,12 @@ The system SHALL expose `/config/models` and related model-management APIs with 
 #### Scenario: Load model list in settings
 - **WHEN** frontend requests `/config/models`
 - **THEN** backend returns each model entry with `provider`, `model_id`, `default_path`, `path`, `is_installed`, `supports_managed_download`, and optional `download` status
-- **AND** online-capable entries also expose `api_base_url`, `api_key_configured`, `api_model`, `api_timeout_seconds`, and image-upload bounds when the component can send images
+- **AND** online-capable entries also expose `api_base_url`, `api_key_configured`, `api_model`, and `api_timeout_seconds`
 
 ### Requirement: Managed model catalog SHALL support provider-specific routing with absolute local paths
 Status: `implemented`
 
-The system SHALL keep `whisper-default` on the local runtime path, allow `llm-default`, `embedding-default`, `vlm-default`, and `rerank-default` to switch between `Ollama` and `在线 API`, and expose `mllm-default` as a reserved remote configuration slot. All returned local paths SHALL use absolute filesystem paths rather than logical URI forms.
+The system SHALL keep `whisper-default` on the local runtime path, and allow `llm-default`, `embedding-default`, and `rerank-default` to switch between `Ollama` and `在线 API`. All returned local paths SHALL use absolute filesystem paths rather than logical URI forms.
 
 #### Scenario: Load Ollama-backed model entries
 - **WHEN** frontend requests `/config/models`
@@ -158,15 +158,9 @@ The system SHALL keep `whisper-default` on the local runtime path, allow `llm-de
 - **AND** backend derives `is_installed` from the effective path or remote-ready contract rather than from a managed pull job
 
 #### Scenario: Configure remote API routing for model entries
-- **WHEN** frontend updates `llm-default`, `embedding-default`, `vlm-default`, `rerank-default`, or `mllm-default` with `provider=openai_compatible`
+- **WHEN** frontend updates `llm-default`, `embedding-default`, or `rerank-default` with `provider=openai_compatible`
 - **THEN** backend persists `api_base_url`, `api_key`, `api_model`, and `api_timeout_seconds`
-- **AND** image-capable entries additionally persist `api_image_max_bytes` and `api_image_max_edge`
 - **AND** the entry becomes `is_installed=true` only when base URL, API key, model name, and enabled state together satisfy the remote-ready contract
-
-#### Scenario: Configure VLM frame sampling interval from settings
-- **WHEN** frontend loads or updates the `vlm-default` model entry through `/config/models`
-- **THEN** backend exposes `frame_interval_seconds` as an integer configuration field
-- **AND** the field accepts values in the documented bounded runtime range
 
 #### Scenario: Configure default rerank output count from settings
 - **WHEN** frontend loads or updates the `rerank-default` model entry through `/config/models`
@@ -175,13 +169,13 @@ The system SHALL keep `whisper-default` on the local runtime path, allow `llm-de
 - **AND** VQA search, analysis, and streaming chat use the persisted `rerank_top_n` as the default final candidate count whenever the client request does not override `top_k`
 
 #### Scenario: Save out-of-range model tuning integers
-- **WHEN** frontend updates bounded integer fields such as `frame_interval_seconds`, `rerank_top_n`, `api_timeout_seconds`, `api_image_max_bytes`, or `api_image_max_edge` with unsupported values
+- **WHEN** frontend updates bounded integer fields such as `rerank_top_n` or `api_timeout_seconds` with unsupported values
 - **THEN** backend clamps each persisted field into the corresponding supported integer range before returning the refreshed model catalog
 
 #### Scenario: Read legacy or corrupted model catalog values
 - **WHEN** frontend requests `/config/models`
 - **AND** persisted catalog entries contain out-of-range bounded integers or stale legacy values
-- **THEN** backend normalizes bounded integer fields such as `max_batch_size`, `rerank_top_n`, `frame_interval_seconds`, `api_timeout_seconds`, `api_image_max_bytes`, and `api_image_max_edge` into the supported runtime ranges before responding
+- **THEN** backend normalizes bounded integer fields such as `max_batch_size`, `rerank_top_n`, and `api_timeout_seconds` into the supported runtime ranges before responding
 - **AND** the returned catalog remains consumable by the shared contracts schema without leaking invalid numeric payloads to the settings UI
 
 ### Requirement: Managed model actions SHALL return descriptive snapshots when the runtime is not self-managed
@@ -202,16 +196,6 @@ The `/config/models/:modelId/download` family SHALL keep frontend status copy al
 - **WHEN** frontend posts `/config/models/migrate-local`
 - **THEN** backend returns the current placeholder migration result
 - **AND** current TS runtime does not move local model directories automatically
-
-### Requirement: `mllm-default` SHALL remain a reserved config slot until multimodal retrieval is implemented
-Status: `partial`
-
-The model catalog SHALL allow persisting `mllm-default` remote API settings without implying that the current VQA runtime has already switched to joint text-image retrieval.
-
-#### Scenario: Configure `mllm-default`
-- **WHEN** frontend saves a complete remote config for `mllm-default`
-- **THEN** backend persists the entry like other remote model slots
-- **AND** current VQA runtime still uses transcript-text retrieval until a future multimodal route is explicitly implemented
 
 ### Requirement: Runtime config APIs SHALL ignore unsupported fields
 Status: `implemented`

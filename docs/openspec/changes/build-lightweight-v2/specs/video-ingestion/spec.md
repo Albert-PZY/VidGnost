@@ -49,3 +49,10 @@ The backend SHALL validate request payload shape at submission time, create the 
 - **WHEN** client submits a task successfully but runtime checks later find that FFmpeg, Whisper, or LLM dependencies are unavailable
 - **THEN** the task remains recorded and queued or running according to the current pipeline state machine
 - **AND** runtime errors are surfaced through later task status, runtime warnings, or self-check diagnostics instead of a submission-time conflict response
+
+#### Scenario: Reuse prior transcript but rerun fallback stage-D outputs
+- **WHEN** client resubmits the same source and backend finds reusable transcript artifacts from a prior task
+- **AND** the prior task `D/fusion/manifest.json` still marks notes or mindmap output as `generated_by=fallback`
+- **AND** current runtime now has usable LLM generation available
+- **THEN** backend reuses the prior transcript artifacts for the new task
+- **AND** backend reruns phase `D` instead of reusing the older fallback fusion outputs

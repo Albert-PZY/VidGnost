@@ -40,7 +40,7 @@ export class SummaryService {
     workflow: WorkflowType
   }): Promise<SummaryArtifacts> {
     const llmConfig = await this.llmConfigRepository.get()
-    const llmEnabled = await this.llmConfigRepository.isUserConfigured()
+    const llmEnabled = await this.isLlmGenerationEnabled()
     const promptBundle = await this.promptTemplateRepository.getBundle()
 
     const selectedCorrectionPrompt =
@@ -153,6 +153,21 @@ export class SummaryService {
     }
   }
 
+  async isLlmGenerationEnabled(): Promise<boolean> {
+    const llmConfig = await this.llmConfigRepository.get()
+    const configured = await this.llmConfigRepository.isUserConfigured()
+    if (!configured && !isLoopbackUrl(llmConfig.base_url)) {
+      return false
+    }
+    if (!llmConfig.base_url.trim() || !llmConfig.model.trim()) {
+      return false
+    }
+    if (!llmConfig.api_key.trim() && !isLoopbackUrl(llmConfig.base_url)) {
+      return false
+    }
+    return true
+  }
+
   private async generateArtifact(input: {
     fallbackArtifactService: FallbackArtifactService
     fallbackFactory: (fallbackReason: string) => GeneratedArtifactState
@@ -195,6 +210,12 @@ export class SummaryService {
         fallbackReason: "llm_config_incomplete",
       }
     }
+    if (!input.apiKey.trim() && !isLoopbackUrl(input.baseUrl)) {
+      return {
+        content: null,
+        fallbackReason: "llm_config_incomplete",
+      }
+    }
     try {
       const response = await this.llmClient.generateText(input)
       const content = response.content.trim()
@@ -214,6 +235,15 @@ export class SummaryService {
         fallbackReason: "llm_generate_failed",
       }
     }
+  }
+}
+
+function isLoopbackUrl(baseUrl: string): boolean {
+  try {
+    const target = new URL(baseUrl)
+    return target.hostname === "127.0.0.1" || target.hostname === "localhost" || target.hostname === "::1"
+  } catch {
+    return false
   }
 }
 

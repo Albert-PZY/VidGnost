@@ -47,6 +47,9 @@ export async function buildApp(inputConfig?: Partial<AppConfig>): Promise<Fastif
     if (!inputConfig.eventLogDir) {
       config.eventLogDir = path.join(config.storageDir, "event-logs")
     }
+    if (!inputConfig.runtimeBinDir) {
+      config.runtimeBinDir = path.join(config.storageDir, "runtime-bin")
+    }
     if (!inputConfig.uploadDir) {
       config.uploadDir = path.join(config.storageDir, "uploads")
     }
@@ -83,7 +86,11 @@ export async function buildApp(inputConfig?: Partial<AppConfig>): Promise<Fastif
   const ollamaRuntimeConfigRepository = new OllamaRuntimeConfigRepository(config)
   const ollamaServiceManager = new OllamaServiceManager(ollamaRuntimeConfigRepository)
   const modelCatalogRepository = new ModelCatalogRepository(config, ollamaRuntimeConfigRepository)
-  const whisperRuntimeStatusService = new WhisperRuntimeStatusService(config, modelCatalogRepository)
+  const whisperRuntimeStatusService = new WhisperRuntimeStatusService(
+    config,
+    modelCatalogRepository,
+    whisperRuntimeConfigRepository,
+  )
   const openAiCompatibleClient = new OpenAiCompatibleClient()
   const mediaPipelineService = new MediaPipelineService(config)
   const asrService = new AsrService(

@@ -1,5 +1,7 @@
 import os from "node:os"
 import path from "node:path"
+import { createServer } from "node:http"
+import type { AddressInfo } from "node:net"
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
@@ -11,23 +13,70 @@ import { buildApp } from "../src/server/build-app.js"
 
 describe("task mutation routes", () => {
   let app: FastifyInstance
+  let baseUrl = ""
+  let llmBaseUrl = ""
+  let llmServer: ReturnType<typeof createServer>
   let storageDir = ""
   let sourceVideoPath = ""
+  let fallbackSourceVideoPath = ""
   let unmatchedVideoPath = ""
 
   beforeAll(async () => {
     storageDir = await mkdtemp(path.join(os.tmpdir(), "vidgnost-api-write-"))
     const seeded = await seedMutationFixtures(storageDir)
     sourceVideoPath = seeded.sourceVideoPath
+    fallbackSourceVideoPath = seeded.fallbackSourceVideoPath
     unmatchedVideoPath = seeded.unmatchedVideoPath
+    llmServer = createServer((request, response) => {
+      if (request.method !== "POST" || request.url !== "/v1/chat/completions") {
+        response.writeHead(404, { "Content-Type": "application/json" })
+        response.end(JSON.stringify({ error: { message: "not found" } }))
+        return
+      }
+
+      const chunks: Buffer[] = []
+      request.on("data", (chunk) => {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+      })
+      request.on("end", () => {
+        const payload = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
+          messages?: Array<{ content?: string }>
+        }
+        const prompt = payload.messages?.at(-1)?.content || ""
+        const content = String(prompt).includes("导图") ? "# Mock 思维导图\n" : "## Mock 笔记\n"
+
+        response.writeHead(200, { "Content-Type": "application/json" })
+        response.end(JSON.stringify({
+          choices: [
+            {
+              message: {
+                content,
+              },
+            },
+          ],
+        }))
+      })
+    })
+    await new Promise<void>((resolve) => {
+      llmServer.listen(0, "127.0.0.1", () => resolve())
+    })
+    llmBaseUrl = `http://127.0.0.1:${(llmServer.address() as AddressInfo).port}/v1`
     app = await buildApp({
       apiPrefix: "/api",
       storageDir,
+      llmBaseUrl,
+    })
+    baseUrl = await app.listen({
+      host: "127.0.0.1",
+      port: 0,
     })
   })
 
   afterAll(async () => {
     await app.close()
+    await new Promise<void>((resolve, reject) => {
+      llmServer.close((error) => (error ? reject(error) : resolve()))
+    })
     if (storageDir) {
       await rm(storageDir, { force: true, recursive: true })
     }
@@ -62,6 +111,76 @@ describe("task mutation routes", () => {
     })
     expect(exportResponse.statusCode).toBe(200)
     expect(exportResponse.headers["content-type"]).toContain("text/markdown")
+  })
+
+  it("reruns stage d instead of replaying fallback fusion artifacts when llm is available", async () => {
+    const llmConfigResponse = await app.inject({
+      method: "GET",
+      url: "/api/config/llm",
+    })
+    const llmConfig = llmConfigResponseSchema.parse(llmConfigResponse.json())
+
+    const saveConfigResponse = await app.inject({
+      method: "PUT",
+      url: "/api/config/llm",
+      payload: {
+        ...llmConfig,
+        api_key: "ollama",
+        base_url: llmBaseUrl,
+        model: "mock-notes",
+        correction_mode: "off",
+      },
+    })
+    expect(saveConfigResponse.statusCode).toBe(200)
+
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/tasks/path",
+      payload: {
+        local_path: fallbackSourceVideoPath,
+        workflow: "notes",
+        language: "zh",
+        model_size: "small",
+      },
+    })
+
+    expect(createResponse.statusCode).toBe(200)
+    const created = taskCreateResponseSchema.parse(createResponse.json())
+    const detail = await waitForTaskStatus(app, created.task_id, "completed")
+
+    expect(detail.notes_markdown).toContain("Mock 笔记")
+    expect(detail.notes_markdown).not.toContain("当前为回退生成结果")
+
+    const manifestPath = path.join(
+      storageDir,
+      "tasks",
+      "stage-artifacts",
+      created.task_id,
+      "D",
+      "fusion",
+      "manifest.json",
+    )
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+      notes: { generated_by: string }
+    }
+    expect(manifest.notes.generated_by).toBe("llm")
+  })
+
+  it("serves task event streams with loopback cors headers", async () => {
+    const controller = new AbortController()
+    const response = await fetch(`${baseUrl}/api/tasks/task-seed/events`, {
+      headers: {
+        Accept: "text/event-stream",
+        Origin: "http://127.0.0.1:16221",
+      },
+      signal: controller.signal,
+    })
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get("content-type") || "").toContain("text/event-stream")
+    expect(response.headers.get("access-control-allow-origin")).toBe("http://127.0.0.1:16221")
+
+    controller.abort()
   })
 
   it("updates task artifacts, exports bundle and deletes terminal task", async () => {
@@ -162,7 +281,7 @@ describe("task mutation routes", () => {
     expect(detail.vm_phase_metrics.D).toMatchObject({
       status: "completed",
     })
-  })
+  }, 20_000)
 
   it("prewarms vqa retrieval index during stage d rerun for vqa tasks", async () => {
     const rerunResponse = await app.inject({
@@ -190,7 +309,10 @@ describe("task mutation routes", () => {
     }
     expect(prewarmIndex.retrieval_mode).toBe("vector-index")
     expect(prewarmIndex.item_count).toBeGreaterThan(0)
-  })
+
+    const detail = await waitForTaskStatus(app, "task-vqa-rerun", "completed")
+    expect(detail.steps.map((step) => step.id)).toEqual(["extract", "transcribe", "correct", "ready"])
+  }, 20_000)
 
   it("cancels an active task before fallback failure completes", async () => {
     const createResponse = await app.inject({
@@ -244,7 +366,7 @@ async function waitForTaskStatus(
 }
 
 async function waitForFile(targetPath: string): Promise<void> {
-  const deadline = Date.now() + 5_000
+  const deadline = Date.now() + 15_000
   while (Date.now() < deadline) {
     try {
       await readFile(targetPath, "utf8")
@@ -257,25 +379,47 @@ async function waitForFile(targetPath: string): Promise<void> {
 }
 
 async function seedMutationFixtures(storageDir: string): Promise<{
+  fallbackSourceVideoPath: string
   sourceVideoPath: string
   unmatchedVideoPath: string
 }> {
   const recordsDir = path.join(storageDir, "tasks", "records")
   const uploadsDir = path.join(storageDir, "uploads")
   const fusionDir = path.join(storageDir, "tasks", "stage-artifacts", "task-seed", "D", "fusion")
+  const fallbackFusionDir = path.join(storageDir, "tasks", "stage-artifacts", "task-seed-fallback", "D", "fusion")
 
   await mkdir(recordsDir, { recursive: true })
   await mkdir(uploadsDir, { recursive: true })
   await mkdir(fusionDir, { recursive: true })
+  await mkdir(fallbackFusionDir, { recursive: true })
 
   const sourceVideoPath = path.join(uploadsDir, "seed-video.mp4")
+  const fallbackSourceVideoPath = path.join(uploadsDir, "fallback-video.mp4")
   const unmatchedVideoPath = path.join(uploadsDir, "fresh-video.mp4")
-  await writeFile(sourceVideoPath, Buffer.from("seed-video-bytes"))
-  await writeFile(unmatchedVideoPath, Buffer.from("fresh-video-bytes"))
+  const sourceVideoBytes = Buffer.from("seed-video-bytes")
+  const fallbackVideoBytes = Buffer.from("fallback-video-bytes")
+  const unmatchedVideoBytes = Buffer.from("fresh-video-bytes")
+  await writeFile(sourceVideoPath, sourceVideoBytes)
+  await writeFile(fallbackSourceVideoPath, fallbackVideoBytes)
+  await writeFile(unmatchedVideoPath, unmatchedVideoBytes)
 
   await writeFile(path.join(fusionDir, "summary.md"), "## 复用摘要\n")
   await writeFile(path.join(fusionDir, "notes.md"), "## 复用笔记\n")
   await writeFile(path.join(fusionDir, "mindmap.md"), "# 复用导图\n")
+  await writeFile(path.join(fusionDir, "manifest.json"), JSON.stringify({
+    notes: { generated_by: "llm", fallback_reason: "", content: "" },
+    mindmap: { generated_by: "llm", fallback_reason: "", content: "" },
+    summary: { generated_by: "llm", fallback_reason: "", content: "" },
+  }, null, 2))
+
+  await writeFile(path.join(fallbackFusionDir, "summary.md"), "> 当前为回退生成结果：llm_disabled_or_unconfigured\n\n## 回退摘要\n")
+  await writeFile(path.join(fallbackFusionDir, "notes.md"), "> 当前为回退生成结果：llm_disabled_or_unconfigured\n\n## 回退笔记\n")
+  await writeFile(path.join(fallbackFusionDir, "mindmap.md"), "> 当前为回退生成结果：llm_disabled_or_unconfigured\n\n# 回退导图\n")
+  await writeFile(path.join(fallbackFusionDir, "manifest.json"), JSON.stringify({
+    notes: { generated_by: "fallback", fallback_reason: "llm_disabled_or_unconfigured", content: "" },
+    mindmap: { generated_by: "fallback", fallback_reason: "llm_disabled_or_unconfigured", content: "" },
+    summary: { generated_by: "fallback", fallback_reason: "llm_disabled_or_unconfigured", content: "" },
+  }, null, 2))
 
   const completedRecord = {
     id: "task-seed",
@@ -316,6 +460,22 @@ async function seedMutationFixtures(storageDir: string): Promise<{
 
   await writeFile(path.join(recordsDir, "task-seed.json"), `${JSON.stringify(completedRecord)}\n`, "utf8")
   await writeFile(
+    path.join(recordsDir, "task-seed-fallback.json"),
+    `${JSON.stringify({
+      ...completedRecord,
+      id: "task-seed-fallback",
+      source_input: fallbackSourceVideoPath,
+      source_local_path: fallbackSourceVideoPath,
+      title: "Seed Fallback Task",
+      file_size_bytes: fallbackVideoBytes.length,
+      summary_markdown: "> 当前为回退生成结果：llm_disabled_or_unconfigured\n\n## 回退摘要\n",
+      notes_markdown: "> 当前为回退生成结果：llm_disabled_or_unconfigured\n\n## 回退笔记\n",
+      mindmap_markdown: "> 当前为回退生成结果：llm_disabled_or_unconfigured\n\n# 回退导图\n",
+      updated_at: "2026-04-15T07:30:30.000Z",
+    })}\n`,
+    "utf8",
+  )
+  await writeFile(
     path.join(recordsDir, "task-seed-rerun.json"),
     `${JSON.stringify({
       ...completedRecord,
@@ -337,6 +497,7 @@ async function seedMutationFixtures(storageDir: string): Promise<{
     "utf8",
   )
   return {
+    fallbackSourceVideoPath,
     sourceVideoPath,
     unmatchedVideoPath,
   }

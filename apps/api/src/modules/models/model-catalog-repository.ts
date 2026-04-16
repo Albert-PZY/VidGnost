@@ -8,15 +8,13 @@ import type {
   ModelUpdateRequest,
 } from "@vidgnost/contracts"
 
-import type { AppConfig } from "../../core/config.js"
+import { resolveAppPath, type AppConfig } from "../../core/config.js"
 import { pathExists, readJsonFile, writeJsonFile } from "../../core/fs.js"
 import { clampInteger, clampNumber } from "../../core/number.js"
 import type { OllamaRuntimeConfigRepository } from "./ollama-runtime-config-repository.js"
 import { listOllamaModelIds } from "./ollama-service-manager.js"
 
 const DEFAULT_API_TIMEOUT_SECONDS = 120
-const DEFAULT_IMAGE_MAX_BYTES = 512 * 1024
-const DEFAULT_IMAGE_MAX_EDGE = 1280
 const REMOTE_PROVIDER = "openai_compatible"
 
 const DEFAULT_MODELS: ModelDescriptor[] = [
@@ -33,7 +31,6 @@ const DEFAULT_MODELS: ModelDescriptor[] = [
     load_profile: "balanced",
     max_batch_size: 1,
     rerank_top_n: 8,
-    frame_interval_seconds: 10,
     enabled: true,
     size_bytes: 0,
     is_installed: false,
@@ -45,8 +42,6 @@ const DEFAULT_MODELS: ModelDescriptor[] = [
     api_model: "",
     api_protocol: "openai_compatible",
     api_timeout_seconds: DEFAULT_API_TIMEOUT_SECONDS,
-    api_image_max_bytes: DEFAULT_IMAGE_MAX_BYTES,
-    api_image_max_edge: DEFAULT_IMAGE_MAX_EDGE,
   },
   {
     id: "llm-default",
@@ -61,7 +56,6 @@ const DEFAULT_MODELS: ModelDescriptor[] = [
     load_profile: "balanced",
     max_batch_size: 1,
     rerank_top_n: 8,
-    frame_interval_seconds: 10,
     enabled: true,
     size_bytes: 0,
     is_installed: false,
@@ -73,8 +67,6 @@ const DEFAULT_MODELS: ModelDescriptor[] = [
     api_model: "qwen3.5-plus",
     api_protocol: "openai_compatible",
     api_timeout_seconds: DEFAULT_API_TIMEOUT_SECONDS,
-    api_image_max_bytes: DEFAULT_IMAGE_MAX_BYTES,
-    api_image_max_edge: DEFAULT_IMAGE_MAX_EDGE,
   },
   {
     id: "embedding-default",
@@ -89,7 +81,6 @@ const DEFAULT_MODELS: ModelDescriptor[] = [
     load_profile: "balanced",
     max_batch_size: 16,
     rerank_top_n: 8,
-    frame_interval_seconds: 10,
     enabled: true,
     size_bytes: 0,
     is_installed: false,
@@ -98,39 +89,9 @@ const DEFAULT_MODELS: ModelDescriptor[] = [
     api_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     api_key: "",
     api_key_configured: false,
-    api_model: "qwen3-vl-embedding",
+    api_model: "text-embedding-v4",
     api_protocol: "aliyun_bailian",
     api_timeout_seconds: DEFAULT_API_TIMEOUT_SECONDS,
-    api_image_max_bytes: DEFAULT_IMAGE_MAX_BYTES,
-    api_image_max_edge: DEFAULT_IMAGE_MAX_EDGE,
-  },
-  {
-    id: "vlm-default",
-    component: "vlm",
-    name: "默认 VLM",
-    provider: "ollama",
-    model_id: "moondream",
-    path: "",
-    default_path: "",
-    status: "not_ready",
-    quantization: "Q4_K_M",
-    load_profile: "memory_first",
-    max_batch_size: 1,
-    rerank_top_n: 8,
-    frame_interval_seconds: 10,
-    enabled: true,
-    size_bytes: 0,
-    is_installed: false,
-    supports_managed_download: false,
-    last_check_at: "",
-    api_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    api_key: "",
-    api_key_configured: false,
-    api_model: "qwen-image-2.0",
-    api_protocol: "openai_compatible",
-    api_timeout_seconds: DEFAULT_API_TIMEOUT_SECONDS,
-    api_image_max_bytes: DEFAULT_IMAGE_MAX_BYTES,
-    api_image_max_edge: DEFAULT_IMAGE_MAX_EDGE,
   },
   {
     id: "rerank-default",
@@ -145,7 +106,6 @@ const DEFAULT_MODELS: ModelDescriptor[] = [
     load_profile: "balanced",
     max_batch_size: 8,
     rerank_top_n: 8,
-    frame_interval_seconds: 10,
     enabled: true,
     size_bytes: 0,
     is_installed: false,
@@ -154,39 +114,9 @@ const DEFAULT_MODELS: ModelDescriptor[] = [
     api_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     api_key: "",
     api_key_configured: false,
-    api_model: "qwen3-vl-rerank",
+    api_model: "gte-rerank-v2",
     api_protocol: "aliyun_bailian",
     api_timeout_seconds: DEFAULT_API_TIMEOUT_SECONDS,
-    api_image_max_bytes: DEFAULT_IMAGE_MAX_BYTES,
-    api_image_max_edge: DEFAULT_IMAGE_MAX_EDGE,
-  },
-  {
-    id: "mllm-default",
-    component: "mllm",
-    name: "OpenAI Compatible MLLM",
-    provider: REMOTE_PROVIDER,
-    model_id: "qwen3.5-omni-flash",
-    path: "",
-    default_path: "",
-    status: "not_ready",
-    quantization: "",
-    load_profile: "balanced",
-    max_batch_size: 1,
-    rerank_top_n: 8,
-    frame_interval_seconds: 10,
-    enabled: false,
-    size_bytes: 0,
-    is_installed: false,
-    supports_managed_download: false,
-    last_check_at: "",
-    api_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    api_key: "",
-    api_key_configured: false,
-    api_model: "qwen3.5-omni-flash",
-    api_protocol: "openai_compatible",
-    api_timeout_seconds: DEFAULT_API_TIMEOUT_SECONDS,
-    api_image_max_bytes: DEFAULT_IMAGE_MAX_BYTES,
-    api_image_max_edge: DEFAULT_IMAGE_MAX_EDGE,
   },
 ]
 
@@ -257,9 +187,6 @@ export class ModelCatalogRepository {
     if (payload.rerank_top_n !== undefined) {
       target.rerank_top_n = clampInteger(payload.rerank_top_n, target.rerank_top_n, 1, 20)
     }
-    if (payload.frame_interval_seconds !== undefined) {
-      target.frame_interval_seconds = clampInteger(payload.frame_interval_seconds, target.frame_interval_seconds, 1, 600)
-    }
     if (payload.enabled !== undefined) {
       target.enabled = payload.enabled
     }
@@ -277,12 +204,6 @@ export class ModelCatalogRepository {
     }
     if (payload.api_timeout_seconds !== undefined) {
       target.api_timeout_seconds = clampInteger(payload.api_timeout_seconds, target.api_timeout_seconds, 10, 600)
-    }
-    if (payload.api_image_max_bytes !== undefined) {
-      target.api_image_max_bytes = clampInteger(payload.api_image_max_bytes, target.api_image_max_bytes, 32 * 1024, 8 * 1024 * 1024)
-    }
-    if (payload.api_image_max_edge !== undefined) {
-      target.api_image_max_edge = clampInteger(payload.api_image_max_edge, target.api_image_max_edge, 256, 4096)
     }
     target.last_check_at = new Date().toISOString()
 
@@ -355,7 +276,13 @@ export class ModelCatalogRepository {
     const byId = new Map(
       models.map((item) => [String(item.id || "").trim(), item] as const).filter(([id]) => Boolean(id)),
     )
-    return DEFAULT_MODELS.map((defaultItem) => normalizeStoredModelDescriptor(defaultItem, byId.get(defaultItem.id)))
+    const normalizedModels = DEFAULT_MODELS.map((defaultItem) =>
+      normalizeStoredModelDescriptor(defaultItem, byId.get(defaultItem.id)),
+    )
+    if (shouldRewriteStoredModels(models)) {
+      await this.#writeModels(normalizedModels)
+    }
+    return normalizedModels
   }
 
   async #writeModels(models: ModelDescriptor[]): Promise<void> {
@@ -409,7 +336,6 @@ function normalizeStoredModelDescriptor(
     load_profile: normalizeTrimmedString(merged.load_profile, defaultItem.load_profile),
     max_batch_size: clampInteger(merged.max_batch_size, defaultItem.max_batch_size, 1, 64),
     rerank_top_n: clampInteger(merged.rerank_top_n, defaultItem.rerank_top_n, 1, 20),
-    frame_interval_seconds: clampInteger(merged.frame_interval_seconds, defaultItem.frame_interval_seconds, 1, 600),
     enabled: typeof merged.enabled === "boolean" ? merged.enabled : defaultItem.enabled,
     size_bytes: clampInteger(merged.size_bytes, defaultItem.size_bytes, 0, Number.MAX_SAFE_INTEGER),
     is_installed: typeof merged.is_installed === "boolean" ? merged.is_installed : defaultItem.is_installed,
@@ -423,12 +349,42 @@ function normalizeStoredModelDescriptor(
     api_key: normalizeTrimmedString(merged.api_key, defaultItem.api_key),
     api_key_configured:
       typeof merged.api_key_configured === "boolean" ? merged.api_key_configured : defaultItem.api_key_configured,
-    api_model: normalizeTrimmedString(merged.api_model, defaultItem.api_model),
+    api_model: normalizeApiModel(defaultItem, merged.api_model),
     api_protocol: normalizeTrimmedString(merged.api_protocol, defaultItem.api_protocol),
     api_timeout_seconds: clampInteger(merged.api_timeout_seconds, defaultItem.api_timeout_seconds, 10, 600),
-    api_image_max_bytes: clampInteger(merged.api_image_max_bytes, defaultItem.api_image_max_bytes, 32 * 1024, 8 * 1024 * 1024),
-    api_image_max_edge: clampInteger(merged.api_image_max_edge, defaultItem.api_image_max_edge, 256, 4096),
   }
+}
+
+function shouldRewriteStoredModels(models: Array<Partial<ModelDescriptor>>): boolean {
+  if (models.length !== DEFAULT_MODELS.length) {
+    return true
+  }
+  return models.some((item) => {
+    const modelId = String(item.id || "").trim()
+    const component = String(item.component || "").trim()
+    if (!DEFAULT_MODELS.some((defaultItem) => defaultItem.id === modelId)) {
+      return true
+    }
+    if (component === "vlm" || component === "mllm") {
+      return true
+    }
+    if ("frame_interval_seconds" in (item as Record<string, unknown>)) {
+      return true
+    }
+    if ("api_image_max_bytes" in (item as Record<string, unknown>)) {
+      return true
+    }
+    if ("api_image_max_edge" in (item as Record<string, unknown>)) {
+      return true
+    }
+    if (modelId === "embedding-default" && String(item.api_model || "").trim() === "qwen3-vl-embedding") {
+      return true
+    }
+    if (modelId === "rerank-default" && String(item.api_model || "").trim() === "qwen3-vl-rerank") {
+      return true
+    }
+    return false
+  })
 }
 
 function resolveDefaultPath(item: ModelDescriptor, storageDir: string, ollamaModelsDir: string): string {
@@ -508,9 +464,6 @@ function normalizeProvider(component: ModelDescriptor["component"], provider: st
   if (component === "whisper") {
     return candidate === REMOTE_PROVIDER ? REMOTE_PROVIDER : "local"
   }
-  if (component === "mllm") {
-    return candidate === "ollama" ? "ollama" : REMOTE_PROVIDER
-  }
   if (candidate === "openai_compatible" || candidate === "local" || candidate === "ollama") {
     return candidate
   }
@@ -522,12 +475,26 @@ function normalizeOptionalPath(rawValue: string): string {
   if (!candidate) {
     return ""
   }
-  return path.isAbsolute(candidate) ? path.normalize(candidate) : path.resolve(process.cwd(), candidate)
+  return resolveAppPath(candidate)
 }
 
 function normalizeTrimmedString(rawValue: unknown, fallback: string): string {
   const candidate = String(rawValue || "").trim()
   return candidate || fallback
+}
+
+function normalizeApiModel(defaultItem: ModelDescriptor, rawValue: unknown): string {
+  const candidate = String(rawValue || "").trim()
+  if (!candidate) {
+    return defaultItem.api_model
+  }
+  if (defaultItem.id === "embedding-default" && candidate === "qwen3-vl-embedding") {
+    return defaultItem.api_model
+  }
+  if (defaultItem.id === "rerank-default" && candidate === "qwen3-vl-rerank") {
+    return defaultItem.api_model
+  }
+  return candidate
 }
 
 function normalizeRuntimeStatus(

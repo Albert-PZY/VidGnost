@@ -4,8 +4,6 @@ import type { TranscriptSegment } from "@vidgnost/contracts"
 
 import type { AppConfig } from "../../core/config.js"
 import { AppError } from "../../core/errors.js"
-import { pathExists } from "../../core/fs.js"
-import { findCommand } from "../../core/process.js"
 import type { OpenAiCompatibleClient } from "../llm/openai-compatible-client.js"
 import type { ModelCatalogRepository } from "../models/model-catalog-repository.js"
 import type { WhisperRuntimeConfigRepository } from "../runtime/whisper-runtime-config-repository.js"
@@ -15,6 +13,7 @@ import {
   normalizeRemoteSegments,
   parseWhisperSrtSegments,
 } from "./transcript-segment-normalizer.js"
+import { resolveWhisperExecutable, resolveWhisperModelPath } from "./whisper-runtime-paths.js"
 import { WhisperCliRunner } from "./whisper-cli-runner.js"
 
 export interface AsrResult {
@@ -82,7 +81,7 @@ export class AsrService {
       }
     }
 
-    const executablePath = await resolveWhisperExecutable(this.config.whisperExecutable)
+    const executablePath = await resolveWhisperExecutable(this.config)
     if (!executablePath) {
       throw AppError.conflict("未检测到 whisper.cpp CLI。", {
         code: "WHISPER_EXECUTABLE_NOT_FOUND",
@@ -121,31 +120,4 @@ export class AsrService {
       text,
     }
   }
-}
-
-async function resolveWhisperExecutable(configuredPath: string): Promise<string | null> {
-  return findCommand([configuredPath, "whisper-cli", "whisper-cli.exe"])
-}
-
-async function resolveWhisperModelPath(modelPath: string, modelSize: string): Promise<string | null> {
-  const normalized = String(modelPath || "").trim()
-  if (!normalized) {
-    return null
-  }
-
-  const candidates: string[] = []
-  if (path.extname(normalized)) {
-    candidates.push(normalized)
-  } else {
-    candidates.push(path.join(normalized, `ggml-${modelSize}.bin`))
-    candidates.push(path.join(normalized, `${modelSize}.bin`))
-    candidates.push(path.join(normalized, `whisper-${modelSize}.bin`))
-  }
-
-  for (const candidate of candidates) {
-    if (await pathExists(candidate)) {
-      return path.normalize(candidate)
-    }
-  }
-  return null
 }

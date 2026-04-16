@@ -57,7 +57,7 @@ When a task uses workflow `vqa`, phase `D` SHALL prepare the first-question retr
 - **WHEN** a `vqa` task finishes phase `D`
 - **THEN** backend persists a task-local retrieval artifact under `D/vqa-prewarm/index.json`
 - **AND** that artifact contains transcript-derived retrieval windows and their text vectors for the current task
-- **AND** current implementation does not require frame-backed evidence completion, multimodal retrieval warmup, or separate rerank process warmup before marking the task completed
+- **AND** current implementation only needs transcript-derived retrieval windows prepared before marking the task completed
 
 ### Requirement: Phase C SHALL support the current TS-native ASR routes
 Status: `implemented`

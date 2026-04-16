@@ -89,7 +89,7 @@ const workflowOptions = [
   {
     id: "vqa" as WorkflowType,
     title: "视频问答",
-    description: "语义检索 + 关键帧分析 + 智能问答",
+    description: "语义检索 + transcript 证据聚合 + 智能问答",
     icon: MessageSquareText,
   },
 ]
@@ -129,7 +129,7 @@ export function AppSidebar({
           <div className="flex min-w-0 flex-col group-data-[collapsible=icon]:hidden">
             <span className="truncate text-sm font-semibold">VidGnost</span>
             <span className="truncate text-xs text-muted-foreground">
-              本地多模态视频分析
+              本地优先视频知识整理
             </span>
           </div>
         </div>

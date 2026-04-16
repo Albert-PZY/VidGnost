@@ -69,17 +69,15 @@ interface NewTaskViewProps {
 const workflowSteps = {
   notes: [
     { id: 1, name: "音频提取", description: "从视频中提取音频轨道" },
-    { id: 2, name: "语音转写", description: "通过 FasterWhisper 本地转写" },
+    { id: 2, name: "语音转写", description: "通过 Whisper.cpp 或兼容 ASR 服务转写" },
     { id: 3, name: "文本纠错", description: "LLM 智能纠错优化" },
     { id: 4, name: "笔记生成", description: "生成结构化笔记和思维导图" },
   ],
   vqa: [
     { id: 1, name: "音频提取", description: "从视频中提取音频轨道" },
-    { id: 2, name: "语音转写", description: "通过 FasterWhisper 本地转写" },
+    { id: 2, name: "语音转写", description: "通过 Whisper.cpp 或兼容 ASR 服务转写" },
     { id: 3, name: "文本纠错", description: "LLM 智能纠错优化" },
-    { id: 4, name: "向量化入库", description: "文本嵌入并存入 ChromaDB" },
-    { id: 5, name: "帧画面分析", description: "场景切分 + VLM 语义识别" },
-    { id: 6, name: "问答就绪", description: "支持自然语言问答检索" },
+    { id: 4, name: "问答就绪", description: "构建 transcript 检索索引并支持自然语言问答" },
   ],
 }
 
@@ -337,7 +335,7 @@ export function NewTaskView({ selectedWorkflow, onStartTask }: NewTaskViewProps)
               <CardDescription>
                 {selectedWorkflow === "notes"
                   ? "自动转写视频内容，生成结构化笔记和思维导图。"
-                  : "构建语义索引和关键帧证据，支持自然语言检索视频内容。"}
+                  : "构建 transcript 语义索引，支持自然语言检索视频内容。"}
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-0">

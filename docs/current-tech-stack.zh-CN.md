@@ -90,12 +90,11 @@
 
 - LLM：Ollama / OpenAI-compatible API
 - Embedding：Ollama / OpenAI-compatible API
-- VLM：Ollama / OpenAI-compatible API
 - Rerank：Ollama / OpenAI-compatible API
 - 当前实现边界：
   - LLM 自检会真实探测远端 `/models`
-  - VQA 默认主链是 transcript-only `vector-index`
-  - `mllm-default` 仍是保留配置位，不代表当前已启用 multimodal retrieval
+  - VQA 统一使用 transcript-only `vector-index` 单路线检索
+  - 默认检索链路为向量召回 + rerank，不再保留额外模型分支或启发式双路线
 
 ### 4.4 模型管理边界
 
@@ -120,7 +119,6 @@
   - `storage/tasks/records/`
   - `storage/tasks/analysis-results/`
   - `storage/tasks/stage-artifacts/`
-  - `storage/vector-index/`
   - `storage/event-logs/`
   - `storage/uploads/`
   - `storage/tmp/`

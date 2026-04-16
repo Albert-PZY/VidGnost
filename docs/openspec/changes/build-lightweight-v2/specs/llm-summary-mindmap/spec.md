@@ -10,6 +10,12 @@ Stage `D` generation SHALL use the persisted OpenAI-compatible provider config a
 - **THEN** backend persists `notes_markdown` and `mindmap_markdown`
 - **AND** backend derives `summary_markdown` from the generated notes result
 
+#### Scenario: Local loopback OpenAI-compatible runtime remains eligible before user-confirmed save state catches up
+- **WHEN** persisted LLM config points to a loopback OpenAI-compatible endpoint such as `127.0.0.1` or `localhost`
+- **AND** that config already contains a non-empty `model` and reachable local runtime parameters
+- **THEN** stage `D` still treats the local runtime as available even if the repository-level `user_configured` marker is still false
+- **AND** successful generation records `generated_by=llm` in the fusion manifest instead of falling back only because the saved-config marker lagged behind
+
 ### Requirement: Transcript optimization SHALL expose observable `off`、`strict`、`rewrite` modes
 Status: `implemented`
 

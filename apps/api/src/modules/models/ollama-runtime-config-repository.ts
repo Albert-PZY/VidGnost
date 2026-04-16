@@ -3,7 +3,7 @@ import path from "node:path"
 
 import type { OllamaRuntimeConfigResponse } from "@vidgnost/contracts"
 
-import type { AppConfig } from "../../core/config.js"
+import { resolveAppPath, type AppConfig } from "../../core/config.js"
 import { pathExists, readJsonFile, writeJsonFile } from "../../core/fs.js"
 
 interface StoredOllamaRuntimeConfig {
@@ -82,5 +82,5 @@ function normalizePath(rawValue: unknown, fallback: string): string {
   if (!candidate) {
     return path.normalize(fallback)
   }
-  return path.isAbsolute(candidate) ? path.normalize(candidate) : path.resolve(process.cwd(), candidate)
+  return resolveAppPath(candidate)
 }

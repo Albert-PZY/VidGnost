@@ -390,14 +390,11 @@ export function updateModel(
     quantization?: string | null
     max_batch_size?: number | null
     rerank_top_n?: number | null
-    frame_interval_seconds?: number | null
     enabled?: boolean | null
     api_base_url?: string | null
     api_key?: string | null
     api_model?: string | null
     api_timeout_seconds?: number | null
-    api_image_max_bytes?: number | null
-    api_image_max_edge?: number | null
   },
 ): Promise<ModelListResponse> {
   return apiFetch<ModelListResponse>(`/config/models/${modelId}`, {

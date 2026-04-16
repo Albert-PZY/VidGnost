@@ -16,11 +16,11 @@ describe("VqaTraceStore", () => {
 
       const store = new VqaTraceStore(storageDir)
       const firstTraceId = store.newTrace({
-        configSnapshot: { retrieval: { mode: "hybrid-heuristic" } },
+        configSnapshot: { retrieval: { mode: "vector-index" } },
         metadata: { query_text: "第一个问题" },
       })
       const secondTraceId = store.newTrace({
-        configSnapshot: { retrieval: { mode: "hybrid-heuristic" } },
+        configSnapshot: { retrieval: { mode: "vector-index" } },
         metadata: { query_text: "第二个问题" },
       })
 

@@ -27,7 +27,6 @@ describe("ollama model detection and llm sync", () => {
             { name: "qwen2.5:3b" },
             { name: "qwen2.5:7b" },
             { name: "bge-m3:latest" },
-            { name: "moondream:latest" },
             { name: "sam860/qwen3-reranker:0.6b-q8_0" },
           ],
         }))
@@ -87,11 +86,6 @@ describe("ollama model detection and llm sync", () => {
       is_installed: true,
     })
     expect(payload.items.find((item) => item.id === "embedding-default")).toMatchObject({
-      provider: "ollama",
-      status: "ready",
-      is_installed: true,
-    })
-    expect(payload.items.find((item) => item.id === "vlm-default")).toMatchObject({
       provider: "ollama",
       status: "ready",
       is_installed: true,

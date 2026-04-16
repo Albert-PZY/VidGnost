@@ -27,7 +27,13 @@ export class LlmConfigRepository {
       return false
     }
     const payload = await readJsonFile<Record<string, unknown>>(this.#path, {})
-    return payload.user_configured === true
+    if (payload.user_configured === true) {
+      return true
+    }
+
+    const baseUrl = normalizeBaseUrl(payload.base_url, this.#config.llmBaseUrl)
+    const model = String(payload.model || "").trim() || this.#config.llmModel
+    return Boolean(model && isLoopbackUrl(baseUrl))
   }
 
   async save(payload: LLMConfigResponse): Promise<LLMConfigResponse> {

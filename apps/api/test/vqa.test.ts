@@ -47,13 +47,14 @@ describe("vqa routes", () => {
 
     expect(searchResponse.statusCode).toBe(200)
     const searchPayload = searchResponse.json<{
-      dense_hits: Array<{ task_id: string }>
-      rerank_hits: Array<{ text: string }>
+      hits: Array<{ task_id: string; text: string }>
       trace_id: string
     }>()
     expect(searchPayload.trace_id).toBeTruthy()
-    expect(searchPayload.dense_hits[0]?.task_id).toBe("task-vqa-1")
-    expect(searchPayload.rerank_hits.length).toBeGreaterThan(0)
+    expect(searchPayload.hits[0]?.task_id).toBe("task-vqa-1")
+    expect(searchPayload.hits.length).toBeGreaterThan(0)
+    expect("dense_hits" in (searchPayload as Record<string, unknown>)).toBe(false)
+    expect("rerank_hits" in (searchPayload as Record<string, unknown>)).toBe(false)
 
     const streamResponse = await fetch(`${baseUrl}/api/chat/stream`, {
       method: "POST",
@@ -97,6 +98,13 @@ describe("vqa routes", () => {
     expect((traceStarted?.payload as { config_snapshot?: { retrieval?: { mode?: string } } } | undefined)?.config_snapshot?.retrieval?.mode).toBe(
       "vector-index",
     )
+    const retrievalRecord = tracePayload.records.find((item) => item.stage === "retrieval")
+    const retrievalPayload = (retrievalRecord?.payload || {}) as Record<string, unknown>
+    expect(Array.isArray(retrievalPayload.hits)).toBe(true)
+    expect("dense_hits" in retrievalPayload).toBe(false)
+    expect("sparse_hits" in retrievalPayload).toBe(false)
+    expect("rrf_hits" in retrievalPayload).toBe(false)
+    expect("rerank_hits" in retrievalPayload).toBe(false)
 
     const prewarmIndexPath = path.join(
       storageDir,

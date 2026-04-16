@@ -1,6 +1,6 @@
 import os from "node:os"
 import path from "node:path"
-import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import type { FastifyInstance } from "fastify"
@@ -170,6 +170,13 @@ describe("config routes", () => {
   })
 
   it("serves whisper, ollama and model config compatibility surfaces", async () => {
+    const whisperCliPath = path.join(storageDir, "runtime-bin", process.platform === "win32" ? "whisper-cli.exe" : "whisper-cli")
+    const whisperModelPath = path.join(storageDir, "models", "whisper", "ggml-small.bin")
+    await mkdir(path.dirname(whisperCliPath), { recursive: true })
+    await mkdir(path.dirname(whisperModelPath), { recursive: true })
+    await writeFile(whisperCliPath, "fake-whisper-cli", "utf8")
+    await writeFile(whisperModelPath, "fake-whisper-model", "utf8")
+
     const [whisperResponse, ollamaResponse, modelsResponse] = await Promise.all([
       app.inject({ method: "GET", url: "/api/config/whisper" }),
       app.inject({ method: "GET", url: "/api/config/ollama" }),
@@ -184,6 +191,15 @@ describe("config routes", () => {
       model_default: "small",
       language: "zh",
     })
+    expect(whisperConfigResponseSchema.parse(whisperResponse.json()).runtime_libraries).toMatchObject({
+      bin_dir: path.join(storageDir, "runtime-bin"),
+      discovered_files: {
+        executable: whisperCliPath,
+        model: whisperModelPath,
+        model_dir: path.join(storageDir, "models", "whisper"),
+      },
+      path_configured: true,
+    })
     expect(ollamaRuntimeConfigResponseSchema.parse(ollamaResponse.json())).toMatchObject({
       base_url: expect.any(String),
       service: {
@@ -193,8 +209,13 @@ describe("config routes", () => {
     })
 
     const modelList = modelListResponseSchema.parse(modelsResponse.json())
-    expect(modelList.items).toHaveLength(6)
-    expect(modelList.items.find((item) => item.id === "llm-default")).toBeTruthy()
+    expect(modelList.items).toHaveLength(4)
+    expect(modelList.items.map((item) => item.id).sort()).toEqual([
+      "embedding-default",
+      "llm-default",
+      "rerank-default",
+      "whisper-default",
+    ])
 
     const updateModelResponse = await app.inject({
       method: "PATCH",
@@ -223,7 +244,7 @@ describe("config routes", () => {
     expect(downloadResponse.statusCode).toBe(200)
     expect(modelListResponseSchema.parse(downloadResponse.json()).items.find((item) => item.id === "whisper-default")).toMatchObject({
       download: {
-        state: "failed",
+        state: "completed",
       },
     })
 
@@ -265,9 +286,7 @@ describe("config routes", () => {
         ? {
             ...item,
             rerank_top_n: 999,
-            frame_interval_seconds: 0,
             api_timeout_seconds: 9999,
-            api_image_max_edge: 99999,
           }
         : item,
     )
@@ -282,9 +301,7 @@ describe("config routes", () => {
     expect(normalizedResponse.statusCode).toBe(200)
     expect(modelListResponseSchema.parse(normalizedResponse.json()).items.find((item) => item.id === "rerank-default")).toMatchObject({
       rerank_top_n: 20,
-      frame_interval_seconds: 1,
       api_timeout_seconds: 600,
-      api_image_max_edge: 4096,
     })
   })
 })

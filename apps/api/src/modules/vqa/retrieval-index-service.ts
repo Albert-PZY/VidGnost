@@ -1,7 +1,9 @@
 import type { TranscriptSegment } from "@vidgnost/contracts"
 
-import { EmbeddingRuntimeService } from "./embedding-runtime-service.js"
-import { RerankRuntimeService } from "./rerank-runtime-service.js"
+import { EmbeddingRuntimeService, tokenizeText } from "./embedding-runtime-service.js"
+import { RerankRuntimeService, scoreLexicalMatch } from "./rerank-runtime-service.js"
+
+const RETRIEVAL_INDEX_VERSION = 2
 
 export interface RetrievalIndexItem {
   doc_id: string
@@ -12,12 +14,12 @@ export interface RetrievalIndexItem {
   start: number
   end: number
   text: string
-  image_path: string
+  terms: string[]
   vector: number[]
 }
 
 export interface RetrievalIndexPayload {
-  version: 1
+  version: 2
   retrieval_mode: "vector-index"
   item_count: number
   items: RetrievalIndexItem[]
@@ -76,11 +78,11 @@ export class RetrievalIndexService {
   parseIndex(raw: string): RetrievalIndexPayload | null {
     try {
       const parsed = JSON.parse(String(raw || "")) as RetrievalIndexPayload
-      if (!parsed || !Array.isArray(parsed.items)) {
+      if (!parsed || Number(parsed.version) !== RETRIEVAL_INDEX_VERSION || !Array.isArray(parsed.items)) {
         return null
       }
       return {
-        version: 1,
+        version: RETRIEVAL_INDEX_VERSION,
         retrieval_mode: "vector-index",
         item_count: parsed.items.length,
         items: parsed.items
@@ -88,6 +90,9 @@ export class RetrievalIndexService {
           .map((item) => ({
             ...item,
             source_set: Array.isArray(item.source_set) ? item.source_set : ["transcript"],
+            terms: Array.isArray(item.terms)
+              ? item.terms.map((value) => String(value || "").trim()).filter(Boolean)
+              : tokenizeText(String(item.text || "")),
             vector: Array.isArray(item.vector) ? item.vector.map((value) => Number(value) || 0) : [],
           })),
       }
@@ -107,16 +112,30 @@ export class RetrievalIndexService {
     retrievalMode: "vector-index"
   } {
     const queryVector = this.embeddingRuntimeService.embedText(input.queryText)
+    const queryTerms = tokenizeText(input.queryText)
+    const normalizedQuery = String(input.queryText || "").trim()
     const initialHits = input.index.items
       .map((item) => ({
         ...item,
-        final_score: 0,
-        lexical_score: 0,
+        lexical_score: scoreLexicalMatch(queryTerms, normalizedQuery, item.terms, item.text),
         rerank_score: 0,
         vector_score: this.embeddingRuntimeService.cosineSimilarity(queryVector, item.vector),
+        final_score: 0,
       }))
-      .filter((item) => item.vector_score > 0)
-      .sort((left, right) => right.vector_score - left.vector_score)
+      .map((item) => ({
+        ...item,
+        final_score: roundScore((item.vector_score * 0.68) + (Math.min(1.35, item.lexical_score) * 0.32)),
+      }))
+      .filter((item) => item.final_score > 0)
+      .sort((left, right) => {
+        if (right.final_score !== left.final_score) {
+          return right.final_score - left.final_score
+        }
+        if (right.lexical_score !== left.lexical_score) {
+          return right.lexical_score - left.lexical_score
+        }
+        return right.vector_score - left.vector_score
+      })
       .slice(0, Math.max(1, input.topK))
 
     const rerankedHits = this.rerankRuntimeService
@@ -167,14 +186,14 @@ function createIndexItem(input: {
     start: input.segment.start,
     end: input.segment.end,
     text: input.segment.text,
-    image_path: "",
+    terms: tokenizeText(input.segment.text),
     vector: input.embedText(input.segment.text),
   }
 }
 
 function toIndexPayload(items: RetrievalIndexItem[]): RetrievalIndexPayload & { indexJson: string } {
   const payload: RetrievalIndexPayload = {
-    version: 1,
+    version: RETRIEVAL_INDEX_VERSION,
     retrieval_mode: "vector-index",
     item_count: items.length,
     items,
@@ -196,7 +215,7 @@ function normalizeSegments(segments: TranscriptSegment[], transcriptText: string
     .filter((segment) => segment.text.length > 0)
 
   if (normalized.length > 0) {
-    return normalized
+    return expandRetrievalWindows(normalized)
   }
 
   const text = String(transcriptText || "").trim()
@@ -212,8 +231,42 @@ function normalizeSegments(segments: TranscriptSegment[], transcriptText: string
   ]
 }
 
+function expandRetrievalWindows(segments: TranscriptSegment[]): TranscriptSegment[] {
+  if (segments.length < 2) {
+    return segments
+  }
+
+  const expanded = [...segments]
+  const seen = new Set(segments.map((segment) => `${segment.start}:${segment.end}:${segment.text}`))
+
+  for (let startIndex = 0; startIndex < segments.length; startIndex += 1) {
+    const window = segments.slice(startIndex, startIndex + 5)
+    if (window.length < 2) {
+      continue
+    }
+
+    const merged = {
+      start: window[0].start,
+      end: window[window.length - 1].end,
+      text: window.map((segment) => segment.text).join(" "),
+    }
+    const key = `${merged.start}:${merged.end}:${merged.text}`
+    if (seen.has(key)) {
+      continue
+    }
+    seen.add(key)
+    expanded.push(merged)
+  }
+
+  return expanded
+}
+
 function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => {
     setImmediate(resolve)
   })
+}
+
+function roundScore(value: number): number {
+  return Math.round(Math.max(0, value) * 1000) / 1000
 }

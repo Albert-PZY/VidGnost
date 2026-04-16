@@ -99,10 +99,8 @@ Model configuration dialog SHALL use a responsive split layout with a left overv
 #### Scenario: Switch provider inside a model configuration dialog
 - **WHEN** user changes a model entry between `本地目录`、`Ollama`、`在线 API`
 - **THEN** the dialog updates the visible fields to match that route instead of showing one generic mixed form
-- **AND** `在线 API` shows Base URL、API Key、模型名、协议、超时和图像上传上限 fields for image-capable components
-- **AND** the `图像上传上限` field uses `MB` as its display and input unit in the renderer while persisted backend config remains `api_image_max_bytes`
+- **AND** `在线 API` shows Base URL、API Key、模型名、协议和超时 fields for the current component
 - **AND** `本地目录` and `Ollama` routes keep model path or logical model-id controls visible while hiding remote-only fields
-- **AND** `mllm-default` only offers the online API route
 
 #### Scenario: Open the `llm-default` configuration dialog
 - **WHEN** user configures `llm-default`
@@ -498,8 +496,9 @@ Frontend UI library SHALL provide a reusable virtual-list component under `apps/
 - **AND** user and assistant bubbles both use explicit avatar affordances instead of rendering the user side as an anonymous color block
 - **AND** each answer may expose a retrieval trace identifier, citations, and citation jump actions
 - **AND** retrieval-trace and citation actions use compact icon buttons with hover tooltips instead of long inline labels
-- **AND** citations are primarily transcript-text and timestamp oriented in the current baseline, so the chat flow does not depend on frame-thumbnail evidence to remain usable
-- **AND** opening Trace Theater reveals Dense, Sparse, RRF, and final rerank panels with per-stage deduplicated candidates
+- **AND** citations are transcript-text and timestamp oriented in the current baseline
+- **AND** opening Trace Theater reveals a single final retrieval-hits panel with deduplicated transcript candidates
+- **AND** Trace Theater does not render legacy `dense_hits`, `sparse_hits`, `rrf_hits`, or `rerank_hits` sections in the current baseline
 - **AND** Trace Theater states that retrieval uses the original user question directly without query expansion
 - **AND** Trace Theater shows human-readable normalized scores instead of raw backend magnitude values that collapse visually to zero
 - **AND** per-task VQA chat history is restored when the user leaves the workbench and later reopens the same task from history or recent tasks
@@ -537,8 +536,8 @@ Diagnostics view SHALL provide a direct autofix action when the backend marks is
 - **THEN** it reports current runtime readiness based on `whisper-cli` availability and the configured model directory
 - **AND** the diagnostics issue summary tells the user whether the current problem is missing executable, missing model path, or both
 
-#### Scenario: Diagnostics self-check validates remote VLM connectivity
-- **WHEN** the backend runs the `VLM 模型` self-check step for a configured remote vision model
+#### Scenario: Diagnostics self-check validates remote embedding connectivity
+- **WHEN** the backend runs the `嵌入模型` self-check step for a configured remote embedding model
 - **THEN** it reuses the shared remote model-readiness probe against the configured `/models` endpoint
 - **AND** it only reports success when the remote model list contains the configured model entry
 - **AND** any provider-side connectivity failure is surfaced as a step-level diagnostics issue rather than aborting the full self-check session

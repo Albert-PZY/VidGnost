@@ -45,7 +45,7 @@ Current implementation boundaries:
 
 - the local Whisper route requires an existing `whisper-cli` binary and local `ggml` model files; the TS runtime does not ship managed auto-download
 - Ollama is currently managed as configuration plus reachability probing, not as a self-managed pull / restart / file-migration runtime
-- VQA currently uses a transcript-only `vector-index` main path; `mllm-default` remains a reserved config slot rather than an active multimodal retrieval route
+- VQA now uses a single transcript-only `vector-index` retrieval path with vector recall plus rerank for final evidence selection
 
 ## Core Capabilities
 
@@ -72,7 +72,6 @@ Task execution stays organized as `A -> B -> C -> D`:
 | Whisper | local `whisper.cpp` CLI / compatible ASR API | local route requires manually prepared CLI and `ggml` model files |
 | LLM | Ollama or remote OpenAI-compatible API | used for correction, notes, mindmap, and chat |
 | Embedding | Ollama or remote API | used for transcript-only retrieval vectorization |
-| VLM | Ollama or remote API | used for image/frame understanding |
 | Rerank | Ollama or remote API | used for ranking fused retrieval results |
 
 ## Repository Layout
@@ -180,7 +179,6 @@ node scripts/check-openspec.mjs
 
 - [Chinese README](./README.zh-CN.md)
 - [OpenSpec index](./docs/openspec/README.md)
-- [Fact vs Spec matrix](./docs/capability-fact-vs-spec-matrix.zh-CN.md)
 - [Current tech stack](./docs/current-tech-stack.zh-CN.md)
 - [TS fullstack refactor checklist](./docs/vidgnost-ts-fullstack-refactor-checklist.zh-CN.md)
 - [Frontend-driven backend checklist](./docs/frontend-driven-backend-execution-checklist.zh-CN.md)

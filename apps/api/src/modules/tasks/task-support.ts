@@ -154,8 +154,6 @@ export function workflowStepBlueprint(workflow: WorkflowType): Array<{ id: strin
       { id: "extract", name: "音频提取" },
       { id: "transcribe", name: "语音转写" },
       { id: "correct", name: "文本纠错" },
-      { id: "embed", name: "向量化入库" },
-      { id: "frames", name: "帧画面分析" },
       { id: "ready", name: "问答就绪" },
     ]
   }

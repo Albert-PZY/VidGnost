@@ -13,6 +13,7 @@ Backend SHALL persist task metadata, source info, phase logs, transcript, notes,
 - **THEN** backend returns persisted logs, artifacts, metrics, and artifact index metadata
 - **AND** task-detail markdown keeps only task-relative image references whose artifact files still exist on disk
 - **AND** stale task-relative image references are removed before the renderer receives the payload so the client does not request missing artifact files
+- **AND** VQA-related detail payloads in the current baseline use transcript timestamp citations and text evidence only, without requiring frame-image citation fields such as `image_path`
 
 #### Scenario: Read persisted task history without an upfront storage migration
 - **WHEN** the frontend-driven TypeScript backend queries local task history during the refactor transition

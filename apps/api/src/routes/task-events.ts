@@ -1,3 +1,5 @@
+import { PassThrough } from "node:stream"
+
 import type { FastifyInstance } from "fastify"
 
 import { EventBus } from "../modules/events/event-bus.js"
@@ -15,14 +17,7 @@ export async function registerTaskEventRoutes(
     const record = await taskRepository.getStoredRecord(taskId)
     const workflow = record ? normalizeWorkflow(record.workflow) : "notes"
     const subscription = await eventBus.subscribe(taskId)
-
-    reply.hijack()
-    reply.raw.writeHead(200, {
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "X-Accel-Buffering": "no",
-    })
+    const stream = new PassThrough()
 
     let closed = false
     const close = () => {
@@ -32,7 +27,7 @@ export async function registerTaskEventRoutes(
       closed = true
       eventBus.unsubscribe(taskId, subscription.queue)
       try {
-        reply.raw.end()
+        stream.end()
       } catch {
         return
       }
@@ -40,32 +35,41 @@ export async function registerTaskEventRoutes(
 
     request.raw.on("close", close)
     reply.raw.on("close", close)
+    reply.header("Cache-Control", "no-cache")
+    reply.header("Connection", "keep-alive")
+    reply.header("Content-Type", "text/event-stream; charset=utf-8")
+    reply.header("X-Accel-Buffering", "no")
+    const sentReply = reply.send(stream)
+    stream.write(": connected\n\n")
 
     for (const item of subscription.history) {
       if (closed) {
-        return
+        return sentReply
       }
-      reply.raw.write(`data: ${JSON.stringify(normalizeStreamEvent(taskId, workflow, item))}\n\n`)
+      stream.write(`data: ${JSON.stringify(normalizeStreamEvent(taskId, workflow, item))}\n\n`)
     }
 
     const keepalive = setInterval(() => {
       if (!closed) {
-        reply.raw.write(": keepalive\n\n")
+        stream.write(": keepalive\n\n")
       }
     }, 10_000)
 
-    try {
-      while (!closed) {
-        const event = await subscription.queue.dequeue()
-        if (closed || Object.keys(event).length === 0) {
-          break
+    void (async () => {
+      try {
+        while (!closed) {
+          const event = await subscription.queue.dequeue()
+          if (closed || Object.keys(event).length === 0) {
+            break
+          }
+          stream.write(`data: ${JSON.stringify(normalizeStreamEvent(taskId, workflow, event))}\n\n`)
         }
-        reply.raw.write(`data: ${JSON.stringify(normalizeStreamEvent(taskId, workflow, event))}\n\n`)
+      } finally {
+        clearInterval(keepalive)
+        close()
       }
-    } finally {
-      clearInterval(keepalive)
-      close()
-    }
+    })()
+    return sentReply
   })
 }
 

@@ -128,6 +128,66 @@ describe("TranscriptCorrectionService", () => {
 })
 
 describe("SummaryService", () => {
+  it("uses loopback llm config even when user_configured flag is still false", async () => {
+    const client = createFakeClient(["## 本地笔记\n", "# 本地导图\n"])
+    const service = new SummaryService(
+      {
+        async get() {
+          return {
+            api_key: "ollama",
+            base_url: "http://127.0.0.1:11434/v1",
+            model: "qwen2.5:3b",
+            correction_mode: "off",
+            correction_batch_size: 6,
+            correction_overlap: 1,
+          }
+        },
+        async isUserConfigured() {
+          return false
+        },
+      } as never,
+      {
+        async getBundle() {
+          return {
+            templates: [
+              { id: "correction-template", content: "请纠错：{text}" },
+              { id: "notes-template", content: "请整理笔记：{text}" },
+              { id: "mindmap-template", content: "请整理导图：{text}" },
+            ],
+            selection: {
+              correction: "correction-template",
+              notes: "notes-template",
+              mindmap: "mindmap-template",
+              vqa: "notes-template",
+            },
+          }
+        },
+      } as never,
+      client as never,
+    )
+
+    const result = await service.buildArtifacts({
+      taskId: "task-summary-loopback",
+      taskTitle: "本地模型任务",
+      workflow: "notes",
+      transcriptSegments: BASE_SEGMENTS,
+      transcriptText: BASE_SEGMENTS.map((segment) => segment.text).join("\n"),
+    })
+
+    const manifest = JSON.parse(result.artifactManifestJson) as {
+      notes: { generated_by: string }
+      mindmap: { generated_by: string }
+      summary: { generated_by: string }
+    }
+
+    expect(client.calls).toHaveLength(2)
+    expect(manifest.notes.generated_by).toBe("llm")
+    expect(manifest.mindmap.generated_by).toBe("llm")
+    expect(manifest.summary.generated_by).toBe("llm")
+    expect(result.notesMarkdown).toContain("本地笔记")
+    expect(result.notesMarkdown).not.toContain("当前为回退生成结果")
+  })
+
   it("records fallback artifact metadata when notes and mindmap generation falls back", async () => {
     const service = new SummaryService(
       {

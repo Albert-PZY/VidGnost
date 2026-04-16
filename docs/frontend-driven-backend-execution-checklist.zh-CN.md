@@ -30,7 +30,7 @@
 
 ### 2.5 自检页
 
-- 提供系统环境、GPU、Whisper、LLM、Embedding、VLM、存储空间、FFmpeg 等检查结果
+- 提供系统环境、GPU、Whisper、LLM、Embedding、存储空间、FFmpeg 等检查结果
 
 ## 3. TS 后端执行基线
 

@@ -9,6 +9,7 @@ Backend SHALL expose a per-task event stream endpoint and emit ordered runtime e
 - **WHEN** client connects to `/tasks/{task_id}/events`
 - **THEN** backend responds with `text/event-stream`
 - **AND** emits historical buffered events before live updates
+- **AND** backend writes an immediate SSE comment preamble and periodic keepalive comments on the same live stream transport so renderer subscriptions stay open while waiting for later task events
 
 ### Requirement: Task events SHALL include stage-aware context
 Status: `implemented`

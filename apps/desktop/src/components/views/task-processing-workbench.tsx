@@ -22,15 +22,10 @@ import {
   SkipBack,
   SkipForward,
   Square,
-  RotateCcw,
-  RotateCw,
   UserRound,
   Volume2,
   VolumeX,
-  ZoomIn,
-  ZoomOut,
 } from "lucide-react"
-import { TransformComponent, TransformWrapper } from "react-zoom-pan-pinch"
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
@@ -54,7 +49,6 @@ import { PromptMarkdownEditor } from "@/components/editors/prompt-markdown-edito
 import { MarkdownArtifactViewer } from "@/components/ui/markdown-artifact-viewer"
 import {
   ApiError,
-  buildTaskArtifactFileUrl,
   buildTaskSourceMediaUrl,
   cancelTask,
   downloadTaskArtifact,
@@ -136,8 +130,6 @@ const WORKFLOW_STEPS: Record<WorkflowType, Array<{ id: string; name: string }>> 
     { id: "extract", name: "音频提取" },
     { id: "transcribe", name: "语音转写" },
     { id: "correct", name: "文本纠错" },
-    { id: "embed", name: "向量化入库" },
-    { id: "frames", name: "帧画面分析" },
     { id: "ready", name: "问答就绪" },
   ],
 }
@@ -156,10 +148,7 @@ const TASK_EVENT_BADGE_LABELS: Record<string, string> = {
 }
 
 const TRACE_SECTIONS = [
-  { key: "dense_hits", label: "Dense 语义候选", scoreKey: "dense_score" },
-  { key: "sparse_hits", label: "Sparse 关键词候选", scoreKey: "sparse_score" },
-  { key: "rrf_hits", label: "RRF 融合结果", scoreKey: "rrf_score" },
-  { key: "rerank_hits", label: "最终排序结果", scoreKey: "final_score" },
+  { key: "hits", label: "检索命中", scoreKey: "final_score" },
 ] as const
 
 const VQA_CHAT_SESSION_STORAGE_KEY_PREFIX = "vidgnost:vqa-chat-session:v1"
@@ -182,22 +171,6 @@ function buildVqaChatSessionStorageKey(taskId: string): string {
   return `${VQA_CHAT_SESSION_STORAGE_KEY_PREFIX}:${taskId}`
 }
 
-function normalizeVqaEvidenceImagePath(value: unknown): string {
-  let normalized = asString(value).replace(/\\/g, "/").trim()
-  while (normalized.startsWith("./")) {
-    normalized = normalized.slice(2)
-  }
-  normalized = normalized.replace(/^\/+/, "")
-  if (!normalized || !normalized.toLowerCase().startsWith("frames/")) {
-    return ""
-  }
-  const parts = normalized.split("/")
-  if (parts.some((part) => !part || part === "." || part === "..")) {
-    return ""
-  }
-  return normalized
-}
-
 function sanitizeVqaCitationItem(value: unknown): VqaCitationItem | null {
   const payload = asObject(value)
   const docId = asString(payload.doc_id).trim()
@@ -214,7 +187,6 @@ function sanitizeVqaCitationItem(value: unknown): VqaCitationItem | null {
     start: asNumber(payload.start) ?? 0,
     end: asNumber(payload.end) ?? 0,
     text: asString(payload.text),
-    image_path: normalizeVqaEvidenceImagePath(payload.image_path),
   }
 }
 
@@ -241,13 +213,6 @@ function sanitizeRuntimeChatMessage(value: unknown): RuntimeChatMessage | null {
   }
 }
 
-function sanitizeTraceHitRecord(value: Record<string, unknown>): Record<string, unknown> {
-  return {
-    ...value,
-    image_path: normalizeVqaEvidenceImagePath(value.image_path),
-  }
-}
-
 function sanitizeVqaTraceRecord(
   value: unknown,
 ): VqaTraceResponse["records"][number] | null {
@@ -258,13 +223,10 @@ function sanitizeVqaTraceRecord(
   const nextRecord: Record<string, unknown> = { ...payload }
   if (asString(payload.stage).trim() === "retrieval") {
     const rawStagePayload = asObject(payload.payload)
-    const nextStagePayload: Record<string, unknown> = { ...rawStagePayload }
-    TRACE_SECTIONS.forEach((section) => {
-      nextStagePayload[section.key] = asRecordArray(rawStagePayload[section.key]).map((item) =>
-        sanitizeTraceHitRecord(item),
-      )
-    })
-    nextRecord.payload = nextStagePayload
+    nextRecord.payload = {
+      ...rawStagePayload,
+      hits: asRecordArray(rawStagePayload.hits).map((item) => ({ ...item })),
+    }
   }
   return nextRecord as VqaTraceResponse["records"][number]
 }
@@ -441,10 +403,6 @@ function buildTraceHitKey(hit: Record<string, unknown>): string {
   if (text) {
     return `${taskId}|${text}`
   }
-  const imagePath = asString(hit.image_path).trim()
-  if (imagePath) {
-    return `${taskId}|image:${imagePath}`
-  }
   const start = asNumber(hit.start) ?? 0
   const end = asNumber(hit.end) ?? 0
   return `${taskId}|${start.toFixed(2)}-${end.toFixed(2)}`
@@ -476,13 +434,9 @@ function dedupeTraceHits(hits: Array<Record<string, unknown>>): Array<Record<str
     }
     deduped.set(key, {
       ...current,
-      dense_score: Math.max(asNumber(current.dense_score) ?? 0, asNumber(hit.dense_score) ?? 0),
-      sparse_score: Math.max(asNumber(current.sparse_score) ?? 0, asNumber(hit.sparse_score) ?? 0),
-      rrf_score: Math.max(asNumber(current.rrf_score) ?? 0, asNumber(hit.rrf_score) ?? 0),
       rerank_score: Math.max(asNumber(current.rerank_score) ?? 0, asNumber(hit.rerank_score) ?? 0),
       final_score: Math.max(asNumber(current.final_score) ?? 0, asNumber(hit.final_score) ?? 0),
       source_set: mergeTraceSourceSets(current.source_set, hit.source_set),
-      image_path: asString(current.image_path) || asString(hit.image_path),
     })
   })
   return Array.from(deduped.values())
@@ -490,14 +444,8 @@ function dedupeTraceHits(hits: Array<Record<string, unknown>>): Array<Record<str
 
 function getTraceSectionHint(sectionKey: (typeof TRACE_SECTIONS)[number]["key"]): string {
   switch (sectionKey) {
-    case "dense_hits":
-      return "按语义相似度召回，分数越高说明问题和片段语义越接近。"
-    case "sparse_hits":
-      return "按关键词命中召回，分数已做可读化归一，便于直接比较强弱。"
-    case "rrf_hits":
-      return "把 Dense 和 Sparse 候选融合后重新排序，同一片段已在阶段内去重。"
-    case "rerank_hits":
-      return "最终给模型使用的候选列表，默认不做查询扩展，只按原问题直搜。"
+    case "hits":
+      return "当前展示最终用于回答生成的 transcript 检索命中，默认不做查询扩展，只按原问题直搜。"
     default:
       return "这里展示当前阶段的去重候选。"
   }
@@ -3291,97 +3239,6 @@ function VqaMessageAvatar({ role }: { role: "user" | "assistant" }) {
   )
 }
 
-const EvidenceImagePreviewDialog = React.memo(function EvidenceImagePreviewDialog({
-  previewImage,
-  onPreviewImageChange,
-}: {
-  previewImage: { src: string; title: string } | null
-  onPreviewImageChange: (value: { src: string; title: string } | null) => void
-}) {
-  const [rotation, setRotation] = React.useState(0)
-
-  React.useEffect(() => {
-    if (!previewImage) {
-      return
-    }
-    setRotation(0)
-  }, [previewImage])
-
-  return (
-    <Dialog
-      open={Boolean(previewImage)}
-      onOpenChange={(open) => {
-        if (!open) {
-          onPreviewImageChange(null)
-        }
-      }}
-    >
-      <DialogContent className="max-w-[min(94vw,78rem)] gap-0 overflow-hidden p-0">
-        <DialogHeader className="border-b px-6 py-4">
-          <DialogTitle>证据画面预览</DialogTitle>
-          <DialogDescription>{previewImage?.title || "点击证据缩略图后可在这里查看大图。"}</DialogDescription>
-        </DialogHeader>
-        {previewImage ? (
-          <TransformWrapper
-            initialScale={1}
-            minScale={0.6}
-            maxScale={6}
-            centerOnInit
-            doubleClick={{ disabled: true }}
-            wheel={{ step: 0.12 }}
-          >
-            {({ zoomIn, zoomOut, resetTransform }) => (
-              <>
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-background/95 px-4 py-2.5">
-                  <div className="text-xs text-muted-foreground">支持拖拽平移、滚轮缩放与旋转查看</div>
-                  <div className="flex items-center gap-2">
-                    <TranscriptActionIconButton label="缩小" variant="outline" className="h-8 w-8" onClick={() => zoomOut()}>
-                      <ZoomOut className="h-4 w-4" />
-                    </TranscriptActionIconButton>
-                    <TranscriptActionIconButton label="放大" variant="outline" className="h-8 w-8" onClick={() => zoomIn()}>
-                      <ZoomIn className="h-4 w-4" />
-                    </TranscriptActionIconButton>
-                    <TranscriptActionIconButton label="逆时针旋转" variant="outline" className="h-8 w-8" onClick={() => setRotation((current) => current - 90)}>
-                      <RotateCcw className="h-4 w-4" />
-                    </TranscriptActionIconButton>
-                    <TranscriptActionIconButton label="顺时针旋转" variant="outline" className="h-8 w-8" onClick={() => setRotation((current) => current + 90)}>
-                      <RotateCw className="h-4 w-4" />
-                    </TranscriptActionIconButton>
-                    <TranscriptActionIconButton
-                      label="重置视图"
-                      variant="outline"
-                      className="h-8 w-8"
-                      onClick={() => {
-                        setRotation(0)
-                        resetTransform()
-                      }}
-                    >
-                      <Maximize className="h-4 w-4" />
-                    </TranscriptActionIconButton>
-                  </div>
-                </div>
-                <div className="bg-black/90 p-4">
-                  <TransformComponent
-                    wrapperClass="!h-[78vh] !w-full"
-                    contentClass="!flex !h-full !w-full !items-center !justify-center"
-                  >
-                    <img
-                      src={previewImage.src}
-                      alt={previewImage.title}
-                      className="max-h-[74vh] w-auto max-w-full rounded-xl object-contain shadow-2xl"
-                      style={{ transform: `rotate(${rotation}deg)` }}
-                    />
-                  </TransformComponent>
-                </div>
-              </>
-            )}
-          </TransformWrapper>
-        ) : null}
-      </DialogContent>
-    </Dialog>
-  )
-})
-
 const VqaWorkbench = React.memo(function VqaWorkbench({
   taskId,
   effectiveTitle,
@@ -3411,7 +3268,6 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
       traceError: state.traceError,
     })),
   )
-  const [previewImage, setPreviewImage] = React.useState<{ src: string; title: string } | null>(null)
   const selectedTrace = selectedTraceId ? traceCache[selectedTraceId] ?? null : null
   const showStopAnswer = React.useMemo(
     () => isSearching || hasActiveAssistantStream(chatHistory),
@@ -3421,9 +3277,6 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
   const traceRetrievalPayload = React.useMemo(() => getTraceStagePayload(selectedTrace, "retrieval"), [selectedTrace])
   const traceLlmPayload = React.useMemo(() => getTraceStagePayload(selectedTrace, "llm_stream"), [selectedTrace])
   const traceFinishedPayload = React.useMemo(() => getTraceStagePayload(selectedTrace, "trace_finished"), [selectedTrace])
-  const openPreviewImage = React.useCallback((src: string, title: string) => {
-    setPreviewImage({ src, title })
-  }, [])
 
   return (
     <Tabs value={vqaTab} onValueChange={(value) => onVqaTabChange(value as VqaTab)} className="workbench-detail-pane vqa-workbench-pane flex h-full min-h-0 flex-col">
@@ -3522,27 +3375,8 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
                                       </TranscriptActionIconButton>
                                     </div>
                                   </div>
-                                  <div className="vqa-citation-layout mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_8rem]">
+                                  <div className="vqa-citation-layout mt-3 grid gap-3">
                                     <p className="whitespace-pre-wrap text-sm leading-6">{citation.text}</p>
-                                    {citation.image_path ? (
-                                      <button
-                                        type="button"
-                                        className="group block overflow-hidden rounded-xl"
-                                        onClick={() =>
-                                          openPreviewImage(
-                                            buildTaskArtifactFileUrl(citation.task_id, citation.image_path),
-                                            `${citation.task_title || effectiveTitle} · ${formatSecondsAsClock(citation.start)}`,
-                                          )
-                                        }
-                                      >
-                                        <img
-                                          src={buildTaskArtifactFileUrl(citation.task_id, citation.image_path)}
-                                          alt={citation.task_title || effectiveTitle}
-                                          className="h-24 w-full rounded-xl border border-border/70 object-cover transition-transform duration-200 group-hover:scale-[1.02]"
-                                          loading="lazy"
-                                        />
-                                      </button>
-                                    ) : null}
                                   </div>
                                 </div>
                               ))}
@@ -3570,7 +3404,7 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
       <TabsContent value="trace" className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden">
         <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
           <div className="space-y-4 p-4">
-            {!selectedTraceId ? <div className="workbench-pane-state rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">先在问答卡片里打开一条检索链路，这里会展示完整的召回、融合和回答过程。</div> : null}
+            {!selectedTraceId ? <div className="workbench-pane-state rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">先在问答卡片里打开一条检索链路，这里会展示完整的检索和回答过程。</div> : null}
             {traceError ? <div className="workbench-pane-state rounded-2xl border border-destructive/30 bg-destructive/6 p-4 text-sm text-destructive">{traceError}</div> : null}
             {selectedTraceId && traceLoadingId === selectedTraceId ? <div className="workbench-pane-state flex items-center justify-center rounded-2xl border border-border/70 bg-card/65 p-8 text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />正在加载 Trace 明细...</div> : null}
             {selectedTrace ? (
@@ -3611,27 +3445,8 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
                                     <Badge key={`${section.key}-${index}-${entry}`} variant="outline">{entry}</Badge>
                                   ))}
                                 </div>
-                                <div className="mt-2 grid gap-3 lg:grid-cols-[minmax(0,1fr)_9rem]">
+                                <div className="mt-2 grid gap-3">
                                   <p className="whitespace-pre-wrap text-sm leading-6">{asString(hit.text)}</p>
-                                  {asString(hit.image_path) ? (
-                                    <button
-                                      type="button"
-                                      className="group block overflow-hidden rounded-xl"
-                                      onClick={() =>
-                                        openPreviewImage(
-                                          buildTaskArtifactFileUrl(asString(hit.task_id) || taskId, asString(hit.image_path)),
-                                          `${asString(hit.task_title) || effectiveTitle} · ${formatSecondsAsClock(asNumber(hit.start) || 0)}`,
-                                        )
-                                      }
-                                    >
-                                      <img
-                                        src={buildTaskArtifactFileUrl(asString(hit.task_id) || taskId, asString(hit.image_path))}
-                                        alt={asString(hit.task_title) || effectiveTitle}
-                                        className="h-24 w-full rounded-xl border border-border/70 object-cover transition-transform duration-200 group-hover:scale-[1.02]"
-                                        loading="lazy"
-                                      />
-                                    </button>
-                                  ) : null}
                                 </div>
                               </div>
                             ))}
@@ -3651,7 +3466,6 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
           </div>
         </ScrollArea>
       </TabsContent>
-      <EvidenceImagePreviewDialog previewImage={previewImage} onPreviewImageChange={setPreviewImage} />
     </Tabs>
   )
 })
