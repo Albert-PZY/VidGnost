@@ -61,7 +61,10 @@ export async function buildApp(inputConfig?: Partial<AppConfig>): Promise<Fastif
 
   registerErrorHandler(app)
   await app.register(cors, {
-    origin: config.allowOrigins,
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    origin(origin, callback) {
+      callback(null, isAllowedCorsOrigin(origin, config.allowOrigins))
+    },
   })
   await app.register(multipart, {
     limits: {
@@ -135,4 +138,23 @@ export async function buildApp(inputConfig?: Partial<AppConfig>): Promise<Fastif
     localModelMigrationService,
   })
   return app
+}
+
+function isAllowedCorsOrigin(origin: string | undefined, allowOrigins: string[]): boolean {
+  if (!origin) {
+    return true
+  }
+  if (allowOrigins.includes(origin)) {
+    return true
+  }
+
+  try {
+    const parsed = new URL(origin)
+    return (
+      (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+      (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1" || parsed.hostname === "::1")
+    )
+  } catch {
+    return false
+  }
 }

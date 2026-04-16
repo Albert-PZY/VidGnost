@@ -176,6 +176,12 @@ The system SHALL keep `whisper-default` on the local runtime path, allow `llm-de
 - **WHEN** frontend updates bounded integer fields such as `frame_interval_seconds`, `rerank_top_n`, `api_timeout_seconds`, `api_image_max_bytes`, or `api_image_max_edge` with unsupported values
 - **THEN** backend clamps each persisted field into the corresponding supported integer range before returning the refreshed model catalog
 
+#### Scenario: Read legacy or corrupted model catalog values
+- **WHEN** frontend requests `/config/models`
+- **AND** persisted catalog entries contain out-of-range bounded integers or stale legacy values
+- **THEN** backend normalizes bounded integer fields such as `max_batch_size`, `rerank_top_n`, `frame_interval_seconds`, `api_timeout_seconds`, `api_image_max_bytes`, and `api_image_max_edge` into the supported runtime ranges before responding
+- **AND** the returned catalog remains consumable by the shared contracts schema without leaking invalid numeric payloads to the settings UI
+
 ### Requirement: Managed model actions SHALL return descriptive snapshots when the runtime is not self-managed
 Status: `implemented`
 

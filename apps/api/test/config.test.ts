@@ -1,6 +1,6 @@
 import os from "node:os"
 import path from "node:path"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import type { FastifyInstance } from "fastify"
@@ -101,6 +101,35 @@ describe("config routes", () => {
       correction_batch_size: 32,
       correction_overlap: 5,
     })
+  })
+
+  it("serves health and config preflight requests to loopback dev origins", async () => {
+    const [healthResponse, llmPreflightResponse] = await Promise.all([
+      app.inject({
+        method: "GET",
+        url: "/api/health",
+        headers: {
+          origin: "http://127.0.0.1:16221",
+        },
+      }),
+      app.inject({
+        method: "OPTIONS",
+        url: "/api/config/llm",
+        headers: {
+          origin: "http://127.0.0.1:16221",
+          "access-control-request-method": "PUT",
+          "access-control-request-headers": "content-type",
+        },
+      }),
+    ])
+
+    expect(healthResponse.statusCode).toBe(200)
+    expect(healthResponse.headers["access-control-allow-origin"]).toBe("http://127.0.0.1:16221")
+
+    expect(llmPreflightResponse.statusCode).toBe(204)
+    expect(llmPreflightResponse.headers["access-control-allow-origin"]).toBe("http://127.0.0.1:16221")
+    expect(String(llmPreflightResponse.headers["access-control-allow-methods"] || "")).toContain("PUT")
+    expect(String(llmPreflightResponse.headers["access-control-allow-methods"] || "")).toContain("PATCH")
   })
 
   it("creates prompt templates and rejects invalid selection ids", async () => {
@@ -220,6 +249,42 @@ describe("config routes", () => {
     expect(ollamaModelsMigrationResponseSchema.parse(migrateOllamaModelsResponse.json())).toMatchObject({
       moved: false,
       target_dir: path.join(storageDir, "custom-ollama-models"),
+    })
+  })
+
+  it("normalizes bounded model config fields when catalog storage contains out-of-range values", async () => {
+    const initialResponse = await app.inject({
+      method: "GET",
+      url: "/api/config/models",
+    })
+    expect(initialResponse.statusCode).toBe(200)
+    const initialModels = modelListResponseSchema.parse(initialResponse.json())
+
+    const corruptedModels = initialModels.items.map((item) =>
+      item.id === "rerank-default"
+        ? {
+            ...item,
+            rerank_top_n: 999,
+            frame_interval_seconds: 0,
+            api_timeout_seconds: 9999,
+            api_image_max_edge: 99999,
+          }
+        : item,
+    )
+
+    await writeFile(path.join(storageDir, "models", "catalog.json"), JSON.stringify(corruptedModels, null, 2), "utf8")
+
+    const normalizedResponse = await app.inject({
+      method: "GET",
+      url: "/api/config/models",
+    })
+
+    expect(normalizedResponse.statusCode).toBe(200)
+    expect(modelListResponseSchema.parse(normalizedResponse.json()).items.find((item) => item.id === "rerank-default")).toMatchObject({
+      rerank_top_n: 20,
+      frame_interval_seconds: 1,
+      api_timeout_seconds: 600,
+      api_image_max_edge: 4096,
     })
   })
 })

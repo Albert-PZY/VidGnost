@@ -347,17 +347,14 @@ export class ModelCatalogRepository {
 
   async #readModels(): Promise<ModelDescriptor[]> {
     await this.#ensureFile()
-    const models = await readJsonFile<ModelDescriptor[]>(
+    const models = await readJsonFile<Array<Partial<ModelDescriptor>>>(
       this.#path,
       DEFAULT_MODELS.map((item) => ({ ...item })),
     )
-    const byId = new Map(models.map((item) => [item.id, item]))
-    return DEFAULT_MODELS.map((defaultItem) => ({
-      ...defaultItem,
-      ...(byId.get(defaultItem.id) || {}),
-      id: defaultItem.id,
-      component: defaultItem.component,
-    }))
+    const byId = new Map(
+      models.map((item) => [String(item.id || "").trim(), item] as const).filter(([id]) => Boolean(id)),
+    )
+    return DEFAULT_MODELS.map((defaultItem) => normalizeStoredModelDescriptor(defaultItem, byId.get(defaultItem.id)))
   }
 
   async #writeModels(models: ModelDescriptor[]): Promise<void> {
@@ -385,6 +382,48 @@ export class ModelCatalogRepository {
       })
     }
     return hydrated
+  }
+}
+
+function normalizeStoredModelDescriptor(
+  defaultItem: ModelDescriptor,
+  storedItem?: Partial<ModelDescriptor>,
+): ModelDescriptor {
+  const merged = {
+    ...defaultItem,
+    ...(storedItem || {}),
+  }
+
+  return {
+    ...defaultItem,
+    name: normalizeTrimmedString(merged.name, defaultItem.name),
+    provider: normalizeProvider(defaultItem.component, String(merged.provider || defaultItem.provider)),
+    model_id: normalizeTrimmedString(merged.model_id, defaultItem.model_id),
+    path: normalizeOptionalPath(String(merged.path || "")),
+    status: normalizeRuntimeStatus(merged.status, defaultItem.status),
+    quantization: normalizeTrimmedString(merged.quantization, defaultItem.quantization),
+    load_profile: normalizeTrimmedString(merged.load_profile, defaultItem.load_profile),
+    max_batch_size: clampInteger(merged.max_batch_size, defaultItem.max_batch_size, 1, 64),
+    rerank_top_n: clampInteger(merged.rerank_top_n, defaultItem.rerank_top_n, 1, 20),
+    frame_interval_seconds: clampInteger(merged.frame_interval_seconds, defaultItem.frame_interval_seconds, 1, 600),
+    enabled: typeof merged.enabled === "boolean" ? merged.enabled : defaultItem.enabled,
+    size_bytes: clampInteger(merged.size_bytes, defaultItem.size_bytes, 0, Number.MAX_SAFE_INTEGER),
+    is_installed: typeof merged.is_installed === "boolean" ? merged.is_installed : defaultItem.is_installed,
+    supports_managed_download:
+      typeof merged.supports_managed_download === "boolean"
+        ? merged.supports_managed_download
+        : defaultItem.supports_managed_download,
+    download: normalizeDownloadStatus(merged.download),
+    last_check_at: normalizeTrimmedString(merged.last_check_at, defaultItem.last_check_at),
+    api_base_url: normalizeTrimmedString(merged.api_base_url, defaultItem.api_base_url),
+    api_key: normalizeTrimmedString(merged.api_key, defaultItem.api_key),
+    api_key_configured:
+      typeof merged.api_key_configured === "boolean" ? merged.api_key_configured : defaultItem.api_key_configured,
+    api_model: normalizeTrimmedString(merged.api_model, defaultItem.api_model),
+    api_protocol: normalizeTrimmedString(merged.api_protocol, defaultItem.api_protocol),
+    api_timeout_seconds: clampInteger(merged.api_timeout_seconds, defaultItem.api_timeout_seconds, 10, 600),
+    api_image_max_bytes: clampInteger(merged.api_image_max_bytes, defaultItem.api_image_max_bytes, 32 * 1024, 8 * 1024 * 1024),
+    api_image_max_edge: clampInteger(merged.api_image_max_edge, defaultItem.api_image_max_edge, 256, 4096),
   }
 }
 
@@ -421,6 +460,44 @@ function normalizeOptionalPath(rawValue: string): string {
     return ""
   }
   return path.isAbsolute(candidate) ? path.normalize(candidate) : path.resolve(process.cwd(), candidate)
+}
+
+function normalizeTrimmedString(rawValue: unknown, fallback: string): string {
+  const candidate = String(rawValue || "").trim()
+  return candidate || fallback
+}
+
+function normalizeRuntimeStatus(
+  rawValue: unknown,
+  fallback: ModelDescriptor["status"],
+): ModelDescriptor["status"] {
+  const candidate = String(rawValue || "").trim()
+  if (candidate === "ready" || candidate === "loading" || candidate === "not_ready" || candidate === "error") {
+    return candidate
+  }
+  return fallback
+}
+
+function normalizeDownloadStatus(rawValue: unknown): ModelDownloadStatus | undefined {
+  if (!rawValue || typeof rawValue !== "object") {
+    return undefined
+  }
+
+  const candidate = rawValue as Partial<ModelDownloadStatus>
+  const state = candidate.state
+  return {
+    state:
+      state === "downloading" || state === "completed" || state === "cancelled" || state === "failed"
+        ? state
+        : "idle",
+    message: normalizeTrimmedString(candidate.message, ""),
+    current_file: normalizeTrimmedString(candidate.current_file, ""),
+    downloaded_bytes: clampInteger(candidate.downloaded_bytes, 0, 0, Number.MAX_SAFE_INTEGER),
+    total_bytes: clampInteger(candidate.total_bytes, 0, 0, Number.MAX_SAFE_INTEGER),
+    percent: clampNumber(candidate.percent, 0, 0, 100),
+    speed_bps: Math.max(0, Number(candidate.speed_bps) || 0),
+    updated_at: normalizeTrimmedString(candidate.updated_at, ""),
+  }
 }
 
 function createDefaultDownloadStatus(): ModelDownloadStatus {
