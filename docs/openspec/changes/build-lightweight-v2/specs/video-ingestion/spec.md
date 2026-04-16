@@ -12,11 +12,15 @@ The system SHALL accept Bilibili video URLs or BV identifiers, normalize them in
 - **THEN** server returns validation error with machine-readable error code
 
 ### Requirement: System SHALL accept local video file upload as processing input
-The system SHALL accept local uploads (`mp4`, `mkv`, `mov`, `webm`) and create processing tasks with source type `local_file`.
+The system SHALL accept local uploads (`mp4`, `mkv`, `mov`, `webm`, `avi`, `m4v`) and create processing tasks with source type `local_file`.
 
 #### Scenario: Upload supported local file
 - **WHEN** client uploads a supported video file within size limit
 - **THEN** server stores input metadata and returns task ID with status `queued`
+
+#### Scenario: Upload avi or m4v file
+- **WHEN** client uploads an `.avi` or `.m4v` local video file within size limit
+- **THEN** server accepts the request through the same local-file task creation flow
 
 #### Scenario: Upload unsupported file format
 - **WHEN** client uploads a file with unsupported extension

@@ -1,5 +1,6 @@
 import type { LlmCorrectionMode, TranscriptSegment } from "@vidgnost/contracts"
 
+import { clampInteger } from "../../core/number.js"
 import type { OpenAiCompatibleClient } from "../llm/openai-compatible-client.js"
 
 export interface TranscriptCorrectionIndex {
@@ -378,13 +379,6 @@ function normalizeSegments(segments: TranscriptSegment[]): TranscriptSegment[] {
       text: String(segment.text || "").trim(),
     }))
     .filter((segment) => segment.text.length > 0)
-}
-
-function clampInteger(value: number, fallback: number, minimum: number, maximum: number): number {
-  if (!Number.isFinite(value)) {
-    return fallback
-  }
-  return Math.max(minimum, Math.min(maximum, Math.trunc(value)))
 }
 
 function normalizeChineseText(value: string): string {

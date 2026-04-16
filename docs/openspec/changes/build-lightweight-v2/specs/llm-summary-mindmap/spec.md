@@ -51,6 +51,11 @@ The persisted correction config SHALL influence how transcript batches are sent 
 - **THEN** it uses the configured `correction_batch_size`
 - **AND** it reuses the configured `correction_overlap` to build overlapping windows between batches
 
+#### Scenario: Correction batch returns invalid structured output
+- **WHEN** a `strict` or `rewrite` correction batch returns empty content or a line count that does not match the requested window
+- **THEN** backend falls back to the original batch text for that window instead of aborting stage `D`
+- **AND** transcript optimization metadata records `fallback_used=true` together with the batch-specific fallback reason
+
 ### Requirement: Stage-D generation SHALL fail soft through explicit fallback artifacts
 Status: `implemented`
 

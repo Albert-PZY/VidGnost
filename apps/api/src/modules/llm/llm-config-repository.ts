@@ -4,6 +4,7 @@ import type { LLMConfigResponse } from "@vidgnost/contracts"
 
 import type { AppConfig } from "../../core/config.js"
 import { pathExists, readJsonFile, writeJsonFile } from "../../core/fs.js"
+import { clampInteger } from "../../core/number.js"
 
 const LEGACY_MASK_PLACEHOLDERS = new Set(["__SECRET_MASKED__", "********"])
 
@@ -121,12 +122,4 @@ function normalizeCorrectionMode(rawValue: unknown, fallback: "off" | "strict" |
     return candidate
   }
   return fallback === "off" || fallback === "rewrite" ? fallback : "strict"
-}
-
-function clampInteger(value: unknown, fallback: number, minimum: number, maximum: number): number {
-  const candidate = Number.parseInt(String(value ?? "").trim(), 10)
-  if (!Number.isFinite(candidate)) {
-    return fallback
-  }
-  return Math.max(minimum, Math.min(maximum, candidate))
 }

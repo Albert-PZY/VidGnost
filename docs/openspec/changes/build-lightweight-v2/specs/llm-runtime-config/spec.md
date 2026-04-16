@@ -44,6 +44,10 @@ LLM config SHALL include `base_url`, `api_key`, `model`, `load_profile`, `local_
 - **WHEN** frontend requests current LLM config
 - **THEN** response includes `api_key_configured` derived from the stored secret value
 
+#### Scenario: Save out-of-range correction controls
+- **WHEN** frontend submits `correction_batch_size` or `correction_overlap` outside the supported integer range
+- **THEN** backend clamps the persisted values into the supported bounds before returning the effective config
+
 ### Requirement: Frontend settings SHALL expose online LLM provider parameters together with correction controls
 Status: `implemented`
 
@@ -167,6 +171,10 @@ The system SHALL keep `whisper-default` on the local runtime path, allow `llm-de
 - **THEN** backend exposes `rerank_top_n` as an integer configuration field
 - **AND** the field accepts values in the documented bounded runtime range
 - **AND** VQA search, analysis, and streaming chat use the persisted `rerank_top_n` as the default final candidate count whenever the client request does not override `top_k`
+
+#### Scenario: Save out-of-range model tuning integers
+- **WHEN** frontend updates bounded integer fields such as `frame_interval_seconds`, `rerank_top_n`, `api_timeout_seconds`, `api_image_max_bytes`, or `api_image_max_edge` with unsupported values
+- **THEN** backend clamps each persisted field into the corresponding supported integer range before returning the refreshed model catalog
 
 ### Requirement: Managed model actions SHALL return descriptive snapshots when the runtime is not self-managed
 Status: `implemented`

@@ -8,6 +8,13 @@ import type { TaskDetailResponse, TaskListResponse, TaskRecentResponse, TaskStat
 
 import { AppError } from "../core/errors.js"
 import { TaskRepository } from "../modules/tasks/task-repository.js"
+import {
+  fileExists,
+  inferContentType,
+  normalizeTaskId,
+  parseByteRange,
+  type TaskIdParams,
+} from "./task-route-support.js"
 
 interface TaskQuery {
   limit?: number | string
@@ -16,10 +23,6 @@ interface TaskQuery {
   sort_by?: string
   status?: string
   workflow?: string
-}
-
-interface TaskIdParams {
-  taskId?: string
 }
 
 interface ArtifactQuery {
@@ -146,16 +149,6 @@ export async function registerTaskRoutes(
   })
 }
 
-function normalizeTaskId(params: TaskIdParams): string {
-  const taskId = String(params.taskId || "").trim()
-  if (!taskId) {
-    throw AppError.badRequest("Task id is required", {
-      code: "TASK_ID_INVALID",
-    })
-  }
-  return taskId
-}
-
 function normalizeOptionalString(value: unknown): string | undefined {
   const candidate = String(value || "").trim()
   return candidate || undefined
@@ -169,83 +162,3 @@ function parseBoundedInteger(value: unknown, fallback: number, minimum: number, 
   return Math.max(minimum, Math.min(maximum, parsed))
 }
 
-function inferContentType(filePath: string): string {
-  switch (path.extname(filePath).toLowerCase()) {
-    case ".mp4":
-      return "video/mp4"
-    case ".webm":
-      return "video/webm"
-    case ".mov":
-      return "video/quicktime"
-    case ".m4v":
-      return "video/x-m4v"
-    case ".png":
-      return "image/png"
-    case ".jpg":
-    case ".jpeg":
-      return "image/jpeg"
-    case ".gif":
-      return "image/gif"
-    case ".webp":
-      return "image/webp"
-    case ".svg":
-      return "image/svg+xml"
-    case ".md":
-      return "text/markdown; charset=utf-8"
-    case ".txt":
-      return "text/plain; charset=utf-8"
-    case ".json":
-      return "application/json; charset=utf-8"
-    case ".html":
-      return "text/html; charset=utf-8"
-    default:
-      return "application/octet-stream"
-  }
-}
-
-function parseByteRange(rangeHeader: string, fileSize: number): { start: number; end: number } | null {
-  const match = /^bytes=(\d*)-(\d*)$/i.exec(String(rangeHeader || "").trim())
-  if (!match) {
-    return null
-  }
-
-  const startText = match[1]
-  const endText = match[2]
-
-  if (!startText && !endText) {
-    return null
-  }
-
-  if (!startText) {
-    const suffixLength = Number.parseInt(endText, 10)
-    if (!Number.isFinite(suffixLength) || suffixLength <= 0) {
-      return null
-    }
-    const start = Math.max(0, fileSize - suffixLength)
-    return { start, end: fileSize - 1 }
-  }
-
-  const start = Number.parseInt(startText, 10)
-  if (!Number.isFinite(start) || start < 0 || start >= fileSize) {
-    return null
-  }
-
-  const end = endText ? Number.parseInt(endText, 10) : fileSize - 1
-  if (!Number.isFinite(end) || end < start) {
-    return null
-  }
-
-  return {
-    start,
-    end: Math.min(end, fileSize - 1),
-  }
-}
-
-async function fileExists(targetPath: string): Promise<boolean> {
-  try {
-    await stat(targetPath)
-    return true
-  } catch {
-    return false
-  }
-}

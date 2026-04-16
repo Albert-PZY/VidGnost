@@ -4,6 +4,7 @@ import type { WhisperConfigResponse, WhisperConfigUpdateRequest } from "@vidgnos
 
 import { pathExists } from "../../core/fs.js"
 import type { AppConfig } from "../../core/config.js"
+import { clampInteger } from "../../core/number.js"
 
 interface StoredWhisperConfig {
   model_default: string
@@ -178,14 +179,6 @@ function normalizeBoolean(rawValue: string | undefined, fallback: boolean): bool
     return false
   }
   return fallback
-}
-
-function clampInteger(value: unknown, fallback: number, minimum: number, maximum: number): number {
-  const candidate = Number.parseInt(String(value ?? "").trim(), 10)
-  if (!Number.isFinite(candidate)) {
-    return fallback
-  }
-  return Math.max(minimum, Math.min(maximum, candidate))
 }
 
 function escapeToml(value: string): string {

@@ -15,6 +15,7 @@ import { ensureDirectory } from "../core/fs.js"
 import type { TaskOrchestrator } from "../modules/tasks/task-orchestrator.js"
 import type { StoredTaskRecord, TaskRepository } from "../modules/tasks/task-repository.js"
 import {
+  ALLOWED_VIDEO_EXTENSIONS,
   buildSrt,
   buildTaskCreateResponse,
   buildVtt,
@@ -24,6 +25,7 @@ import {
   renderMarkmapHtml,
   sanitizeFilename,
 } from "../modules/tasks/task-support.js"
+export { normalizeWorkflow } from "../modules/tasks/task-support.js"
 
 export interface TaskIdParams {
   taskId?: string
@@ -33,8 +35,6 @@ export interface ExportParams extends TaskIdParams {
   kind?: string
 }
 
-export const ALLOWED_VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"])
-
 export function normalizeTaskId(params: TaskIdParams): string {
   const taskId = String(params.taskId || "").trim()
   if (!taskId) {
@@ -43,10 +43,6 @@ export function normalizeTaskId(params: TaskIdParams): string {
     })
   }
   return taskId
-}
-
-export function normalizeWorkflow(value: unknown): WorkflowType {
-  return String(value || "").trim().toLowerCase() === "vqa" ? "vqa" : "notes"
 }
 
 export function normalizePublicStatus(value: unknown): TaskCreateResponse["status"] {

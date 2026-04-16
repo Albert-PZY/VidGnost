@@ -10,9 +10,12 @@ import { RetrievalIndexService } from "../vqa/retrieval-index-service.js"
 import { TaskRepository, type StoredTaskRecord } from "./task-repository.js"
 import {
   buildArtifactIndex,
-  createEmptyStageLogs,
-  createEmptyStageMetrics,
+  inferActiveStage,
+  normalizeWorkflow,
+  parseStageLogs,
+  parseStageMetrics,
   parseTranscriptSegments,
+  toPublicTaskStatus as toPublicStatus,
 } from "./task-support.js"
 
 interface SubmitTaskInput {
@@ -732,69 +735,9 @@ class TaskCancelledError extends Error {
   }
 }
 
-function parseStageLogs(raw: string | null | undefined): Record<string, string[]> {
-  if (!raw) {
-    return createEmptyStageLogs()
-  }
-
-  try {
-    const payload = JSON.parse(raw) as Record<string, unknown>
-    const result = createEmptyStageLogs()
-    Object.entries(payload || {}).forEach(([key, value]) => {
-      result[key] = Array.isArray(value) ? value.map((item) => String(item)) : []
-    })
-    return result
-  } catch {
-    return createEmptyStageLogs()
-  }
-}
-
-function normalizeWorkflow(value: unknown): WorkflowType {
-  return String(value || "").trim().toLowerCase() === "vqa" ? "vqa" : "notes"
-}
-
 function normalizeNullableTitle(value: unknown): string | null {
   const candidate = String(value || "").trim()
   return candidate || null
-}
-
-function toPublicStatus(rawStatus: unknown): TaskStatus {
-  const status = String(rawStatus || "").trim().toLowerCase()
-  if (["completed", "failed", "cancelled", "queued", "paused"].includes(status)) {
-    return status as TaskStatus
-  }
-  if (["preparing", "transcribing", "summarizing", "running"].includes(status)) {
-    return "running"
-  }
-  return "queued"
-}
-
-function parseStageMetrics(raw: string | null | undefined): Record<string, Record<string, unknown>> {
-  if (!raw) {
-    return createEmptyStageMetrics()
-  }
-
-  try {
-    const payload = JSON.parse(raw) as Record<string, unknown>
-    const result = createEmptyStageMetrics()
-    Object.entries(payload || {}).forEach(([key, value]) => {
-      if (value && typeof value === "object" && !Array.isArray(value)) {
-        result[key] = {
-          ...(result[key] || {}),
-          ...(value as Record<string, unknown>),
-        }
-      }
-    })
-    return result
-  } catch {
-    return createEmptyStageMetrics()
-  }
-}
-
-function inferActiveStage(raw: string | null | undefined): string {
-  const stageMetrics = parseStageMetrics(raw)
-  const runningStage = Object.entries(stageMetrics).find((entry) => String(entry[1]?.status || "").trim().toLowerCase() === "running")
-  return runningStage?.[0] || "D"
 }
 
 function toErrorMessage(error: unknown): string {

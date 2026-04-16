@@ -10,6 +10,7 @@ import type {
 
 export const STAGE_KEYS = ["A", "B", "C", "D"] as const
 export const D_SUBSTAGE_KEYS = ["transcript_optimize", "fusion_delivery"] as const
+export const ALLOWED_VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"])
 
 export function createEmptyStageLogs(): Record<string, string[]> {
   return Object.fromEntries(STAGE_KEYS.map((stage) => [stage, []])) as Record<string, string[]>
@@ -45,6 +46,82 @@ export function createEmptyStageMetrics(): Record<string, Record<string, unknown
   )
 
   return metrics
+}
+
+export function parseStageLogs(raw: string | null | undefined): Record<string, string[]> {
+  const result = createEmptyStageLogs()
+  if (!raw) {
+    return result
+  }
+
+  try {
+    const payload = JSON.parse(raw) as Record<string, unknown>
+    for (const stage of STAGE_KEYS) {
+      const value = payload?.[stage]
+      result[stage] = Array.isArray(value) ? value.map((item) => String(item)) : []
+    }
+    return result
+  } catch {
+    return result
+  }
+}
+
+export function parseStageMetrics(raw: string | null | undefined): Record<string, Record<string, unknown>> {
+  const result = createEmptyStageMetrics()
+  if (!raw) {
+    return result
+  }
+
+  try {
+    const payload = JSON.parse(raw) as Record<string, unknown>
+    for (const stage of STAGE_KEYS) {
+      const value = payload?.[stage]
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        result[stage] = {
+          ...result[stage],
+          ...(value as Record<string, unknown>),
+        }
+      }
+    }
+    return result
+  } catch {
+    return result
+  }
+}
+
+export function inferActiveStage(raw: string | null | undefined): string {
+  const stageMetrics = parseStageMetrics(raw)
+  const runningStage = Object.entries(stageMetrics).find((entry) => String(entry[1]?.status || "").trim().toLowerCase() === "running")
+  return runningStage?.[0] || "D"
+}
+
+export function normalizeWorkflow(value: unknown): WorkflowType {
+  return String(value || "").trim().toLowerCase() === "vqa" ? "vqa" : "notes"
+}
+
+export function normalizeSourceType(value: unknown): "bilibili" | "local_file" | "local_path" {
+  const candidate = String(value || "").trim().toLowerCase()
+  if (candidate === "local_file" || candidate === "local_path") {
+    return candidate
+  }
+  return "bilibili"
+}
+
+export function normalizeDate(value: unknown): string {
+  const candidate = String(value || "").trim()
+  const parsed = Date.parse(candidate)
+  return Number.isNaN(parsed) ? new Date(0).toISOString() : new Date(parsed).toISOString()
+}
+
+export function toPublicTaskStatus(rawStatus: unknown): TaskStatus {
+  const status = String(rawStatus || "").trim().toLowerCase()
+  if (["completed", "failed", "cancelled", "queued", "paused"].includes(status)) {
+    return status as TaskStatus
+  }
+  if (["preparing", "transcribing", "summarizing", "running"].includes(status)) {
+    return "running"
+  }
+  return "queued"
 }
 
 export function buildInitialSteps(workflow: WorkflowType): TaskStepItem[] {

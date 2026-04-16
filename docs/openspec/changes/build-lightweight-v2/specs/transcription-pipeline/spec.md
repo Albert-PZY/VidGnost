@@ -139,3 +139,8 @@ Task detail response SHALL expose `vm_phase_metrics` entries for `transcript_opt
 - **WHEN** client requests task detail after phase `D`
 - **THEN** response includes timing and status fields for `transcript_optimize`
 - **AND** the final phase-`D` metric reflects fusion delivery completion state
+
+#### Scenario: Query task detail while pipeline is still running
+- **WHEN** client requests task detail while internal task state is `preparing`, `transcribing`, or `summarizing`
+- **THEN** response normalizes the public task status to `running`
+- **AND** `stage_logs` and `stage_metrics` still expose stable `A` / `B` / `C` / `D` containers even when some phases have no persisted log lines yet

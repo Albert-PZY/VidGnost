@@ -10,6 +10,7 @@ import type {
 
 import type { AppConfig } from "../../core/config.js"
 import { pathExists, readJsonFile, writeJsonFile } from "../../core/fs.js"
+import { clampInteger, clampNumber } from "../../core/number.js"
 import type { OllamaRuntimeConfigRepository } from "./ollama-runtime-config-repository.js"
 
 const DEFAULT_API_TIMEOUT_SECONDS = 120
@@ -314,6 +315,7 @@ export class ModelCatalogRepository {
     const nextPercent = clampNumber(
       patch.percent ?? (nextTotalBytes > 0 ? (nextDownloadedBytes / nextTotalBytes) * 100 : current.percent),
       0,
+      0,
       100,
     )
 
@@ -419,20 +421,6 @@ function normalizeOptionalPath(rawValue: string): string {
     return ""
   }
   return path.isAbsolute(candidate) ? path.normalize(candidate) : path.resolve(process.cwd(), candidate)
-}
-
-function clampInteger(value: number, fallback: number, minimum: number, maximum: number): number {
-  if (!Number.isFinite(value)) {
-    return fallback
-  }
-  return Math.max(minimum, Math.min(maximum, Math.trunc(value)))
-}
-
-function clampNumber(value: number, minimum: number, maximum: number): number {
-  if (!Number.isFinite(value)) {
-    return minimum
-  }
-  return Math.max(minimum, Math.min(maximum, value))
 }
 
 function createDefaultDownloadStatus(): ModelDownloadStatus {

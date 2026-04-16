@@ -6,7 +6,6 @@ import type {
   TaskListResponse,
   TaskRecentResponse,
   TaskStatsResponse,
-  TaskStatus,
   TaskStepItem,
   TaskStepStatus,
   TaskSummaryItem,
@@ -16,7 +15,17 @@ import type {
 
 import type { AppConfig } from "../../core/config.js"
 import { ensureDirectory, pathExists, readJsonFile, writeJsonFile } from "../../core/fs.js"
-import { buildArtifactIndex } from "./task-support.js"
+import {
+  ALLOWED_VIDEO_EXTENSIONS,
+  STAGE_KEYS,
+  buildArtifactIndex,
+  normalizeDate,
+  normalizeSourceType,
+  normalizeWorkflow,
+  parseStageLogs,
+  parseStageMetrics,
+  toPublicTaskStatus as toPublicStatus,
+} from "./task-support.js"
 
 type SortBy = "date" | "name" | "size"
 
@@ -57,8 +66,6 @@ export interface StoredTaskRecord {
   workflow?: string
 }
 
-const STAGE_KEYS = ["A", "B", "C", "D"] as const
-const ALLOWED_VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"])
 const MARKDOWN_IMAGE_PATTERN =
   /(!\[[^\]]*]\()(?<path>(?:\.{1,2}\/)?[^)\s]+\.(?:png|jpg|jpeg|gif|webp|svg))(\))/gi
 
@@ -587,18 +594,6 @@ function toSummaryItem(record: StoredTaskRecord): TaskSummaryItem {
   }
 }
 
-function normalizeSourceType(value: unknown): "bilibili" | "local_file" | "local_path" {
-  const candidate = String(value || "").trim().toLowerCase()
-  if (candidate === "local_file" || candidate === "local_path") {
-    return candidate
-  }
-  return "bilibili"
-}
-
-function normalizeWorkflow(value: unknown): WorkflowType {
-  return String(value || "").trim().toLowerCase() === "vqa" ? "vqa" : "notes"
-}
-
 function normalizeString(value: unknown, fallback = ""): string {
   const candidate = String(value || "").trim()
   return candidate || fallback
@@ -609,15 +604,6 @@ function normalizeNullableString(value: unknown): string | null {
     return null
   }
   return String(value)
-}
-
-function normalizeDate(value: unknown): string {
-  const candidate = String(value || "").trim()
-  if (!candidate) {
-    return new Date(0).toISOString()
-  }
-  const parsed = Date.parse(candidate)
-  return Number.isNaN(parsed) ? new Date(0).toISOString() : new Date(parsed).toISOString()
 }
 
 function normalizeNonNegativeInteger(value: unknown): number {
@@ -687,102 +673,6 @@ function parseTranscriptSegments(raw: string | null | undefined): TranscriptSegm
     return segments
   } catch {
     return []
-  }
-}
-
-function parseStageLogs(raw: string | null | undefined): Record<string, string[]> {
-  const fallback = Object.fromEntries(STAGE_KEYS.map((stage) => [stage, []])) as Record<string, string[]>
-  if (!raw) {
-    return fallback
-  }
-
-  try {
-    const payload = JSON.parse(raw) as Record<string, unknown>
-    for (const stage of STAGE_KEYS) {
-      const value = payload?.[stage]
-      fallback[stage] = Array.isArray(value) ? value.map((item) => String(item)) : []
-    }
-    return fallback
-  } catch {
-    return fallback
-  }
-}
-
-function parseStageMetrics(raw: string | null | undefined): Record<string, Record<string, unknown>> {
-  const fallback = createEmptyStageMetrics()
-  if (!raw) {
-    return fallback
-  }
-
-  try {
-    const payload = JSON.parse(raw) as Record<string, unknown>
-    for (const stage of STAGE_KEYS) {
-      const value = payload?.[stage]
-      if (value && typeof value === "object" && !Array.isArray(value)) {
-        fallback[stage] = {
-          ...fallback[stage],
-          ...(value as Record<string, unknown>),
-        }
-      }
-    }
-    return fallback
-  } catch {
-    return fallback
-  }
-}
-
-function createEmptyStageMetrics(): Record<string, Record<string, unknown>> {
-  return {
-    A: {
-      started_at: null,
-      completed_at: null,
-      elapsed_seconds: null,
-      status: "pending",
-      reason: null,
-      log_count: 0,
-    },
-    B: {
-      started_at: null,
-      completed_at: null,
-      elapsed_seconds: null,
-      status: "pending",
-      reason: null,
-      log_count: 0,
-    },
-    C: {
-      started_at: null,
-      completed_at: null,
-      elapsed_seconds: null,
-      status: "pending",
-      reason: null,
-      log_count: 0,
-    },
-    D: {
-      started_at: null,
-      completed_at: null,
-      elapsed_seconds: null,
-      status: "pending",
-      reason: null,
-      log_count: 0,
-      substage_metrics: {
-        transcript_optimize: {
-          status: "pending",
-          started_at: null,
-          completed_at: null,
-          elapsed_seconds: null,
-          optional: true,
-          reason: null,
-        },
-        fusion_delivery: {
-          status: "pending",
-          started_at: null,
-          completed_at: null,
-          elapsed_seconds: null,
-          optional: false,
-          reason: null,
-        },
-      },
-    },
   }
 }
 
@@ -1074,17 +964,6 @@ function looksLikeLocalMediaPath(value: string): boolean {
     return true
   }
   return path.isAbsolute(raw)
-}
-
-function toPublicStatus(rawStatus: unknown): TaskStatus {
-  const status = String(rawStatus || "").trim().toLowerCase()
-  if (["completed", "failed", "cancelled", "queued", "paused"].includes(status)) {
-    return status as TaskStatus
-  }
-  if (["preparing", "transcribing", "summarizing", "running"].includes(status)) {
-    return "running"
-  }
-  return "queued"
 }
 
 function toOptionalNumber(value: unknown): number | null {

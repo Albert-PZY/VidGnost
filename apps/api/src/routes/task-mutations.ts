@@ -17,7 +17,7 @@ import type { AppConfig } from "../core/config.js"
 import { AppError } from "../core/errors.js"
 import { TaskOrchestrator } from "../modules/tasks/task-orchestrator.js"
 import { TaskRepository } from "../modules/tasks/task-repository.js"
-import { buildTaskCreateResponse, sanitizeFilename } from "../modules/tasks/task-support.js"
+import { buildTaskCreateResponse, normalizeDate, normalizeSourceType, sanitizeFilename } from "../modules/tasks/task-support.js"
 import {
   assertLocalVideoPath,
   buildQueuedTaskRecord,
@@ -381,14 +381,6 @@ function collectMultipartFields(fields: Record<string, unknown>): Record<string,
   )
 }
 
-function normalizeSourceType(value: unknown): "bilibili" | "local_file" | "local_path" {
-  const candidate = String(value || "").trim().toLowerCase()
-  if (candidate === "local_file" || candidate === "local_path") {
-    return candidate
-  }
-  return "bilibili"
-}
-
 function clampProgress(value: unknown): number {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) {
@@ -400,10 +392,4 @@ function clampProgress(value: unknown): number {
 function normalizeNullableNumber(value: unknown): number | null {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : null
-}
-
-function normalizeDate(value: unknown): string {
-  const candidate = String(value || "").trim()
-  const parsed = Date.parse(candidate)
-  return Number.isNaN(parsed) ? new Date(0).toISOString() : new Date(parsed).toISOString()
 }
