@@ -1,18 +1,47 @@
+const BYTES_PER_MEGABYTE = 1024 ** 2
+const BYTES_PER_GIGABYTE = 1024 ** 3
+const BYTES_PER_TERABYTE = 1024 ** 4
+
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) {
-    return "0 B"
+    return "0 MB"
   }
 
-  const units = ["B", "KB", "MB", "GB", "TB"]
-  let value = bytes
-  let unitIndex = 0
-
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024
-    unitIndex += 1
+  if (bytes >= BYTES_PER_TERABYTE) {
+    return `${formatUnitValue(bytes / BYTES_PER_TERABYTE)} TB`
   }
 
-  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`
+  if (bytes >= BYTES_PER_GIGABYTE) {
+    return `${formatUnitValue(bytes / BYTES_PER_GIGABYTE)} GB`
+  }
+
+  return `${formatUnitValue(bytes / BYTES_PER_MEGABYTE)} MB`
+}
+
+export function formatMegabytesInput(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "0"
+  }
+
+  return formatUnitValue(bytes / BYTES_PER_MEGABYTE)
+}
+
+export function parseMegabytesInputToBytes(value: string, fallbackBytes: number): number {
+  const parsedMegabytes = Number.parseFloat(String(value || "").trim())
+  if (!Number.isFinite(parsedMegabytes) || parsedMegabytes <= 0) {
+    return fallbackBytes
+  }
+
+  return Math.round(parsedMegabytes * BYTES_PER_MEGABYTE)
+}
+
+function formatUnitValue(value: number): string {
+  const digits = value >= 100 ? 0 : value >= 10 ? 1 : value >= 1 ? 2 : 3
+  return stripTrailingZeros(value.toFixed(digits))
+}
+
+function stripTrailingZeros(value: string): string {
+  return value.replace(/(?:\.0+|(\.\d*?[1-9])0+)$/, "$1")
 }
 
 export function formatSecondsAsClock(totalSeconds: number): string {

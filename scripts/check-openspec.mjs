@@ -7,7 +7,69 @@ import { fileURLToPath } from "node:url";
 const REQUIREMENT_RE = /^### Requirement:/m;
 const SCENARIO_RE = /^#### Scenario:/m;
 const TASK_ITEM_RE = /^- \[(?: |x|X)\] /m;
+const STATUS_RE = /^Status:\s*`(planned|partial|implemented)`/m;
 const IGNORED_CHANGE_DIRS = new Set(["archive", "templates"]);
+const README_STATUS_TERMS = ["planned", "partial", "implemented"];
+const CONTRADICTORY_COMPLETED_TASK_PATTERNS = [
+  /auto-download/i,
+  /download progress/i,
+  /runtime warning/i,
+  /delta, warning/i,
+  /Ollama pull/i,
+];
+
+const CAPABILITY_EVIDENCE = {
+  "video-ingestion": {
+    implementation: [
+      "apps/api/src/routes/task-mutations.ts",
+      "apps/api/src/routes/task-route-support.ts",
+      "apps/desktop/src/components/views/new-task-view.tsx",
+    ],
+    tests: ["apps/api/test/tasks-write.test.ts"],
+  },
+  "transcription-pipeline": {
+    implementation: [
+      "apps/api/src/modules/asr/asr-service.ts",
+      "apps/api/src/modules/tasks/task-orchestrator.ts",
+    ],
+    tests: ["apps/api/test/asr-service.test.ts", "apps/api/test/tasks-write.test.ts"],
+  },
+  "llm-runtime-config": {
+    implementation: [
+      "apps/api/src/routes/config.ts",
+      "apps/api/src/modules/models/ollama-service-manager.ts",
+      "apps/api/src/modules/runtime/self-check-service.ts",
+    ],
+    tests: ["apps/api/test/config.test.ts", "apps/api/test/self-check.test.ts"],
+  },
+  "llm-summary-mindmap": {
+    implementation: ["apps/api/src/modules/summary/summary-service.ts"],
+    tests: ["apps/api/test/summary-service.test.ts"],
+  },
+  "sse-runtime-stream": {
+    implementation: [
+      "apps/api/src/modules/events/event-bus.ts",
+      "apps/api/src/routes/task-events.ts",
+      "apps/api/src/routes/vqa.ts",
+    ],
+    tests: [],
+  },
+  "history-and-export": {
+    implementation: [
+      "apps/api/src/routes/task-exports.ts",
+      "apps/desktop/src/components/views/history-view.tsx",
+      "apps/desktop/src/components/views/task-processing-workbench.tsx",
+    ],
+    tests: ["apps/api/test/tasks-write.test.ts"],
+  },
+  "web-workbench-ui": {
+    implementation: [
+      "apps/desktop/src/components/views/settings-view.tsx",
+      "apps/desktop/src/components/views/task-processing-workbench.tsx",
+    ],
+    tests: ["apps/api/test/frontend-format.test.ts"],
+  },
+};
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,7 +105,7 @@ async function validateSpecFile(filePath, errors) {
     content = await readText(filePath);
   } catch (error) {
     errors.push(`${toRepoPath(filePath)}: unreadable (${error instanceof Error ? error.message : String(error)})`);
-    return;
+    return "";
   }
 
   if (!REQUIREMENT_RE.test(content)) {
@@ -52,10 +114,63 @@ async function validateSpecFile(filePath, errors) {
   if (!SCENARIO_RE.test(content)) {
     errors.push(`${toRepoPath(filePath)}: missing '#### Scenario:' block`);
   }
+  return content;
 }
 
 function toRepoPath(targetPath) {
   return path.relative(path.join(__dirname, ".."), targetPath).replaceAll("\\", "/");
+}
+
+function validateCompletedTasks(tasksPath, tasksContent, errors) {
+  const lines = tasksContent
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /^- \[(x|X)\] /.test(line));
+
+  for (const line of lines) {
+    if (/partial:/i.test(line)) {
+      continue;
+    }
+    if (CONTRADICTORY_COMPLETED_TASK_PATTERNS.some((pattern) => pattern.test(line))) {
+      errors.push(`${toRepoPath(tasksPath)}: completed task looks contradictory with current runtime boundary -> ${line}`);
+    }
+  }
+}
+
+async function validateImplementedEvidence(repoRoot, capability, specContent, errors) {
+  const implementedCount = (specContent.match(/^Status:\s*`implemented`/gm) || []).length;
+  if (implementedCount === 0) {
+    return;
+  }
+
+  const evidence = CAPABILITY_EVIDENCE[capability];
+  if (!evidence) {
+    return;
+  }
+
+  const implementationExists = await Promise.all(evidence.implementation.map((filePath) => pathExists(path.join(repoRoot, filePath))));
+  const testExists = await Promise.all(evidence.tests.map((filePath) => pathExists(path.join(repoRoot, filePath))));
+
+  if (!implementationExists.some(Boolean)) {
+    errors.push(`Capability ${capability} is marked as implemented in spec, but no representative implementation file was found.`);
+  }
+  if (evidence.tests.length > 0 && !testExists.some(Boolean)) {
+    errors.push(`Capability ${capability} is marked as implemented in spec, but no representative test file was found.`);
+  }
+}
+
+async function validateStatusVocabulary(repoRoot, errors) {
+  const openspecReadmePath = path.join(repoRoot, "docs", "openspec", "README.md");
+  if (!(await pathExists(openspecReadmePath))) {
+    errors.push("docs/openspec/README.md is missing.");
+    return;
+  }
+  const content = await readText(openspecReadmePath);
+  for (const term of README_STATUS_TERMS) {
+    if (!content.includes(term)) {
+      errors.push(`docs/openspec/README.md: missing status vocabulary term '${term}'.`);
+    }
+  }
 }
 
 async function main() {
@@ -73,6 +188,8 @@ async function main() {
     errors.push("No active change found under docs/openspec/changes.");
   }
 
+  await validateStatusVocabulary(repoRoot, errors);
+
   for (const changeDir of activeChanges) {
     for (const requiredName of [".openspec.yaml", "proposal.md", "design.md", "tasks.md"]) {
       const requiredPath = path.join(changeDir, requiredName);
@@ -87,6 +204,7 @@ async function main() {
       if (!TASK_ITEM_RE.test(tasksContent)) {
         warnings.push(`${toRepoPath(tasksPath)}: no checklist items detected`);
       }
+      validateCompletedTasks(tasksPath, tasksContent, errors);
     }
 
     const specsDir = path.join(changeDir, "specs");
@@ -114,7 +232,10 @@ async function main() {
         errors.push(`${toRepoPath(capabilityDir)}: missing spec.md`);
         continue;
       }
-      await validateSpecFile(specPath, errors);
+      const content = await validateSpecFile(specPath, errors);
+      if (content && STATUS_RE.test(content)) {
+        await validateImplementedEvidence(repoRoot, capability, content, errors);
+      }
     }
   }
 
@@ -130,7 +251,10 @@ async function main() {
         );
         continue;
       }
-      await validateSpecFile(baseSpecPath, errors);
+      const content = await validateSpecFile(baseSpecPath, errors);
+      if (content && STATUS_RE.test(content)) {
+        await validateImplementedEvidence(repoRoot, capability, content, errors);
+      }
     }
   }
 

@@ -17,6 +17,7 @@ import { ModelCatalogRepository } from "../modules/models/model-catalog-reposito
 import { OllamaRuntimeConfigRepository } from "../modules/models/ollama-runtime-config-repository.js"
 import { OllamaServiceManager } from "../modules/models/ollama-service-manager.js"
 import { PromptTemplateRepository } from "../modules/prompts/prompt-template-repository.js"
+import { LlmReadinessService } from "../modules/runtime/llm-readiness-service.js"
 import { RuntimeMetricsService } from "../modules/runtime/runtime-metrics-service.js"
 import { SelfCheckService } from "../modules/runtime/self-check-service.js"
 import { SummaryService } from "../modules/summary/summary-service.js"
@@ -93,6 +94,7 @@ export async function buildApp(inputConfig?: Partial<AppConfig>): Promise<Fastif
     promptTemplateRepository,
     openAiCompatibleClient,
   )
+  const llmReadinessService = new LlmReadinessService(openAiCompatibleClient)
   const taskOrchestrator = new TaskOrchestrator(taskRepository, eventBus, {
     asrService,
     mediaPipelineService,
@@ -104,9 +106,14 @@ export async function buildApp(inputConfig?: Partial<AppConfig>): Promise<Fastif
     eventBus,
     llmConfigRepository,
     modelCatalogRepository,
+    llmReadinessService,
     whisperRuntimeStatusService,
   )
-  const vqaRuntimeService = new VqaRuntimeService(taskRepository, path.join(config.eventLogDir, "traces"))
+  const vqaRuntimeService = new VqaRuntimeService(
+    taskRepository,
+    modelCatalogRepository,
+    path.join(config.eventLogDir, "traces"),
+  )
 
   await registerHealthRoute(app, config)
   await registerRuntimeRoutes(app, config, runtimeMetricsService)

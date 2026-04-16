@@ -16,10 +16,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          python-version: "3.12"
+          node-version: "20"
 
       - name: Collect changed files
         id: changed
@@ -30,12 +30,15 @@ jobs:
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             base_ref="${{ github.base_ref }}"
             git fetch origin "${base_ref}" --depth=1
+            echo "diff_range=origin/${base_ref}...HEAD" >> "$GITHUB_OUTPUT"
             git diff --name-only "origin/${base_ref}"...HEAD > changed-files.txt
           else
             before_sha="${{ github.event.before }}"
             if [[ -n "${before_sha}" && "${before_sha}" != "0000000000000000000000000000000000000000" ]]; then
+              echo "diff_range=${before_sha}..${{ github.sha }}" >> "$GITHUB_OUTPUT"
               git diff --name-only "${before_sha}" "${{ github.sha }}" > changed-files.txt
             else
+              echo "diff_range=${{ github.sha }}^!" >> "$GITHUB_OUTPUT"
               git diff-tree --no-commit-id --name-only -r "${{ github.sha }}" > changed-files.txt
             fi
           fi
@@ -44,10 +47,12 @@ jobs:
 
       - name: Enforce spec sync for code changes
         shell: bash
+        env:
+          SPEC_SYNC_DIFF_RANGE: ${{ steps.changed.outputs.diff_range }}
         run: |
           set -euo pipefail
           mapfile -t changed_files < changed-files.txt
-          python scripts/check_spec_sync.py "${changed_files[@]}"
+          node scripts/check-spec-sync.mjs "${changed_files[@]}"
 
       - name: Validate OpenSpec structure
-        run: python scripts/check-openspec.py
+        run: node scripts/check-openspec.mjs

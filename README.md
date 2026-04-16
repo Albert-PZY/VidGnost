@@ -35,11 +35,17 @@ VidGnost is a local-first Electron workbench for video analysis. The repository 
 Current capabilities include:
 
 - creating tasks from Bilibili URLs, local filesystem paths, or uploads
-- running local transcription through a non-Python ASR runtime
+- running transcription through local `whisper.cpp` CLI or a compatible ASR API
 - generating notes and mindmaps through Ollama or OpenAI-compatible APIs
 - searching evidence and running QA against processed task artifacts
 - streaming task state, diagnostics, and chat events over SSE
 - preserving tasks, artifacts, event logs, and traces for replay and export
+
+Current implementation boundaries:
+
+- the local Whisper route requires an existing `whisper-cli` binary and local `ggml` model files; the TS runtime does not ship managed auto-download
+- Ollama is currently managed as configuration plus reachability probing, not as a self-managed pull / restart / file-migration runtime
+- VQA currently uses a transcript-only `vector-index` main path; `mllm-default` remains a reserved config slot rather than an active multimodal retrieval route
 
 ## Core Capabilities
 
@@ -48,7 +54,7 @@ Current capabilities include:
 Task execution stays organized as `A -> B -> C -> D`:
 
 1. `A`: source validation and media preparation
-2. `B`: audio extraction and chunk planning
+2. `B`: audio extraction and preprocessing
 3. `C`: ASR transcription
 4. `D`: transcript correction, notes, mindmap, and export artifact generation
 
@@ -63,9 +69,9 @@ Task execution stays organized as `A -> B -> C -> D`:
 
 | Component | Default path | Notes |
 | --- | --- | --- |
-| Whisper | local `whisper.cpp` CLI / compatible ASR API | legacy backend-free runtime |
+| Whisper | local `whisper.cpp` CLI / compatible ASR API | local route requires manually prepared CLI and `ggml` model files |
 | LLM | Ollama or remote OpenAI-compatible API | used for correction, notes, mindmap, and chat |
-| Embedding | Ollama or remote API | used for retrieval vectorization |
+| Embedding | Ollama or remote API | used for transcript-only retrieval vectorization |
 | VLM | Ollama or remote API | used for image/frame understanding |
 | Rerank | Ollama or remote API | used for ranking fused retrieval results |
 
@@ -174,6 +180,7 @@ node scripts/check-openspec.mjs
 
 - [Chinese README](./README.zh-CN.md)
 - [OpenSpec index](./docs/openspec/README.md)
+- [Fact vs Spec matrix](./docs/capability-fact-vs-spec-matrix.zh-CN.md)
 - [Current tech stack](./docs/current-tech-stack.zh-CN.md)
 - [TS fullstack refactor checklist](./docs/vidgnost-ts-fullstack-refactor-checklist.zh-CN.md)
 - [Frontend-driven backend checklist](./docs/frontend-driven-backend-execution-checklist.zh-CN.md)

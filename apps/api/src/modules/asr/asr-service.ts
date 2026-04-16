@@ -1,15 +1,21 @@
 import path from "node:path"
-import { readFile } from "node:fs/promises"
 
 import type { TranscriptSegment } from "@vidgnost/contracts"
 
 import type { AppConfig } from "../../core/config.js"
 import { AppError } from "../../core/errors.js"
-import { ensureDirectory, pathExists } from "../../core/fs.js"
-import { findCommand, runCommand } from "../../core/process.js"
+import { pathExists } from "../../core/fs.js"
+import { findCommand } from "../../core/process.js"
 import type { OpenAiCompatibleClient } from "../llm/openai-compatible-client.js"
 import type { ModelCatalogRepository } from "../models/model-catalog-repository.js"
 import type { WhisperRuntimeConfigRepository } from "../runtime/whisper-runtime-config-repository.js"
+import {
+  buildTranscriptText,
+  hasInvalidSegmentTimestamps,
+  normalizeRemoteSegments,
+  parseWhisperSrtSegments,
+} from "./transcript-segment-normalizer.js"
+import { WhisperCliRunner } from "./whisper-cli-runner.js"
 
 export interface AsrResult {
   language: string
@@ -23,6 +29,7 @@ export class AsrService {
     private readonly modelCatalogRepository: ModelCatalogRepository,
     private readonly whisperRuntimeConfigRepository: WhisperRuntimeConfigRepository,
     private readonly llmClient: OpenAiCompatibleClient,
+    private readonly whisperCliRunner: Pick<WhisperCliRunner, "run"> = new WhisperCliRunner(),
   ) {}
 
   async transcribe(input: {
@@ -48,13 +55,30 @@ export class AsrService {
         model: whisperModel.api_model,
         timeoutSeconds: whisperModel.api_timeout_seconds,
       })
+      if (hasInvalidSegmentTimestamps(remote.segments)) {
+        throw AppError.conflict("远程转写返回了异常时间戳。", {
+          code: "ASR_REMOTE_TIMESTAMPS_INVALID",
+          detail: remote.raw,
+        })
+      }
+      const normalizedSegments = normalizeRemoteSegments(remote.segments)
+      if (normalizedSegments.length === 0 && String(remote.text || "").trim()) {
+        throw AppError.conflict("远程转写返回了全文，但没有可用的 segments。", {
+          code: "ASR_REMOTE_SEGMENTS_EMPTY",
+          detail: remote.raw,
+        })
+      }
+      const normalizedText = buildTranscriptText(normalizedSegments) || String(remote.text || "").trim()
+      if (!normalizedText) {
+        throw AppError.conflict("远程转写返回了空结果。", {
+          code: "ASR_EMPTY_RESPONSE",
+          detail: remote.raw,
+        })
+      }
       return {
         language: remote.language || whisperConfig.language,
-        segments: remote.segments.map((segment) => ({
-          ...segment,
-          text: segment.text,
-        })),
-        text: remote.text,
+        segments: normalizedSegments,
+        text: normalizedText,
       }
     }
 
@@ -75,28 +99,16 @@ export class AsrService {
     }
 
     const outputDir = path.join(this.config.tempDir, input.taskId, "whisper-output")
-    await ensureDirectory(outputDir)
-    const outputBase = path.join(outputDir, "transcript")
-    await runCommand({
-      command: executablePath,
-      args: [
-        "-m",
-        modelPath,
-        "-f",
-        input.audioPath,
-        "-l",
-        whisperConfig.language,
-        "-osrt",
-        "-of",
-        outputBase,
-      ],
+    const cliResult = await this.whisperCliRunner.run({
+      executablePath,
+      modelPath,
+      audioPath: input.audioPath,
+      language: whisperConfig.language,
+      outputDir,
       signal: input.signal,
     })
-
-    const srtPath = `${outputBase}.srt`
-    const rawSrt = await readFile(srtPath, "utf8").catch(() => "")
-    const segments = parseSrtSegments(rawSrt)
-    const text = segments.map((item) => item.text).join("\n").trim()
+    const segments = parseWhisperSrtSegments(cliResult.rawSrt)
+    const text = buildTranscriptText(segments)
     if (!text) {
       throw AppError.conflict("whisper.cpp 未返回有效转写结果。", {
         code: "WHISPER_EMPTY_RESULT",
@@ -136,35 +148,4 @@ async function resolveWhisperModelPath(modelPath: string, modelSize: string): Pr
     }
   }
   return null
-}
-
-function parseSrtSegments(rawSrt: string): TranscriptSegment[] {
-  return rawSrt
-    .split(/\r?\n\r?\n/)
-    .map((block) => block.trim())
-    .filter(Boolean)
-    .map((block) => {
-      const lines = block.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
-      const timestampLine = lines.find((line) => line.includes("-->")) || ""
-      const textLines = lines.filter((line) => line !== timestampLine && !/^\d+$/.test(line))
-      const [startText, endText] = timestampLine.split("-->").map((item) => item.trim())
-      return {
-        start: parseSrtTimestamp(startText),
-        end: parseSrtTimestamp(endText),
-        text: textLines.join(" ").trim(),
-      }
-    })
-    .filter((item) => item.text.length > 0)
-}
-
-function parseSrtTimestamp(value: string | undefined): number {
-  const match = /^(\d{2}):(\d{2}):(\d{2})[,.](\d{3})$/.exec(String(value || "").trim())
-  if (!match) {
-    return 0
-  }
-  const hours = Number(match[1]) || 0
-  const minutes = Number(match[2]) || 0
-  const seconds = Number(match[3]) || 0
-  const milliseconds = Number(match[4]) || 0
-  return Number((hours * 3600 + minutes * 60 + seconds + milliseconds / 1000).toFixed(3))
 }

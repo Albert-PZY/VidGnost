@@ -43,16 +43,16 @@ VidGnost 当前以 Electron 桌面工作台形态交付：
 - Whisper 运行时配置持久化到 `storage/config.toml`，保留 `auto|cpu|cuda` 设备策略和 `int8|float32` 精度选项。
 
 ### 6. Managed local model workflow
-- `/config/models` 负责向前端暴露托管模型目录、安装状态、下载状态和默认路径。
-- 本地托管模型下载统一走 TS runtime + CLI / service-manager 链路，并向设置页回传下载进度与取消状态。
-- 当前转写运行链路实际准备的是托管 Whisper small 本地缓存。
+- `/config/models` 负责向前端暴露模型目录、安装状态、说明性下载快照和默认路径。
+- 当前 TS 运行时不接管 Ollama pull，也不内置 Whisper 模型自动下载；相关按钮返回说明性 download snapshot 或手动操作指引。
+- `/config/ollama/restart-service` 与 `/config/ollama/migrate-models` 当前以配置更新和状态探测为主，不承诺自动重启或自动搬迁现有模型文件。
 
 ### 7. Pipeline contract
 - 运行链路仍保持 `A -> B -> C -> D` 四阶段模型。
 - `D` 阶段固定执行 `transcript_optimize -> fusion_delivery` 子链路。
 - SSE 与任务详情共同承担运行态可观测与回放职责。
-- `C` 阶段的 Whisper 转写通过独立 worker 进程执行，主进程只负责调度、事件消费和 chunk 级持久化。
-- GPU 重计算阶段使用统一的独占执行租约，不再以组件级 LRU 驱逐作为主显存管理策略。
+- `C` 阶段当前通过本地 `whisper.cpp` CLI 或远程 OpenAI-compatible ASR 执行，并在完成后一次性落盘标准化 transcript 工件。
+- VQA 当前主链是 transcript-only `vector-index` 检索，`multimodal` 仍保留为后续扩展位而非已启用运行模式。
 
 ### 8. Brand application
 - 项目品牌资源统一使用 `apps/desktop/public/icon.svg`。
@@ -75,5 +75,5 @@ VidGnost 当前以 Electron 桌面工作台形态交付：
 ## Open Questions
 
 - 未来是否需要把 `model_default=medium` 接入完整的托管下载与运行路径。
-- 未来是否需要把主题模式（浅色/深色/系统）也收口进设置中心持久化。
+- 未来是否需要把 Ollama 重启、模型迁移和模型拉取升级为真正的 self-managed 工作流。
 - 未来是否要把更多 Electron 宿主能力收敛到统一的桌面集成层。

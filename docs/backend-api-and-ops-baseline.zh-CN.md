@@ -1,6 +1,6 @@
 # apps/api API 与运维基线
 
-更新时间：2026-04-15
+更新时间：2026-04-16
 
 ## 1. 运行入口
 
@@ -77,26 +77,55 @@
 - `GET /api/self-check/:sessionId/report`
 - `GET /api/self-check/:sessionId/events`
 - `POST /api/search`
+- `POST /api/analyze`
 - `POST /api/chat`
 - `POST /api/chat/stream`
 - `GET /api/traces/:traceId`
 
-## 3. 模型与运行时基线
+## 3. 当前运行时合同
 
-- Whisper：
-  - 运行方式：`whisper.cpp` CLI 或兼容 ASR API
-  - 默认模型目录：`storage/models/whisper`
-  - 默认模型条目：`ggml-small.bin`
-- LLM：
-  - 默认提供方：`ollama`
-  - 默认模型：`qwen2.5:3b`
-  - 兼容 OpenAI-style chat/completions
-- Embedding / VLM / Rerank：
-  - 默认通过 Ollama 或 OpenAI-compatible API 接入
-- 媒体工具：
-  - `ffmpeg`
-  - `ffprobe`
-  - `yt-dlp`
+### 3.1 Whisper / ASR
+
+- 本地转写：
+  - 通过 `whisper.cpp` CLI 执行
+  - 需要现有 `whisper-cli` 可执行文件和本地 `ggml` 模型文件
+  - 当前不提供托管 auto-download
+- 远程转写：
+  - 通过 OpenAI-compatible `/audio/transcriptions`
+  - 会对空 `segments` 和异常时间戳做错误分类
+
+### 3.2 LLM / 摘要 / 导图
+
+- 通过 OpenAI-compatible `/chat/completions`
+- 纠错模式：`off`、`strict`、`rewrite`
+- 回退链：
+  - `generated_by=llm|fallback`
+  - `fallback_reason`
+  - `D/fusion/manifest.json`
+
+### 3.3 VQA / 检索
+
+- 默认主链：transcript-only `vector-index`
+- 预热产物：`D/vqa-prewarm/index.json`
+- 当前边界：
+  - 不依赖 keyframe / multimodal retrieval
+  - 保留 `heuristic_fallback` 兜底路径
+
+### 3.4 Ollama / 模型管理
+
+- `/config/ollama`：配置持久化 + 状态探测
+- `/config/ollama/restart-service`：刷新 probe 结果；当前不是完整自托管重启
+- `/config/ollama/migrate-models`：更新目标目录配置并返回说明；当前不搬迁现有模型文件
+- `/config/models/:modelId/download`：
+  - 已就绪模型返回 completed snapshot
+  - 未就绪模型返回说明性 failed / guidance snapshot
+  - 当前不触发 `Ollama pull`
+
+### 3.5 自检
+
+- LLM / Embedding / VLM 会复用 `/models` 远程探测
+- 自检结果包含 `check_depth`
+- 检索索引检查当前面向 `storage/vector-index/` 运行态目录，而不是外部 Chroma 服务
 
 ## 4. 存储基线
 
@@ -136,11 +165,13 @@
 - 媒体处理失败：
   - 检查 `ffmpeg`、`ffprobe`、`yt-dlp` 是否可执行
 - Whisper 转写失败：
-  - 检查 `storage/models/whisper/`
-  - 检查 `VIDGNOST_WHISPER_BIN` 或兼容 ASR 配置
+  - 检查 `whisper-cli` 是否可执行
+  - 检查 `storage/models/whisper/` 或自定义 Whisper 模型目录
+  - 检查远程 ASR 提供方配置
 - 问答与生成失败：
   - 检查 `storage/model_config.json`
   - 检查 Ollama 服务或远端 OpenAI-compatible 配置
+  - 检查 `/models` 探测是否包含当前配置模型
 - 事件回放：
   - 检查 `storage/event-logs/<task_id>.jsonl`
   - 检查 `storage/event-logs/traces/*.jsonl`

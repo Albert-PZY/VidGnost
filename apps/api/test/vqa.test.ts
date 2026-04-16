@@ -1,6 +1,6 @@
 import os from "node:os"
 import path from "node:path"
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import type { FastifyInstance } from "fastify"
@@ -92,6 +92,27 @@ describe("vqa routes", () => {
     expect(tracePayload.records.some((item) => item.stage === "trace_started")).toBe(true)
     expect(tracePayload.records.some((item) => item.stage === "retrieval")).toBe(true)
     expect(tracePayload.records.some((item) => item.stage === "trace_finished")).toBe(true)
+
+    const traceStarted = tracePayload.records.find((item) => item.stage === "trace_started")
+    expect((traceStarted?.payload as { config_snapshot?: { retrieval?: { mode?: string } } } | undefined)?.config_snapshot?.retrieval?.mode).toBe(
+      "vector-index",
+    )
+
+    const prewarmIndexPath = path.join(
+      storageDir,
+      "tasks",
+      "stage-artifacts",
+      "task-vqa-1",
+      "D",
+      "vqa-prewarm",
+      "index.json",
+    )
+    const prewarmIndex = JSON.parse(await readFile(prewarmIndexPath, "utf8")) as {
+      retrieval_mode: string
+      item_count: number
+    }
+    expect(prewarmIndex.retrieval_mode).toBe("vector-index")
+    expect(prewarmIndex.item_count).toBeGreaterThan(0)
   })
 })
 

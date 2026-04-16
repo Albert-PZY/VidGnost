@@ -72,7 +72,7 @@ import {
   updatePromptTemplate,
   updateWhisperConfig,
 } from "@/lib/api"
-import { formatBytes } from "@/lib/format"
+import { formatBytes, formatMegabytesInput, parseMegabytesInputToBytes } from "@/lib/format"
 import { getImageLayout } from "@/lib/ui-skin"
 import type {
   LLMConfigResponse,
@@ -141,6 +141,11 @@ const themeHuePresets = [
 ] as const
 const DEFAULT_THEME_HUE = themeHuePresets[0].value
 const BACKGROUND_IMAGE_FILE_SIZE_LIMIT = 12 * 1024 * 1024
+const DEFAULT_REMOTE_IMAGE_MAX_BYTES = 512 * 1024
+const MIN_REMOTE_IMAGE_MAX_BYTES = 32 * 1024
+const MAX_REMOTE_IMAGE_MAX_BYTES = 8 * 1024 * 1024
+const MIN_REMOTE_IMAGE_MAX_MB = MIN_REMOTE_IMAGE_MAX_BYTES / (1024 ** 2)
+const MAX_REMOTE_IMAGE_MAX_MB = MAX_REMOTE_IMAGE_MAX_BYTES / (1024 ** 2)
 
 const EMPTY_PROMPT_FORM = {
   channel: "correction" as PromptTemplateChannel,
@@ -197,7 +202,7 @@ const EMPTY_MODEL_FORM: ModelConfigFormState = {
   api_key: "",
   api_model: "",
   api_timeout_seconds: "120",
-  api_image_max_bytes: "524288",
+  api_image_max_bytes: formatMegabytesInput(DEFAULT_REMOTE_IMAGE_MAX_BYTES),
   api_image_max_edge: "1280",
 }
 
@@ -360,7 +365,17 @@ function writeModelConfigDraftMap(nextMap: Record<string, ModelConfigDraftEntry>
 
 function readModelConfigDraft(modelId: string): ModelConfigDraftEntry | null {
   const draftMap = readModelConfigDraftMap()
-  return draftMap[modelId] ?? null
+  const draft = draftMap[modelId] ?? null
+  if (!draft) {
+    return null
+  }
+  return {
+    ...draft,
+    model_form: {
+      ...draft.model_form,
+      api_image_max_bytes: normalizeImageMaxMegabytesFieldValue(draft.model_form.api_image_max_bytes),
+    },
+  }
 }
 
 function saveModelConfigDraft(entry: ModelConfigDraftEntry): void {
@@ -376,6 +391,20 @@ function clearModelConfigDraft(modelId: string): void {
   }
   delete draftMap[modelId]
   writeModelConfigDraftMap(draftMap)
+}
+
+function normalizeImageMaxMegabytesFieldValue(value: string | number | null | undefined): string {
+  const rawValue = String(value ?? "").trim()
+  const parsed = Number.parseFloat(rawValue)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return formatMegabytesInput(DEFAULT_REMOTE_IMAGE_MAX_BYTES)
+  }
+
+  if (parsed > MAX_REMOTE_IMAGE_MAX_MB) {
+    return formatMegabytesInput(parsed)
+  }
+
+  return formatMegabytesInput(parseMegabytesInputToBytes(rawValue, DEFAULT_REMOTE_IMAGE_MAX_BYTES))
 }
 
 type PickedSkinImage = {
@@ -671,7 +700,7 @@ export function SettingsView({
       return {
         title: "语音转写模型配置",
         description: "调整 Whisper 模型目录与加载策略，并在当前弹窗内切换 GPU 加速。",
-        note: "Whisper GPU 模式会自动复用 Ollama 自带的 CUDA 运行库，无需单独安装额外运行库。",
+        note: "GPU 开关仅依据当前 Whisper 运行条件检测结果启用，不代表已验证可直接复用 Ollama 的 CUDA 运行库。",
         fields: ["path", "load_profile", "quantization", "enabled"],
         pathLabel: "模型目录",
         pathPlaceholder: "可选：指定 Whisper 模型目录",
@@ -752,7 +781,7 @@ export function SettingsView({
     const parsedRerankTopN = Number.parseInt(form.rerank_top_n, 10)
     const parsedFrameInterval = Number.parseInt(form.frame_interval_seconds, 10)
     const parsedTimeoutSeconds = Number.parseInt(form.api_timeout_seconds, 10)
-    const parsedImageMaxBytes = Number.parseInt(form.api_image_max_bytes, 10)
+    const parsedImageMaxBytes = parseMegabytesInputToBytes(form.api_image_max_bytes, DEFAULT_REMOTE_IMAGE_MAX_BYTES)
     const parsedImageMaxEdge = Number.parseInt(form.api_image_max_edge, 10)
 
     payload.provider = form.provider
@@ -782,7 +811,7 @@ export function SettingsView({
     payload.api_key = form.api_key.trim()
     payload.api_model = form.api_model.trim()
     payload.api_timeout_seconds = Number.isFinite(parsedTimeoutSeconds) ? parsedTimeoutSeconds : 120
-    payload.api_image_max_bytes = Number.isFinite(parsedImageMaxBytes) ? parsedImageMaxBytes : 524288
+    payload.api_image_max_bytes = Number.isFinite(parsedImageMaxBytes) ? parsedImageMaxBytes : DEFAULT_REMOTE_IMAGE_MAX_BYTES
     payload.api_image_max_edge = Number.isFinite(parsedImageMaxEdge) ? parsedImageMaxEdge : 1280
 
     return payload
@@ -880,7 +909,7 @@ export function SettingsView({
       api_key: model.api_key || "",
       api_model: model.api_model || "",
       api_timeout_seconds: String(model.api_timeout_seconds || 120),
-      api_image_max_bytes: String(model.api_image_max_bytes || 524288),
+      api_image_max_bytes: formatMegabytesInput(model.api_image_max_bytes || DEFAULT_REMOTE_IMAGE_MAX_BYTES),
       api_image_max_edge: String(model.api_image_max_edge || 1280),
     }
     const nextLlmForm: LLMConfigFormState =
@@ -1288,7 +1317,7 @@ export function SettingsView({
     }
 
     if (checked && !whisperConfig.runtime_libraries.ready) {
-      toast.error("请先确认 Ollama 已安装并刷新检测到 GPU 运行库，再启用 Whisper GPU 加速。")
+      toast.error("当前仅在 Whisper CLI 与模型目录检测就绪后允许切换 GPU；这不表示 CUDA 运行库已完成验证。")
       return
     }
 
@@ -2158,7 +2187,7 @@ export function SettingsView({
                                     />
                                     <p className="text-xs text-muted-foreground">
                                       {isWhisperDialog
-                                        ? "Whisper 模型目录由桌面端托管，点击上方“下载 / 重置”会自动写入默认目录。"
+                                        ? "可选填写 Whisper 模型目录；下载或重置按钮不会替你自动回写默认目录。"
                                         : "未填写时优先使用当前已检测到的模型目录或默认托管目录。"}
                                     </p>
                                   </div>
@@ -2170,7 +2199,7 @@ export function SettingsView({
                                       <div className="space-y-1">
                                         <Label className="leading-tight">Whisper GPU 加速</Label>
                                         <p className="text-xs text-muted-foreground">
-                                          自动复用 Ollama 安装目录中的 CUDA 运行库；刷新检测后即可切换 GPU 模式。
+                                          GPU 开关仅依据当前 Whisper 运行条件检测结果启用，不代表已验证 Ollama CUDA 运行库可直接复用。
                                         </p>
                                       </div>
                                       <Switch
@@ -2188,7 +2217,7 @@ export function SettingsView({
                                           检测状态
                                         </p>
                                         <p className="mt-2 text-sm font-medium">
-                                          {whisperConfig?.runtime_libraries.ready ? "已检测到可用 GPU 运行库" : "GPU 运行库未就绪"}
+                                          {whisperConfig?.runtime_libraries.ready ? "Whisper 运行条件已就绪" : "Whisper 运行条件未就绪"}
                                         </p>
                                         <p className="mt-1 text-xs leading-5 text-muted-foreground">
                                           {whisperConfig?.runtime_libraries.message || "等待检测"}
@@ -2199,7 +2228,7 @@ export function SettingsView({
                                           生效目录
                                         </p>
                                         <p className="mt-2 break-all text-sm leading-6 text-foreground/90">
-                                          {whisperConfig?.runtime_libraries.bin_dir || "未识别到 Ollama GPU 运行库目录"}
+                                          {whisperConfig?.runtime_libraries.bin_dir || "未返回相关目录信息"}
                                         </p>
                                       </div>
                                       <div className="rounded-xl border bg-background/70 px-4 py-3">
@@ -2219,7 +2248,7 @@ export function SettingsView({
                                       <div className="min-w-0">
                                         <p className="text-sm font-medium">刷新检测</p>
                                         <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                                          重新读取 Ollama 安装目录中的 GPU 运行库状态，并同步当前页面显示。
+                                          重新读取 Whisper 运行条件检测结果，并同步当前页面显示。
                                         </p>
                                       </div>
                                       <Button
@@ -2230,10 +2259,10 @@ export function SettingsView({
                                           void getWhisperConfig()
                                             .then((response) => {
                                               setWhisperConfig(response)
-                                              toast.success("Whisper GPU 运行库状态已刷新")
+                                              toast.success("Whisper 运行条件状态已刷新")
                                             })
                                             .catch((error) => {
-                                              toast.error(getApiErrorMessage(error, "刷新 Whisper GPU 运行库状态失败"))
+                                              toast.error(getApiErrorMessage(error, "刷新 Whisper 运行条件状态失败"))
                                             })
                                         }}
                                       >
@@ -2489,13 +2518,14 @@ export function SettingsView({
                                   {showImageApiFields ? (
                                     <>
                                       <div className="space-y-2">
-                                        <Label htmlFor="remote-image-max-bytes">图片压缩上限（字节）</Label>
+                                        <Label htmlFor="remote-image-max-bytes">图片压缩上限（MB）</Label>
                                         <Input
                                           id="remote-image-max-bytes"
                                           className="bg-background/80"
                                           type="number"
-                                          min={32768}
-                                          max={8388608}
+                                          min={MIN_REMOTE_IMAGE_MAX_MB}
+                                          max={MAX_REMOTE_IMAGE_MAX_MB}
+                                          step="0.01"
                                           value={modelForm.api_image_max_bytes}
                                           onChange={(event) =>
                                             setModelForm((current) => ({
@@ -2505,7 +2535,7 @@ export function SettingsView({
                                           }
                                         />
                                         <p className="text-xs text-muted-foreground">
-                                          在线图像理解前会压缩图片，降低带宽占用并提升响应速度。
+                                          在线图像理解前会先按这里的 MB 上限压缩图片，降低带宽占用并提升响应速度。
                                         </p>
                                       </div>
 

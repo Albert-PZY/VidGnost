@@ -1,67 +1,106 @@
 ## ADDED Requirements
 
-### Requirement: System SHALL generate notes and mindmap via online LLM API
-Stage-D generation SHALL use OpenAI-compatible completion APIs to produce structured notes markdown and markmap-compatible mindmap markdown.
+### Requirement: Stage D SHALL generate notes, mindmap, and summary through the OpenAI-compatible generation path when available
+Status: `implemented`
+
+Stage `D` generation SHALL use the persisted OpenAI-compatible provider config and selected prompt templates to produce `notes_markdown`、`mindmap_markdown` and `summary_markdown` when the remote runtime is available.
 
 #### Scenario: Stage-D generation succeeds
 - **WHEN** transcript context is available and configured API is reachable
-- **THEN** backend persists `notes_markdown` and `mindmap_markdown` artifacts
+- **THEN** backend persists `notes_markdown` and `mindmap_markdown`
+- **AND** backend derives `summary_markdown` from the generated notes result
 
-#### Scenario: Generation runtime fails
-- **WHEN** API request times out, returns non-2xx, or fails validation
-- **THEN** task transitions to `failed` with actionable error metadata
+### Requirement: Transcript optimization SHALL expose observable `off`、`strict`、`rewrite` modes
+Status: `implemented`
 
-### Requirement: Stage-D transcript optimization SHALL fail soft for long or slow jobs
-Before notes and mindmap generation, transcript optimization SHALL preserve pipeline responsiveness. Long full-transcript rewrite requests MAY be skipped, and timeout-bound optimization attempts SHALL fall back to the original transcript instead of leaving the task indefinitely stalled inside transcript optimization.
+Before notes and mindmap generation, transcript optimization SHALL run through the persisted correction mode and produce task-local artifacts that reflect the selected strategy.
 
-#### Scenario: Rewrite correction encounters a long transcript
-- **WHEN** correction mode is `rewrite` and the transcript exceeds the renderer-safe full-rewrite threshold
-- **THEN** backend skips the full rewrite call
-- **AND** Stage D continues with the original transcript as summary input
-- **AND** the task stage message explains that the rewrite step was skipped to keep the pipeline responsive
+#### Scenario: Correction mode is `off`
+- **WHEN** `correction_mode=off`
+- **THEN** backend skips the LLM correction chain
+- **AND** downstream notes and mindmap generation uses the raw transcript directly
 
-#### Scenario: Transcript optimization exceeds the operation timeout
-- **WHEN** strict or rewrite correction exceeds its bounded operation timeout
-- **THEN** backend falls back to the original transcript
-- **AND** Stage D continues into notes and mindmap generation without waiting indefinitely for correction output
-- **AND** the emitted correction status records that timeout fallback was applied
+#### Scenario: Correction mode is `strict`
+- **WHEN** `correction_mode=strict`
+- **THEN** backend performs batch-based segment correction while preserving timestamp-aligned segment structure
+- **AND** backend persists corrected segment output to `D/transcript-optimize/strict-segments.json`
+
+#### Scenario: Correction mode is `rewrite`
+- **WHEN** `correction_mode=rewrite`
+- **THEN** backend performs batch-based full-text rewrite assembly
+- **AND** backend persists the rewritten text to `D/transcript-optimize/rewrite.txt`
+
+### Requirement: Transcript optimization SHALL persist index and full-text artifacts
+Status: `implemented`
+
+Transcript optimization SHALL persist enough metadata for workbench inspection and downstream debugging.
+
+#### Scenario: Persist transcript optimization artifacts
+- **WHEN** transcript optimization finishes
+- **THEN** backend writes `D/transcript-optimize/index.json`
+- **AND** backend writes `D/transcript-optimize/full.txt`
+- **AND** the index captures `mode`、`status`、`fallback_used`、`fallback_reason`、`source_mode`、`batch_size` and `overlap`
+
+### Requirement: Transcript optimization SHALL consume correction batch parameters
+Status: `implemented`
+
+The persisted correction config SHALL influence how transcript batches are sent to the LLM correction chain.
+
+#### Scenario: Apply correction batching controls
+- **WHEN** backend runs `strict` or `rewrite` correction
+- **THEN** it uses the configured `correction_batch_size`
+- **AND** it reuses the configured `correction_overlap` to build overlapping windows between batches
+
+### Requirement: Stage-D generation SHALL fail soft through explicit fallback artifacts
+Status: `implemented`
+
+When the remote generation runtime is unavailable, returns empty content, or errors, backend SHALL fall back to heuristic notes and mindmap content instead of failing the entire task.
+
+#### Scenario: Notes generation falls back
+- **WHEN** the notes generation request fails, times out, or returns empty content
+- **THEN** backend emits a fallback notes artifact
+- **AND** fallback content starts with a visible notice line `> 当前为回退生成结果：...`
+
+#### Scenario: Mindmap generation falls back
+- **WHEN** the mindmap generation request fails, times out, or returns empty content
+- **THEN** backend emits a fallback mindmap artifact
+- **AND** task status can still continue to `completed` when downstream persistence succeeds
+
+### Requirement: Stage-D output SHALL persist artifact provenance manifest
+Status: `implemented`
+
+Backend SHALL persist provenance metadata for notes, mindmap, and summary artifacts so the frontend can distinguish normal generation from fallback generation.
+
+#### Scenario: Persist fusion manifest
+- **WHEN** stage `D` finishes
+- **THEN** backend writes `D/fusion/manifest.json`
+- **AND** each channel records `generated_by=llm|fallback`
+- **AND** fallback channels also record `fallback_reason`
 
 ### Requirement: Prompt-template-driven generation SHALL be supported
+Status: `implemented`
+
 Summary and mindmap generation SHALL resolve prompts from persisted template records and active template selection.
 
 #### Scenario: Selected templates are applied
 - **WHEN** user sets selected template IDs in config center
-- **THEN** subsequent Stage-D generation uses selected template content for both channels
-
-### Requirement: Stage-D output SHALL stream summary and mindmap deltas independently
-Backend SHALL emit independent `summary_delta` and `mindmap_delta` updates for near-realtime frontend rendering.
-
-#### Scenario: Stage-D stream is active
-- **WHEN** generation starts
-- **THEN** frontend receives and renders both channel deltas without waiting for final output
+- **THEN** subsequent Stage-D generation uses selected template content for `correction`、`notes` and `mindmap`
 
 ### Requirement: Notes content SHALL focus on normalized synthesis
-Persisted `notes_markdown` SHALL be normalized synthesis output and SHALL NOT append full raw transcript by default.
+Status: `implemented`
+
+Persisted `notes_markdown` SHALL focus on normalized conclusions, evidence, and action-ready text instead of appending the full raw transcript by default.
 
 #### Scenario: Persist normalized notes
 - **WHEN** summary normalization finishes
 - **THEN** notes artifact focuses on conclusions, evidence, and actions
 
-### Requirement: Mermaid code fences in notes SHALL be rendered as PNG assets
-When notes markdown includes Mermaid code blocks, backend SHALL render them into PNG files and replace code fences with markdown image links.
+### Requirement: Markdown artifacts SHALL remain markdown-first for frontend rendering and export
+Status: `implemented`
 
-#### Scenario: Mermaid render succeeds
-- **WHEN** notes contain Mermaid fences and renderer is available
-- **THEN** backend stores images under `notes-images/`
-- **AND** backend replaces each Mermaid fence with relative markdown image path
+Backend SHALL persist notes and mindmap as markdown content and keep markdown rendering concerns in the frontend workbench or export layer.
 
-#### Scenario: Mermaid renderer unavailable
-- **WHEN** renderer command is unavailable at runtime
-- **THEN** backend keeps generation pipeline available and records renderer failure context in runtime diagnostics
-
-### Requirement: Notes markdown SHALL reference Mermaid images by relative path
-Rendered notes SHALL reference Mermaid images using relative paths (for example `notes-images/mermaid-001.png`) and SHALL NOT embed base64 data URIs.
-
-#### Scenario: Export notes markdown
-- **WHEN** client exports notes or bundle artifacts
-- **THEN** markdown contains relative image references compatible with bundled `notes-images` assets
+#### Scenario: Persist markdown artifacts
+- **WHEN** Stage `D` generation completes
+- **THEN** backend writes markdown artifacts under `D/fusion/*.md`
+- **AND** current TS runtime does not require server-side `summary_delta` / `mindmap_delta` streaming or server-side Mermaid-to-PNG conversion to complete the task

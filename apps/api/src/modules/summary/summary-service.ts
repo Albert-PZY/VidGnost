@@ -3,10 +3,22 @@ import type { TranscriptSegment, WorkflowType } from "@vidgnost/contracts"
 import type { LlmConfigRepository } from "../llm/llm-config-repository.js"
 import type { OpenAiCompatibleClient } from "../llm/openai-compatible-client.js"
 import type { PromptTemplateRepository } from "../prompts/prompt-template-repository.js"
+import {
+  FallbackArtifactService,
+  type GeneratedArtifactState,
+  type SummaryArtifactManifest,
+} from "./fallback-artifact-service.js"
+import { TranscriptCorrectionService } from "./transcript-correction-service.js"
 
 export interface SummaryArtifacts {
+  artifactManifestJson: string
   correctedSegments: TranscriptSegment[]
   correctedText: string
+  correctionFullText: string
+  correctionIndexJson: string
+  correctionRewriteText: string
+  correctionStrictSegmentsJson: string | null
+  fallbackArtifactChannels: string[]
   fusionPromptMarkdown: string
   mindmapMarkdown: string
   notesMarkdown: string
@@ -38,66 +50,90 @@ export class SummaryService {
     const selectedMindmapPrompt =
       promptBundle.templates.find((item) => item.id === promptBundle.selection.mindmap)?.content || ""
 
-    const correctedSegments = applyHeuristicTranscriptCleanup(input.transcriptSegments)
-    let correctedText = correctedSegments.map((item) => item.text).join("\n").trim()
-    if (!correctedText) {
-      correctedText = input.transcriptText.trim()
-    }
-
-    if (llmEnabled && llmConfig.correction_mode !== "off" && correctedText) {
-      const correctionPrompt = renderPrompt(selectedCorrectionPrompt, {
-        query: "",
-        context: correctedText,
-        text: correctedText,
-      })
-      const correctedByLlm = await this.tryGenerateText({
-        apiKey: llmConfig.api_key,
-        baseUrl: llmConfig.base_url,
-        model: llmConfig.model,
-        systemPrompt: "你是一名严格的中文转写纠错助手。",
-        timeoutSeconds: 180,
-        userPrompt: correctionPrompt,
-      })
-      if (correctedByLlm) {
-        correctedText = correctedByLlm
-      }
-    }
+    const transcriptCorrectionService = new TranscriptCorrectionService(this.llmClient)
+    const fallbackArtifactService = new FallbackArtifactService()
+    const correctionResult = await transcriptCorrectionService.apply({
+      transcriptSegments: input.transcriptSegments,
+      transcriptText: input.transcriptText,
+      promptTemplate: selectedCorrectionPrompt,
+      correctionMode: llmConfig.correction_mode,
+      correctionBatchSize: llmConfig.correction_batch_size,
+      correctionOverlap: llmConfig.correction_overlap,
+      apiKey: llmConfig.api_key,
+      baseUrl: llmConfig.base_url,
+      model: llmConfig.model,
+      systemPrompt: "你是一名严格的中文转写纠错助手。",
+      llmEnabled,
+    })
+    const correctedSegments = correctionResult.correctedSegments
+    const correctedText = correctionResult.correctedText
 
     const notesPrompt = renderPrompt(selectedNotesPrompt, {
       query: "",
       context: correctedText,
       text: correctedText,
     })
-    const notesMarkdown =
-      (llmEnabled
-        ? await this.tryGenerateText({
-            apiKey: llmConfig.api_key,
-            baseUrl: llmConfig.base_url,
-            model: llmConfig.model,
-            timeoutSeconds: 240,
-            userPrompt: notesPrompt,
-          })
-        : null) || buildFallbackNotes(input.taskTitle, correctedText, input.workflow)
+    const notesArtifact = await this.generateArtifact({
+      fallbackArtifactService,
+      fallbackFactory: (fallbackReason) =>
+        fallbackArtifactService.createFallbackNotes({
+          fallbackReason,
+          taskTitle: input.taskTitle,
+          transcriptText: correctedText,
+          workflow: input.workflow,
+        }),
+      llmEnabled,
+      request: {
+        apiKey: llmConfig.api_key,
+        baseUrl: llmConfig.base_url,
+        model: llmConfig.model,
+        timeoutSeconds: 240,
+        userPrompt: notesPrompt,
+      },
+    })
 
     const mindmapPrompt = renderPrompt(selectedMindmapPrompt, {
       query: "",
       context: correctedText,
       text: correctedText,
     })
-    const mindmapMarkdown =
-      (llmEnabled
-        ? await this.tryGenerateText({
-            apiKey: llmConfig.api_key,
-            baseUrl: llmConfig.base_url,
-            model: llmConfig.model,
-            timeoutSeconds: 180,
-            userPrompt: mindmapPrompt,
-          })
-        : null) || buildFallbackMindmap(input.taskTitle, correctedText)
+    const mindmapArtifact = await this.generateArtifact({
+      fallbackArtifactService,
+      fallbackFactory: (fallbackReason) =>
+        fallbackArtifactService.createFallbackMindmap({
+          fallbackReason,
+          taskTitle: input.taskTitle,
+          transcriptText: correctedText,
+        }),
+      llmEnabled,
+      request: {
+        apiKey: llmConfig.api_key,
+        baseUrl: llmConfig.base_url,
+        model: llmConfig.model,
+        timeoutSeconds: 180,
+        userPrompt: mindmapPrompt,
+      },
+    })
+    const summaryArtifact = fallbackArtifactService.createSummaryArtifact({
+      taskTitle: input.taskTitle,
+      correctedText,
+      notesArtifact,
+    })
+    const artifactManifest: SummaryArtifactManifest = {
+      notes: sanitizeGeneratedArtifact(notesArtifact),
+      mindmap: sanitizeGeneratedArtifact(mindmapArtifact),
+      summary: sanitizeGeneratedArtifact(summaryArtifact),
+    }
 
     return {
+      artifactManifestJson: fallbackArtifactService.buildManifest(artifactManifest),
       correctedSegments,
       correctedText,
+      correctionFullText: correctionResult.fullText,
+      correctionIndexJson: correctionResult.indexJson,
+      correctionRewriteText: correctionResult.rewriteText,
+      correctionStrictSegmentsJson: correctionResult.strictSegmentsJson,
+      fallbackArtifactChannels: fallbackArtifactService.listFallbackChannels(artifactManifest),
       fusionPromptMarkdown: [
         "# Correction Prompt",
         "",
@@ -111,28 +147,72 @@ export class SummaryService {
         "",
         selectedMindmapPrompt || "(fallback heuristic)",
       ].join("\n"),
-      mindmapMarkdown,
-      notesMarkdown,
-      summaryMarkdown: buildSummaryMarkdown(input.taskTitle, correctedText, notesMarkdown),
+      mindmapMarkdown: mindmapArtifact.content,
+      notesMarkdown: notesArtifact.content,
+      summaryMarkdown: summaryArtifact.content,
     }
   }
 
-  private async tryGenerateText(input: {
-    apiKey: string
-    baseUrl: string
-    model: string
-    systemPrompt?: string
-    timeoutSeconds?: number
-    userPrompt: string
-  }): Promise<string | null> {
+  private async generateArtifact(input: {
+    fallbackArtifactService: FallbackArtifactService
+    fallbackFactory: (fallbackReason: string) => GeneratedArtifactState
+    llmEnabled: boolean
+    request: {
+      apiKey: string
+      baseUrl: string
+      model: string
+      timeoutSeconds?: number
+      userPrompt: string
+    }
+  }): Promise<GeneratedArtifactState> {
+    const generation = await this.tryGenerateText(input.request, input.llmEnabled)
+    if (generation.content) {
+      return input.fallbackArtifactService.createLlmArtifact(generation.content)
+    }
+    return input.fallbackFactory(generation.fallbackReason)
+  }
+
+  private async tryGenerateText(
+    input: {
+      apiKey: string
+      baseUrl: string
+      model: string
+      systemPrompt?: string
+      timeoutSeconds?: number
+      userPrompt: string
+    },
+    llmEnabled: boolean,
+  ): Promise<{ content: string | null; fallbackReason: string }> {
+    if (!llmEnabled) {
+      return {
+        content: null,
+        fallbackReason: "llm_disabled_or_unconfigured",
+      }
+    }
     if (!input.baseUrl.trim() || !input.model.trim()) {
-      return null
+      return {
+        content: null,
+        fallbackReason: "llm_config_incomplete",
+      }
     }
     try {
       const response = await this.llmClient.generateText(input)
-      return response.content.trim() || null
+      const content = response.content.trim()
+      if (!content) {
+        return {
+          content: null,
+          fallbackReason: "llm_empty_response",
+        }
+      }
+      return {
+        content,
+        fallbackReason: "",
+      }
     } catch {
-      return null
+      return {
+        content: null,
+        fallbackReason: "llm_generate_failed",
+      }
     }
   }
 }
@@ -152,78 +232,10 @@ function renderPrompt(template: string, values: { context: string; query: string
   return rendered
 }
 
-function applyHeuristicTranscriptCleanup(segments: TranscriptSegment[]): TranscriptSegment[] {
-  return segments.map((segment) => ({
-    ...segment,
-    text: normalizeChineseText(segment.text),
-  }))
-}
-
-function normalizeChineseText(value: string): string {
-  return String(value || "")
-    .replace(/\s+/g, " ")
-    .replace(/\s+([，。！？；：])/g, "$1")
-    .replace(/([，。！？；：])(?=[^\s])/g, "$1 ")
-    .replace(/ {2,}/g, " ")
-    .trim()
-}
-
-function buildFallbackNotes(title: string, transcriptText: string, workflow: WorkflowType): string {
-  const paragraphs = transcriptText
-    .split(/\n+/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-  const bullets = paragraphs.slice(0, 8).map((item) => `- ${truncate(item, 140)}`)
-  const heading = workflow === "vqa" ? "问答准备摘要" : "笔记摘要"
-
-  return [
-    `# ${title || "任务笔记"}`,
-    "",
-    `## ${heading}`,
-    "",
-    ...(bullets.length > 0 ? bullets : ["- 当前没有足够的转写内容。"]),
-    "",
-    "## 原始转写摘录",
-    "",
-    "```text",
-    truncate(transcriptText || "暂无转写内容。", 4000),
-    "```",
-  ].join("\n")
-}
-
-function buildFallbackMindmap(title: string, transcriptText: string): string {
-  const paragraphs = transcriptText
-    .split(/\n+/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .slice(0, 6)
-  return [
-    `# ${title || "任务导图"}`,
-    "",
-    "## 核心内容",
-    ...paragraphs.map((item) => `### ${truncate(item, 60)}`),
-  ].join("\n")
-}
-
-function buildSummaryMarkdown(title: string, correctedText: string, notesMarkdown: string): string {
-  return [
-    `# ${title || "任务摘要"}`,
-    "",
-    "## 摘要",
-    "",
-    truncate(
-      notesMarkdown
-        .replace(/^#.+$/gm, "")
-        .trim() || correctedText,
-      1200,
-    ),
-  ].join("\n")
-}
-
-function truncate(value: string, limit: number): string {
-  const normalized = String(value || "").trim()
-  if (normalized.length <= limit) {
-    return normalized
+function sanitizeGeneratedArtifact(artifact: GeneratedArtifactState): GeneratedArtifactState {
+  return {
+    content: "",
+    fallback_reason: artifact.fallback_reason,
+    generated_by: artifact.generated_by,
   }
-  return `${normalized.slice(0, Math.max(0, limit - 1)).trim()}…`
 }

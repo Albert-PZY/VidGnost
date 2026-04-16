@@ -318,8 +318,8 @@ Frontend SHALL only render backend-provided data and call the TypeScript backend
 - **THEN** Electron opens the native file picker for image files
 - **AND** the renderer receives the selected image payload through the preload bridge without changing the backend transport model
 
-#### Scenario: Pick a transcription CUDA runtime install directory from Electron
-- **WHEN** user clicks the runtime install-directory browse action inside settings
+#### Scenario: Pick an Ollama or model directory from Electron
+- **WHEN** user clicks an Ollama install-directory, model-directory, or similar browse action inside settings
 - **THEN** Electron opens the native directory picker
 - **AND** the renderer receives the selected absolute directory path through the preload bridge without changing backend transport contracts
 

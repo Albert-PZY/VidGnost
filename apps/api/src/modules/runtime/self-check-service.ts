@@ -17,6 +17,7 @@ import { generateTimeKey } from "../../core/id.js"
 import type { EventBus } from "../events/event-bus.js"
 import type { LlmConfigRepository } from "../llm/llm-config-repository.js"
 import type { ModelCatalogRepository } from "../models/model-catalog-repository.js"
+import type { LlmReadinessService } from "./llm-readiness-service.js"
 import type { WhisperRuntimeStatusService } from "./whisper-runtime-status-service.js"
 
 const execFileAsync = promisify(execFile)
@@ -39,6 +40,7 @@ type StepStatus = "pending" | "running" | "passed" | "warning" | "failed"
 
 interface SelfCheckOutcome {
   auto_fixable?: boolean
+  check_depth?: string
   details?: Record<string, string>
   manual_action?: string
   message: string
@@ -70,6 +72,7 @@ export class SelfCheckService {
     private readonly eventBus: EventBus,
     private readonly llmConfigRepository: LlmConfigRepository,
     private readonly modelCatalogRepository: ModelCatalogRepository,
+    private readonly llmReadinessService: LlmReadinessService,
     private readonly whisperRuntimeStatusService: WhisperRuntimeStatusService,
   ) {}
 
@@ -162,6 +165,7 @@ export class SelfCheckService {
       id: item.id,
       title: item.title,
       status: "pending",
+      check_depth: "config_only",
       message: "",
       details: {},
       auto_fixable: false,
@@ -244,6 +248,7 @@ export class SelfCheckService {
     }
 
     step.status = outcome.status
+    step.check_depth = outcome.check_depth || step.check_depth || "config_only"
     step.message = outcome.message
     step.details = { ...(outcome.details || {}) }
     step.auto_fixable = Boolean(outcome.auto_fixable)
@@ -255,6 +260,7 @@ export class SelfCheckService {
         id: item.id,
         title: item.title,
         status: item.status,
+        check_depth: item.check_depth || "config_only",
         message: item.message,
         details: { ...item.details },
         auto_fixable: item.auto_fixable,
@@ -276,7 +282,7 @@ export class SelfCheckService {
       { id: "llm", title: "LLM 模型", run: () => this.checkLlm() },
       { id: "embedding", title: "嵌入模型", run: () => this.checkModel("embedding-default", "默认嵌入模型") },
       { id: "vlm", title: "VLM 模型", run: () => this.checkModel("vlm-default", "默认 VLM") },
-      { id: "chromadb", title: "ChromaDB", run: () => this.checkChromaDb() },
+      { id: "chromadb", title: "检索索引", run: () => this.checkChromaDb() },
       { id: "storage", title: "存储空间", run: () => this.checkStorage() },
       { id: "ffmpeg", title: "FFmpeg", run: () => this.checkFfmpeg() },
       { id: "model-cache", title: "Whisper 模型缓存", run: () => this.checkModelCache() },
@@ -368,22 +374,30 @@ export class SelfCheckService {
 
   private async checkLlm(): Promise<SelfCheckOutcome> {
     const config = await this.llmConfigRepository.get()
+    const readiness = await this.llmReadinessService.verifyRemoteModel({
+      apiKey: config.api_key,
+      baseUrl: config.base_url,
+      label: "LLM 服务",
+      model: config.model,
+      timeoutSeconds: 15,
+    })
     const details = {
-      "Base URL": config.base_url,
-      模型: config.model,
+      ...readiness.details,
       鉴权: config.api_key_configured ? "已配置" : "未配置",
     }
-    if (!config.api_key_configured) {
+    if (!readiness.ok) {
       return {
         status: "warning",
-        message: "LLM 服务凭据尚未配置。",
+        check_depth: readiness.checkDepth,
+        message: readiness.message,
         details,
-        manual_action: "请在设置中心填写可用的 LLM Base URL、模型名和 API Key。",
+        manual_action: "请在设置中心填写可用的 LLM Base URL、模型名和 API Key，并确认远程 /models 返回中包含当前模型。",
       }
     }
     return {
       status: "passed",
-      message: "LLM 配置已准备。",
+      check_depth: readiness.checkDepth,
+      message: readiness.message,
       details,
     }
   }
@@ -403,6 +417,7 @@ export class SelfCheckService {
     if (!model.enabled) {
       return {
         status: "warning",
+        check_depth: "config_only",
         message: `${label} 已停用。`,
         details,
         manual_action: "请在模型设置中重新启用该模型。",
@@ -411,13 +426,47 @@ export class SelfCheckService {
     if (!model.is_installed) {
       return {
         status: "warning",
+        check_depth: "config_only",
         message: `${label} 尚未就绪。`,
         details,
         manual_action: "请在模型设置中确认模型路径、提供方和可用性状态。",
       }
     }
+
+    if (model.provider === "openai_compatible" || model.api_key_configured) {
+      const readiness = await this.llmReadinessService.verifyRemoteModel({
+        apiKey: model.api_key,
+        baseUrl: model.api_base_url,
+        label,
+        model: model.api_model || model.model_id,
+        timeoutSeconds: model.api_timeout_seconds,
+      })
+      if (!readiness.ok) {
+        return {
+          status: "warning",
+          check_depth: readiness.checkDepth,
+          message: readiness.message,
+          details: {
+            ...details,
+            ...readiness.details,
+          },
+          manual_action: "请确认远程模型服务可达，并且 /models 返回中包含当前模型。",
+        }
+      }
+      return {
+        status: "passed",
+        check_depth: readiness.checkDepth,
+        message: readiness.message,
+        details: {
+          ...details,
+          ...readiness.details,
+        },
+      }
+    }
+
     return {
       status: "passed",
+      check_depth: "runtime_ready",
       message: `${label} 已就绪。`,
       details,
     }
@@ -429,6 +478,7 @@ export class SelfCheckService {
     if (exists) {
       return {
         status: "passed",
+        check_depth: "runtime_ready",
         message: "向量索引目录可用。",
         details: {
           路径: chromaDir,
@@ -437,6 +487,7 @@ export class SelfCheckService {
     }
     return {
       status: "warning",
+      check_depth: "config_only",
       message: "向量索引目录尚未初始化。",
       details: {
         路径: chromaDir,
@@ -521,6 +572,7 @@ export class SelfCheckService {
     if (exists) {
       return {
         status: "passed",
+        check_depth: "runtime_ready",
         message: "Whisper 模型缓存目录可用。",
         details: {
           缓存目录: whisperPath,
@@ -529,6 +581,7 @@ export class SelfCheckService {
     }
     return {
       status: "warning",
+      check_depth: "config_only",
       message: "Whisper 模型缓存目录不存在。",
       details: {
         缓存目录: whisperPath,

@@ -42,6 +42,8 @@ Notes:
 - When a task touches multiple independent concerns, split it into multiple commits by concern/module.
 - Avoid mixed "all-in-one" commits that bundle unrelated backend/frontend/docs/script changes together.
 - Follow branch-based workflow: create/select a dedicated branch for each requirement before committing.
+- If a commit changes implementation for a spec-governed capability, include the matching OpenSpec / README sync in the same delivery rather than backfilling it later.
+- Do not mark a capability task as completed in `tasks.md` unless the same delivery also contains the corresponding implementation or test evidence.
 - Do not commit directly to `master`; commit on the dedicated branch first, then merge into `master`.
 - After code is merged into `master`, automatically clean up redundant branches other than `master` (both local and remote merged branches).
 - Temporary integration branches are allowed for merge workflows when needed.

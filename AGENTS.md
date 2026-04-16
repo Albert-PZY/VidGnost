@@ -10,6 +10,8 @@ Scope: this file is an internal navigation index for coding agents and maintaine
 - GitHub operations: prefer using `gh` CLI commands when possible
 - Documentation style: write all project docs as current baseline statements and keep them aligned with implementation
 - Spec sync rule: whenever project code changes, automatically review the impacted OpenSpec docs and sync their information density to the implementation in the same delivery. New or changed interfaces, states, parameters, constraints, error handling, and UI behavior must be reflected in spec updates; if no spec text changes are needed, explicitly verify that the existing spec already matches the latest code detail.
+- Spec status vocabulary: when capability status must be called out, only use `planned`, `partial`, or `implemented`; do not describe a capability as finished unless code, tests, OpenSpec, and verification evidence are aligned.
+- Key module mapping rule: changes under `apps/api/src/modules/asr|summary|runtime|models|vqa`, `apps/api/src/routes/config.ts`, `apps/api/src/routes/task-events.ts`, `apps/api/src/routes/vqa.ts`, `apps/desktop/src/components/views/`, or `packages/contracts/src/` must trigger a review of the corresponding OpenSpec capability directories before completion.
 - After completing a requirement change, automatically determine whether a commit is needed; if needed, commit and push following `docs/git-commit-convention.md` without additional confirmation
 
 ## 2) Core Product Docs
@@ -84,6 +86,7 @@ Scope: this file is an internal navigation index for coding agents and maintaine
 - Keep `AGENTS.md` as an index file (navigation + global constraints).
 - Keep active change specs and baseline specs aligned for stable capability contracts.
 - Treat code change and spec densification as a single maintenance action; do not leave updated code behind coarser or stale specs.
+- When `docs/openspec/changes/build-lightweight-v2/tasks.md` changes a task to completed, make sure the same delivery also contains the matching implementation or test evidence.
 - Before merging major doc/spec changes, run:
   - `node scripts/check-openspec.mjs`
   - `bash scripts/check-openspec.sh`

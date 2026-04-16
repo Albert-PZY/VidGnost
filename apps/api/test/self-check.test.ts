@@ -1,11 +1,13 @@
 import os from "node:os"
 import path from "node:path"
+import { createServer } from "node:http"
 import { mkdtemp, rm } from "node:fs/promises"
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import type { FastifyInstance } from "fastify"
+import type { AddressInfo } from "node:net"
 
-import { selfCheckReportResponseSchema } from "@vidgnost/contracts"
+import { llmConfigResponseSchema, selfCheckReportResponseSchema, type SelfCheckReportResponse } from "@vidgnost/contracts"
 
 import { pathExists } from "../src/core/fs.js"
 import { buildApp } from "../src/server/build-app.js"
@@ -76,31 +78,79 @@ describe("self-check routes", () => {
     expect(await pathExists(path.join(storageDir, "vector-index", "chroma-db"))).toBe(true)
     expect(report.auto_fix_available).toBe(false)
   })
+
+  it("verifies llm readiness by probing /models and confirming the configured model", async () => {
+    const remoteCalls: string[] = []
+    const remoteServer = createServer((request, response) => {
+      remoteCalls.push(String(request.url || ""))
+      if (request.url === "/v1/models") {
+        response.writeHead(200, { "Content-Type": "application/json" })
+        response.end(JSON.stringify({
+          data: [
+            { id: "ready-model" },
+          ],
+        }))
+        return
+      }
+      response.writeHead(404, { "Content-Type": "application/json" })
+      response.end(JSON.stringify({ error: { message: "not found" } }))
+    })
+    await new Promise<void>((resolve) => {
+      remoteServer.listen(0, "127.0.0.1", () => resolve())
+    })
+    const remotePort = (remoteServer.address() as AddressInfo).port
+
+    try {
+      const currentConfigResponse = await app.inject({
+        method: "GET",
+        url: "/api/config/llm",
+      })
+      const currentConfig = llmConfigResponseSchema.parse(currentConfigResponse.json())
+      const saveConfigResponse = await app.inject({
+        method: "PUT",
+        url: "/api/config/llm",
+        payload: {
+          ...currentConfig,
+          base_url: `http://127.0.0.1:${remotePort}/v1`,
+          api_key: "test-key",
+          model: "ready-model",
+        },
+      })
+      expect(saveConfigResponse.statusCode).toBe(200)
+
+      const startResponse = await app.inject({
+        method: "POST",
+        url: "/api/self-check/start",
+      })
+      expect(startResponse.statusCode).toBe(200)
+
+      const report = await waitForSelfCheckTerminal(app, startResponse.json<{ session_id: string }>().session_id)
+      const llmStep = report.steps.find((step) => step.id === "llm")
+
+      expect(llmStep).toMatchObject({
+        status: "passed",
+        check_depth: "model_verified",
+      })
+      expect(remoteCalls).toContain("/v1/models")
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        remoteServer.close((error) => (error ? reject(error) : resolve()))
+      })
+    }
+  })
 })
 
 async function waitForSelfCheckTerminal(
   app: FastifyInstance,
   sessionId: string,
-): Promise<{
-  auto_fix_available: boolean
-  progress: number
-  session_id: string
-  status: string
-  steps: Array<{ id: string }>
-}> {
+): Promise<SelfCheckReportResponse> {
   for (let index = 0; index < 80; index += 1) {
     const response = await app.inject({
       method: "GET",
       url: `/api/self-check/${sessionId}/report`,
     })
     expect(response.statusCode).toBe(200)
-    const payload = response.json<{
-      auto_fix_available: boolean
-      progress: number
-      session_id: string
-      status: string
-      steps: Array<{ id: string }>
-    }>()
+    const payload = selfCheckReportResponseSchema.parse(response.json())
     if (payload.status === "completed" || payload.status === "failed") {
       return payload
     }

@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import type { FastifyInstance } from "fastify"
 
-import { taskCreateResponseSchema, taskDetailResponseSchema } from "@vidgnost/contracts"
+import { llmConfigResponseSchema, taskCreateResponseSchema, taskDetailResponseSchema } from "@vidgnost/contracts"
 
 import { buildApp } from "../src/server/build-app.js"
 
@@ -97,6 +97,93 @@ describe("task mutation routes", () => {
     expect(missingResponse.statusCode).toBe(404)
   })
 
+  it("reruns stage d and persists transcript correction artifacts", async () => {
+    const llmConfigResponse = await app.inject({
+      method: "GET",
+      url: "/api/config/llm",
+    })
+    const llmConfig = llmConfigResponseSchema.parse(llmConfigResponse.json())
+
+    const saveConfigResponse = await app.inject({
+      method: "PUT",
+      url: "/api/config/llm",
+      payload: {
+        ...llmConfig,
+        correction_mode: "off",
+      },
+    })
+    expect(saveConfigResponse.statusCode).toBe(200)
+
+    const rerunResponse = await app.inject({
+      method: "POST",
+      url: "/api/tasks/task-seed-rerun/rerun-stage-d",
+      payload: {},
+    })
+    expect(rerunResponse.statusCode).toBe(200)
+
+    const correctionIndexPath = path.join(
+      storageDir,
+      "tasks",
+      "stage-artifacts",
+      "task-seed-rerun",
+      "D",
+      "transcript-optimize",
+      "index.json",
+    )
+    const correctionTextPath = path.join(
+      storageDir,
+      "tasks",
+      "stage-artifacts",
+      "task-seed-rerun",
+      "D",
+      "transcript-optimize",
+      "full.txt",
+    )
+
+    await waitForFile(correctionIndexPath)
+    await waitForFile(correctionTextPath)
+
+    const correctionIndex = JSON.parse(await readFile(correctionIndexPath, "utf8")) as {
+      mode: string
+      status: string
+    }
+    const correctionText = await readFile(correctionTextPath, "utf8")
+
+    expect(correctionIndex).toMatchObject({
+      mode: "off",
+      status: "skipped",
+    })
+    expect(correctionText).toContain("seed transcript")
+  })
+
+  it("prewarms vqa retrieval index during stage d rerun for vqa tasks", async () => {
+    const rerunResponse = await app.inject({
+      method: "POST",
+      url: "/api/tasks/task-vqa-rerun/rerun-stage-d",
+      payload: {},
+    })
+    expect(rerunResponse.statusCode).toBe(200)
+
+    const prewarmIndexPath = path.join(
+      storageDir,
+      "tasks",
+      "stage-artifacts",
+      "task-vqa-rerun",
+      "D",
+      "vqa-prewarm",
+      "index.json",
+    )
+
+    await waitForFile(prewarmIndexPath)
+
+    const prewarmIndex = JSON.parse(await readFile(prewarmIndexPath, "utf8")) as {
+      item_count: number
+      retrieval_mode: string
+    }
+    expect(prewarmIndex.retrieval_mode).toBe("vector-index")
+    expect(prewarmIndex.item_count).toBeGreaterThan(0)
+  })
+
   it("cancels an active task before fallback failure completes", async () => {
     const createResponse = await app.inject({
       method: "POST",
@@ -146,6 +233,19 @@ async function waitForTaskStatus(
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
   throw new Error(`Task ${taskId} did not reach ${status}`)
+}
+
+async function waitForFile(targetPath: string): Promise<void> {
+  const deadline = Date.now() + 5_000
+  while (Date.now() < deadline) {
+    try {
+      await readFile(targetPath, "utf8")
+      return
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+  }
+  throw new Error(`File was not written in time: ${targetPath}`)
 }
 
 async function seedMutationFixtures(storageDir: string): Promise<{
@@ -207,6 +307,27 @@ async function seedMutationFixtures(storageDir: string): Promise<{
   }
 
   await writeFile(path.join(recordsDir, "task-seed.json"), `${JSON.stringify(completedRecord)}\n`, "utf8")
+  await writeFile(
+    path.join(recordsDir, "task-seed-rerun.json"),
+    `${JSON.stringify({
+      ...completedRecord,
+      id: "task-seed-rerun",
+      title: "Seed Rerun Task",
+      updated_at: "2026-04-15T07:31:00.000Z",
+    })}\n`,
+    "utf8",
+  )
+  await writeFile(
+    path.join(recordsDir, "task-vqa-rerun.json"),
+    `${JSON.stringify({
+      ...completedRecord,
+      id: "task-vqa-rerun",
+      workflow: "vqa",
+      title: "Seed VQA Rerun Task",
+      updated_at: "2026-04-15T07:32:00.000Z",
+    })}\n`,
+    "utf8",
+  )
   return {
     sourceVideoPath,
     unmatchedVideoPath,

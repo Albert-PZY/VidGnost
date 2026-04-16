@@ -4,9 +4,9 @@ import type { TaskStatus, WorkflowType } from "@vidgnost/contracts"
 
 import type { AsrService } from "../asr/asr-service.js"
 import { EventBus } from "../events/event-bus.js"
-import type { OpenAiCompatibleClient } from "../llm/openai-compatible-client.js"
 import type { MediaPipelineService } from "../media/media-pipeline-service.js"
 import type { SummaryService } from "../summary/summary-service.js"
+import { RetrievalIndexService } from "../vqa/retrieval-index-service.js"
 import { TaskRepository, type StoredTaskRecord } from "./task-repository.js"
 import {
   buildArtifactIndex,
@@ -38,6 +38,7 @@ interface TaskExecutionDependencies {
 
 export class TaskOrchestrator {
   private readonly activeExecutions = new Map<string, ActiveExecution>()
+  private readonly retrievalIndexService = new RetrievalIndexService()
 
   constructor(
     private readonly taskRepository: TaskRepository,
@@ -351,10 +352,23 @@ export class TaskOrchestrator {
       "C/transcript.segments.json",
       JSON.stringify(artifacts.correctedSegments, null, 2),
     )
+    await this.taskRepository.writeTaskArtifactText(taskId, "D/transcript-optimize/index.json", artifacts.correctionIndexJson)
+    await this.taskRepository.writeTaskArtifactText(taskId, "D/transcript-optimize/full.txt", artifacts.correctionFullText)
+    await this.taskRepository.writeTaskArtifactText(
+      taskId,
+      "D/transcript-optimize/strict-segments.json",
+      artifacts.correctionStrictSegmentsJson || "[]",
+    )
+    await this.taskRepository.writeTaskArtifactText(
+      taskId,
+      "D/transcript-optimize/rewrite.txt",
+      artifacts.correctionRewriteText,
+    )
     await this.taskRepository.writeTaskArtifactText(taskId, "D/fusion/summary.md", artifacts.summaryMarkdown)
     await this.taskRepository.writeTaskArtifactText(taskId, "D/fusion/notes.md", artifacts.notesMarkdown)
     await this.taskRepository.writeTaskArtifactText(taskId, "D/fusion/mindmap.md", artifacts.mindmapMarkdown)
     await this.taskRepository.writeTaskArtifactText(taskId, "D/fusion/fusion-prompt.md", artifacts.fusionPromptMarkdown)
+    await this.taskRepository.writeTaskArtifactText(taskId, "D/fusion/manifest.json", artifacts.artifactManifestJson)
 
     const artifactIndex = buildArtifactIndex({
       taskId,
@@ -370,6 +384,19 @@ export class TaskOrchestrator {
       artifact_total_bytes: artifactIndex.artifactTotalBytes,
     })
     await this.taskRepository.syncArtifactIndex(taskId)
+    if (artifacts.fallbackArtifactChannels.length > 0) {
+      await this.appendStageLog(taskId, "D", `融合生成已回退：${artifacts.fallbackArtifactChannels.join(", ")}`)
+    }
+    if (normalizeWorkflow(record.workflow) === "vqa") {
+      const prewarmIndex = await this.retrievalIndexService.buildIndexAsync({
+        taskId,
+        taskTitle: normalizeNullableTitle(record.title) || taskId,
+        transcriptSegments: artifacts.correctedSegments,
+        transcriptText: artifacts.correctedText,
+      })
+      await this.taskRepository.writeTaskArtifactText(taskId, "D/vqa-prewarm/index.json", prewarmIndex.indexJson)
+      await this.appendStageLog(taskId, "D", `VQA 检索索引预热完成，共 ${prewarmIndex.item_count} 条证据`)
+    }
     await this.completeSubstage(taskId, "fusion_delivery", 100, "笔记、摘要与导图已生成")
 
     await this.taskRepository.update(taskId, {

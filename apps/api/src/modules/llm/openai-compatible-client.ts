@@ -19,7 +19,48 @@ export interface AudioTranscriptionResponse {
   text: string
 }
 
+export interface RemoteModelListResponse {
+  models: string[]
+  raw: unknown
+}
+
 export class OpenAiCompatibleClient {
+  async listModels(input: {
+    apiKey: string
+    baseUrl: string
+    timeoutSeconds?: number
+  }): Promise<RemoteModelListResponse> {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), Math.max(10, input.timeoutSeconds || 60) * 1000)
+
+    try {
+      const response = await fetch(joinUrl(input.baseUrl, "/models"), {
+        method: "GET",
+        headers: buildAuthHeaders(input.apiKey, false),
+        signal: controller.signal,
+      })
+      const payload = await readJsonPayload(response)
+      if (!response.ok) {
+        throw asRemoteApiError(payload, "模型列表请求失败")
+      }
+
+      const models = extractModelIds(payload)
+      if (models.length === 0) {
+        throw AppError.conflict("远程模型列表为空或格式无效。", {
+          code: "LLM_MODELS_INVALID",
+          detail: payload,
+        })
+      }
+
+      return {
+        models,
+        raw: payload,
+      }
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
+
   async generateText(input: {
     apiKey: string
     baseUrl: string
@@ -189,6 +230,15 @@ function extractTranscriptionSegments(payload: unknown): Array<{ end: number; st
       text: String(item.text || "").trim(),
     }))
     .filter((item) => item.text)
+}
+
+function extractModelIds(payload: unknown): string[] {
+  const items = Array.isArray((payload as { data?: unknown[] })?.data)
+    ? (payload as { data: Array<Record<string, unknown>> }).data
+    : []
+  return items
+    .map((item) => String(item.id || "").trim())
+    .filter(Boolean)
 }
 
 function asRemoteApiError(payload: unknown, fallbackMessage: string): AppError {

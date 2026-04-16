@@ -1,11 +1,13 @@
 ## ADDED Requirements
 
 ### Requirement: System SHALL run an asynchronous four-phase video analysis pipeline
+Status: `implemented`
+
 The backend SHALL process each task asynchronously and preserve explicit phase ordering `A -> B -> C -> D`.
 
 #### Scenario: Successful pipeline flow
 - **WHEN** a task is created from a supported source
-- **THEN** worker executes phases in order and persists progress snapshots and artifacts
+- **THEN** worker executes phases in order and persists progress snapshots and stage artifacts
 
 #### Scenario: Pipeline failure
 - **WHEN** an unrecoverable exception occurs in ingestion, transcription, or generation
@@ -14,19 +16,21 @@ The backend SHALL process each task asynchronously and preserve explicit phase o
 #### Scenario: User cancellation
 - **WHEN** user cancels a queued or running task
 - **THEN** task status becomes `cancelled`
-- **AND** per-task temporary workspace is cleaned while reusable model cache is retained
+- **AND** per-task temporary workspace is cleaned while retained source assets and reusable model directories are preserved
 
 #### Scenario: User pause and resume
 - **WHEN** user pauses a queued or running task
-- **THEN** task status becomes `paused`
-- **AND** already persisted transcript chunks, stage metrics, and stage artifacts remain available for subsequent resume
-- **AND** when user resumes the same task, backend continues from existing checkpoints instead of discarding completed work
+- **THEN** task status becomes `paused` after the current stage reaches a stable boundary
+- **AND** already persisted stage metrics and task artifacts remain available for subsequent resume
+- **AND** when user resumes the same task, backend continues from the next unfinished stage instead of discarding completed work
 
 ### Requirement: Pipeline SHALL keep explicit phase responsibilities
+Status: `implemented`
+
 The pipeline SHALL keep these phase boundaries:
 - `A`: source ingestion and normalization
-- `B`: audio preprocessing and chunk planning
-- `C`: Whisper transcription streaming
+- `B`: audio extraction and preprocessing
+- `C`: ASR transcription and normalization
 - `D`: transcript optimization and fusion delivery
 
 #### Scenario: Phase ordering
@@ -35,6 +39,8 @@ The pipeline SHALL keep these phase boundaries:
 - **AND** phase `D` starts only after phase `C` output is available
 
 ### Requirement: Stage D SHALL execute ordered substage chain
+Status: `implemented`
+
 Inside phase `D`, backend SHALL execute `transcript_optimize -> fusion_delivery` in order.
 
 #### Scenario: Ordered stage-D execution
@@ -42,133 +48,91 @@ Inside phase `D`, backend SHALL execute `transcript_optimize -> fusion_delivery`
 - **THEN** `transcript_optimize` runs before `fusion_delivery`
 - **AND** `fusion_delivery` starts only after transcript optimization completes or is skipped
 
-### Requirement: VQA tasks SHALL prewarm retrieval corpus before completion
+### Requirement: VQA tasks SHALL persist transcript-only retrieval prewarm artifacts before completion
+Status: `implemented`
+
 When a task uses workflow `vqa`, phase `D` SHALL prepare the first-question retrieval corpus before the task enters the completed state.
 
 #### Scenario: Complete a VQA task with retrieval prewarm
 - **WHEN** a `vqa` task finishes phase `D`
-- **THEN** backend persists a task-local retrieval-prewarm artifact under `D/vqa-prewarm/index.json`
-- **AND** that artifact contains the prepared retrieval windows plus their embedding cache for the current frame-sampling interval
-- **AND** frame-backed evidence windows reuse persisted `D/fusion/frames/index.json` entries and complete missing `visual_text` descriptions before the task is marked completed
-- **AND** backend performs a lightweight rerank-model warmup during the same completion pass so the next first-question request can reuse a warm runtime instead of paying the model-load penalty on demand
+- **THEN** backend persists a task-local retrieval artifact under `D/vqa-prewarm/index.json`
+- **AND** that artifact contains transcript-derived retrieval windows and their text vectors for the current task
+- **AND** current implementation does not require frame-backed evidence completion, multimodal retrieval warmup, or separate rerank process warmup before marking the task completed
 
-### Requirement: Phase C SHALL prepare the managed Whisper small cache before transcription
-Before runtime transcription starts, backend SHALL ensure the managed Whisper small model cache is present locally.
+### Requirement: Phase C SHALL support the current TS-native ASR routes
+Status: `implemented`
 
-#### Scenario: Small model cache already exists
-- **WHEN** task starts and local Whisper small cache is complete
-- **THEN** backend enters transcription without additional download
+Phase `C` SHALL support a local `whisper.cpp` CLI route and a remote OpenAI-compatible ASR route under the same normalized transcript contract.
 
-#### Scenario: Small model cache is missing
-- **WHEN** task starts and local Whisper small cache is missing or incomplete
-- **THEN** backend downloads required model files, reports progress, and continues after the cache becomes ready
+#### Scenario: Run local whisper.cpp transcription
+- **WHEN** `whisper-default` uses the local provider
+- **THEN** backend resolves an existing `whisper-cli` executable and an existing local `ggml` model file
+- **AND** backend invokes the CLI to produce SRT output
+- **AND** backend normalizes the SRT into stable `segments[]` plus `text`
 
-### Requirement: Phase C runtime SHALL honor persisted device and compute preferences
-Transcription runtime SHALL apply persisted whisper `device` and `compute_type` preferences after normalization.
+#### Scenario: Run remote OpenAI-compatible transcription
+- **WHEN** `whisper-default` uses `openai_compatible`
+- **THEN** backend submits the audio file to `/audio/transcriptions`
+- **AND** backend normalizes the returned segments and transcript text into the same task artifact shape as the local route
 
-#### Scenario: Run transcription with persisted runtime config
-- **WHEN** phase `C` starts
-- **THEN** backend uses effective whisper `device=auto|cpu|cuda` and `compute_type=int8|float32`
-- **AND** the isolated transcription worker receives those effective runtime preferences as its execution payload
+#### Scenario: Local runtime prerequisites are missing
+- **WHEN** local `whisper-cli` or the configured `ggml` model file cannot be found
+- **THEN** backend returns an actionable conflict error
+- **AND** current TS runtime does not auto-download the missing executable or model file
 
-#### Scenario: Apply low-memory runtime guard before transcription
-- **WHEN** phase `C` starts while available system memory is below the transcription safety threshold
-- **THEN** backend automatically switches Whisper runtime to a lower-memory profile before chunk execution begins
-- **AND** the effective runtime MAY reduce beam size and chunk duration to lower peak memory usage
-- **AND** the task emits runtime-warning events so the operator can see that a protective downgrade was applied
+#### Scenario: Remote ASR returns invalid timestamps
+- **WHEN** the remote ASR provider returns segments with invalid timestamp ordering or missing numeric bounds
+- **THEN** backend terminates the transcription step with `code=ASR_REMOTE_TIMESTAMPS_INVALID`
 
-### Requirement: Phase C SHALL execute inside an isolated worker process
-Phase `C` SHALL run Whisper transcription inside a dedicated worker process rather than holding the runtime in the main orchestration process.
+#### Scenario: Remote ASR returns full text without usable segments
+- **WHEN** the remote ASR provider returns non-empty transcript text but no usable `segments`
+- **THEN** backend terminates the transcription step with `code=ASR_REMOTE_SEGMENTS_EMPTY`
 
-#### Scenario: Start isolated transcription worker
-- **WHEN** phase `C` begins and at least one transcript chunk still needs transcription
-- **THEN** backend acquires the heavy-model execution lease
-- **AND** backend starts a dedicated Whisper worker process for the remaining chunk set
-- **AND** the main orchestration process streams the worker request payload through a runtime-compatible stdio bridge, consumes structured worker events from that bridge, and persists checkpoints from those events
+### Requirement: Phase C SHALL persist normalized transcript artifacts after transcription completes
+Status: `implemented`
 
-#### Scenario: Finish isolated transcription worker
-- **WHEN** the final missing transcript chunk finishes
-- **THEN** the worker process exits after returning completion status
-- **AND** the main process continues into phase `D` using the persisted transcript state
+After phase `C` finishes, backend SHALL persist the normalized transcript into both task record fields and task-local artifacts.
 
-#### Scenario: Retry a chunk after memory allocation failure
-- **WHEN** the isolated transcription worker encounters `mkl_malloc` or another memory-allocation failure while transcribing a chunk
-- **THEN** the worker lowers CPU thread budget and retries that chunk once with a low-memory Whisper profile
-- **AND** if the retry succeeds, the main process continues checkpoint persistence in normal chunk order
-- **AND** if the retry still fails, the task terminates with actionable failure metadata
+#### Scenario: Persist normalized transcript state
+- **WHEN** phase `C` completes successfully
+- **THEN** backend writes `C/transcript.txt` and `C/transcript.segments.json`
+- **AND** backend updates task record `transcript_text` and `transcript_segments_json`
 
-### Requirement: Phase C SHALL persist chunk checkpoints and resume from persisted transcription state
-Phase `C` SHALL persist transcript progress after each completed audio chunk and SHALL resume from persisted chunk checkpoints when an unfinished task is recovered.
+#### Scenario: Rerun or resume after phase C already completed
+- **WHEN** a task resumes after transcript artifacts are already persisted and phase `D` still needs work
+- **THEN** backend MAY reuse the persisted transcript state instead of re-running transcription
+- **AND** current implementation does not persist chunk-level phase-`C` checkpoints for mid-transcription recovery
 
-#### Scenario: Persist transcript state after each chunk
-- **WHEN** phase `C` completes any audio chunk
-- **THEN** backend writes that chunk's transcript payload to stage artifacts under `C/transcript/chunk-XXXX.json`
-- **AND** backend refreshes `C/transcript/index.json` and `C/transcript/full.txt` with the currently completed chunk set
-- **AND** backend updates task record `transcript_text` and `transcript_segments_json` with the currently completed transcript state before phase `C` finishes
+### Requirement: Whisper runtime config SHALL persist compatibility fields without overstating current local CLI behavior
+Status: `partial`
 
-#### Scenario: Resume unfinished transcription from checkpoints
-- **WHEN** backend resumes a non-terminal task whose phase `C` already has persisted transcript chunk artifacts
-- **THEN** phase `C` reuses completed chunk checkpoints in order
-- **AND** backend transcribes only missing chunks before entering phase `D`
-- **AND** phase `D` starts only after the recovered full transcript state is reassembled into the task record
+The whisper config API SHALL persist `model_default`、`language`、`device`、`compute_type`、`beam_size`、`vad_filter`、`chunk_seconds` and related compatibility fields for runtime continuity.
 
-#### Scenario: Resume a paused task after transcription already finished
-- **WHEN** backend resumes a paused task whose transcript text and transcript segment checkpoints are already persisted and phase `D` is not yet complete
-- **THEN** backend MAY skip repeating phases `A` to `C`
-- **AND** backend continues directly from the remaining phase-`D` work using the persisted transcript artifacts
+#### Scenario: Save Whisper config
+- **WHEN** client updates `/config/whisper`
+- **THEN** backend normalizes and persists the supported field set into `storage/config.toml`
 
-### Requirement: Local-source task records SHALL retain a previewable source path
-Tasks created from uploaded files or explicit local paths SHALL retain a stable source path that remains previewable until the task is deleted.
+#### Scenario: Execute current local whisper.cpp route
+- **WHEN** the current local `whisper.cpp` CLI path runs
+- **THEN** backend uses the persisted `language` and `model_default`
+- **AND** `device`、`compute_type`、`beam_size`、`vad_filter`、`chunk_seconds` remain persisted compatibility fields instead of a fully managed local execution contract
+
+### Requirement: Local and downloaded task records SHALL retain previewable source paths
+Status: `implemented`
+
+Tasks created from local files, explicit local paths, or supported downloadable URLs SHALL retain stable `source_local_path` values that remain previewable until the task is deleted.
 
 #### Scenario: Finish a task created from local input
 - **WHEN** a task starts from `local_file` or `local_path`
 - **THEN** task detail keeps `source_local_path` pointed at the retained source asset rather than a per-run temporary workspace copy
-- **AND** per-run temporary workspaces are cleaned after execution without deleting the retained source asset
 
-#### Scenario: Recover a legacy local-source record that still points to a temporary workspace copy
-- **WHEN** task detail or source-media retrieval encounters a `local_file` or `local_path` record whose persisted `source_local_path` no longer exists because it points at a cleaned per-run temporary workspace
-- **THEN** backend attempts to resolve the retained source asset from the original local path or retained upload directory candidate for that task
-- **AND** when a retained source asset is found, backend refreshes the task record so `source_local_path` points back to that stable asset path before returning task detail or source media
-
-### Requirement: Downloaded-source task records SHALL retain a previewable source path
-Tasks created from downloadable remote inputs such as `bilibili` URLs SHALL move the fetched source media into a stable retained asset path before temporary workspaces are cleaned, so the completed task remains previewable in the workbench until deletion.
-
-#### Scenario: Finish a task created from a bilibili URL
-- **WHEN** a task starts from `bilibili`
-- **THEN** task detail keeps `source_local_path` pointed at the retained downloaded media asset instead of the per-run temporary download workspace
-- **AND** cleanup of the per-run temporary workspace does not delete the retained downloaded media asset
-
-### Requirement: Transcription CUDA runtime SHALL be prepared before GPU transcription begins
-When persisted whisper device strategy is `auto` or `cuda`, backend SHALL configure the current process environment from the persisted transcription CUDA runtime-library install directory and SHALL only enter GPU-enabled Whisper runtime loading after required runtime DLLs pass readiness validation. The isolated transcription worker SHALL inherit that prepared environment before loading the GPU runtime.
-
-#### Scenario: Start transcription with ready GPU runtime
-- **WHEN** persisted whisper `device` is `auto` or `cuda`
-- **AND** required runtime DLLs such as `cublas64_12.dll` and `cudnn64*.dll` are discoverable and loadable from the configured managed runtime-library directory after backend applies that directory to the current process environment
-- **THEN** backend starts GPU-enabled Whisper runtime loading with GPU-capable process environment already configured
-
-#### Scenario: Start transcription with missing GPU runtime
-- **WHEN** persisted whisper `device` is `auto` or `cuda`
-- **AND** the configured transcription CUDA runtime-library bundle is missing files or cannot be loaded
-- **THEN** backend reports the runtime as not ready
-- **AND** the task-runtime preflight blocks task execution before transcription starts
-
-### Requirement: Whisper model selection SHALL preserve current effective implementation contract
-The whisper config API SHALL persist `model_default=small|medium` as a config field, while the current managed transcription implementation prepares and uses the Whisper small cache as the effective bundled runtime path.
-
-#### Scenario: Save whisper model_default
-- **WHEN** client updates whisper `model_default`
-- **THEN** backend persists the field value for runtime config continuity
-- **AND** the current managed local model preparation path remains the Whisper small cache
-
-### Requirement: Stage D SHALL use the persisted OpenAI-compatible generation config
-Phase `D` generation runtime SHALL use effective online LLM settings from the runtime config store.
-
-#### Scenario: Run generation with saved config
-- **WHEN** phase `D` starts
-- **THEN** backend uses effective OpenAI-compatible provider fields from `/config/llm`
-- **AND** generation behavior remains stable across task replay and rerun-stage-d flows
+#### Scenario: Finish a task created from a downloadable URL
+- **WHEN** a task starts from a supported remote source such as `bilibili`
+- **THEN** task detail keeps `source_local_path` pointed at the retained downloaded media asset instead of the temporary download workspace
 
 ### Requirement: Task detail SHALL expose stage-D observability
+Status: `implemented`
+
 Task detail response SHALL expose `vm_phase_metrics` entries for `transcript_optimize` and final phase `D` delivery.
 
 #### Scenario: Query task detail after phase D

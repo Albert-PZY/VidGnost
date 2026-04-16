@@ -4,6 +4,7 @@ export const selfCheckStepResponseSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(1),
   status: z.string().min(1),
+  check_depth: z.string().optional(),
   message: z.string(),
   details: z.record(z.string(), z.string()),
   auto_fixable: z.boolean(),
