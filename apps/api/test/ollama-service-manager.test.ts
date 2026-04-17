@@ -66,6 +66,7 @@ describe("OllamaServiceManager", () => {
     let probeCallCount = 0
     let stopCalled = false
     let startCalled = false
+    let stopInput: { executablePath: string; trayExecutablePath: string } | null = null
 
     const manager = new OllamaServiceManager({
       async get() {
@@ -93,8 +94,9 @@ describe("OllamaServiceManager", () => {
         probeCallCount += 1
         return probeCallCount > 1
       },
-      async stopProcess() {
+      async stopProcess(input) {
         stopCalled = true
+        stopInput = input
       },
       async startProcess() {
         startCalled = true
@@ -109,6 +111,10 @@ describe("OllamaServiceManager", () => {
       process_detected: true,
       can_self_restart: true,
       restart_required: false,
+    })
+    expect(stopInput).toMatchObject({
+      executablePath: path.join(storageDir, "ollama", "ollama.exe"),
+      trayExecutablePath: path.join(storageDir, "ollama", "ollama app.exe"),
     })
     expect(restarted.message).toContain("已重启")
   })

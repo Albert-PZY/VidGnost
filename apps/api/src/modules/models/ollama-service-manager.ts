@@ -29,7 +29,7 @@ interface OllamaServiceManagerDependencies {
   pathExists?: (targetPath: string) => Promise<boolean>
   probe?: (baseUrl: string) => Promise<boolean>
   startProcess?: (input: OllamaProcessStartInput) => Promise<void>
-  stopProcess?: (input: { executablePath: string }) => Promise<void>
+  stopProcess?: (input: { executablePath: string; trayExecutablePath: string }) => Promise<void>
 }
 
 const defaultDependencies: Required<OllamaServiceManagerDependencies> = {
@@ -114,7 +114,11 @@ export class OllamaServiceManager {
       }
     }
 
-    await this.#dependencies.stopProcess({ executablePath: runtimeConfig.executable_path })
+    const trayExecutablePath = resolveTrayExecutablePath(runtimeConfig.executable_path)
+    await this.#dependencies.stopProcess({
+      executablePath: runtimeConfig.executable_path,
+      trayExecutablePath,
+    })
     await this.#dependencies.startProcess({
       baseUrl: runtimeConfig.base_url,
       executablePath: runtimeConfig.executable_path,
@@ -277,23 +281,29 @@ async function findOllamaProcess(input: { executablePath: string }): Promise<Oll
   }
 }
 
-async function stopOllamaProcess(input: { executablePath: string }): Promise<void> {
+async function stopOllamaProcess(input: { executablePath: string; trayExecutablePath: string }): Promise<void> {
   if (process.platform !== "win32") {
     return
   }
 
-  const executableName = path.basename(input.executablePath || "ollama.exe")
-  try {
-    await execFileAsync(
-      "taskkill",
-      ["/IM", executableName, "/F"],
-      {
-        timeout: 5000,
-        windowsHide: true,
-      },
-    )
-  } catch {
-    // ignore when no process exists
+  const processNames = [
+    path.basename(input.trayExecutablePath || "ollama app.exe"),
+    path.basename(input.executablePath || "ollama.exe"),
+  ]
+
+  for (const processName of new Set(processNames.filter(Boolean))) {
+    try {
+      await execFileAsync(
+        "taskkill",
+        ["/IM", processName, "/F"],
+        {
+          timeout: 5000,
+          windowsHide: true,
+        },
+      )
+    } catch {
+      // ignore when no process exists
+    }
   }
 }
 
@@ -342,4 +352,9 @@ function buildStatusMessage(input: {
     return "已检测到 Ollama 可执行文件，但当前服务不可达。"
   }
   return "未检测到 Ollama 可执行文件。"
+}
+
+function resolveTrayExecutablePath(executablePath: string): string {
+  const directory = path.dirname(executablePath || "")
+  return path.join(directory, "ollama app.exe")
 }

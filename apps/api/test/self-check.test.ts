@@ -49,6 +49,7 @@ describe("self-check routes", () => {
     expect(selfCheckReportResponseSchema.parse(report).session_id).toBe(startPayload.session_id)
     expect(report.steps.length).toBeGreaterThan(0)
     expect(report.steps.some((step) => step.id === "env")).toBe(true)
+    expect(report.steps.some((step) => step.id === "rerank")).toBe(true)
 
     const eventsResponse = await fetch(`${baseUrl}/api/self-check/${startPayload.session_id}/events`, {
       headers: {

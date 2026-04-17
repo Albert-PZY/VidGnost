@@ -102,6 +102,7 @@ The system SHALL expose `/config/ollama`、`/config/ollama/migrate-models` and `
 - **WHEN** client posts `/config/ollama/restart-service`
 - **THEN** backend returns the refreshed probe status together with the persisted runtime config
 - **AND** on supported local runtimes, backend restarts `ollama serve` with the configured executable path, service address, and `OLLAMA_MODELS`
+- **AND** on Windows, backend stops both the active `ollama.exe` server process and the companion `ollama app.exe` tray process before relaunch so the configured `models_dir` can actually take effect
 - **AND** when self-managed restart is unavailable, response keeps `can_self_restart=false` and explains the required manual action
 
 ### Requirement: System SHALL expose editable Whisper runtime config API
@@ -155,7 +156,12 @@ The system SHALL keep `whisper-default` on the local runtime path, and allow `ll
 #### Scenario: Load Ollama-backed model entries
 - **WHEN** frontend requests `/config/models`
 - **THEN** Ollama-backed entries expose `path` and `default_path` as absolute paths resolved under the configured Ollama `models_dir`
-- **AND** backend derives `is_installed` from the effective path or remote-ready contract rather than from a managed pull job
+- **AND** backend derives `is_installed` from live Ollama tag discovery or the remote-ready contract rather than from a synthesized filesystem path or managed pull job
+
+#### Scenario: Run runtime diagnostics for retrieval models
+- **WHEN** backend executes system self-check for managed retrieval models
+- **THEN** it verifies `embedding-default` and `rerank-default` independently against the current managed model catalog
+- **AND** Ollama-backed entries use the current Ollama tag discovery result for readiness instead of assuming that a configured local path alone means the model is available
 
 #### Scenario: Configure remote API routing for model entries
 - **WHEN** frontend updates `llm-default`, `embedding-default`, or `rerank-default` with `provider=openai_compatible`
