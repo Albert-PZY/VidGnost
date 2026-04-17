@@ -7,8 +7,6 @@ import { EventBus } from "../events/event-bus.js"
 import type { MediaPipelineService } from "../media/media-pipeline-service.js"
 import type { SummaryService } from "../summary/summary-service.js"
 import { RetrievalIndexService } from "../vqa/retrieval-index-service.js"
-import type { RetrievalFrameCaption } from "../vqa/retrieval-index-service.js"
-import type { VqaModelRuntime } from "../vqa/vqa-model-runtime.js"
 import { TaskRepository, type StoredTaskRecord } from "./task-repository.js"
 import {
   buildArtifactIndex,
@@ -41,7 +39,6 @@ interface TaskExecutionDependencies {
   asrService: AsrService
   mediaPipelineService: MediaPipelineService
   summaryService: SummaryService
-  vqaModelRuntime: VqaModelRuntime
 }
 
 export class TaskOrchestrator {
@@ -53,11 +50,7 @@ export class TaskOrchestrator {
     private readonly eventBus: EventBus,
     private readonly dependencies: TaskExecutionDependencies,
   ) {
-    this.retrievalIndexService = new RetrievalIndexService(
-      undefined,
-      undefined,
-      dependencies.vqaModelRuntime,
-    )
+    this.retrievalIndexService = new RetrievalIndexService()
   }
 
   async submit(input: SubmitTaskInput): Promise<void> {
@@ -443,44 +436,11 @@ export class TaskOrchestrator {
       await this.appendStageLog(taskId, "D", `融合生成已回退：${artifacts.fallbackArtifactChannels.join(", ")}`)
     }
     if (normalizeWorkflow(record.workflow) === "vqa") {
-      let frameCaptions: RetrievalFrameCaption[] = []
-      const sourceMediaPath = normalizeNullableTitle(record.source_local_path) || await this.taskRepository.resolveSourceMediaPath(taskId) || ""
-      if (sourceMediaPath) {
-        try {
-          frameCaptions = await this.prepareVqaFrameCaptions({
-            durationSeconds: Number(record.duration_seconds) || 0,
-            execution,
-            sourceMediaPath,
-            taskId,
-          })
-          await this.taskRepository.writeTaskArtifactText(
-            taskId,
-            "D/vqa-prewarm/frames.json",
-            JSON.stringify(frameCaptions, null, 2),
-          )
-          if (frameCaptions.length > 0) {
-            await this.appendStageLog(taskId, "D", `VLM 关键帧语义预热完成，共 ${frameCaptions.length} 条画面证据`)
-          } else {
-            await this.appendStageLog(taskId, "D", "VLM 关键帧语义未生成有效描述，已回退为 transcript-only 检索")
-          }
-        } catch (error) {
-          await this.taskRepository.writeTaskArtifactText(taskId, "D/vqa-prewarm/frames.json", "[]")
-          await this.appendStageLog(
-            taskId,
-            "D",
-            `VLM 关键帧语义预热失败，已回退 transcript-only 检索：${toErrorMessage(error)}`,
-          )
-        }
-      } else {
-        await this.taskRepository.writeTaskArtifactText(taskId, "D/vqa-prewarm/frames.json", "[]")
-        await this.appendStageLog(taskId, "D", "未找到可复用的视频源路径，VLM 关键帧语义预热已跳过")
-      }
       const prewarmIndex = await this.retrievalIndexService.buildIndexAsync({
         taskId,
         taskTitle: normalizeNullableTitle(record.title) || taskId,
         transcriptSegments: artifacts.correctedSegments,
         transcriptText: artifacts.correctedText,
-        frameCaptions,
       })
       await this.taskRepository.writeTaskArtifactText(taskId, "D/vqa-prewarm/index.json", prewarmIndex.indexJson)
       await this.appendStageLog(taskId, "D", `VQA 检索索引预热完成，共 ${prewarmIndex.item_count} 条证据`)
@@ -499,54 +459,6 @@ export class TaskOrchestrator {
       status: "completed",
       message: "任务已完成",
     })
-  }
-
-  private async prepareVqaFrameCaptions(input: {
-    durationSeconds: number
-    execution: ActiveExecution
-    sourceMediaPath: string
-    taskId: string
-  }): Promise<RetrievalFrameCaption[]> {
-    const intervalSeconds = resolveVqaFrameInterval(input.durationSeconds)
-    const keyframes = await this.runControllable(input.execution, (signal) =>
-      this.dependencies.mediaPipelineService.extractKeyframes({
-        taskId: input.taskId,
-        mediaPath: input.sourceMediaPath,
-        intervalSeconds,
-        maxFrames: 8,
-        signal,
-      }),
-    )
-    if (keyframes.length === 0) {
-      return []
-    }
-
-    const descriptions = await this.dependencies.vqaModelRuntime.describeImages(
-      keyframes.map((frame) => frame.absolutePath),
-    )
-
-    const frameCaptions: RetrievalFrameCaption[] = []
-    for (let index = 0; index < keyframes.length; index += 1) {
-      const frame = keyframes[index]
-      const description = String(descriptions[index] || "").trim()
-      if (!description) {
-        continue
-      }
-      const relativeImagePath = `frames/${frame.fileName}`
-      const publicImagePath = `D/vqa-prewarm/${relativeImagePath}`
-      await this.taskRepository.copyTaskArtifactFile(
-        input.taskId,
-        publicImagePath,
-        frame.absolutePath,
-      )
-      frameCaptions.push({
-        start: frame.start,
-        end: frame.end,
-        text: description,
-        image_path: publicImagePath,
-      })
-    }
-    return frameCaptions
   }
 
   private async copyCompletedRecord(sourceTaskId: string, targetTaskId: string): Promise<void> {
@@ -947,14 +859,6 @@ class TaskPauseRequestedError extends Error {
 function normalizeNullableTitle(value: unknown): string | null {
   const candidate = String(value || "").trim()
   return candidate || null
-}
-
-function resolveVqaFrameInterval(durationSeconds: number): number {
-  const normalizedDuration = Number(durationSeconds) || 0
-  if (normalizedDuration <= 0) {
-    return 30
-  }
-  return Math.max(15, Math.min(90, Math.ceil(normalizedDuration / 8)))
 }
 
 function toErrorMessage(error: unknown): string {

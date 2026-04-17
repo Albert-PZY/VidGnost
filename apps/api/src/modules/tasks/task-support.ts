@@ -91,8 +91,28 @@ export function parseStageMetrics(raw: string | null | undefined): Record<string
 
 export function inferActiveStage(raw: string | null | undefined): string {
   const stageMetrics = parseStageMetrics(raw)
-  const runningStage = Object.entries(stageMetrics).find((entry) => String(entry[1]?.status || "").trim().toLowerCase() === "running")
-  return runningStage?.[0] || "D"
+  const activeStage = Object.entries(stageMetrics).find((entry) => {
+    const status = String(entry[1]?.status || "").trim().toLowerCase()
+    return status === "running" || status === "paused"
+  })
+  if (activeStage) {
+    return activeStage[0]
+  }
+
+  const startedStage = Object.entries(stageMetrics).find((entry) => {
+    const metric = entry[1] || {}
+    const status = String(metric.status || "").trim().toLowerCase()
+    return Boolean(metric.started_at) && !metric.completed_at && !["completed", "failed", "cancelled"].includes(status)
+  })
+  if (startedStage) {
+    return startedStage[0]
+  }
+
+  const pendingStage = STAGE_KEYS.find((stage) => {
+    const status = String(stageMetrics[stage]?.status || "").trim().toLowerCase()
+    return !["completed", "failed", "cancelled", "skipped"].includes(status)
+  })
+  return pendingStage || "D"
 }
 
 export function normalizeWorkflow(value: unknown): WorkflowType {

@@ -25,6 +25,7 @@ The backend SHALL process each task asynchronously and preserve explicit phase o
 - **AND** if the next active stage marker has not yet persisted, backend still anchors pause or cancel state to the first unfinished phase instead of mislabeling a later phase such as `D`
 - **AND** user MAY cancel the same task while it is paused, and backend finalizes that same unfinished phase as `cancelled`
 - **AND** when user resumes the same task, backend continues from the next unfinished stage instead of discarding completed work
+- **AND** when a task pauses during phase `C`, resuming it restores phase `C` to `running` while later phases such as `D` remain `pending` until their own execution starts
 
 ### Requirement: Pipeline SHALL keep explicit phase responsibilities
 Status: `implemented`
@@ -60,6 +61,7 @@ When a task uses workflow `vqa`, phase `D` SHALL prepare the first-question retr
 - **THEN** backend persists a task-local retrieval artifact under `D/vqa-prewarm/index.json`
 - **AND** that artifact contains transcript-derived retrieval windows and their text vectors for the current task
 - **AND** current implementation only needs transcript-derived retrieval windows prepared before marking the task completed
+- **AND** current transcript-only baseline does not require `D/vqa-prewarm/frames.json` or any VLM frame-semantic artifact before marking the task completed
 
 ### Requirement: Phase C SHALL support the current TS-native ASR routes
 Status: `implemented`
