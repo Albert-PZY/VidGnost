@@ -96,7 +96,7 @@ describe("TaskOrchestrator control flow", () => {
 
   afterEach(async () => {
     if (activeTaskId) {
-      await taskOrchestrator.cancel(activeTaskId).catch(() => undefined)
+      await taskOrchestrator.cancelAndWait(activeTaskId).catch(() => undefined)
       await waitFor(async () => {
         const record = await taskRepository.getStoredRecord(activeTaskId)
         return !record || ["cancelled", "completed", "failed"].includes(String(record.status || ""))
@@ -145,7 +145,11 @@ describe("TaskOrchestrator control flow", () => {
 
     await waitFor(async () => {
       const detail = await taskRepository.getDetail(activeTaskId)
-      return detail?.status === "running"
+      return (
+        detail?.status === "running" &&
+        detail?.stage_metrics.C?.status === "running" &&
+        detail?.stage_metrics.D?.status === "pending"
+      )
     }, 1_000)
 
     const resumedDetail = await taskRepository.getDetail(activeTaskId)
@@ -198,7 +202,11 @@ describe("TaskOrchestrator control flow", () => {
 
     await waitFor(async () => {
       const detail = await taskRepository.getDetail(activeTaskId)
-      return detail?.status === "cancelled"
+      return (
+        detail?.status === "cancelled" &&
+        detail?.stage_metrics.C?.status === "cancelled" &&
+        detail?.stage_metrics.D?.status === "pending"
+      )
     }, 2_000)
 
     const cancelledDetail = await taskRepository.getDetail(activeTaskId)

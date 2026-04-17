@@ -26,6 +26,7 @@ The backend SHALL process each task asynchronously and preserve explicit phase o
 - **AND** user MAY cancel the same task while it is paused, and backend finalizes that same unfinished phase as `cancelled`
 - **AND** when user resumes the same task, backend continues from the next unfinished stage instead of discarding completed work
 - **AND** when a task pauses during phase `C`, resuming it restores phase `C` to `running` while later phases such as `D` remain `pending` until their own execution starts
+- **AND** once a pause-resume or pause-cancel transition has settled, task detail reads expose the anchored unfinished phase state instead of a transient later-phase placeholder
 
 ### Requirement: Pipeline SHALL keep explicit phase responsibilities
 Status: `implemented`
