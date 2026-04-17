@@ -20,12 +20,14 @@ import { TaskRepository } from "../modules/tasks/task-repository.js"
 import { buildTaskCreateResponse, normalizeDate, normalizeSourceType, sanitizeFilename } from "../modules/tasks/task-support.js"
 import {
   assertLocalVideoPath,
+  assertVideoExtension,
   buildQueuedTaskRecord,
   createTaskFromMultipartFile,
   createTaskId,
   normalizePublicStatus,
   normalizeTaskId,
   normalizeWorkflow,
+  persistUploadedFile,
   type TaskIdParams,
 } from "./task-route-support.js"
 
@@ -124,18 +126,33 @@ export async function registerTaskMutationRoutes(
   })
 
   app.post(`${apiPrefix}/tasks/upload/batch`, async (request): Promise<TaskBatchCreateResponse> => {
-    const files = []
+    const stagedUploads: Array<{
+      fileName: string
+      fileSizeBytes: number
+      taskId: string
+      targetPath: string
+    }> = []
     const fields: Record<string, string> = {}
 
     for await (const part of request.parts()) {
       if (part.type === "file") {
-        files.push(part)
+        const fileName = part.filename || "uploaded-video"
+        assertVideoExtension(fileName)
+        const taskId = createTaskId()
+        const targetPath = path.join(config.uploadDir, `${taskId}_${sanitizeFilename(fileName)}`)
+        const fileSizeBytes = await persistUploadedFile(part, targetPath, config.maxUploadMb * 1024 * 1024)
+        stagedUploads.push({
+          fileName,
+          fileSizeBytes,
+          targetPath,
+          taskId,
+        })
         continue
       }
       fields[part.fieldname] = String(part.value || "")
     }
 
-    if (files.length === 0) {
+    if (stagedUploads.length === 0) {
       throw AppError.badRequest("No files uploaded", {
         code: "UPLOAD_FILES_EMPTY",
         hint: "请至少上传一个视频文件。",
@@ -151,17 +168,34 @@ export async function registerTaskMutationRoutes(
 
     const workflow = normalizeWorkflow(fields.workflow)
     const tasks = []
-    for (const file of files) {
-      tasks.push(
-        await createTaskFromMultipartFile({
-          config,
-          file,
+    for (const upload of stagedUploads) {
+      const createdAt = new Date().toISOString()
+      await taskRepository.create(
+        buildQueuedTaskRecord({
+          createdAt,
+          fileSizeBytes: upload.fileSizeBytes,
           language: fields.language || "zh",
-          taskOrchestrator,
-          taskRepository,
+          sourceInput: upload.fileName,
+          sourceLocalPath: upload.targetPath,
+          sourceType: "local_file",
+          taskId: upload.taskId,
+          title: path.parse(upload.fileName).name,
           workflow,
         }),
       )
+
+      await taskOrchestrator.submit({
+        taskId: upload.taskId,
+        sourceInput: upload.fileName,
+        sourceLocalPath: upload.targetPath,
+        workflow,
+      })
+
+      tasks.push(buildTaskCreateResponse({
+        taskId: upload.taskId,
+        status: "queued",
+        workflow,
+      }))
     }
 
     return {

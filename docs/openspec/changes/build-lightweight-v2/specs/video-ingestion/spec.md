@@ -18,6 +18,11 @@ The system SHALL accept local uploads (`mp4`, `mkv`, `mov`, `webm`, `avi`, `m4v`
 - **WHEN** client uploads a supported video file within size limit
 - **THEN** server stores input metadata and returns task ID with status `queued`
 
+#### Scenario: Upload large local file through batch endpoint
+- **WHEN** client submits a supported local video file through the batch upload endpoint and the file remains within the configured size limit
+- **THEN** server consumes the multipart file stream during request handling without stalling on large payloads
+- **AND** server returns the queued task response after the upload request body is fully processed
+
 #### Scenario: Upload avi or m4v file
 - **WHEN** client uploads an `.avi` or `.m4v` local video file within size limit
 - **THEN** server accepts the request through the same local-file task creation flow
