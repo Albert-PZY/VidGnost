@@ -1,5 +1,5 @@
 import path from "node:path"
-import { cp, readdir, readFile, rm, stat, unlink, writeFile } from "node:fs/promises"
+import { cp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 
 import type {
   TaskDetailResponse,
@@ -74,14 +74,18 @@ export class TaskRepository {
   private readonly eventLogsDir: string
   private readonly stageArtifactsDir: string
   private readonly tasksRootDir: string
+  private readonly tempDir: string
+  private readonly traceLogsDir: string
   private readonly uploadDir: string
 
   constructor(private readonly config: AppConfig) {
     this.tasksRootDir = path.join(config.storageDir, "tasks")
     this.recordsDir = path.join(this.tasksRootDir, "records")
     this.stageArtifactsDir = path.join(this.tasksRootDir, "stage-artifacts")
-    this.eventLogsDir = path.join(config.storageDir, "event-logs")
-    this.uploadDir = path.join(config.storageDir, "uploads")
+    this.eventLogsDir = config.eventLogDir
+    this.tempDir = config.tempDir
+    this.traceLogsDir = path.join(config.eventLogDir, "traces")
+    this.uploadDir = config.uploadDir
   }
 
   async list(options: ListTaskOptions): Promise<TaskListResponse> {
@@ -248,27 +252,16 @@ export class TaskRepository {
       this.analysisResultsTaskDir(taskId),
       this.runtimeWarningsPath(taskId),
       this.stageMetricsPath(taskId),
+      this.taskTempDir(taskId),
     ]
 
     let removed = false
     for (const target of targets) {
-      if (!(await pathExists(target))) {
-        continue
-      }
-      await rm(target, { recursive: true, force: true })
-      removed = true
+      removed = (await this.removeIfExists(target)) || removed
     }
 
-    if (await pathExists(this.uploadDir)) {
-      const entries = await readdir(this.uploadDir, { withFileTypes: true })
-      await Promise.all(
-        entries
-          .filter((entry) => entry.name.startsWith(`${taskId}_`) || entry.name.startsWith(`${taskId}-`))
-          .map(async (entry) => {
-            await rm(path.join(this.uploadDir, entry.name), { recursive: true, force: true })
-          }),
-      )
-    }
+    removed = (await this.removeTaskUploads(taskId)) || removed
+    removed = (await this.removeTaskTraceLogs(taskId)) || removed
 
     return removed
   }
@@ -323,6 +316,12 @@ export class TaskRepository {
     const targetPath = this.resolveTaskArtifactWritePath(taskId, relativePath)
     await ensureDirectory(path.dirname(targetPath))
     await writeFile(targetPath, content, "utf8")
+  }
+
+  async copyTaskArtifactFile(taskId: string, relativePath: string, sourcePath: string): Promise<void> {
+    const targetPath = this.resolveTaskArtifactWritePath(taskId, relativePath)
+    await ensureDirectory(path.dirname(targetPath))
+    await cp(sourcePath, targetPath, { force: true })
   }
 
   async readTaskArtifactText(taskId: string, relativePath: string): Promise<string | null> {
@@ -391,12 +390,16 @@ export class TaskRepository {
       throw new Error("Invalid artifact path")
     }
 
-    const artifactRoot = path.resolve(this.stageArtifactsDir, taskId, "D", "fusion")
-    const targetPath = path.resolve(artifactRoot, normalized)
-    if (!isWithinRoot(artifactRoot, targetPath) && targetPath !== artifactRoot) {
-      throw new Error("Artifact path escaped task root")
+    const taskArtifactRoot = path.resolve(this.stageArtifactsDir, taskId)
+    if (looksLikeStageArtifactPath(normalized)) {
+      return resolveArtifactPathWithinRoot(taskArtifactRoot, normalized)
     }
-    return targetPath
+
+    if (normalized.startsWith("frames/")) {
+      return resolveArtifactPathWithinRoot(path.resolve(taskArtifactRoot, "D", "vqa-prewarm"), normalized)
+    }
+
+    return resolveArtifactPathWithinRoot(path.resolve(taskArtifactRoot, "D", "fusion"), normalized)
   }
 
   private recordPath(taskId: string): string {
@@ -421,6 +424,61 @@ export class TaskRepository {
 
   private eventLogPath(taskId: string): string {
     return path.join(this.eventLogsDir, `${taskId}.jsonl`)
+  }
+
+  private taskTempDir(taskId: string): string {
+    return path.join(this.tempDir, taskId)
+  }
+
+  private async removeIfExists(targetPath: string): Promise<boolean> {
+    if (!(await pathExists(targetPath))) {
+      return false
+    }
+    await rm(targetPath, { recursive: true, force: true })
+    return true
+  }
+
+  private async removeTaskUploads(taskId: string): Promise<boolean> {
+    if (!(await pathExists(this.uploadDir))) {
+      return false
+    }
+
+    let removed = false
+    const entries = await readdir(this.uploadDir, { withFileTypes: true })
+    await Promise.all(
+      entries
+        .filter((entry) => entry.name.startsWith(`${taskId}_`) || entry.name.startsWith(`${taskId}-`))
+        .map(async (entry) => {
+          await rm(path.join(this.uploadDir, entry.name), { recursive: true, force: true })
+          removed = true
+        }),
+    )
+    return removed
+  }
+
+  private async removeTaskTraceLogs(taskId: string): Promise<boolean> {
+    if (!(await pathExists(this.traceLogsDir))) {
+      return false
+    }
+
+    let removed = false
+    const entries = await readdir(this.traceLogsDir, { withFileTypes: true })
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".jsonl")) {
+        continue
+      }
+
+      const targetPath = path.join(this.traceLogsDir, entry.name)
+      const raw = await readFile(targetPath, "utf8").catch(() => "")
+      if (!raw || !traceLogBelongsToTask(raw, taskId)) {
+        continue
+      }
+
+      await rm(targetPath, { force: true })
+      removed = true
+    }
+
+    return removed
   }
 
   private resolveTaskArtifactWritePath(taskId: string, relativePath: string): string {
@@ -533,6 +591,37 @@ function deduplicatePaths(paths: string[]): string[] {
     items.push(normalized)
   }
   return items
+}
+
+function traceLogBelongsToTask(raw: string, taskId: string): boolean {
+  return raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .some((line) => {
+      try {
+        return payloadReferencesTaskId(JSON.parse(line) as unknown, taskId)
+      } catch {
+        return false
+      }
+    })
+}
+
+function payloadReferencesTaskId(value: unknown, taskId: string): boolean {
+  if (!value || typeof value !== "object") {
+    return false
+  }
+
+  if (Array.isArray(value)) {
+    return value.some((item) => payloadReferencesTaskId(item, taskId))
+  }
+
+  return Object.entries(value).some(([key, entryValue]) => {
+    if ((key === "task_id" || key === "taskId") && String(entryValue || "").trim() === taskId) {
+      return true
+    }
+    return payloadReferencesTaskId(entryValue, taskId)
+  })
 }
 
 function matchesQuery(record: StoredTaskRecord, q?: string): boolean {
@@ -946,6 +1035,18 @@ function normalizeMarkdownImagePath(value: string): string {
     normalized = normalized.slice(2)
   }
   return normalized.replace(/^\/+/, "")
+}
+
+function looksLikeStageArtifactPath(value: string): boolean {
+  return /^[A-Z]\//.test(value)
+}
+
+function resolveArtifactPathWithinRoot(root: string, relativePath: string): string {
+  const targetPath = path.resolve(root, relativePath)
+  if (targetPath !== root && !isWithinRoot(root, targetPath)) {
+    throw new Error("Artifact path escaped task root")
+  }
+  return targetPath
 }
 
 function isWithinRoot(root: string, target: string): boolean {

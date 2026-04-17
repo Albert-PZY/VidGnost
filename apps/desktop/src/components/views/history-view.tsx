@@ -56,7 +56,7 @@ interface HistoryViewProps {
 }
 
 type HistoryWorkflowFilter = WorkflowType | "all"
-type HistoryStatusFilter = "all" | "queued" | "running" | "completed" | "failed" | "cancelled"
+type HistoryStatusFilter = "all" | "queued" | "running" | "paused" | "completed" | "failed" | "cancelled"
 
 const PAGE_SIZE = 24
 
@@ -67,10 +67,8 @@ const EMPTY_STATS: TaskStatsResponse = {
   completed: 0,
 }
 
-const TASK_DELETABLE_STATUSES = new Set(["completed", "failed", "cancelled"])
-
 function isTaskDeletable(status: string) {
-  return TASK_DELETABLE_STATUSES.has(status)
+  return String(status || "").trim().length > 0
 }
 
 const getStatusBadge = (status: string) => {
@@ -85,6 +83,8 @@ const getStatusBadge = (status: string) => {
       return <Badge variant="destructive">失败</Badge>
     case "cancelled":
       return <Badge variant="outline">已取消</Badge>
+    case "paused":
+      return <Badge variant="outline">已暂停</Badge>
     default:
       return <Badge variant="outline">{status}</Badge>
   }
@@ -267,7 +267,7 @@ export function HistoryView({ onOpenTask, onTasksChanged }: HistoryViewProps) {
   const requestSingleDelete = React.useCallback((task: TaskSummaryItem) => {
     setPendingDeleteRequest({
       ids: [task.id],
-      description: `删除后将移除任务“${task.title || task.source_input}”及其分析产物。此操作无法恢复。`,
+      description: `删除后将移除任务“${task.title || task.source_input}”及其临时文件、分析产物、问答索引与日志。此操作无法恢复。`,
     })
   }, [])
 
@@ -277,7 +277,7 @@ export function HistoryView({ onOpenTask, onTasksChanged }: HistoryViewProps) {
     }
     setPendingDeleteRequest({
       ids: selectedTaskIds,
-      description: `删除后将移除所选 ${selectedTaskIds.length} 个任务及其分析产物。此操作无法恢复。`,
+      description: `删除后将移除所选 ${selectedTaskIds.length} 个任务及其临时文件、分析产物、问答索引与日志。此操作无法恢复。`,
     })
   }, [selectedTaskIds])
 
@@ -380,10 +380,11 @@ export function HistoryView({ onOpenTask, onTasksChanged }: HistoryViewProps) {
             <SelectTrigger className="w-36">
               <SelectValue placeholder="状态" />
             </SelectTrigger>
-            <SelectContent>
+              <SelectContent>
               <SelectItem value="all">全部状态</SelectItem>
               <SelectItem value="queued">排队中</SelectItem>
               <SelectItem value="running">处理中</SelectItem>
+              <SelectItem value="paused">已暂停</SelectItem>
               <SelectItem value="completed">已完成</SelectItem>
               <SelectItem value="failed">失败</SelectItem>
               <SelectItem value="cancelled">已取消</SelectItem>
@@ -463,7 +464,7 @@ export function HistoryView({ onOpenTask, onTasksChanged }: HistoryViewProps) {
                 ) : (
                   <span className="text-sm text-muted-foreground/90">
                     {hasHistoryRecords
-                      ? "已完成、失败、已取消的任务支持批量删除。"
+                      ? "所有状态的任务都支持删除；删除后会一并清理临时文件与分析产物。"
                       : "暂无历史记录可执行批量删除。"}
                   </span>
                 )}
@@ -502,7 +503,7 @@ export function HistoryView({ onOpenTask, onTasksChanged }: HistoryViewProps) {
                             ? isSelected
                               ? "取消选择"
                               : "选择任务"
-                            : "仅已完成、失败、已取消的任务可删除"
+                            : "当前任务不可删除"
                         }
                         disabled={!canDeleteTask || Boolean(busyTaskId)}
                         onClick={() => toggleTaskSelection(task.id)}

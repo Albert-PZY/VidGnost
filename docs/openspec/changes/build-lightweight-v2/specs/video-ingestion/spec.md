@@ -61,3 +61,13 @@ The backend SHALL validate request payload shape at submission time, create the 
 - **AND** current runtime now has usable LLM generation available
 - **THEN** backend reuses the prior transcript artifacts for the new task
 - **AND** backend reruns phase `D` instead of reusing the older fallback fusion outputs
+
+### Requirement: Task deletion SHALL remove task-owned source ingestion artifacts
+Deleting a task SHALL also remove source files and temporary workspaces owned exclusively by that task, regardless of the task status at deletion time.
+
+#### Scenario: Delete a task that owns uploaded or downloaded source assets
+- **WHEN** client deletes a persisted task in any status
+- **THEN** backend stops any active source-ingestion work for that task before final removal
+- **AND** backend removes uploaded shadow source files under `upload_dir/<task_id>_*`
+- **AND** backend removes downloaded source directories under `upload_dir/<task_id>-*`
+- **AND** backend removes the task-scoped temporary workspace under `temp_dir/<task_id>`

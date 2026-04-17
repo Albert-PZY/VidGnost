@@ -22,6 +22,8 @@ The backend SHALL process each task asynchronously and preserve explicit phase o
 - **WHEN** user pauses a queued or running task
 - **THEN** task status becomes `paused` after the current stage reaches a stable boundary
 - **AND** already persisted stage metrics and task artifacts remain available for subsequent resume
+- **AND** if the next active stage marker has not yet persisted, backend still anchors pause or cancel state to the first unfinished phase instead of mislabeling a later phase such as `D`
+- **AND** user MAY cancel the same task while it is paused, and backend finalizes that same unfinished phase as `cancelled`
 - **AND** when user resumes the same task, backend continues from the next unfinished stage instead of discarding completed work
 
 ### Requirement: Pipeline SHALL keep explicit phase responsibilities
@@ -102,6 +104,17 @@ After phase `C` finishes, backend SHALL persist the normalized transcript into b
 - **WHEN** a task resumes after transcript artifacts are already persisted and phase `D` still needs work
 - **THEN** backend MAY reuse the persisted transcript state instead of re-running transcription
 - **AND** current implementation does not persist chunk-level phase-`C` checkpoints for mid-transcription recovery
+
+### Requirement: Task deletion SHALL stop active transcription and purge task-owned runtime artifacts
+Status: `implemented`
+
+Deleting a task SHALL cancel any active execution first and then remove transcription-related runtime state owned by that task.
+
+#### Scenario: Delete a task during or after transcription
+- **WHEN** client deletes a persisted task while transcription is queued, running, paused, failed, cancelled, or completed
+- **THEN** backend stops any active task execution before deleting persisted task state
+- **AND** backend removes the task event log, stage metrics, runtime warnings, analysis snapshots, and stage-artifact directories owned by that task
+- **AND** backend removes task-scoped VQA trace logs under `event_log_dir/traces/*.jsonl` when the trace payload references the deleted `task_id`
 
 ### Requirement: Whisper runtime config SHALL persist compatibility fields without overstating current local CLI behavior
 Status: `partial`

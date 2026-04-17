@@ -354,12 +354,12 @@ History view SHALL present a compact summary strip and a flat batch-delete toolb
 - **AND** the disabled presentation follows the same affordance family used by the history pagination controls
 
 #### Scenario: Enter batch-delete mode from history view
-- **WHEN** user clicks `批量删除` in history view while deletable tasks are available
-- **THEN** the renderer enters selection mode for terminal tasks that support deletion
+- **WHEN** user clicks `批量删除` in history view while tasks are available
+- **THEN** the renderer enters selection mode for every task shown on the current page
 - **AND** the toolbar keeps a compact flat presentation while exposing `全选本页`、`退出选择`、`删除已选` actions
 
-#### Scenario: Delete a single terminal task from history view
-- **WHEN** user confirms deleting one terminal task from the history row action menu
+#### Scenario: Delete a single task from history view
+- **WHEN** user confirms deleting one task from the history row action menu
 - **THEN** the renderer submits `DELETE /tasks/{task_id}` without a request body
 - **AND** the shared HTTP client does not attach `Content-Type: application/json` to that bodyless delete request
 - **AND** after backend deletion succeeds, the history list, summary counts, and recent-task surfaces refresh against the latest backend snapshot
@@ -471,7 +471,8 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 #### Scenario: Pause and resume a running task from the workbench header
 - **WHEN** user pauses a running task from the header action area
 - **THEN** the workbench updates the task summary to `已暂停`
-- **AND** the header swaps the running-state action set from `暂停任务 / 取消任务` to `继续任务`
+- **AND** the header swaps the primary running-state action from `暂停任务` to `继续任务`
+- **AND** while the task remains paused, the header keeps `取消任务` available so the user can terminate the same unfinished run without reopening the task
 - **AND** after resume, the same workbench re-enters the running stream flow without requiring the user to reopen the task
 
 #### Scenario: Keep playback interactions smooth during task inspection
@@ -494,7 +495,7 @@ Frontend UI library SHALL provide a reusable virtual-list component under `apps/
 - **WHEN** user submits a question from the VQA workbench
 - **THEN** before retrieval hits or answer tokens arrive, the assistant bubble shows a temporary loading placeholder with business-language progress copy instead of a blank bubble
 - **AND** while the answer stream is active, the composer action switches from `发送` to `停止`
-- **AND** if the task has already completed its persisted `D/vqa-prewarm` preparation, the first question reuses that prepared transcript retrieval corpus instead of rebuilding the index on demand
+- **AND** if the task has already completed its persisted `D/vqa-prewarm` preparation, the first question reuses that prepared retrieval corpus (merged transcript evidence and VLM keyframe semantics) instead of rebuilding the same vector index on demand
 - **THEN** the renderer streams incremental answer chunks into the chat surface
 - **AND** while answer chunks are still streaming, the assistant bubble keeps a lightweight plain-text surface instead of re-running full Markdown rendering on every chunk
 - **AND** streamed assistant answers render as Markdown instead of plain paragraph text
@@ -502,8 +503,8 @@ Frontend UI library SHALL provide a reusable virtual-list component under `apps/
 - **AND** user and assistant bubbles both use explicit avatar affordances instead of rendering the user side as an anonymous color block
 - **AND** each answer may expose a retrieval trace identifier, citations, and citation jump actions
 - **AND** retrieval-trace and citation actions use compact icon buttons with hover tooltips instead of long inline labels
-- **AND** citations are transcript-text and timestamp oriented in the current baseline
-- **AND** opening Trace Theater reveals a single final retrieval-hits panel with deduplicated transcript candidates
+- **AND** citations keep transcript timestamp/text as the baseline and MAY include `image_path` plus `visual_text` when a hit originates from VLM keyframe evidence
+- **AND** opening Trace Theater reveals a single final retrieval-hits panel with deduplicated candidates from the unified vector-index chain
 - **AND** Trace Theater does not render legacy `dense_hits`, `sparse_hits`, `rrf_hits`, or `rerank_hits` sections in the current baseline
 - **AND** Trace Theater states that retrieval uses the original user question directly without query expansion
 - **AND** Trace Theater shows human-readable normalized scores instead of raw backend magnitude values that collapse visually to zero
@@ -542,11 +543,21 @@ Diagnostics view SHALL provide a direct autofix action when the backend marks is
 - **THEN** it reports current runtime readiness based on `whisper-cli` availability and the configured model directory
 - **AND** the diagnostics issue summary tells the user whether the current problem is missing executable, missing model path, or both
 
-#### Scenario: Diagnostics self-check validates remote embedding connectivity
-- **WHEN** the backend runs the `嵌入模型` self-check step for a configured remote embedding model
-- **THEN** it reuses the shared remote model-readiness probe against the configured `/models` endpoint
-- **AND** it only reports success when the remote model list contains the configured model entry
-- **AND** any provider-side connectivity failure is surfaced as a step-level diagnostics issue rather than aborting the full self-check session
+#### Scenario: Diagnostics self-check validates embedding inference probe
+- **WHEN** the backend runs the `嵌入模型` self-check step
+- **THEN** it executes a minimal real embedding inference probe instead of only validating static config presence
+- **AND** the step result includes current provider and processor labels from the runtime probe details
+- **AND** any probe failure is surfaced as a step-level diagnostics issue rather than aborting the full self-check session
+
+#### Scenario: Diagnostics self-check validates rerank inference probe
+- **WHEN** the backend runs the `重排序模型` self-check step
+- **THEN** it executes a minimal real rerank inference probe instead of only validating static config presence
+- **AND** the step result includes current provider and processor labels from the runtime probe details
+
+#### Scenario: Diagnostics self-check validates VLM inference probe
+- **WHEN** the backend runs the `视觉模型` self-check step
+- **THEN** it executes a minimal real image-description inference probe for `vlm-default`
+- **AND** the step result includes current provider and processor labels from the runtime probe details
 
 #### Scenario: Diagnostics view survives page navigation during self-check
 - **WHEN** user starts a self-check, leaves the diagnostics page, and later returns within the same desktop session

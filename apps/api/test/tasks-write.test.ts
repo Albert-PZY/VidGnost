@@ -2,7 +2,7 @@ import os from "node:os"
 import path from "node:path"
 import { createServer } from "node:http"
 import type { AddressInfo } from "node:net"
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import type { FastifyInstance } from "fastify"
@@ -343,6 +343,88 @@ describe("task mutation routes", () => {
     const eventLog = await readFile(eventLogPath, "utf8")
     expect(eventLog).toContain("task_cancelled")
   })
+
+  it("deletes a running task and removes task-owned temp, artifact, upload, and trace files", async () => {
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/tasks/path",
+      payload: {
+        local_path: unmatchedVideoPath,
+        workflow: "vqa",
+        language: "zh",
+        model_size: "small",
+      },
+    })
+
+    expect(createResponse.statusCode).toBe(200)
+    const created = taskCreateResponseSchema.parse(createResponse.json())
+    await new Promise((resolve) => setTimeout(resolve, 60))
+
+    const recordPath = path.join(storageDir, "tasks", "records", `${created.task_id}.json`)
+    const stageArtifactsDir = path.join(storageDir, "tasks", "stage-artifacts", created.task_id)
+    const analysisResultDir = path.join(storageDir, "tasks", "analysis-results", created.task_id)
+    const runtimeWarningPath = path.join(storageDir, "tasks", "runtime-warnings", `${created.task_id}.jsonl`)
+    const stageMetricPath = path.join(storageDir, "tasks", "stage-metrics", `${created.task_id}.json`)
+    const eventLogPath = path.join(storageDir, "event-logs", `${created.task_id}.jsonl`)
+    const tracePath = path.join(storageDir, "event-logs", "traces", `trace-${created.task_id}.jsonl`)
+    const uploadShadowPath = path.join(storageDir, "uploads", `${created.task_id}_shadow.mp4`)
+    const remoteDownloadDir = path.join(storageDir, "uploads", `${created.task_id}-remote`)
+    const taskTempDir = path.join(storageDir, "tmp", created.task_id)
+
+    await mkdir(path.join(stageArtifactsDir, "D", "vqa-prewarm"), { recursive: true })
+    await mkdir(analysisResultDir, { recursive: true })
+    await mkdir(path.join(storageDir, "tasks", "runtime-warnings"), { recursive: true })
+    await mkdir(path.join(storageDir, "tasks", "stage-metrics"), { recursive: true })
+    await mkdir(path.join(storageDir, "event-logs", "traces"), { recursive: true })
+    await mkdir(path.join(remoteDownloadDir), { recursive: true })
+    await mkdir(path.join(taskTempDir, "whisper-output"), { recursive: true })
+
+    await writeFile(path.join(stageArtifactsDir, "D", "vqa-prewarm", "index.json"), "{\"item_count\":1}\n", "utf8")
+    await writeFile(path.join(analysisResultDir, "A.json"), "{\"stage\":\"A\"}\n", "utf8")
+    await writeFile(runtimeWarningPath, "{\"warning\":true}\n", "utf8")
+    await writeFile(stageMetricPath, "{\"stage\":\"A\"}\n", "utf8")
+    await writeFile(eventLogPath, "{\"type\":\"progress\"}\n", "utf8")
+    await writeFile(
+      tracePath,
+      `${JSON.stringify({
+        trace_id: `trace-${created.task_id}`,
+        stage: "trace_started",
+        ts: new Date().toISOString(),
+        payload: {
+          metadata: {
+            task_id: created.task_id,
+          },
+        },
+      })}\n`,
+      "utf8",
+    )
+    await writeFile(uploadShadowPath, "shadow", "utf8")
+    await writeFile(path.join(remoteDownloadDir, "source.mp4"), "remote", "utf8")
+    await writeFile(path.join(taskTempDir, "whisper-output", "log.txt"), "temp", "utf8")
+
+    const deleteResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/tasks/${created.task_id}`,
+    })
+    expect(deleteResponse.statusCode).toBe(204)
+
+    const missingResponse = await app.inject({
+      method: "GET",
+      url: `/api/tasks/${created.task_id}`,
+    })
+    expect(missingResponse.statusCode).toBe(404)
+
+    await expectPathMissing(recordPath)
+    await expectPathMissing(stageArtifactsDir)
+    await expectPathMissing(analysisResultDir)
+    await expectPathMissing(runtimeWarningPath)
+    await expectPathMissing(stageMetricPath)
+    await expectPathMissing(eventLogPath)
+    await expectPathMissing(tracePath)
+    await expectPathMissing(uploadShadowPath)
+    await expectPathMissing(remoteDownloadDir)
+    await expectPathMissing(taskTempDir)
+  })
 })
 
 async function waitForTaskStatus(
@@ -376,6 +458,10 @@ async function waitForFile(targetPath: string): Promise<void> {
     }
   }
   throw new Error(`File was not written in time: ${targetPath}`)
+}
+
+async function expectPathMissing(targetPath: string): Promise<void> {
+  await expect(async () => stat(targetPath)).rejects.toThrow()
 }
 
 async function seedMutationFixtures(storageDir: string): Promise<{

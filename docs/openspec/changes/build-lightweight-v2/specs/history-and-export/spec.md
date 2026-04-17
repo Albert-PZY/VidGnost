@@ -13,7 +13,8 @@ Backend SHALL persist task metadata, source info, phase logs, transcript, notes,
 - **THEN** backend returns persisted logs, artifacts, metrics, and artifact index metadata
 - **AND** task-detail markdown keeps only task-relative image references whose artifact files still exist on disk
 - **AND** stale task-relative image references are removed before the renderer receives the payload so the client does not request missing artifact files
-- **AND** VQA-related detail payloads in the current baseline use transcript timestamp citations and text evidence only, without requiring frame-image citation fields such as `image_path`
+- **AND** VQA-related detail payloads in the current baseline keep transcript timestamp/text citations and MAY include frame-semantic citation fields such as `image_path` and `visual_text` when retrieval hits originate from VLM keyframe evidence
+- **AND** when phase `D` has persisted VQA prewarm artifacts, task detail payloads can expose `D/vqa-prewarm/frames.json` and `D/vqa-prewarm/index.json` through the existing artifact index and file routes
 
 #### Scenario: Read persisted task history without an upfront storage migration
 - **WHEN** the frontend-driven TypeScript backend queries local task history during the refactor transition
@@ -32,32 +33,31 @@ Backend SHALL persist per-stage analysis snapshots under `analysis-results/<task
 - **WHEN** phase `A/B/C/D` or stage-D substage state changes
 - **THEN** backend updates corresponding stage snapshot files
 
-### Requirement: History operations SHALL support title update and terminal delete
-Backend SHALL allow title update and task deletion only for terminal tasks.
+### Requirement: History operations SHALL support title update and task deletion
+Backend SHALL allow title update for any persisted task and SHALL allow task deletion regardless of the current task status.
 
 #### Scenario: Update history title
 - **WHEN** client submits non-empty title to title-update API
 - **THEN** backend persists title and returns updated summary
 
-#### Scenario: Reject delete for running task
-- **WHEN** client attempts to delete a non-terminal task
-- **THEN** backend returns conflict and keeps task record unchanged
-
-#### Scenario: Delete terminal task
-- **WHEN** client deletes completed/failed/cancelled task
+#### Scenario: Delete task at any status
+- **WHEN** client deletes a persisted task in any status
+- **THEN** backend cancels any active execution owned by that task and waits for task-owned writes to settle before removal
 - **THEN** backend removes task record and related persisted artifacts
 - **AND** backend removes the task-scoped temporary workspace under `temp_dir/<task_id>`
 - **AND** backend removes uploaded shadow source files owned by the task under `upload_dir/<task_id>_*`
+- **AND** backend removes uploaded task directories owned by the task under `upload_dir/<task_id>-*`
+- **AND** backend removes task-scoped VQA trace files under `event_log_dir/traces/*.jsonl` when the trace payload references the deleted `task_id`
 
 #### Scenario: Delete task from history view and refresh recent tasks
-- **WHEN** user deletes a terminal task from the renderer history view
+- **WHEN** user deletes a task from the renderer history view
 - **THEN** the history list removes that task immediately after the delete request succeeds
 - **AND** the application shell refreshes the recent-task summary so deleted tasks no longer remain in the sidebar
 
-#### Scenario: Delete multiple terminal tasks from the current history page
+#### Scenario: Delete multiple tasks from the current history page
 - **WHEN** user enters multi-select mode in the renderer history view
 - **THEN** the current page exposes per-row selection toggles together with `全选本页` and `删除所选`
-- **AND** only terminal tasks are selectable for batch deletion
+- **AND** any task shown on the current page is selectable for batch deletion
 - **AND** after batch deletion succeeds, the history list refreshes, the recent-task summary no longer shows deleted tasks, and pagination stays within the new valid page range
 
 ### Requirement: Artifact markdown edits SHALL be supported after terminal status

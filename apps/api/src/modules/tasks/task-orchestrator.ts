@@ -7,6 +7,8 @@ import { EventBus } from "../events/event-bus.js"
 import type { MediaPipelineService } from "../media/media-pipeline-service.js"
 import type { SummaryService } from "../summary/summary-service.js"
 import { RetrievalIndexService } from "../vqa/retrieval-index-service.js"
+import type { RetrievalFrameCaption } from "../vqa/retrieval-index-service.js"
+import type { VqaModelRuntime } from "../vqa/vqa-model-runtime.js"
 import { TaskRepository, type StoredTaskRecord } from "./task-repository.js"
 import {
   buildArtifactIndex,
@@ -28,26 +30,35 @@ interface SubmitTaskInput {
 interface ActiveExecution {
   abortController: AbortController | null
   cancelled: boolean
+  completion: Promise<void>
   mode: "full" | "rerun-stage-d"
   pauseRequested: boolean
   resumeResolvers: Array<() => void>
+  resolveCompletion: () => void
 }
 
 interface TaskExecutionDependencies {
   asrService: AsrService
   mediaPipelineService: MediaPipelineService
   summaryService: SummaryService
+  vqaModelRuntime: VqaModelRuntime
 }
 
 export class TaskOrchestrator {
   private readonly activeExecutions = new Map<string, ActiveExecution>()
-  private readonly retrievalIndexService = new RetrievalIndexService()
+  private readonly retrievalIndexService: RetrievalIndexService
 
   constructor(
     private readonly taskRepository: TaskRepository,
     private readonly eventBus: EventBus,
     private readonly dependencies: TaskExecutionDependencies,
-  ) {}
+  ) {
+    this.retrievalIndexService = new RetrievalIndexService(
+      undefined,
+      undefined,
+      dependencies.vqaModelRuntime,
+    )
+  }
 
   async submit(input: SubmitTaskInput): Promise<void> {
     if (this.activeExecutions.has(input.taskId)) {
@@ -67,6 +78,7 @@ export class TaskOrchestrator {
         })
         .finally(() => {
           this.activeExecutions.delete(input.taskId)
+          execution.resolveCompletion()
         })
     })
   }
@@ -94,6 +106,7 @@ export class TaskOrchestrator {
         })
         .finally(() => {
           this.activeExecutions.delete(taskId)
+          execution.resolveCompletion()
         })
     })
     return true
@@ -134,6 +147,7 @@ export class TaskOrchestrator {
     }
 
     execution.pauseRequested = true
+    execution.abortController?.abort()
     await this.updateStageMetric({
       taskId,
       stage: inferActiveStage(record.stage_metrics_json),
@@ -149,6 +163,25 @@ export class TaskOrchestrator {
       task_id: taskId,
       message: "任务将在当前阶段执行完毕后暂停",
     })
+    return true
+  }
+
+  async cancelAndWait(taskId: string): Promise<boolean> {
+    const record = await this.taskRepository.getStoredRecord(taskId)
+    if (!record) {
+      return false
+    }
+
+    const execution = this.activeExecutions.get(taskId)
+    if (!execution) {
+      return true
+    }
+
+    execution.cancelled = true
+    execution.pauseRequested = false
+    execution.abortController?.abort()
+    this.resolveExecution(execution)
+    await execution.completion
     return true
   }
 
@@ -184,12 +217,19 @@ export class TaskOrchestrator {
   }
 
   private createExecution(mode: ActiveExecution["mode"]): ActiveExecution {
+    let resolveCompletion: () => void = () => {}
+    const completion = new Promise<void>((resolve) => {
+      resolveCompletion = resolve
+    })
+
     return {
       abortController: null,
       cancelled: false,
+      completion,
       mode,
       pauseRequested: false,
       resumeResolvers: [],
+      resolveCompletion,
     }
   }
 
@@ -226,7 +266,7 @@ export class TaskOrchestrator {
       return
     }
 
-    const preparedSource = await this.runAbortable(execution, (signal) =>
+    const preparedSource = await this.runControllable(execution, (signal) =>
       this.dependencies.mediaPipelineService.prepareSource({
         taskId: input.taskId,
         sourceInput: input.sourceInput,
@@ -246,7 +286,7 @@ export class TaskOrchestrator {
     await this.completeStage(input.taskId, "A", 12, "视频源检查完成")
 
     await this.startStage(input.taskId, "B", "Audio Extraction", 15)
-    const audioArtifact = await this.runAbortable(execution, (signal) =>
+    const audioArtifact = await this.runControllable(execution, (signal) =>
       this.dependencies.mediaPipelineService.extractAudio({
         mediaPath: preparedSource.mediaPath,
         taskId: input.taskId,
@@ -259,7 +299,7 @@ export class TaskOrchestrator {
     await this.completeStage(input.taskId, "B", 24, "音频提取完成")
 
     await this.startStage(input.taskId, "C", "Speech Transcription", 28, "transcribing")
-    const transcription = await this.runAbortable(execution, (signal) =>
+    const transcription = await this.runControllable(execution, (signal) =>
       this.dependencies.asrService.transcribe({
         audioPath: audioArtifact.audioPath,
         taskId: input.taskId,
@@ -340,7 +380,7 @@ export class TaskOrchestrator {
 
     await this.startStage(taskId, "D", "Detailed Notes and Mindmap Generation", 72, "summarizing")
     await this.startSubstage(taskId, "transcript_optimize", "转录文本优化", 78)
-    const artifacts = await this.runAbortable(execution, () =>
+    const artifacts = await this.runControllable(execution, () =>
       this.dependencies.summaryService.buildArtifacts({
         taskId,
         taskTitle: normalizeNullableTitle(record.title) || taskId,
@@ -403,11 +443,44 @@ export class TaskOrchestrator {
       await this.appendStageLog(taskId, "D", `融合生成已回退：${artifacts.fallbackArtifactChannels.join(", ")}`)
     }
     if (normalizeWorkflow(record.workflow) === "vqa") {
+      let frameCaptions: RetrievalFrameCaption[] = []
+      const sourceMediaPath = normalizeNullableTitle(record.source_local_path) || await this.taskRepository.resolveSourceMediaPath(taskId) || ""
+      if (sourceMediaPath) {
+        try {
+          frameCaptions = await this.prepareVqaFrameCaptions({
+            durationSeconds: Number(record.duration_seconds) || 0,
+            execution,
+            sourceMediaPath,
+            taskId,
+          })
+          await this.taskRepository.writeTaskArtifactText(
+            taskId,
+            "D/vqa-prewarm/frames.json",
+            JSON.stringify(frameCaptions, null, 2),
+          )
+          if (frameCaptions.length > 0) {
+            await this.appendStageLog(taskId, "D", `VLM 关键帧语义预热完成，共 ${frameCaptions.length} 条画面证据`)
+          } else {
+            await this.appendStageLog(taskId, "D", "VLM 关键帧语义未生成有效描述，已回退为 transcript-only 检索")
+          }
+        } catch (error) {
+          await this.taskRepository.writeTaskArtifactText(taskId, "D/vqa-prewarm/frames.json", "[]")
+          await this.appendStageLog(
+            taskId,
+            "D",
+            `VLM 关键帧语义预热失败，已回退 transcript-only 检索：${toErrorMessage(error)}`,
+          )
+        }
+      } else {
+        await this.taskRepository.writeTaskArtifactText(taskId, "D/vqa-prewarm/frames.json", "[]")
+        await this.appendStageLog(taskId, "D", "未找到可复用的视频源路径，VLM 关键帧语义预热已跳过")
+      }
       const prewarmIndex = await this.retrievalIndexService.buildIndexAsync({
         taskId,
         taskTitle: normalizeNullableTitle(record.title) || taskId,
         transcriptSegments: artifacts.correctedSegments,
         transcriptText: artifacts.correctedText,
+        frameCaptions,
       })
       await this.taskRepository.writeTaskArtifactText(taskId, "D/vqa-prewarm/index.json", prewarmIndex.indexJson)
       await this.appendStageLog(taskId, "D", `VQA 检索索引预热完成，共 ${prewarmIndex.item_count} 条证据`)
@@ -426,6 +499,54 @@ export class TaskOrchestrator {
       status: "completed",
       message: "任务已完成",
     })
+  }
+
+  private async prepareVqaFrameCaptions(input: {
+    durationSeconds: number
+    execution: ActiveExecution
+    sourceMediaPath: string
+    taskId: string
+  }): Promise<RetrievalFrameCaption[]> {
+    const intervalSeconds = resolveVqaFrameInterval(input.durationSeconds)
+    const keyframes = await this.runControllable(input.execution, (signal) =>
+      this.dependencies.mediaPipelineService.extractKeyframes({
+        taskId: input.taskId,
+        mediaPath: input.sourceMediaPath,
+        intervalSeconds,
+        maxFrames: 8,
+        signal,
+      }),
+    )
+    if (keyframes.length === 0) {
+      return []
+    }
+
+    const descriptions = await this.dependencies.vqaModelRuntime.describeImages(
+      keyframes.map((frame) => frame.absolutePath),
+    )
+
+    const frameCaptions: RetrievalFrameCaption[] = []
+    for (let index = 0; index < keyframes.length; index += 1) {
+      const frame = keyframes[index]
+      const description = String(descriptions[index] || "").trim()
+      if (!description) {
+        continue
+      }
+      const relativeImagePath = `frames/${frame.fileName}`
+      const publicImagePath = `D/vqa-prewarm/${relativeImagePath}`
+      await this.taskRepository.copyTaskArtifactFile(
+        input.taskId,
+        publicImagePath,
+        frame.absolutePath,
+      )
+      frameCaptions.push({
+        start: frame.start,
+        end: frame.end,
+        text: description,
+        image_path: publicImagePath,
+      })
+    }
+    return frameCaptions
   }
 
   private async copyCompletedRecord(sourceTaskId: string, targetTaskId: string): Promise<void> {
@@ -529,15 +650,44 @@ export class TaskOrchestrator {
     const controller = new AbortController()
     execution.abortController = controller
     try {
-      return await runner(controller.signal)
+      const result = await runner(controller.signal)
+      if (execution.cancelled) {
+        throw new TaskCancelledError()
+      }
+      if (execution.pauseRequested) {
+        await this.waitForControl(execution)
+      }
+      return result
     } catch (error) {
-      if (controller.signal.aborted || execution.cancelled) {
+      if (execution.cancelled) {
+        throw new TaskCancelledError()
+      }
+      if (controller.signal.aborted && execution.pauseRequested) {
+        throw new TaskPauseRequestedError()
+      }
+      if (controller.signal.aborted) {
         throw new TaskCancelledError()
       }
       throw error
     } finally {
       if (execution.abortController === controller) {
         execution.abortController = null
+      }
+    }
+  }
+
+  private async runControllable<T>(
+    execution: ActiveExecution,
+    runner: (signal: AbortSignal) => Promise<T>,
+  ): Promise<T> {
+    while (true) {
+      try {
+        return await this.runAbortable(execution, runner)
+      } catch (error) {
+        if (!(error instanceof TaskPauseRequestedError)) {
+          throw error
+        }
+        await this.waitForControl(execution)
       }
     }
   }
@@ -676,13 +826,18 @@ export class TaskOrchestrator {
     message: string,
     status: "cancelled" | "failed",
   ): Promise<void> {
+    const record = await this.taskRepository.getStoredRecord(taskId)
+    if (!record) {
+      return
+    }
+
     await this.taskRepository.update(taskId, {
       error_message: status === "failed" ? message : null,
       status,
     })
     await this.updateStageMetric({
       taskId,
-      stage: await this.resolveActiveStage(taskId),
+      stage: inferActiveStage(record.stage_metrics_json),
       patch: {
         status,
         completed_at: new Date().toISOString(),
@@ -735,11 +890,6 @@ export class TaskOrchestrator {
     }
   }
 
-  private async resolveActiveStage(taskId: string): Promise<string> {
-    const record = await this.taskRepository.getStoredRecord(taskId)
-    return inferActiveStage(record?.stage_metrics_json)
-  }
-
   private async updateStageMetric(input: {
     stage: string
     taskId: string
@@ -787,9 +937,24 @@ class TaskCancelledError extends Error {
   }
 }
 
+class TaskPauseRequestedError extends Error {
+  constructor() {
+    super("Task paused")
+    this.name = "TaskPauseRequestedError"
+  }
+}
+
 function normalizeNullableTitle(value: unknown): string | null {
   const candidate = String(value || "").trim()
   return candidate || null
+}
+
+function resolveVqaFrameInterval(durationSeconds: number): number {
+  const normalizedDuration = Number(durationSeconds) || 0
+  if (normalizedDuration <= 0) {
+    return 30
+  }
+  return Math.max(15, Math.min(90, Math.ceil(normalizedDuration / 8)))
 }
 
 function toErrorMessage(error: unknown): string {

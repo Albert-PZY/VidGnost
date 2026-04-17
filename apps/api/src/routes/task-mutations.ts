@@ -275,14 +275,8 @@ export async function registerTaskMutationRoutes(
 
   app.delete(`${apiPrefix}/tasks/:taskId`, async (request, reply) => {
     const taskId = normalizeTaskId(request.params as TaskIdParams)
-    const record = await requireTask(taskRepository, taskId)
-    const publicStatus = normalizePublicStatus(record.status)
-    if (!["completed", "failed", "cancelled", "paused"].includes(publicStatus)) {
-      throw AppError.conflict("Running task cannot be deleted", {
-        code: "TASK_DELETE_FORBIDDEN",
-      })
-    }
-
+    await requireTask(taskRepository, taskId)
+    await taskOrchestrator.cancelAndWait(taskId)
     await taskRepository.delete(taskId)
     reply.code(204)
     return reply.send()
