@@ -358,6 +358,12 @@ History view SHALL present a compact summary strip and a flat batch-delete toolb
 - **THEN** the renderer enters selection mode for terminal tasks that support deletion
 - **AND** the toolbar keeps a compact flat presentation while exposing `全选本页`、`退出选择`、`删除已选` actions
 
+#### Scenario: Delete a single terminal task from history view
+- **WHEN** user confirms deleting one terminal task from the history row action menu
+- **THEN** the renderer submits `DELETE /tasks/{task_id}` without a request body
+- **AND** the shared HTTP client does not attach `Content-Type: application/json` to that bodyless delete request
+- **AND** after backend deletion succeeds, the history list, summary counts, and recent-task surfaces refresh against the latest backend snapshot
+
 ### Requirement: Bootstrap surfaces SHALL provide startup progress and backend recovery actions
 Workbench bootstrap SHALL expose a desktop splash progress state before the main window reveal and a renderer overlay state machine for `initializing`, `connecting`, `degraded`, and `ready` after the main window becomes visible. Initializing states SHALL keep an explicit loading affordance, while degraded states SHALL switch to a non-blocking recovery panel.
 

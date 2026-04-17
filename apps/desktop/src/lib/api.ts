@@ -106,11 +106,12 @@ async function readJson<T>(response: Response): Promise<T> {
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const hasBody = init?.body !== undefined && init?.body !== null
   const response = await fetch(buildApiUrl(path), {
     ...init,
     headers: {
       Accept: "application/json",
-      ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
+      ...(hasBody && !(init.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
       ...(init?.headers || {}),
     },
   })
