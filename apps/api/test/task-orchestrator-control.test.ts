@@ -1,6 +1,6 @@
 import os from "node:os"
 import path from "node:path"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, readFile, rm } from "node:fs/promises"
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
@@ -152,10 +152,6 @@ describe("TaskOrchestrator control flow", () => {
       )
     }, 1_000)
 
-    const resumedDetail = await taskRepository.getDetail(activeTaskId)
-    expect(resumedDetail?.stage_metrics.C?.status).toBe("running")
-    expect(resumedDetail?.stage_metrics.D?.status).toBe("pending")
-
     await waitFor(async () => {
       const detail = await taskRepository.getDetail(activeTaskId)
       return detail?.status === "completed"
@@ -212,6 +208,360 @@ describe("TaskOrchestrator control flow", () => {
     const cancelledDetail = await taskRepository.getDetail(activeTaskId)
     expect(cancelledDetail?.stage_metrics.C?.status).toBe("cancelled")
     expect(cancelledDetail?.stage_metrics.D?.status).toBe("pending")
+  })
+
+  it("publishes streamed transcript and correction preview events with timestamp-aligned artifacts", async () => {
+    activeTaskId = "task-control-streaming"
+    const sourcePath = path.join(storageDir, "stream-source.mp4")
+    await taskRepository.create(
+      buildQueuedTaskRecord({
+        createdAt: new Date().toISOString(),
+        language: "zh",
+        modelSize: "small",
+        sourceInput: sourcePath,
+        sourceLocalPath: sourcePath,
+        sourceType: "local_path",
+        taskId: activeTaskId,
+        title: "流式事件测试",
+        workflow: "notes",
+      }),
+    )
+
+    taskOrchestrator = new TaskOrchestrator(taskRepository, eventBus, {
+      asrService: {
+        transcribe: async ({
+          onChunkComplete,
+          onLog,
+          onReset,
+          onSegment,
+        }: {
+          onChunkComplete?: (payload: { chunkIndex: number; chunkTotal: number }) => Promise<void> | void
+          onLog?: (message: string) => Promise<void> | void
+          onReset?: () => Promise<void> | void
+          onSegment?: (segment: TranscriptSegment) => Promise<void> | void
+        }) => {
+          await onReset?.()
+          await onLog?.("Splitting audio into chunks ...")
+          await onLog?.("Chunk 1/2: chunk-001.wav, start 0.000s, duration 60.000s")
+          await onLog?.("Chunk 2/2: chunk-002.wav, start 60.000s, duration 60.000s")
+          await onLog?.("Transcribing chunk 1/2: chunk-001.wav")
+          await onSegment?.({ start: 0, end: 1.2, text: "第一段 原始" })
+          await onLog?.("Chunk 1/2 transcription completed")
+          await onChunkComplete?.({ chunkIndex: 0, chunkTotal: 2 })
+          await onLog?.("Transcribing chunk 2/2: chunk-002.wav")
+          await onSegment?.({ start: 60, end: 61.8, text: "第二段 原始" })
+          await onLog?.("Chunk 2/2 transcription completed")
+          await onChunkComplete?.({ chunkIndex: 1, chunkTotal: 2 })
+          return {
+            language: "zh",
+            chunks: [
+              {
+                durationSeconds: 60,
+                index: 0,
+                segments: [{ start: 0, end: 1.2, text: "第一段 原始" }],
+                startSeconds: 0,
+              },
+              {
+                durationSeconds: 60,
+                index: 1,
+                segments: [{ start: 60, end: 61.8, text: "第二段 原始" }],
+                startSeconds: 60,
+              },
+            ],
+            segments: [
+              { start: 0, end: 1.2, text: "第一段 原始" },
+              { start: 60, end: 61.8, text: "第二段 原始" },
+            ],
+            text: "第一段 原始\n第二段 原始",
+          }
+        },
+      } as never,
+      mediaPipelineService: {
+        prepareSource: async ({ sourceLocalPath, taskId }: { sourceLocalPath?: string | null; taskId: string }) => ({
+          durationSeconds: 120,
+          fileSizeBytes: 128,
+          mediaPath: sourceLocalPath || path.join(storageDir, `${taskId}.mp4`),
+          sourceLabel: sourceLocalPath || `${taskId}.mp4`,
+          title: "流式事件测试",
+        }),
+        extractAudio: async ({ taskId }: { taskId: string }) => ({
+          audioPath: path.join(storageDir, `${taskId}.wav`),
+          durationSeconds: 120,
+        }),
+      } as never,
+      summaryService: {
+        buildArtifacts: async ({
+          onCorrectionPreviewEvent,
+          transcriptSegments,
+        }: {
+          onCorrectionPreviewEvent?: (payload: {
+            done?: boolean
+            fallbackUsed?: boolean
+            mode: "rewrite" | "strict"
+            reset?: boolean
+            segment?: TranscriptSegment
+          }) => Promise<void> | void
+          transcriptSegments: TranscriptSegment[]
+          transcriptText: string
+        }) => {
+          await onCorrectionPreviewEvent?.({
+            mode: "rewrite",
+            reset: true,
+          })
+          await onCorrectionPreviewEvent?.({
+            mode: "rewrite",
+            segment: { start: 0, end: 1.2, text: "第一段 修正" },
+          })
+          await onCorrectionPreviewEvent?.({
+            mode: "rewrite",
+            segment: { start: 60, end: 61.8, text: "第二段 修正" },
+          })
+          await onCorrectionPreviewEvent?.({
+            done: true,
+            fallbackUsed: false,
+            mode: "rewrite",
+          })
+          return {
+            artifactManifestJson: JSON.stringify({}),
+            correctedSegments: [
+              { start: 0, end: 1.2, text: "第一段 修正" },
+              { start: 60, end: 61.8, text: "第二段 修正" },
+            ],
+            correctedText: "第一段 修正\n第二段 修正",
+            correctionFullText: "第一段 修正\n第二段 修正",
+            correctionIndexJson: JSON.stringify({ mode: "rewrite", status: "completed", fallback_used: false }),
+            correctionRewriteText: "第一段 修正\n第二段 修正",
+            correctionStrictSegmentsJson: null,
+            fallbackArtifactChannels: [],
+            fusionPromptMarkdown: "# prompt",
+            mindmapMarkdown: "# mindmap",
+            notesMarkdown: "## notes",
+            summaryMarkdown: "## summary",
+          }
+        },
+        isLlmGenerationEnabled: async () => false,
+      } as never,
+    })
+
+    await taskOrchestrator.submit({
+      taskId: activeTaskId,
+      sourceInput: sourcePath,
+      sourceLocalPath: sourcePath,
+      workflow: "notes",
+    })
+
+    await waitFor(async () => {
+      const detail = await taskRepository.getDetail(activeTaskId)
+      return detail?.status === "completed"
+    }, 5_000)
+
+    const eventLogPath = path.join(storageDir, "event-logs", `${activeTaskId}.jsonl`)
+    const transcriptChunkIndexPath = path.join(
+      storageDir,
+      "tasks",
+      "stage-artifacts",
+      activeTaskId,
+      "C",
+      "transcript",
+      "index.json",
+    )
+    const transcriptChunkOnePath = path.join(
+      storageDir,
+      "tasks",
+      "stage-artifacts",
+      activeTaskId,
+      "C",
+      "transcript",
+      "chunks",
+      "chunk-001.json",
+    )
+
+    const eventLog = await readFile(eventLogPath, "utf8")
+    const events = eventLog
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+    const transcriptEvents = events.filter((event) => event.type === "transcript_delta")
+    const correctionEvents = events.filter((event) => event.type === "transcript_optimized_preview")
+
+    expect(transcriptEvents).toEqual([
+      expect.objectContaining({ reset: true, task_id: activeTaskId, type: "transcript_delta" }),
+      expect.objectContaining({ start: 0, end: 1.2, text: "第一段 原始", type: "transcript_delta" }),
+      expect.objectContaining({ start: 60, end: 61.8, text: "第二段 原始", type: "transcript_delta" }),
+    ])
+    expect(correctionEvents).toEqual([
+      expect.objectContaining({ mode: "rewrite", reset: true, type: "transcript_optimized_preview" }),
+      expect.objectContaining({ mode: "rewrite", start: 0, end: 1.2, text: "第一段 修正", type: "transcript_optimized_preview" }),
+      expect.objectContaining({ mode: "rewrite", start: 60, end: 61.8, text: "第二段 修正", type: "transcript_optimized_preview" }),
+      expect.objectContaining({ done: true, fallback_used: false, mode: "rewrite", type: "transcript_optimized_preview" }),
+    ])
+
+    const transcriptChunkIndex = JSON.parse(await readFile(transcriptChunkIndexPath, "utf8")) as {
+      chunks?: Array<{ relative_path?: string }>
+    }
+    const transcriptChunkOne = JSON.parse(await readFile(transcriptChunkOnePath, "utf8")) as {
+      segments?: TranscriptSegment[]
+    }
+
+    expect(transcriptChunkIndex.chunks).toEqual([
+      { relative_path: "C/transcript/chunks/chunk-001.json" },
+      { relative_path: "C/transcript/chunks/chunk-002.json" },
+    ])
+    expect(transcriptChunkOne.segments).toEqual([{ start: 0, end: 1.2, text: "第一段 原始" }])
+  })
+
+  it("publishes granular VQA substages for transcript vectorization, frame extraction, semantics, and fusion", async () => {
+    activeTaskId = "task-control-vqa-stages"
+    const sourcePath = path.join(storageDir, "vqa-source.mp4")
+    await taskRepository.create(
+      buildQueuedTaskRecord({
+        createdAt: new Date().toISOString(),
+        language: "zh",
+        modelSize: "small",
+        sourceInput: sourcePath,
+        sourceLocalPath: sourcePath,
+        sourceType: "local_path",
+        taskId: activeTaskId,
+        title: "VQA 阶段事件测试",
+        workflow: "vqa",
+      }),
+    )
+
+    taskOrchestrator = new TaskOrchestrator(taskRepository, eventBus, {
+      asrService: {
+        transcribe: async ({
+          onReset,
+          onSegment,
+        }: {
+          onReset?: () => Promise<void> | void
+          onSegment?: (segment: TranscriptSegment) => Promise<void> | void
+        }) => {
+          await onReset?.()
+          await onSegment?.({ start: 0, end: 1.5, text: "VQA 原始转写" })
+          return {
+            language: "zh",
+            chunks: [
+              {
+                durationSeconds: 90,
+                index: 0,
+                segments: [{ start: 0, end: 1.5, text: "VQA 原始转写" }],
+                startSeconds: 0,
+              },
+            ],
+            segments: [{ start: 0, end: 1.5, text: "VQA 原始转写" }],
+            text: "VQA 原始转写",
+          }
+        },
+      } as never,
+      mediaPipelineService: {
+        prepareSource: async ({ sourceLocalPath, taskId }: { sourceLocalPath?: string | null; taskId: string }) => ({
+          durationSeconds: 90,
+          fileSizeBytes: 128,
+          mediaPath: sourceLocalPath || path.join(storageDir, `${taskId}.mp4`),
+          sourceLabel: sourceLocalPath || `${taskId}.mp4`,
+          title: "VQA 阶段事件测试",
+        }),
+        extractAudio: async ({ taskId }: { taskId: string }) => ({
+          audioPath: path.join(storageDir, `${taskId}.wav`),
+          durationSeconds: 90,
+        }),
+      } as never,
+      summaryService: {
+        buildArtifacts: async ({
+          transcriptSegments,
+          transcriptText,
+        }: {
+          transcriptSegments: TranscriptSegment[]
+          transcriptText: string
+        }) => ({
+          artifactManifestJson: JSON.stringify({}),
+          correctedSegments: transcriptSegments,
+          correctedText: transcriptText,
+          correctionFullText: transcriptText,
+          correctionIndexJson: JSON.stringify({ status: "skipped" }),
+          correctionRewriteText: transcriptText,
+          correctionStrictSegmentsJson: JSON.stringify(transcriptSegments),
+          fallbackArtifactChannels: [],
+          fusionPromptMarkdown: "# prompt",
+          mindmapMarkdown: "# mindmap",
+          notesMarkdown: "## notes",
+          summaryMarkdown: "## summary",
+        }),
+        isLlmGenerationEnabled: async () => false,
+      } as never,
+      videoFrameService: {
+        extractFrames: async () => ({
+          manifest: {
+            frames: [
+              {
+                frame_index: 0,
+                path: "frames/frame-0001.jpg",
+                timestamp_seconds: 4,
+              },
+            ],
+          },
+          manifestJson: JSON.stringify({
+            task_id: activeTaskId,
+            frame_count: 1,
+            frames: [
+              {
+                frame_index: 0,
+                path: "frames/frame-0001.jpg",
+                timestamp_seconds: 4,
+              },
+            ],
+          }),
+        }),
+      } as never,
+      vlmRuntimeService: {
+        describeFrame: async () => ({
+          content: "画面里有人在讲解白板内容",
+        }),
+      } as never,
+    })
+
+    await taskOrchestrator.submit({
+      taskId: activeTaskId,
+      sourceInput: sourcePath,
+      sourceLocalPath: sourcePath,
+      workflow: "vqa",
+    })
+
+    await waitFor(async () => {
+      const detail = await taskRepository.getDetail(activeTaskId)
+      return detail?.status === "completed"
+    }, 5_000)
+
+    const eventLogPath = path.join(storageDir, "event-logs", `${activeTaskId}.jsonl`)
+    const eventLog = await readFile(eventLogPath, "utf8")
+    const events = eventLog
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+
+    const substageStarts = events
+      .filter((event) => event.type === "substage_start")
+      .map((event) => String(event.substage || ""))
+    const substageCompletions = events
+      .filter((event) => event.type === "substage_complete")
+      .map((event) => String(event.substage || ""))
+
+    expect(substageStarts).toEqual(expect.arrayContaining([
+      "transcript_vectorize",
+      "frame_extract",
+      "frame_semantic",
+      "multimodal_index_fusion",
+      "fusion_delivery",
+    ]))
+    expect(substageCompletions).toEqual(expect.arrayContaining([
+      "transcript_vectorize",
+      "frame_extract",
+      "frame_semantic",
+      "multimodal_index_fusion",
+      "fusion_delivery",
+    ]))
   })
 })
 

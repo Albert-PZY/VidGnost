@@ -424,7 +424,8 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 - **AND** `strict` comparison rows align original and corrected segments by their timestamp key instead of relying on array index position or arrival order
 - **AND** if one timestamp has not received its corrected segment yet, only that timestamp row shows a local waiting placeholder and later rows remain visible
 - **AND** long `strict` comparison lists render through a virtualized row surface so only the visible timestamp rows stay mounted
-- **AND** `rewrite` mode shows the rewritten transcript as a single streaming text surface instead of a per-segment diff
+- **AND** `rewrite` mode also renders through the same timestamp-aligned left-right comparison surface instead of falling back to a single undifferentiated text block
+- **AND** if a legacy task only has whole-text rewrite output without timestamp-aligned segments, the workbench MAY show a compatibility fallback notice together with that whole-text result
 - **AND** if correction is skipped or disabled, the tab explains that downstream notes generation is using the raw transcript directly
 
 #### Scenario: Review transcript output while task state continues updating
@@ -442,7 +443,9 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 #### Scenario: Open a running task during transcript production
 - **WHEN** a running task is still executing phase `C` and persisted transcript artifacts are not yet complete
 - **THEN** the transcript tab keeps a stable loading or processing hint instead of alternating between contradictory empty states
-- **AND** once persisted transcript segments arrive from the detail API, the renderer replaces that hint with ordered transcript content without duplicating cards
+- **AND** once live `transcript_delta` events arrive, the renderer replaces that hint with ordered timestamped transcript cards before phase `C` fully completes
+- **AND** transcript reset events clear stale live rows when the same task restarts or reruns phase `C`
+- **AND** once persisted transcript segments arrive from the detail API, the renderer reconciles them with the live transcript view without duplicating cards
 
 #### Scenario: Read a long stage-output timeline
 - **WHEN** the stage-output tab contains more content than the available panel height
@@ -503,7 +506,8 @@ Frontend UI library SHALL provide a reusable virtual-list component under `apps/
 - **AND** user and assistant bubbles both use explicit avatar affordances instead of rendering the user side as an anonymous color block
 - **AND** each answer may expose a retrieval trace identifier, citations, and citation jump actions
 - **AND** retrieval-trace and citation actions use compact icon buttons with hover tooltips instead of long inline labels
-- **AND** citations keep transcript timestamp/text as the baseline and MAY include `image_path` plus `visual_text` when a hit originates from VLM keyframe evidence
+- **AND** citations prefer the shared contracts fields `citation_type` and `image_evidence` for visual evidence rendering
+- **AND** `image_path` and `visual_text` remain compatibility-only fields for legacy task artifacts
 - **AND** opening Trace Theater reveals a single final retrieval-hits panel with deduplicated candidates from the unified vector-index chain
 - **AND** Trace Theater does not render legacy `dense_hits`, `sparse_hits`, `rrf_hits`, or `rerank_hits` sections in the current baseline
 - **AND** Trace Theater states that retrieval uses the original user question directly without query expansion
@@ -512,6 +516,11 @@ Frontend UI library SHALL provide a reusable virtual-list component under `apps/
 - **AND** restored per-task VQA chat history normalizes unfinished assistant streaming placeholders to a completed local state instead of reviving a stale `streaming` session
 - **AND** persisted per-task VQA trace snapshots keep only a bounded recent cache window while preserving the active or selected trace entry so renderer-side storage does not grow without limit
 - **AND** once the chat reaches fifteen user turns, the sixteenth send action first asks for confirmation and explains that continuing will clear the existing conversation before starting a new one
+
+#### Scenario: Display VQA workflow steps during multimodal migration
+- **WHEN** workbench renders task steps for `vqa`
+- **THEN** the UI shows explicit multimodal stages (`文本向量化`、`视频抽帧`、`画面语义识别`、`多模态融合与就绪`) instead of collapsing directly to a generic `问答就绪`
+- **AND** while backend substage names are still being migrated, the UI accepts legacy substage keys such as `multimodal_prewarm` and maps them into the new step presentation
 
 ### Requirement: Prompt settings SHALL include an experiment surface
 Prompt-template settings SHALL include a `Prompt Lab` surface that compares two templates under the same channel against the same sample title and transcript.
@@ -556,8 +565,10 @@ Diagnostics view SHALL provide a direct autofix action when the backend marks is
 
 #### Scenario: Diagnostics self-check validates VLM inference probe
 - **WHEN** the backend runs the `视觉模型` self-check step
-- **THEN** it executes a minimal real image-description inference probe for `vlm-default`
-- **AND** the step result includes current provider and processor labels from the runtime probe details
+- **THEN** it verifies `vlm-default` against the configured endpoint and prefers a minimal real image-description inference probe when that verification can finish within the current self-check budget
+- **AND** for local loopback OpenAI-compatible or Ollama vision endpoints without a fresh successful probe cache, it MAY first return `check_depth=reachability` after `/models` validation while the real image-description probe continues in the background
+- **AND** once that background probe succeeds, a subsequent self-check reuses the cached result and returns `check_depth=model_verified`
+- **AND** the step result includes the configured model/provider details together with the current verification depth and probe summary
 
 #### Scenario: Diagnostics view survives page navigation during self-check
 - **WHEN** user starts a self-check, leaves the diagnostics page, and later returns within the same desktop session

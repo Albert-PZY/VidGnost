@@ -5,12 +5,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "desktop:dev": "concurrently -k -n VITE,ELECTRON -c cyan,green \"pnpm dev --host 127.0.0.1 --port 6221\" \"wait-on tcp:6221 && electron electron/main.cjs\""
   },
   "dependencies": {
-    "@vidgnost/contracts": "workspace:*",
     "@radix-ui/react-accordion": "1.2.12",
     "@radix-ui/react-alert-dialog": "1.1.15",
     "@radix-ui/react-dialog": "1.1.15",
@@ -28,6 +28,7 @@
     "@tanstack/react-virtual": "^3.13.23",
     "@uiw/react-markdown-preview": "^5.2.0",
     "@uiw/react-md-editor": "^4.1.0",
+    "@vidgnost/contracts": "workspace:*",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -55,6 +56,7 @@
     "tw-animate-css": "1.3.3",
     "typescript": "5.7.3",
     "vite": "^6.3.6",
+    "vitest": "^4.1.4",
     "wait-on": "^8.0.5"
   }
 }

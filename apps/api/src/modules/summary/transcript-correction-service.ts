@@ -28,6 +28,14 @@ export interface TranscriptCorrectionResult {
   strictSegmentsJson: string | null
 }
 
+export interface TranscriptCorrectionPreviewEvent {
+  done?: boolean
+  fallbackUsed?: boolean
+  mode: "rewrite" | "strict"
+  reset?: boolean
+  segment?: TranscriptSegment
+}
+
 interface StrictBatchPlan {
   index: number
   segments: TranscriptSegment[]
@@ -51,6 +59,7 @@ export class TranscriptCorrectionService {
     model?: string
     systemPrompt?: string
     llmEnabled?: boolean
+    onPreviewEvent?: (event: TranscriptCorrectionPreviewEvent) => Promise<void> | void
   }): Promise<TranscriptCorrectionResult> {
     const transcriptSegments = normalizeSegments(input.transcriptSegments)
     const transcriptText = resolveTranscriptText(transcriptSegments, input.transcriptText)
@@ -112,9 +121,14 @@ export class TranscriptCorrectionService {
     batchPlan: StrictBatchPlan[]
     batchSize: number
     overlap: number
+    onPreviewEvent?: (event: TranscriptCorrectionPreviewEvent) => Promise<void> | void
   }): Promise<TranscriptCorrectionResult> {
     const correctedSegments: TranscriptSegment[] = []
     const fallbackReasons: string[] = []
+    await input.onPreviewEvent?.({
+      mode: "strict",
+      reset: true,
+    })
 
     for (const batch of input.batchPlan) {
       const rawResponse = await this.tryGenerateBatch({
@@ -132,10 +146,22 @@ export class TranscriptCorrectionService {
         fallbackReasons.push(`batch-${batch.index + 1}: empty_or_invalid_response`)
       }
 
-      correctedSegments.push(...nextSegments.slice(batch.skipCount))
+      const batchSegments = nextSegments.slice(batch.skipCount)
+      correctedSegments.push(...batchSegments)
+      for (const segment of batchSegments) {
+        await input.onPreviewEvent?.({
+          mode: "strict",
+          segment,
+        })
+      }
     }
 
     const correctedText = correctedSegments.map((segment) => segment.text).join("\n").trim()
+    await input.onPreviewEvent?.({
+      done: true,
+      fallbackUsed: fallbackReasons.length > 0,
+      mode: "strict",
+    })
     return buildResult({
       mode: "strict",
       status: fallbackReasons.length > 0 ? "fallback" : "completed",
@@ -166,9 +192,14 @@ export class TranscriptCorrectionService {
     batchPlan: StrictBatchPlan[]
     batchSize: number
     overlap: number
+    onPreviewEvent?: (event: TranscriptCorrectionPreviewEvent) => Promise<void> | void
   }): Promise<TranscriptCorrectionResult> {
-    const rewritePieces: string[] = []
+    const correctedSegments: TranscriptSegment[] = []
     const fallbackReasons: string[] = []
+    await input.onPreviewEvent?.({
+      mode: "rewrite",
+      reset: true,
+    })
 
     for (const batch of input.batchPlan) {
       const rawResponse = await this.tryGenerateBatch({
@@ -176,20 +207,30 @@ export class TranscriptCorrectionService {
         batch,
       })
       const parsedLines = parseCorrectionLines(rawResponse, batch.segments.length)
-      if (!parsedLines) {
+      const normalizedLines = parsedLines?.map((item) => normalizeChineseText(item))
+      if (!normalizedLines) {
         fallbackReasons.push(`batch-${batch.index + 1}: empty_or_invalid_response`)
-        rewritePieces.push(...batch.segments.slice(batch.skipCount).map((segment) => segment.text))
-        continue
       }
-      rewritePieces.push(
-        ...parsedLines
-          .slice(batch.skipCount)
-          .map((item) => normalizeChineseText(item))
-          .filter(Boolean),
-      )
+      const nextSegments = batch.segments.map((segment, index) => ({
+        ...segment,
+        text: normalizedLines?.[index] || segment.text,
+      }))
+      const batchSegments = nextSegments.slice(batch.skipCount)
+      correctedSegments.push(...batchSegments)
+      for (const segment of batchSegments) {
+        await input.onPreviewEvent?.({
+          mode: "rewrite",
+          segment,
+        })
+      }
     }
 
-    const correctedText = rewritePieces.join("\n").trim() || input.transcriptText
+    const correctedText = correctedSegments.map((segment) => segment.text).join("\n").trim() || input.transcriptText
+    await input.onPreviewEvent?.({
+      done: true,
+      fallbackUsed: fallbackReasons.length > 0,
+      mode: "rewrite",
+    })
     return buildResult({
       mode: "rewrite",
       status: fallbackReasons.length > 0 ? "fallback" : "completed",
@@ -199,7 +240,7 @@ export class TranscriptCorrectionService {
       batchCount: input.batchPlan.length,
       batchSize: input.batchSize,
       overlap: input.overlap,
-      correctedSegments: input.transcriptSegments,
+      correctedSegments,
       correctedText,
       rewriteText: correctedText,
     })

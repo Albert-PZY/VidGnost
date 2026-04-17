@@ -16,6 +16,11 @@ Stage `D` generation SHALL use the persisted OpenAI-compatible provider config a
 - **THEN** stage `D` still treats the local runtime as available even if the repository-level `user_configured` marker is still false
 - **AND** successful generation records `generated_by=llm` in the fusion manifest instead of falling back only because the saved-config marker lagged behind
 
+#### Scenario: Distinguish notes generation from VQA multimodal stage-D chain
+- **WHEN** this capability spec describes Stage `D` generation
+- **THEN** scope applies to notes-oriented artifacts (`notes_markdown` / `mindmap_markdown` / `summary_markdown`) and transcript optimization
+- **AND** VQA-specific multimodal stage-D substages (`transcript_vectorize`、`frame_extract`、`frame_semantic`、`multimodal_index_fusion`) are tracked in the transcription and workbench capability specs instead of being declared fully implemented here
+
 ### Requirement: Transcript optimization SHALL expose observable `off`、`strict`、`rewrite` modes
 Status: `implemented`
 
@@ -33,7 +38,8 @@ Before notes and mindmap generation, transcript optimization SHALL run through t
 
 #### Scenario: Correction mode is `rewrite`
 - **WHEN** `correction_mode=rewrite`
-- **THEN** backend performs batch-based full-text rewrite assembly
+- **THEN** backend performs batch-based rewrite while preserving the original segment timestamp boundaries
+- **AND** backend persists the rewritten segment text back into the task transcript segment structure
 - **AND** backend persists the rewritten text to `D/transcript-optimize/rewrite.txt`
 
 ### Requirement: Transcript optimization SHALL persist index and full-text artifacts
@@ -46,6 +52,12 @@ Transcript optimization SHALL persist enough metadata for workbench inspection a
 - **THEN** backend writes `D/transcript-optimize/index.json`
 - **AND** backend writes `D/transcript-optimize/full.txt`
 - **AND** the index captures `mode`、`status`、`fallback_used`、`fallback_reason`、`source_mode`、`batch_size` and `overlap`
+
+#### Scenario: Stream transcript optimization preview by timestamp
+- **WHEN** transcript optimization is running in `strict` or `rewrite` mode
+- **THEN** SSE emits `transcript_optimized_preview` reset and done markers for the active mode
+- **AND** every streamed preview segment carries the original `start` / `end` timestamp pair together with the latest corrected text
+- **AND** fallback completion metadata is surfaced through the final preview event when any batch falls back to raw transcript text
 
 ### Requirement: Transcript optimization SHALL consume correction batch parameters
 Status: `implemented`

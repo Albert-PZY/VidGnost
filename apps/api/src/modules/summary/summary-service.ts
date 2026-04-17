@@ -8,7 +8,7 @@ import {
   type GeneratedArtifactState,
   type SummaryArtifactManifest,
 } from "./fallback-artifact-service.js"
-import { TranscriptCorrectionService } from "./transcript-correction-service.js"
+import { TranscriptCorrectionService, type TranscriptCorrectionPreviewEvent } from "./transcript-correction-service.js"
 
 export interface SummaryArtifacts {
   artifactManifestJson: string
@@ -33,6 +33,7 @@ export class SummaryService {
   ) {}
 
   async buildArtifacts(input: {
+    onCorrectionPreviewEvent?: (event: TranscriptCorrectionPreviewEvent) => Promise<void> | void
     taskId: string
     taskTitle: string
     transcriptSegments: TranscriptSegment[]
@@ -64,6 +65,7 @@ export class SummaryService {
       model: llmConfig.model,
       systemPrompt: "你是一名严格的中文转写纠错助手。",
       llmEnabled,
+      onPreviewEvent: input.onCorrectionPreviewEvent,
     })
     const correctedSegments = correctionResult.correctedSegments
     const correctedText = correctionResult.correctedText

@@ -66,10 +66,12 @@ import {
 } from "@/lib/api"
 import { formatBytes, formatDateTime, formatSecondsAsClock } from "@/lib/format"
 import {
+  buildTranscriptSegmentKey,
   getVqaStreamErrorText,
   getVqaStreamStatusText,
   isRetryableVqaStreamError,
   normalizeCorrectionPreviewMode,
+  resolveDisplayedCorrectionSegments,
 } from "@/lib/task-processing-runtime-helpers"
 import {
   getTaskProcessingRuntimeState,
@@ -113,6 +115,16 @@ interface StageChunkIndexPayload {
   chunks?: StageChunkIndexEntry[]
 }
 
+interface VqaCitationImageEvidencePayload {
+  frame_path?: string
+  frame_uri?: string
+  frame_index?: number
+  frame_timestamp?: number
+  width?: number
+  height?: number
+  thumbnail_uri?: string
+}
+
 type LeftTab = "transcript" | "correction" | "evidence" | "stage"
 type NotesTab = "notes" | "mindmap"
 type VqaTab = "chat" | "trace"
@@ -130,7 +142,10 @@ const WORKFLOW_STEPS: Record<WorkflowType, Array<{ id: string; name: string }>> 
     { id: "extract", name: "音频提取" },
     { id: "transcribe", name: "语音转写" },
     { id: "correct", name: "文本纠错" },
-    { id: "ready", name: "问答就绪" },
+    { id: "transcript_vectorize", name: "文本向量化" },
+    { id: "frame_extract", name: "视频抽帧" },
+    { id: "frame_semantic", name: "画面语义识别" },
+    { id: "multimodal_fusion", name: "多模态融合与就绪" },
   ],
 }
 
@@ -139,12 +154,35 @@ const VM_PHASE_LABELS: Record<string, string> = {
   B: "阶段 B · 媒体预处理",
   C: "阶段 C · 语音转写",
   transcript_optimize: "阶段 D1 · 文本优化",
-  D: "阶段 D2 · 结果交付",
+  transcript_vectorize: "阶段 D2 · 文本向量化",
+  frame_extract: "阶段 D3 · 视频抽帧",
+  frame_semantic: "阶段 D4 · 画面语义识别",
+  frame_vectorize: "阶段 D5 · 画面语义向量化",
+  multimodal_index_fusion: "阶段 D6 · 多模态融合索引",
+  multimodal_prewarm: "阶段 D6 · 多模态融合索引",
+  fusion_delivery: "阶段 D7 · 结果交付",
+  D: "阶段 D · 多模态交付",
 }
 
 const TASK_EVENT_BADGE_LABELS: Record<string, string> = {
   transcript_optimize: "文本优化",
+  transcript_vectorize: "文本向量化",
+  frame_extract: "视频抽帧",
+  frame_semantic: "画面语义识别",
+  frame_vectorize: "画面语义向量化",
+  multimodal_index_fusion: "多模态融合索引",
+  multimodal_prewarm: "多模态融合索引",
   fusion_delivery: "结果交付",
+}
+
+const VQA_SUBSTAGE_TO_STEP_ID: Record<string, string> = {
+  transcript_vectorize: "transcript_vectorize",
+  frame_extract: "frame_extract",
+  frame_semantic: "frame_semantic",
+  frame_vectorize: "frame_semantic",
+  multimodal_index_fusion: "multimodal_fusion",
+  multimodal_prewarm: "multimodal_fusion",
+  fusion_delivery: "multimodal_fusion",
 }
 
 const TRACE_SECTIONS = [
@@ -178,6 +216,19 @@ function sanitizeVqaCitationItem(value: unknown): VqaCitationItem | null {
   if (!docId || !taskId) {
     return null
   }
+  const imageEvidencePayload = asObject(payload.image_evidence)
+  const imageEvidence: VqaCitationImageEvidencePayload | undefined =
+    Object.keys(imageEvidencePayload).length > 0
+      ? {
+        frame_path: asString(imageEvidencePayload.frame_path).trim() || undefined,
+        frame_uri: asString(imageEvidencePayload.frame_uri).trim() || undefined,
+        frame_index: asNumber(imageEvidencePayload.frame_index) ?? undefined,
+        frame_timestamp: asNumber(imageEvidencePayload.frame_timestamp) ?? undefined,
+        width: asNumber(imageEvidencePayload.width) ?? undefined,
+        height: asNumber(imageEvidencePayload.height) ?? undefined,
+        thumbnail_uri: asString(imageEvidencePayload.thumbnail_uri).trim() || undefined,
+      }
+      : undefined
   return {
     doc_id: docId,
     task_id: taskId,
@@ -187,6 +238,15 @@ function sanitizeVqaCitationItem(value: unknown): VqaCitationItem | null {
     start: asNumber(payload.start) ?? 0,
     end: asNumber(payload.end) ?? 0,
     text: asString(payload.text),
+    citation_type:
+      asString(payload.citation_type).trim() === "image"
+        ? "image"
+        : asString(payload.citation_type).trim() === "transcript"
+          ? "transcript"
+          : undefined,
+    image_path: asString(payload.image_path).trim() || undefined,
+    visual_text: asString(payload.visual_text).trim() || undefined,
+    image_evidence: imageEvidence,
   }
 }
 
@@ -445,10 +505,81 @@ function dedupeTraceHits(hits: Array<Record<string, unknown>>): Array<Record<str
 function getTraceSectionHint(sectionKey: (typeof TRACE_SECTIONS)[number]["key"]): string {
   switch (sectionKey) {
     case "hits":
-      return "当前展示最终用于回答生成的 transcript 检索命中，默认不做查询扩展，只按原问题直搜。"
+      return "当前展示最终用于回答生成的统一检索命中，链路融合 transcript 与 frame semantic 证据，默认不做查询扩展。"
     default:
       return "这里展示当前阶段的去重候选。"
   }
+}
+
+function isImageCitation(citation: VqaCitationItem): boolean {
+  return citation.citation_type === "image" || citation.source === "frame_semantic" || citation.source_set.includes("frame_semantic")
+}
+
+function getCitationPrimaryLabel(citation: VqaCitationItem): string {
+  if (isImageCitation(citation)) {
+    return "画面语义证据"
+  }
+  return "转写证据"
+}
+
+function getCitationSupportingText(citation: VqaCitationItem): string {
+  if (citation.visual_text) {
+    return citation.visual_text
+  }
+  if (isImageCitation(citation)) {
+    return citation.text
+  }
+  return ""
+}
+
+function getCitationFrameReference(citation: VqaCitationItem): string {
+  const imageEvidence = citation.image_evidence as VqaCitationImageEvidencePayload | undefined
+  const parts: string[] = []
+  if (typeof imageEvidence?.frame_index === "number") {
+    parts.push(`帧 #${imageEvidence.frame_index}`)
+  }
+  if (typeof imageEvidence?.frame_timestamp === "number") {
+    parts.push(`帧时间 ${formatSecondsAsClock(imageEvidence.frame_timestamp)}`)
+  }
+  if (imageEvidence?.frame_path) {
+    parts.push(imageEvidence.frame_path)
+  } else if (imageEvidence?.frame_uri) {
+    parts.push(imageEvidence.frame_uri)
+  } else if (citation.image_path) {
+    parts.push(citation.image_path)
+  }
+  return parts.join(" · ")
+}
+
+function getTraceRetrievalStrategyText(traceStartedPayload: Record<string, unknown>): string {
+  const configSnapshot = asObject(traceStartedPayload.config_snapshot)
+  const retrieval = asObject(configSnapshot.retrieval)
+  const mode = asString(retrieval.mode).trim()
+  if (mode === "vector-index") {
+    return "原问题直搜，不做查询扩展；统一向量索引融合 transcript 与 frame semantic。"
+  }
+  return "原问题直搜，不做查询扩展；当前链路使用统一多模态检索。"
+}
+
+function getTraceCandidateHandlingText(traceRetrievalPayload: Record<string, unknown>): string {
+  const hits = asRecordArray(traceRetrievalPayload.hits)
+  const sourceKinds = new Set(
+    hits.flatMap((hit) => {
+      const sourceSet = asStringArray(hit.source_set)
+      if (sourceSet.length > 0) {
+        return sourceSet
+      }
+      const source = asString(hit.source).trim()
+      return source ? [source] : []
+    }),
+  )
+  if (sourceKinds.has("transcript") && sourceKinds.has("frame_semantic")) {
+    return "候选已按片段去重，并融合 transcript 与 frame semantic 的最终命中。"
+  }
+  if (sourceKinds.has("frame_semantic")) {
+    return "候选已按片段去重，当前结果以 frame semantic 证据为主。"
+  }
+  return "候选已按片段去重，当前结果以 transcript 证据为主。"
 }
 
 function getVqaRequestFailureMessage(error: unknown): string {
@@ -524,11 +655,14 @@ function getStreamStepId(
   if (substage === "transcript_optimize") {
     return "correct"
   }
-  if (substage === "fusion_delivery") {
-    return workflow === "notes" ? "notes" : "ready"
+  if (workflow === "vqa") {
+    const mapped = VQA_SUBSTAGE_TO_STEP_ID[substage]
+    if (mapped) {
+      return mapped
+    }
   }
   if (stage === "D" && rawType === "stage_complete") {
-    return workflow === "notes" ? "notes" : "ready"
+    return workflow === "notes" ? "notes" : "multimodal_fusion"
   }
   return null
 }
@@ -661,8 +795,20 @@ function updateVmPhaseMetrics(
     return nextMetrics
   }
 
-  if (substage === "fusion_delivery" && (rawType === "substage_start" || rawType === "substage_complete")) {
-    updateMetric("D", (metric) => ({
+  const dMetricKey = [
+    "transcript_vectorize",
+    "frame_extract",
+    "frame_semantic",
+    "frame_vectorize",
+    "multimodal_index_fusion",
+    "multimodal_prewarm",
+    "fusion_delivery",
+  ].includes(substage)
+    ? substage
+    : null
+
+  if (dMetricKey && (rawType === "substage_start" || rawType === "substage_complete")) {
+    updateMetric(dMetricKey, (metric) => ({
       ...metric,
       status:
         rawType === "substage_start"
@@ -672,10 +818,26 @@ function updateVmPhaseMetrics(
             : asString(event.status).trim().toLowerCase() === "skipped"
               ? "skipped"
               : "completed",
-      started_at: asString(metric.started_at) || timestamp,
+      started_at: rawType === "substage_start" ? (timestamp || metric.started_at) : metric.started_at,
       completed_at: rawType === "substage_complete" ? (timestamp || metric.completed_at) : null,
       reason: rawType === "substage_complete" ? asString(event.message).trim() || null : null,
     }))
+    if (dMetricKey === "fusion_delivery" || dMetricKey === "multimodal_index_fusion" || dMetricKey === "multimodal_prewarm") {
+      updateMetric("D", (metric) => ({
+        ...metric,
+        status:
+          rawType === "substage_start"
+            ? "running"
+            : asString(event.status).trim().toLowerCase() === "failed"
+              ? "failed"
+              : asString(event.status).trim().toLowerCase() === "skipped"
+                ? "skipped"
+                : "completed",
+        started_at: asString(metric.started_at) || timestamp,
+        completed_at: rawType === "substage_complete" ? (timestamp || metric.completed_at) : null,
+        reason: rawType === "substage_complete" ? asString(event.message).trim() || null : null,
+      }))
+    }
     return nextMetrics
   }
 
@@ -752,10 +914,6 @@ function applyTaskStreamEvent(current: TaskDetailResponse, event: TaskStreamEven
     current_step_id: deriveCurrentStepId(nextStatus, nextSteps),
     vm_phase_metrics: nextVmPhaseMetrics,
   }
-}
-
-function buildTranscriptSegmentKey(segment: Pick<TranscriptSegment, "start" | "end">): string {
-  return `${Number(segment.start).toFixed(2)}-${Number(segment.end).toFixed(2)}`
 }
 
 function mergeTranscriptSegments(
@@ -895,6 +1053,37 @@ function inferTranscriptOptimizeSubstageFromMessage(message: string): string {
   ) {
     return "transcript_optimize"
   }
+  if (
+    normalized.includes("transcript vector") ||
+    normalized.includes("文本向量化")
+  ) {
+    return "transcript_vectorize"
+  }
+  if (
+    normalized.includes("extract frame") ||
+    normalized.includes("视频抽帧")
+  ) {
+    return "frame_extract"
+  }
+  if (
+    normalized.includes("frame semantic") ||
+    normalized.includes("画面语义")
+  ) {
+    return "frame_semantic"
+  }
+  if (
+    normalized.includes("multimodal index fusion") ||
+    normalized.includes("多模态融合索引")
+  ) {
+    return "multimodal_index_fusion"
+  }
+  if (
+    normalized === "多模态预热入口已就绪" ||
+    normalized.includes("multimodal") ||
+    normalized.includes("多模态预热")
+  ) {
+    return "multimodal_prewarm"
+  }
   return ""
 }
 
@@ -960,6 +1149,9 @@ function translateTaskLogMessage(message: string): string {
     return normalized
       .replace(/^Splitting audio into chunks /, "正在切分音频 ")
       .replace(/\.\.\.$/, "")
+  }
+  if (normalized === "多模态预热入口已就绪") {
+    return "多模态问答预热已完成，可直接复用 transcript 与 frame semantic 索引"
   }
 
   const chunkPreparedMatch = normalized.match(
@@ -2473,7 +2665,7 @@ const TranscriptCorrectionPanel = React.memo(function TranscriptCorrectionPanel(
   isLoading,
 }: TranscriptCorrectionPanelProps) {
   const normalizedStatus = asString(status).trim().toLowerCase()
-  const strictRows = React.useMemo(() => {
+  const comparisonRows = React.useMemo(() => {
     const sourceByKey = new Map<string, TranscriptSegment>()
     const resultByKey = new Map<string, TranscriptSegment>()
     const orderedKeys = new Set<string>()
@@ -2508,15 +2700,14 @@ const TranscriptCorrectionPanel = React.memo(function TranscriptCorrectionPanel(
   const effectiveMode =
     mode !== "unknown"
       ? mode
-      : strictRows.length > 0
+      : comparisonRows.length > 0
         ? "strict"
         : previewText.trim()
           ? "rewrite"
           : "unknown"
   const isSkipped = effectiveMode === "off" || normalizedStatus === "skipped"
-  const isStrictMode = effectiveMode === "strict"
-  const hasRewriteOutput = previewText.trim().length > 0
-  const usesVirtualizedStrictList = !isSkipped && isStrictMode && strictRows.length > 0
+  const hasPreviewText = previewText.trim().length > 0
+  const usesVirtualizedComparisonList = !isSkipped && comparisonRows.length > 0
 
   const getRowTimestamp = React.useCallback((source: TranscriptSegment | null, result: TranscriptSegment | null) => {
     const reference = source ?? result
@@ -2536,10 +2727,10 @@ const TranscriptCorrectionPanel = React.memo(function TranscriptCorrectionPanel(
           {normalizedStatus === "running" ? <Badge variant="secondary">流式输出中</Badge> : null}
         </div>
       </div>
-      {usesVirtualizedStrictList ? (
+      {usesVirtualizedComparisonList ? (
         <div className="min-h-0 flex-1 p-4">
           <VirtualizedList
-            items={strictRows}
+            items={comparisonRows}
             className="themed-thin-scrollbar h-full min-h-0"
             estimateSize={() => 236}
             overscan={5}
@@ -2587,30 +2778,27 @@ const TranscriptCorrectionPanel = React.memo(function TranscriptCorrectionPanel(
               当前任务跳过了文本纠错阶段，后续笔记整理直接使用原始转写结果。
             </div>
           ) : null}
-          {!isSkipped && isLoading && !strictRows.length && !hasRewriteOutput ? (
+          {!isSkipped && isLoading && !comparisonRows.length && !hasPreviewText ? (
             <div className="flex items-center rounded-xl border border-border/60 bg-card/45 px-4 py-5 text-sm text-muted-foreground">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               正在读取文本纠错结果...
             </div>
           ) : null}
-          {!isSkipped && isStrictMode ? (
+          {!isSkipped && !comparisonRows.length ? (
             <div className="rounded-xl border border-dashed border-border/60 px-4 py-5 text-sm text-muted-foreground">
               {normalizedStatus === "running"
                 ? "文本纠错已经开始，结果会按时间戳逐段出现在这里。"
                 : "当前还没有可展示的文本纠错结果。"}
             </div>
           ) : null}
-          {!isSkipped && !isStrictMode ? (
-            hasRewriteOutput ? (
-              <div className="transcript-correction-surface rounded-xl border border-primary/20 bg-primary/[0.04] px-4 py-3.5">
-                <div className="text-[11px] font-medium tracking-[0.12em] text-muted-foreground">重写优化后文本</div>
-                <div className="mt-3 whitespace-pre-wrap text-sm leading-6">{previewText}</div>
+          {!isSkipped && !comparisonRows.length && hasPreviewText ? (
+            <div className="transcript-correction-surface rounded-xl border border-primary/20 bg-primary/[0.04] px-4 py-3.5">
+              <div className="text-[11px] font-medium tracking-[0.12em] text-muted-foreground">兼容视图</div>
+              <div className="mt-3 whitespace-pre-wrap text-sm leading-6">
+                当前历史结果缺少按时间戳分段的纠错产物，暂时回退为整段文本展示。
               </div>
-            ) : (
-              <div className="rounded-xl border border-dashed border-border/60 px-4 py-5 text-sm text-muted-foreground">
-                {normalizedStatus === "running" ? "重写优化结果正在流式生成..." : "当前还没有可展示的重写优化结果。"}
-              </div>
-            )
+              <div className="mt-3 whitespace-pre-wrap text-sm leading-6">{previewText}</div>
+            </div>
           ) : null}
           </div>
         </ScrollArea>
@@ -2808,12 +2996,12 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
     correctionPreview.mode !== "unknown" ? correctionPreview.mode : persistedCorrectionMode
   const correctionSourceSegments =
     rawTranscriptSegments.length > 0 ? rawTranscriptSegments : persistedRawTranscriptSegments
-  const correctionResultSegments =
-    correctionPreview.segments.length > 0
-      ? correctionPreview.segments
-      : correctionMode === "strict"
-        ? transcriptSegments
-        : []
+  const correctionResultSegments = resolveDisplayedCorrectionSegments({
+    correctionMode,
+    correctionPreviewSegments: correctionPreview.segments,
+    correctionStatus,
+    transcriptSegments,
+  })
   const correctionPreviewText = correctionPreview.text || persistedCorrectionText
   const correctionFallbackUsed = correctionPreview.fallbackUsed || persistedCorrectionFallbackUsed
 
@@ -2893,7 +3081,7 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
               {!isInitialLoading && transcriptSegments.length === 0 ? (
                 <div className="mx-4 mt-4 rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
                   {taskStatus === "running" || taskStatus === "queued"
-                    ? "正在转写和整理内容，识别片段会实时出现在这里。"
+                    ? "正在转写和整理内容，识别片段会按时间戳实时出现在这里。"
                     : "当前还没有可展示的转写结果。"}
                 </div>
               ) : null}
@@ -3366,7 +3554,8 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
                                   <div className="flex flex-wrap items-center justify-between gap-2">
                                     <div className="flex flex-wrap items-center gap-2">
                                       <span className="text-sm font-medium">{citation.task_title || effectiveTitle}</span>
-                                      <Badge variant="outline">{citation.source}</Badge>
+                                      <Badge variant="outline">{getCitationPrimaryLabel(citation)}</Badge>
+                                      <Badge variant="secondary">{citation.source}</Badge>
                                       <Badge variant="secondary">{formatSecondsAsClock(citation.start)} - {formatSecondsAsClock(citation.end)}</Badge>
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2">
@@ -3377,6 +3566,16 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
                                   </div>
                                   <div className="vqa-citation-layout mt-3 grid gap-3">
                                     <p className="whitespace-pre-wrap text-sm leading-6">{citation.text}</p>
+                                    {getCitationSupportingText(citation) ? (
+                                      <p className="whitespace-pre-wrap text-xs leading-6 text-muted-foreground">
+                                        视觉线索：{getCitationSupportingText(citation)}
+                                      </p>
+                                    ) : null}
+                                    {getCitationFrameReference(citation) ? (
+                                      <p className="break-all text-xs text-muted-foreground">
+                                        关键帧：{getCitationFrameReference(citation)}
+                                      </p>
+                                    ) : null}
                                   </div>
                                 </div>
                               ))}
@@ -3414,8 +3613,8 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
                   <p className="mt-2 text-xs text-muted-foreground">链路 ID: {selectedTrace.trace_id}</p>
                   <div className="vqa-trace-summary-grid mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                     <div className="rounded-xl border border-border/60 bg-background/55 p-3"><p className="text-xs text-muted-foreground">问题</p><p className="mt-1 text-sm">{asString(asObject(traceStartedPayload.metadata).query_text) || "未记录问题文本"}</p></div>
-                    <div className="rounded-xl border border-border/60 bg-background/55 p-3"><p className="text-xs text-muted-foreground">检索策略</p><p className="mt-1 text-sm">原问题直搜，不做查询扩展</p></div>
-                    <div className="rounded-xl border border-border/60 bg-background/55 p-3"><p className="text-xs text-muted-foreground">候选处理</p><p className="mt-1 text-sm">阶段内同文片段已去重</p></div>
+                    <div className="rounded-xl border border-border/60 bg-background/55 p-3"><p className="text-xs text-muted-foreground">检索策略</p><p className="mt-1 text-sm">原问题直搜，不做查询扩展；统一向量索引链路</p></div>
+                    <div className="rounded-xl border border-border/60 bg-background/55 p-3"><p className="text-xs text-muted-foreground">候选处理</p><p className="mt-1 text-sm">阶段内按片段去重；可同时包含文本与视觉证据</p></div>
                     <div className="rounded-xl border border-border/60 bg-background/55 p-3"><p className="text-xs text-muted-foreground">完成状态</p><p className="mt-1 text-sm">{asString(traceFinishedPayload.ok) === "True" || asString(traceFinishedPayload.ok) === "true" ? "已完成" : asString(traceFinishedPayload.ok) ? "执行异常" : "未记录"}</p></div>
                   </div>
                 </div>

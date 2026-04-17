@@ -45,24 +45,31 @@ The pipeline SHALL keep these phase boundaries:
 ### Requirement: Stage D SHALL execute ordered substage chain
 Status: `implemented`
 
-Inside phase `D`, backend SHALL execute `transcript_optimize -> fusion_delivery` in order.
+Inside phase `D`, backend SHALL execute `transcript_optimize -> fusion_delivery` in order. For workflow `vqa`, backend SHALL insert multimodal prewarm substages between those two anchors instead of collapsing them into a single opaque completion hop.
 
 #### Scenario: Ordered stage-D execution
 - **WHEN** phase `D` starts
 - **THEN** `transcript_optimize` runs before `fusion_delivery`
 - **AND** `fusion_delivery` starts only after transcript optimization completes or is skipped
 
-### Requirement: VQA tasks SHALL persist transcript-only retrieval prewarm artifacts before completion
-Status: `implemented`
+#### Scenario: Ordered stage-D execution for VQA
+- **WHEN** phase `D` runs for a `vqa` task
+- **THEN** backend emits ordered substage transitions for `transcript_vectorize`、`frame_extract`、`frame_semantic`、`multimodal_index_fusion`
+- **AND** those VQA substages complete before `fusion_delivery`
+- **AND** current migration period MAY still emit the legacy umbrella marker `multimodal_prewarm` together with the granular VQA substages for compatibility
+
+### Requirement: VQA tasks SHALL persist multimodal retrieval prewarm artifacts before completion
+Status: `partial`
 
 When a task uses workflow `vqa`, phase `D` SHALL prepare the first-question retrieval corpus before the task enters the completed state.
 
-#### Scenario: Complete a VQA task with retrieval prewarm
+#### Scenario: Complete a VQA task with multimodal retrieval prewarm
 - **WHEN** a `vqa` task finishes phase `D`
 - **THEN** backend persists a task-local retrieval artifact under `D/vqa-prewarm/index.json`
-- **AND** that artifact contains transcript-derived retrieval windows and their text vectors for the current task
-- **AND** current implementation only needs transcript-derived retrieval windows prepared before marking the task completed
-- **AND** current transcript-only baseline does not require `D/vqa-prewarm/frames.json` or any VLM frame-semantic artifact before marking the task completed
+- **AND** target chain also persists frame extraction and frame-semantic artifacts such as `D/vqa-prewarm/frames/manifest.json` and `D/vqa-prewarm/frame-semantic/index.json`
+- **AND** task event stream exposes granular multimodal prewarm substages before `fusion_delivery` marks the final delivery step
+- **AND** current migration period MAY still reuse transcript-only prewarm artifacts when multimodal artifacts are absent
+- **AND** frontend and contracts MUST continue to accept both the new multimodal artifact keys and legacy `multimodal_prewarm` compatibility outputs
 
 ### Requirement: Phase C SHALL support the current TS-native ASR routes
 Status: `implemented`
@@ -76,9 +83,21 @@ Phase `C` SHALL support a local `whisper.cpp` CLI route and a remote OpenAI-comp
 - **AND** backend normalizes the SRT into stable `segments[]` plus `text`
 
 #### Scenario: Run remote OpenAI-compatible transcription
+- **WHEN** `whisper-default` uses the remote OpenAI-compatible provider
+- **THEN** backend normalizes returned `segments[]` and `text` into the same transcript contract as the local route
+- **AND** if the remote payload returns a detected `language`, backend persists that detected language instead of always forcing the configured fallback language
+
+#### Scenario: Run remote OpenAI-compatible transcription
 - **WHEN** `whisper-default` uses `openai_compatible`
 - **THEN** backend submits the audio file to `/audio/transcriptions`
 - **AND** backend normalizes the returned segments and transcript text into the same task artifact shape as the local route
+
+#### Scenario: Stream chunked transcript segments during phase C
+- **WHEN** phase `C` starts and the prepared audio duration exceeds the configured `chunk_seconds`
+- **THEN** backend splits the normalized WAV into sequential time windows
+- **AND** each chunk is transcribed independently through the selected local or remote ASR route
+- **AND** backend offsets every chunk-local timestamp back into absolute task time before publishing or persisting the segment
+- **AND** SSE emits an initial `transcript_delta` reset event followed by ordered `transcript_delta` segment events while phase `C` is still running
 
 #### Scenario: Local runtime prerequisites are missing
 - **WHEN** local `whisper-cli` or the configured `ggml` model file cannot be found
@@ -102,11 +121,12 @@ After phase `C` finishes, backend SHALL persist the normalized transcript into b
 - **WHEN** phase `C` completes successfully
 - **THEN** backend writes `C/transcript.txt` and `C/transcript.segments.json`
 - **AND** backend updates task record `transcript_text` and `transcript_segments_json`
+- **AND** backend writes `C/transcript/index.json` plus chunk-level segment artifacts under `C/transcript/chunks/*.json` for later raw-transcript inspection
 
 #### Scenario: Rerun or resume after phase C already completed
 - **WHEN** a task resumes after transcript artifacts are already persisted and phase `D` still needs work
 - **THEN** backend MAY reuse the persisted transcript state instead of re-running transcription
-- **AND** current implementation does not persist chunk-level phase-`C` checkpoints for mid-transcription recovery
+- **AND** current implementation still does not persist mid-transcription checkpoints for resuming from a partially completed chunk
 
 ### Requirement: Task deletion SHALL stop active transcription and purge task-owned runtime artifacts
 Status: `implemented`
@@ -149,12 +169,13 @@ Tasks created from local files, explicit local paths, or supported downloadable 
 ### Requirement: Task detail SHALL expose stage-D observability
 Status: `implemented`
 
-Task detail response SHALL expose `vm_phase_metrics` entries for `transcript_optimize` and final phase `D` delivery.
+Task detail response SHALL expose `vm_phase_metrics` entries for `transcript_optimize` and final phase `D` delivery. For VQA tasks, the same observability surface SHALL also expose the granular multimodal prewarm substages.
 
 #### Scenario: Query task detail after phase D
 - **WHEN** client requests task detail after phase `D`
 - **THEN** response includes timing and status fields for `transcript_optimize`
 - **AND** the final phase-`D` metric reflects fusion delivery completion state
+- **AND** for `vqa` tasks, response includes timing and status fields for `transcript_vectorize`、`frame_extract`、`frame_semantic`、`multimodal_index_fusion`
 - **AND** once `fusion_delivery` has completed, parent `stage_metrics.D.status` is persisted as `completed` instead of remaining at a stale in-progress status
 
 #### Scenario: Query task detail while pipeline is still running

@@ -15,6 +15,7 @@ Backend SHALL persist task metadata, source info, phase logs, transcript, notes,
 - **AND** stale task-relative image references are removed before the renderer receives the payload so the client does not request missing artifact files
 - **AND** VQA-related detail payloads in the current baseline keep transcript timestamp/text citations and MAY include frame-semantic citation fields such as `image_path` and `visual_text` when retrieval hits originate from VLM keyframe evidence
 - **AND** when phase `D` has persisted VQA prewarm artifacts, task detail payloads can expose `D/vqa-prewarm/frames.json` and `D/vqa-prewarm/index.json` through the existing artifact index and file routes
+- **AND** when phase `C` has finished chunked transcription, task detail file routes can expose `C/transcript/index.json` and `C/transcript/chunks/*.json` for raw transcript replay surfaces
 
 #### Scenario: Read persisted task history without an upfront storage migration
 - **WHEN** the frontend-driven TypeScript backend queries local task history during the refactor transition

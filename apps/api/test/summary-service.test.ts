@@ -93,6 +93,54 @@ describe("TranscriptCorrectionService", () => {
     expect(JSON.parse(result.strictSegmentsJson || "[]")).toHaveLength(8)
   })
 
+  it("applies rewrite correction in overlapping batches while preserving timestamps", async () => {
+    const client = createFakeClient([
+      "1. 第一段 重写\n2. 第二段 重写\n3. 第三段 重写\n4. 第四段 重写\n5. 第五段 重写\n6. 第六段 重写",
+      "1. 第五段 重写\n2. 第六段 重写\n3. 第七段 重写\n4. 第八段 重写",
+    ])
+    const streamedPreviewSegments: TranscriptSegment[] = []
+    const service = new TranscriptCorrectionService(client as never)
+
+    const result = await service.apply({
+      transcriptSegments: BATCH_SEGMENTS,
+      transcriptText: BATCH_SEGMENTS.map((segment) => segment.text).join("\n"),
+      promptTemplate: "请逐行重写并按编号返回：{text}",
+      correctionMode: "rewrite",
+      correctionBatchSize: 6,
+      correctionOverlap: 2,
+      onPreviewEvent: async (event) => {
+        if (event.segment) {
+          streamedPreviewSegments.push(event.segment)
+        }
+      },
+    })
+
+    expect(client.calls).toHaveLength(2)
+    expect(result.correctedSegments).toEqual([
+      { start: 0, end: 5, text: "第一段 重写" },
+      { start: 5, end: 9, text: "第二段 重写" },
+      { start: 9, end: 14, text: "第三段 重写" },
+      { start: 14, end: 18, text: "第四段 重写" },
+      { start: 18, end: 22, text: "第五段 重写" },
+      { start: 22, end: 27, text: "第六段 重写" },
+      { start: 27, end: 32, text: "第七段 重写" },
+      { start: 32, end: 36, text: "第八段 重写" },
+    ])
+    expect(result.correctedText).toBe(
+      "第一段 重写\n第二段 重写\n第三段 重写\n第四段 重写\n第五段 重写\n第六段 重写\n第七段 重写\n第八段 重写",
+    )
+    expect(result.index).toMatchObject({
+      mode: "rewrite",
+      status: "completed",
+      fallback_used: false,
+      source_mode: "llm_rewrite",
+      batch_count: 2,
+      batch_size: 6,
+      overlap: 2,
+    })
+    expect(streamedPreviewSegments).toEqual(result.correctedSegments)
+  })
+
   it("marks rewrite fallback metadata when llm rewrite output is empty", async () => {
     const client = createFakeClient(["   "])
     const service = new TranscriptCorrectionService(client as never)

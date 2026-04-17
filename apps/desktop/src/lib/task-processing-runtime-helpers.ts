@@ -47,8 +47,21 @@ const WORKFLOW_STEPS: Record<WorkflowType, Array<{ id: string; name: string }>> 
     { id: "extract", name: "音频提取" },
     { id: "transcribe", name: "语音转写" },
     { id: "correct", name: "文本纠错" },
-    { id: "ready", name: "问答就绪" },
+    { id: "transcript_vectorize", name: "文本向量化" },
+    { id: "frame_extract", name: "视频抽帧" },
+    { id: "frame_semantic", name: "画面语义识别" },
+    { id: "multimodal_fusion", name: "多模态融合与就绪" },
   ],
+}
+
+const VQA_SUBSTAGE_TO_STEP_ID: Record<string, string> = {
+  transcript_vectorize: "transcript_vectorize",
+  frame_extract: "frame_extract",
+  frame_semantic: "frame_semantic",
+  frame_vectorize: "frame_semantic",
+  multimodal_index_fusion: "multimodal_fusion",
+  fusion_delivery: "multimodal_fusion",
+  multimodal_prewarm: "multimodal_fusion",
 }
 
 export function asString(value: unknown): string {
@@ -106,11 +119,17 @@ function getStreamStepId(
   if (substage === "transcript_optimize") {
     return "correct"
   }
+  if (workflow === "vqa") {
+    const mapped = VQA_SUBSTAGE_TO_STEP_ID[substage]
+    if (mapped) {
+      return mapped
+    }
+  }
   if (substage === "fusion_delivery") {
-    return workflow === "notes" ? "notes" : "ready"
+    return workflow === "notes" ? "notes" : "multimodal_fusion"
   }
   if (stage === "D" && rawType === "stage_complete") {
-    return workflow === "notes" ? "notes" : "ready"
+    return workflow === "notes" ? "notes" : "multimodal_fusion"
   }
   return null
 }
@@ -240,8 +259,20 @@ function updateVmPhaseMetrics(
     return nextMetrics
   }
 
-  if (substage === "fusion_delivery" && (rawType === "substage_start" || rawType === "substage_complete")) {
-    updateMetric("D", (metric) => ({
+  const dMetricKey = [
+    "transcript_vectorize",
+    "frame_extract",
+    "frame_semantic",
+    "frame_vectorize",
+    "multimodal_index_fusion",
+    "multimodal_prewarm",
+    "fusion_delivery",
+  ].includes(substage)
+    ? substage
+    : null
+
+  if (dMetricKey && (rawType === "substage_start" || rawType === "substage_complete")) {
+    updateMetric(dMetricKey, (metric) => ({
       ...metric,
       status:
         rawType === "substage_start"
@@ -255,6 +286,22 @@ function updateVmPhaseMetrics(
       completed_at: rawType === "substage_complete" ? (timestamp || metric.completed_at) : null,
       reason: rawType === "substage_complete" ? asString(event.message).trim() || null : null,
     }))
+    if (dMetricKey === "fusion_delivery" || dMetricKey === "multimodal_index_fusion" || dMetricKey === "multimodal_prewarm") {
+      updateMetric("D", (metric) => ({
+        ...metric,
+        status:
+          rawType === "substage_start"
+            ? "running"
+            : asString(event.status).trim().toLowerCase() === "failed"
+              ? "failed"
+              : asString(event.status).trim().toLowerCase() === "skipped"
+                ? "skipped"
+                : "completed",
+        started_at: asString(metric.started_at) || timestamp,
+        completed_at: rawType === "substage_complete" ? (timestamp || metric.completed_at) : null,
+        reason: rawType === "substage_complete" ? asString(event.message).trim() || null : null,
+      }))
+    }
     return nextMetrics
   }
 
@@ -274,7 +321,25 @@ export function normalizeCorrectionPreviewMode(raw: unknown): RuntimeCorrectionP
 }
 
 export function buildTranscriptSegmentKey(segment: Pick<TranscriptSegment, "start" | "end">): string {
-  return `${Number(segment.start).toFixed(2)}-${Number(segment.end).toFixed(2)}`
+  return `${String(Number(segment.start))}-${String(Number(segment.end))}`
+}
+
+export function resolveDisplayedCorrectionSegments(input: {
+  correctionMode: RuntimeCorrectionPreviewMode
+  correctionPreviewSegments: TranscriptSegment[]
+  correctionStatus?: string
+  transcriptSegments: TranscriptSegment[]
+}): TranscriptSegment[] {
+  if (input.correctionPreviewSegments.length > 0) {
+    return input.correctionPreviewSegments
+  }
+
+  if (input.correctionMode === "unknown" || input.correctionMode === "off") {
+    return []
+  }
+
+  const normalizedStatus = asString(input.correctionStatus).trim().toLowerCase()
+  return normalizedStatus === "completed" ? input.transcriptSegments : []
 }
 
 export function normalizeTranscriptSegment(segment: TranscriptSegment): TranscriptSegment | null {
@@ -527,6 +592,7 @@ export function applyCorrectionPreviewStreamEvent(
     return {
       ...EMPTY_RUNTIME_CORRECTION_PREVIEW,
       mode: explicitMode !== "unknown" ? explicitMode : current.mode,
+      fallbackUsed: Boolean(event.fallback_used),
     }
   }
 
@@ -536,17 +602,16 @@ export function applyCorrectionPreviewStreamEvent(
   const nextMode =
     explicitMode !== "unknown"
       ? explicitMode
-      : nextStart !== null && nextEnd !== null
+      : nextStart !== null && nextEnd !== null && current.mode === "unknown"
         ? "strict"
-        : current.mode === "unknown"
-          ? "rewrite"
-          : current.mode
+        : current.mode
   const appendedSegments =
     nextStart !== null && nextEnd !== null && nextText
       ? mergeTranscriptSegments(current.segments, [{ start: nextStart, end: nextEnd, text: nextText }])
       : current.segments
-  const appendedText =
-    nextStart === null && nextEnd === null && nextText
+  const appendedText = appendedSegments.length > 0
+    ? appendedSegments.map((segment) => segment.text).join("\n").trim()
+    : nextStart === null && nextEnd === null && nextText
       ? `${current.text}${nextText}`
       : current.text
 
@@ -555,7 +620,7 @@ export function applyCorrectionPreviewStreamEvent(
     text: appendedText,
     segments: appendedSegments,
     done: Boolean(event.done) || current.done,
-    fallbackUsed: current.fallbackUsed,
+    fallbackUsed: Boolean(event.fallback_used) || current.fallbackUsed,
   }
 }
 

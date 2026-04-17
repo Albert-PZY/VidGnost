@@ -100,6 +100,16 @@ function applyBufferedTaskStreamEvents(
   let changed = false
 
   for (const event of events) {
+    const isTranscriptResetEvent =
+      typeof event.reset === "boolean" &&
+      event.reset &&
+      typeof event.type === "string" &&
+      String(event.original_type || event.type).trim().toLowerCase() === "transcript_delta"
+    if (isTranscriptResetEvent && nextLiveTranscript !== EMPTY_RUNTIME_TRANSCRIPT_INDEX) {
+      nextLiveTranscript = EMPTY_RUNTIME_TRANSCRIPT_INDEX
+      changed = true
+    }
+
     const streamedSegment = extractTranscriptSegmentFromTaskEvent(event)
     if (streamedSegment) {
       const mergedTranscript = mergeTranscriptIndexState(nextLiveTranscript, [streamedSegment])
