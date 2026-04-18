@@ -40,7 +40,7 @@ export class OllamaRuntimeConfigRepository {
   }
 
   #defaults(): StoredOllamaRuntimeConfig {
-    const installDir = defaultInstallDir()
+    const installDir = normalizeDefaultInstallDir()
     return {
       install_dir: installDir,
       executable_path: defaultExecutablePath(installDir),
@@ -50,10 +50,10 @@ export class OllamaRuntimeConfigRepository {
   }
 
   #normalize(payload: Partial<StoredOllamaRuntimeConfig>): StoredOllamaRuntimeConfig {
-    const install_dir = normalizePath(payload.install_dir, defaultInstallDir())
+    const install_dir = normalizeDefaultInstallDir()
     return {
       install_dir,
-      executable_path: normalizePath(payload.executable_path, defaultExecutablePath(install_dir)),
+      executable_path: defaultExecutablePath(install_dir),
       models_dir: normalizePath(payload.models_dir, defaultModelsDir()),
       base_url: String(payload.base_url || "").trim().replace(/\/+$/, "") || this.#config.ollamaBaseUrl.replace(/\/+$/, ""),
     }
@@ -67,6 +67,10 @@ function defaultInstallDir(): string {
     return path.resolve(process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"), "Programs", "Ollama")
   }
   return "/usr/local/bin"
+}
+
+function normalizeDefaultInstallDir(): string {
+  return path.normalize(defaultInstallDir())
 }
 
 function defaultExecutablePath(installDir: string): string {

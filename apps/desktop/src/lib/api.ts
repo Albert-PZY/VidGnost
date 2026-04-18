@@ -409,8 +409,6 @@ export function getOllamaRuntimeConfig(): Promise<OllamaRuntimeConfigResponse> {
 }
 
 export function updateOllamaRuntimeConfig(payload: {
-  install_dir?: string
-  executable_path?: string
   models_dir?: string
   base_url?: string
 }): Promise<OllamaRuntimeConfigResponse> {

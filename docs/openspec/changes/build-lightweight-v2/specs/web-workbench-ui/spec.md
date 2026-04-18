@@ -42,20 +42,21 @@ The settings-center Whisper model dialog SHALL expose the current GPU-readiness 
 
 #### Scenario: Configure Whisper GPU readiness from settings
 - **WHEN** user opens `whisper-default` 的模型配置
-- **THEN** the renderer shows a `Whisper GPU 加速` section with readiness summary, configured `whisper-cli` / model path hints, and environment-sync state
+- **THEN** the renderer shows a `Whisper GPU 加速` section with readiness summary, configured Python / model path hints, and environment-sync state
 - **AND** the user-facing copy explains that the current acceleration target is the transcription chain
 - **AND** the section allows toggling Whisper GPU mode and refreshing runtime detection
 - **AND** the readiness copy only promises probe results based on executable and model-path availability, not CUDA runtime-bundle DLL validation or a managed runtime install flow
 - **AND** current UI contract does not require a managed runtime install, pause, or resume workflow before the dialog can be used
 
 ### Requirement: Settings center SHALL expose Ollama runtime and model migration controls
-The settings-center model surface SHALL expose dedicated `Ollama 运行时与模型目录` and `本地模型批量迁移` cards so users can control Ollama installation paths, model-storage paths, service address, and manual migration guidance for existing local model files.
+The settings-center model surface SHALL expose dedicated `Ollama 运行时与模型目录` and `本地模型批量迁移` cards so users can inspect the fixed Ollama install path, control model-storage paths and service address, and read manual migration guidance for existing local model files.
 
 #### Scenario: Configure Ollama runtime from settings
 - **WHEN** user opens settings and visits `模型配置`
 - **THEN** the renderer shows a compact `Ollama 运行时` summary card
 - **AND** the card exposes a `配置` action that opens a dialog with `安装目录`、`可执行文件`、`模型安装目录`、`服务地址` fields
-- **AND** the dialog allows opening native directory pickers for install and model directories
+- **AND** the dialog keeps `安装目录` and `可执行文件` as read-only fields derived from the platform-default Ollama runtime location
+- **AND** the dialog allows opening a native directory picker only for the model directory
 - **AND** the card keeps `启动/重启` action separate from the dialog save action
 - **AND** the same card shows current Ollama service reachability, whether a local process was detected, the configured model directory, the latest config or probe snapshot, and a backend-supplied status message
 - **AND** the card states that the configured model directory is the desired target for later manual migration or manual pull guidance rather than a guaranteed reflection of the running service
@@ -549,8 +550,8 @@ Diagnostics view SHALL provide a direct autofix action when the backend marks is
 
 #### Scenario: Diagnostics self-check validates Whisper runtime readiness
 - **WHEN** the backend runs the `Whisper 转写` self-check step
-- **THEN** it reports current runtime readiness based on `whisper-cli` availability and the configured model directory
-- **AND** the diagnostics issue summary tells the user whether the current problem is missing executable, missing model path, or both
+- **THEN** it reports current runtime readiness based on Python availability, `faster-whisper` probe details, and the configured model directory
+- **AND** the diagnostics issue summary tells the user whether the current problem is missing Python runtime, missing model path, missing dependency probe, or a combination of those
 
 #### Scenario: Diagnostics self-check validates embedding inference probe
 - **WHEN** the backend runs the `嵌入模型` self-check step

@@ -97,6 +97,7 @@ const modelTypeLabels: Record<string, string> = {
   llm: "大语言模型",
   embedding: "嵌入模型",
   rerank: "重排序模型",
+  vlm: "视觉模型",
 }
 
 const promptTypeLabels: Record<PromptTemplateChannel, string> = {
@@ -118,6 +119,7 @@ const modelTypeTagClassNames: Record<string, string> = {
   llm: "border-cyan-800/75 text-cyan-700 dark:border-cyan-400/55 dark:text-cyan-300",
   embedding: "border-emerald-800/75 text-emerald-700 dark:border-emerald-400/55 dark:text-emerald-300",
   rerank: "border-amber-800/75 text-amber-700 dark:border-amber-400/55 dark:text-amber-300",
+  vlm: "border-fuchsia-800/75 text-fuchsia-700 dark:border-fuchsia-400/55 dark:text-fuchsia-300",
 }
 
 const promptTagClassNames: Record<PromptTemplateChannel, string> = {
@@ -255,6 +257,11 @@ const modelVisuals: Record<
     iconClassName: "text-primary",
     surfaceClassName: "bg-primary/10",
   },
+  vlm: {
+    icon: Cpu,
+    iconClassName: "text-primary",
+    surfaceClassName: "bg-primary/10",
+  },
 }
 
 const localLlmPreset: ModelConfigPreset = {
@@ -279,6 +286,7 @@ const recommendedRemoteModels: Partial<Record<ModelDescriptor["component"], stri
   llm: ["qwen3.5-plus"],
   embedding: ["text-embedding-v4"],
   rerank: ["gte-rerank-v2"],
+  vlm: ["qwen2.5vl:3b", "granite3.2-vision:2b"],
 }
 
 async function readFileAsDataUrl(file: File): Promise<string> {
@@ -354,6 +362,14 @@ function clearModelConfigDraft(modelId: string): void {
   }
   delete draftMap[modelId]
   writeModelConfigDraftMap(draftMap)
+}
+
+function getModelComponentLabel(component: ModelDescriptor["component"]): string {
+  return modelTypeLabels[component] || component
+}
+
+function getModelComponentTagClassName(component: ModelDescriptor["component"]): string {
+  return modelTypeTagClassNames[component] || "border-border/60 text-foreground/80"
 }
 
 type PickedSkinImage = {
@@ -1109,10 +1125,7 @@ export function SettingsView({
     }
   }
 
-  const handleBrowseOllamaDirectory = async (
-    field: "install_dir" | "models_dir",
-    title: string,
-  ) => {
+  const handleBrowseOllamaDirectory = async (title: string) => {
     if (!window.vidGnostDesktop?.pickDirectory) {
       toast("当前环境不支持目录选择，请直接手动填写路径。")
       return
@@ -1122,22 +1135,18 @@ export function SettingsView({
       return
     }
     setOllamaRuntimeDirty(true)
-    setOllamaRuntimeForm((current) => ({
-      ...current,
-      [field]: picked.path || current[field],
-    }))
+    setOllamaRuntimeForm((current) => ({ ...current, models_dir: picked.path || current.models_dir }))
+    setLocalMigrationTarget(picked.path)
   }
 
   const handleSaveOllamaRuntimeConfig = async () => {
-    if (!ollamaRuntimeForm.install_dir.trim() || !ollamaRuntimeForm.models_dir.trim()) {
-      toast.error("请先填写 Ollama 安装目录和模型目录")
+    if (!ollamaRuntimeForm.models_dir.trim()) {
+      toast.error("请先填写 Ollama 模型目录")
       return
     }
     setIsUpdatingOllamaRuntime(true)
     try {
       const response = await updateOllamaRuntimeConfig({
-        install_dir: ollamaRuntimeForm.install_dir.trim(),
-        executable_path: ollamaRuntimeForm.executable_path.trim(),
         models_dir: ollamaRuntimeForm.models_dir.trim(),
         base_url: ollamaRuntimeForm.base_url.trim(),
       })
@@ -1378,7 +1387,7 @@ export function SettingsView({
                           </Badge>
                         </div>
                         <div className="mt-1 text-sm text-muted-foreground">
-                          在配置弹窗中维护 Ollama 安装目录、模型安装目录和服务地址，并自动同步 PATH 与 OLLAMA_MODELS 环境变量。
+                          安装目录固定为系统默认路径，仅在配置弹窗中维护模型目录和服务地址；本地 ASR 会复用默认运行库。
                         </div>
                         <div className="mt-1 truncate text-xs text-muted-foreground">
                           {ollamaService?.configured_models_dir || ollamaRuntimeForm.models_dir || "未配置模型目录"} · {ollamaRuntimeForm.base_url || "未配置服务地址"}
@@ -1487,8 +1496,8 @@ export function SettingsView({
                                     {getStatusBadge(model.status)}
                                   </div>
                                   <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                                    <Badge variant="outline" className={modelTypeTagClassNames[model.component]}>
-                                      {modelTypeLabels[model.component]}
+                                    <Badge variant="outline" className={getModelComponentTagClassName(model.component)}>
+                                      {getModelComponentLabel(model.component)}
                                     </Badge>
                                     <Badge variant="secondary" className="capitalize">
                                       {providerLabels[model.provider] || model.provider.replaceAll("_", " ")}
@@ -1607,7 +1616,7 @@ export function SettingsView({
                       <DialogHeader>
                         <DialogTitle>Ollama 运行时配置</DialogTitle>
                         <DialogDescription>
-                          配置 Ollama 安装目录、模型安装目录、可执行文件与服务地址，并自动同步 PATH 与 OLLAMA_MODELS。
+                          Ollama 安装目录固定为系统默认路径，模型目录可自定义；本地 ASR 会直接复用该安装目录下的运行库。
                         </DialogDescription>
                       </DialogHeader>
 
@@ -1615,42 +1624,28 @@ export function SettingsView({
                         <div className="grid gap-4 md:grid-cols-2">
                           <div className="space-y-2">
                             <Label htmlFor="ollama-install-dir">安装目录</Label>
-                            <div className="flex gap-2">
-                              <Input
-                                id="ollama-install-dir"
-                                className="bg-background/80"
-                                value={ollamaRuntimeForm.install_dir}
-                                onChange={(event) => {
-                                  setOllamaRuntimeDirty(true)
-                                  setOllamaRuntimeForm((current) => ({ ...current, install_dir: event.target.value }))
-                                }}
-                                placeholder="如 D:\\AI\\Ollama"
-                              />
-                              <Button
-                                variant="outline"
-                                className="shrink-0"
-                                onClick={() => {
-                                  void handleBrowseOllamaDirectory("install_dir", "选择 Ollama 安装目录")
-                                }}
-                              >
-                                <FolderOpen className="mr-2 h-4 w-4" />
-                                浏览
-                              </Button>
-                            </div>
+                            <Input
+                              id="ollama-install-dir"
+                              className="bg-muted/40 text-muted-foreground"
+                              value={ollamaRuntimeForm.install_dir}
+                              readOnly
+                            />
+                            <p className="text-xs text-muted-foreground">
+                              跟随系统默认安装路径，不再提供项目内修改入口。
+                            </p>
                           </div>
 
                           <div className="space-y-2">
                             <Label htmlFor="ollama-executable">可执行文件</Label>
                             <Input
                               id="ollama-executable"
-                              className="bg-background/80"
+                              className="bg-muted/40 text-muted-foreground"
                               value={ollamaRuntimeForm.executable_path}
-                              onChange={(event) => {
-                                setOllamaRuntimeDirty(true)
-                                setOllamaRuntimeForm((current) => ({ ...current, executable_path: event.target.value }))
-                              }}
-                              placeholder="如 D:\\AI\\Ollama\\ollama.exe"
+                              readOnly
                             />
+                            <p className="text-xs text-muted-foreground">
+                              服务重启与本地 ASR 运行库探测均复用这里的默认可执行文件所在目录。
+                            </p>
                           </div>
 
                           <div className="space-y-2 md:col-span-2">
@@ -1672,7 +1667,7 @@ export function SettingsView({
                                 variant="outline"
                                 className="shrink-0"
                                 onClick={() => {
-                                  void handleBrowseOllamaDirectory("models_dir", "选择 Ollama 模型目录")
+                                  void handleBrowseOllamaDirectory("选择 Ollama 模型目录")
                                 }}
                               >
                                 <FolderOpen className="mr-2 h-4 w-4" />
@@ -1801,7 +1796,7 @@ export function SettingsView({
                                         {model.path || model.default_path || "未配置路径"}
                                       </div>
                                     </div>
-                                    <Badge variant="outline">{modelTypeLabels[model.component]}</Badge>
+                                    <Badge variant="outline">{getModelComponentLabel(model.component)}</Badge>
                                   </div>
                                 </div>
                               ))}
@@ -1882,10 +1877,10 @@ export function SettingsView({
                                           variant="outline"
                                           className={cn(
                                             "rounded-md border bg-background/80",
-                                            modelTypeTagClassNames[editingModel.component],
+                                            getModelComponentTagClassName(editingModel.component),
                                           )}
                                         >
-                                          {modelTypeLabels[editingModel.component]}
+                                          {getModelComponentLabel(editingModel.component)}
                                         </Badge>
                                       </div>
                                       <div className="break-all text-xs leading-relaxed text-muted-foreground">
@@ -1899,7 +1894,7 @@ export function SettingsView({
                                       {`服务商 · ${(providerLabels[modelForm.provider] || modelForm.provider).replaceAll("_", " ")}`}
                                     </Badge>
                                     <Badge variant="outline" className="rounded-md border bg-background/80 text-foreground/90">
-                                      {`Component · ${modelTypeLabels[editingModel.component]}`}
+                                      {`Component · ${getModelComponentLabel(editingModel.component)}`}
                                     </Badge>
                                     {getStatusBadge(editingModel.status)}
                                     <Badge
@@ -2102,7 +2097,7 @@ export function SettingsView({
                                       <div className="space-y-1">
                                         <Label className="leading-tight">Whisper GPU 加速</Label>
                                         <p className="text-xs text-muted-foreground">
-                                          GPU 开关仅依据当前 Whisper 运行条件检测结果启用，不代表已验证 Ollama CUDA 运行库可直接复用。
+                                          本地转写当前通过 faster-whisper 执行；GPU 开关仅表示优先请求 CUDA，并不代表所有依赖都已完成实际验证。
                                         </p>
                                       </div>
                                       <Switch
@@ -2131,7 +2126,7 @@ export function SettingsView({
                                           生效目录
                                         </p>
                                         <p className="mt-2 break-all text-sm leading-6 text-foreground/90">
-                                          {whisperConfig?.runtime_libraries.bin_dir || "未返回相关目录信息"}
+                                          {whisperConfig?.runtime_libraries.install_dir || whisperConfig?.runtime_libraries.bin_dir || "未返回相关目录信息"}
                                         </p>
                                       </div>
                                       <div className="rounded-xl border bg-background/70 px-4 py-3">

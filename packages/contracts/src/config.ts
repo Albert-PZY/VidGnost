@@ -6,7 +6,7 @@ export type PromptTemplateChannel = z.infer<typeof promptTemplateChannelSchema>
 export const backgroundImageFillModeSchema = z.enum(["cover", "contain", "repeat", "center"])
 export type BackgroundImageFillMode = z.infer<typeof backgroundImageFillModeSchema>
 
-export const modelComponentTypeSchema = z.enum(["whisper", "llm", "embedding", "rerank"])
+export const modelComponentTypeSchema = z.enum(["whisper", "llm", "embedding", "rerank", "vlm"])
 export type ModelComponentType = z.infer<typeof modelComponentTypeSchema>
 
 export const modelRuntimeStatusSchema = z.enum(["ready", "loading", "not_ready", "error"])
@@ -238,10 +238,10 @@ export const ollamaRuntimeConfigResponseSchema = z.object({
 export type OllamaRuntimeConfigResponse = z.infer<typeof ollamaRuntimeConfigResponseSchema>
 
 export const ollamaRuntimeConfigUpdateRequestSchema = z.object({
-  install_dir: z.string().min(1),
-  executable_path: z.string().min(1),
-  models_dir: z.string().min(1),
-  base_url: z.string().min(1),
+  install_dir: z.string().min(1).optional(),
+  executable_path: z.string().min(1).optional(),
+  models_dir: z.string().min(1).optional(),
+  base_url: z.string().min(1).optional(),
 })
 
 export type OllamaRuntimeConfigUpdateRequest = z.infer<typeof ollamaRuntimeConfigUpdateRequestSchema>

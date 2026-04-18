@@ -170,12 +170,10 @@ describe("config routes", () => {
   })
 
   it("serves whisper, ollama and model config compatibility surfaces", async () => {
-    const whisperCliPath = path.join(storageDir, "runtime-bin", process.platform === "win32" ? "whisper-cli.exe" : "whisper-cli")
-    const whisperModelPath = path.join(storageDir, "models", "whisper", "ggml-small.bin")
-    await mkdir(path.dirname(whisperCliPath), { recursive: true })
-    await mkdir(path.dirname(whisperModelPath), { recursive: true })
-    await writeFile(whisperCliPath, "fake-whisper-cli", "utf8")
-    await writeFile(whisperModelPath, "fake-whisper-model", "utf8")
+    const whisperModelPath = path.join(storageDir, "models", "whisper", "whisper-default")
+    await mkdir(whisperModelPath, { recursive: true })
+    await writeFile(path.join(whisperModelPath, "config.json"), "{\"model_type\":\"whisper\"}\n", "utf8")
+    await writeFile(path.join(whisperModelPath, "model.bin"), "fake-whisper-model", "utf8")
 
     const [whisperResponse, ollamaResponse, modelsResponse] = await Promise.all([
       app.inject({ method: "GET", url: "/api/config/whisper" }),
@@ -193,13 +191,12 @@ describe("config routes", () => {
       chunk_seconds: 30,
     })
     expect(whisperConfigResponseSchema.parse(whisperResponse.json()).runtime_libraries).toMatchObject({
-      bin_dir: path.join(storageDir, "runtime-bin"),
+      bin_dir: expect.any(String),
       discovered_files: {
-        executable: whisperCliPath,
         model: whisperModelPath,
         model_dir: path.join(storageDir, "models", "whisper"),
       },
-      path_configured: true,
+      path_configured: expect.any(Boolean),
     })
     expect(ollamaRuntimeConfigResponseSchema.parse(ollamaResponse.json())).toMatchObject({
       base_url: expect.any(String),
@@ -272,6 +269,34 @@ describe("config routes", () => {
     expect(ollamaModelsMigrationResponseSchema.parse(migrateOllamaModelsResponse.json())).toMatchObject({
       moved: false,
       target_dir: path.join(storageDir, "custom-ollama-models"),
+    })
+  })
+
+  it("keeps Ollama install path pinned to the default runtime while allowing model directory updates", async () => {
+    const defaultInstallDir =
+      process.platform === "win32"
+        ? path.resolve(process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"), "Programs", "Ollama")
+        : "/usr/local/bin"
+    const defaultExecutablePath = path.join(defaultInstallDir, process.platform === "win32" ? "ollama.exe" : "ollama")
+    const customModelsDir = path.join(storageDir, "custom-ollama-models-locked")
+
+    const response = await app.inject({
+      method: "PUT",
+      url: "/api/config/ollama",
+      payload: {
+        install_dir: "D:\\Custom\\Ollama",
+        executable_path: "D:\\Custom\\Ollama\\ollama.exe",
+        models_dir: customModelsDir,
+        base_url: "http://127.0.0.1:22345",
+      },
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(ollamaRuntimeConfigResponseSchema.parse(response.json())).toMatchObject({
+      install_dir: defaultInstallDir,
+      executable_path: defaultExecutablePath,
+      models_dir: customModelsDir,
+      base_url: "http://127.0.0.1:22345",
     })
   })
 

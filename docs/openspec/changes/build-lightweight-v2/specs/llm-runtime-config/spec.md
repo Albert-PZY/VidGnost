@@ -74,10 +74,10 @@ Persisted `/config/llm` runtime values SHALL remain aligned with the `llm-defaul
 - **THEN** backend synchronizes `/config/llm.base_url` and `/config/llm.model` from `api_base_url` and `api_model`
 - **AND** existing correction controls in `/config/llm` remain effective
 
-### Requirement: System SHALL expose editable Ollama runtime config with managed restart hooks
+### Requirement: System SHALL expose Ollama runtime config with managed restart hooks
 Status: `implemented`
 
-The system SHALL expose `/config/ollama`、`/config/ollama/migrate-models` and `/config/ollama/restart-service` so frontend settings can manage the Ollama install location, executable path, model directory, service base URL, and current runtime status.
+The system SHALL expose `/config/ollama`、`/config/ollama/migrate-models` and `/config/ollama/restart-service` so frontend settings can inspect the platform-default Ollama install location, manage the model directory and service base URL, and read current runtime status.
 
 #### Scenario: Read current Ollama runtime config
 - **WHEN** client requests `/config/ollama`
@@ -88,6 +88,7 @@ The system SHALL expose `/config/ollama`、`/config/ollama/migrate-models` and `
 #### Scenario: Save current Ollama runtime config
 - **WHEN** client updates `/config/ollama`
 - **THEN** backend persists the effective runtime config into `storage/ollama-runtime.json`
+- **AND** submitted `install_dir` and `executable_path` do not override the platform-default Ollama runtime location returned by the backend
 - **AND** subsequent Ollama-backed model path resolution uses the configured `models_dir`
 - **AND** backend refreshes the probe result returned in the `service` block
 - **AND** when managed `llm-default` currently uses Ollama, backend synchronizes `/config/llm.base_url` to `<configured_ollama_base_url>/v1`
@@ -136,8 +137,8 @@ Whisper config SHALL include `model_default`, `language`, `device`, `compute_typ
 
 #### Scenario: Read Whisper runtime readiness
 - **WHEN** frontend requests `/config/whisper`
-- **THEN** backend reports whether `whisper-cli` and the configured model path are both present
-- **AND** current TS runtime does not expose managed Whisper binary download or managed CUDA runtime installation endpoints
+- **THEN** backend reports whether the local Python runtime, `faster-whisper` probe, and the configured model path are ready
+- **AND** current TS runtime does not expose managed Whisper model download, Python dependency installation, or managed CUDA runtime installation endpoints
 
 ### Requirement: Managed model catalog SHALL expose routing and readiness state for settings UI
 Status: `implemented`
