@@ -110,6 +110,12 @@ Summary and mindmap generation SHALL resolve prompts from persisted template rec
 - **WHEN** user sets selected template IDs in config center
 - **THEN** subsequent Stage-D generation uses selected template content for `correction`、`notes` and `mindmap`
 
+#### Scenario: Default templates keep the Python-era baseline copy
+- **WHEN** backend repairs or recreates the built-in default templates
+- **THEN** `notes` and `mindmap` defaults use the long-form project baseline prompts carried forward from the pre-TS Python backend
+- **AND** `correction` and `vqa` defaults use the concise baseline copy from that same Python-era template set
+- **AND** the repair path updates stale built-in template content back to that baseline while keeping template IDs and selection wiring stable
+
 ### Requirement: Notes content SHALL focus on normalized synthesis
 Status: `implemented`
 
