@@ -154,8 +154,8 @@ The task-workbench Markdown notes editor dialog SHALL use a wide split layout th
 - **AND** Mermaid preview blocks wait until they enter the visible preview area before starting expensive rendering work and reuse cached SVG output when the same diagram appears again
 - **AND** the edit dialog preview uses the same Markdown enhancement contract as the read-only notes workspace so timestamps, task-relative images, tables, and Mermaid blocks stay behaviorally consistent across both surfaces
 
-### Requirement: Desktop startup SHALL preload core workbench views before main window reveal
-Electron desktop startup SHALL open a dedicated splash window first, keep the main window hidden while renderer assets and core workbench views initialize, and reveal the main window only after bootstrap completes or enters degraded mode. Core workbench views such as `新建任务`, `历史记录`, `设置中心`, `系统自检`, `任务处理`, and the prompt-template Markdown editor SHALL be included in the initial renderer startup path instead of route-level or dialog-level lazy loading placeholders. The splash surface SHALL follow the same restrained professional dark-tool styling as the renderer shell, using the project logo, a centered vertical brand composition, a single thin progress bar, and a five-step startup checklist with per-step elapsed-time feedback. The checklist SHALL be bound to explicit startup task states emitted by the hidden main window and renderer instead of inferring stages from display copy. The dedicated splash window SHALL keep a compact fixed footprint around `420 x 480` logical pixels so the launch surface reads as a concise startup panel instead of a large poster-like frame.
+### Requirement: Desktop startup SHALL preload the shell and active startup view before main window reveal
+Electron desktop startup SHALL open a dedicated splash window first, keep the main window hidden while renderer assets, shell chrome, and the active startup view initialize, and reveal the main window only after bootstrap completes or enters degraded mode. Non-active workbench views such as `历史记录`, `设置中心`, `系统自检`, `任务处理`, and heavyweight editor surfaces MAY load lazily after the shell becomes interactive, provided that view switches use a compact in-place loading placeholder instead of blocking the whole shell. The splash surface SHALL follow the same restrained professional dark-tool styling as the renderer shell, using the project logo, a centered vertical brand composition, a single thin progress bar, and a five-step startup checklist with per-step elapsed-time feedback. The checklist SHALL be bound to explicit startup task states emitted by the hidden main window and renderer instead of inferring stages from display copy. The dedicated splash window SHALL keep a compact fixed footprint around `420 x 480` logical pixels so the launch surface reads as a concise startup panel instead of a large poster-like frame.
 
 #### Scenario: Launch the Electron workbench
 - **WHEN** user opens the desktop application
@@ -166,9 +166,9 @@ Electron desktop startup SHALL open a dedicated splash window first, keep the ma
 - **AND** completed checklist items show elapsed-time feedback while the active item shows a loading affordance instead of repeating large paragraphs of copy
 - **AND** the splash progress percentage is derived from the count of completed explicit startup steps rather than heuristic text matching
 - **AND** each checklist step is promoted to `active`, `complete`, or `error` only when the corresponding renderer or main-process startup task actually changes state
-- **AND** the hidden main window continues loading renderer assets, core workbench views, and initial UI data in the background
+- **AND** the hidden main window continues loading renderer shell assets, the active startup view, and initial UI data in the background
 - **AND** the main window is revealed only after startup bootstrap reports completion or explicitly enters degraded mode
-- **AND** no page-level or prompt-editor skeleton placeholder is shown as part of the initial desktop startup chain
+- **AND** no page-level or prompt-editor loading placeholder is shown as part of the initial desktop startup chain before the main window becomes interactive
 
 #### Scenario: Bootstrap script enforces fixed service ports
 - **WHEN** the Windows or shell startup script launches the local desktop workbench
@@ -215,7 +215,7 @@ UI settings SHALL persist `theme_hue`, `font_size`, `auto_save`, `background_ima
 - **AND** the live shell preview uses a short eased transition while the user drags the frame, changes image scale, or adjusts image opacity, unless reduced-motion is requested
 - **AND** adjusting blur only changes blur intensity and SHALL NOT alter the saved image scale or focus position
 - **AND** increasing blur SHALL NOT crop the bottom edge of the sampled image or shift the sampled frame vertically
-- **AND** blur rendering in the dialog preview uses an offscreen WebGL pipeline that keeps the image layout fixed instead of inflating the image bounds to hide blur edges
+- **AND** blur rendering in the dialog preview uses a fixed-layout blur pipeline with automatic static fallback on Electron Windows shells or other resource-constrained environments instead of inflating the image bounds to hide blur edges
 - **AND** the blur pipeline duplicates edge samples at the image boundary so higher blur values do not reveal transparent or empty borders
 - **AND** the dialog preview only displays the original image rect and SHALL NOT expose duplicated edge-fill strips outside that rect
 - **AND** the helper copy tells the user to place the pointer on the image to drag the image position

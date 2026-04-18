@@ -2,6 +2,10 @@
 
 import * as React from "react"
 
+import {
+  resolveBlurRenderModeFromWindowState,
+  type BlurRenderMode,
+} from "@/lib/background-render-mode"
 import { cn } from "@/lib/utils"
 
 type ImageRect = {
@@ -23,6 +27,7 @@ interface WebGLBlurCanvasProps {
   pixelRatioCap?: number
   quality?: "balanced" | "performance"
   cropToImageRect?: boolean
+  renderMode?: "auto" | BlurRenderMode
   onFrameRendered?: () => void
 }
 
@@ -416,6 +421,7 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
     pixelRatioCap = 1.5,
     quality = "balanced",
     cropToImageRect = false,
+    renderMode = "auto",
     onFrameRendered,
   } = props
 
@@ -426,6 +432,17 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
   const notifyFrameRef = React.useRef<number | null>(null)
   const [imageReadyKey, setImageReadyKey] = React.useState<string | null>(null)
   const [fallbackMode, setFallbackMode] = React.useState(false)
+  const resolvedRenderMode = React.useMemo<BlurRenderMode>(() => {
+    if (renderMode === "static" || renderMode === "webgl") {
+      return renderMode
+    }
+    return resolveBlurRenderModeFromWindowState({
+      blur,
+      width,
+      height,
+    })
+  }, [blur, height, renderMode, width])
+  const shouldUseWebgl = resolvedRenderMode === "webgl"
   const releaseResources = React.useCallback((options?: { loseContext?: boolean }) => {
     if (frameRef.current !== null) {
       window.cancelAnimationFrame(frameRef.current)
@@ -512,7 +529,7 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
   }, [releaseResources])
 
   React.useEffect(() => {
-    if (blur <= 0) {
+    if (blur <= 0 || !shouldUseWebgl) {
       releaseResources()
       return
     }
@@ -690,6 +707,7 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
     pixelRatioCap,
     quality,
     cropToImageRect,
+    shouldUseWebgl,
     releaseResources,
     scheduleFrameRenderedNotification,
     src,
@@ -701,18 +719,18 @@ export function WebGLBlurCanvas(props: WebGLBlurCanvasProps) {
       return
     }
 
-    if (!fallbackMode && blur > 0) {
+    if (!fallbackMode && blur > 0 && shouldUseWebgl) {
       return
     }
 
     scheduleFrameRenderedNotification()
-  }, [blur, fallbackMode, height, imageRect, scheduleFrameRenderedNotification, src, width])
+  }, [blur, fallbackMode, height, imageRect, scheduleFrameRenderedNotification, shouldUseWebgl, src, width])
 
   if (!src || !imageRect || width <= 0 || height <= 0) {
     return null
   }
 
-  if (fallbackMode || blur <= 0) {
+  if (fallbackMode || blur <= 0 || !shouldUseWebgl) {
     const imageStyle = {
       left: `${imageRect.left}px`,
       top: `${imageRect.top}px`,

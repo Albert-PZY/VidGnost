@@ -117,6 +117,12 @@ History view SHALL support `workflow`, `status`, `query`, and `sort` filters tog
 - **WHEN** user moves between history pages in the renderer
 - **THEN** the renderer requests the next page from the backend instead of keeping an unbounded in-memory task list
 
+#### Scenario: Open history view after the shell is already interactive
+- **WHEN** user navigates from another shell section into `历史记录`
+- **THEN** the shell keeps the title bar and sidebar interactive while the history module loads
+- **AND** the content region MAY show a compact in-place loading placeholder before the first history payload renders
+- **AND** the renderer does not block the entire shell behind a full-window loading mask for this view switch
+
 #### Scenario: Query recent-task sidebar summary
 - **WHEN** client requests the recent-task summary endpoint
 - **THEN** backend returns recent tasks ordered by latest update time

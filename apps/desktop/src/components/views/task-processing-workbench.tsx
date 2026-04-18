@@ -1422,6 +1422,111 @@ const TaskProcessingNotesRuntimeEffects = React.memo(function TaskProcessingNote
   return null
 })
 
+const TaskProcessingVqaSessionEffects = React.memo(function TaskProcessingVqaSessionEffects({
+  taskId,
+}: {
+  taskId: string
+}) {
+  const persistVqaSessionTimerRef = React.useRef<number | null>(null)
+  const hasHydratedPersistedVqaSessionRef = React.useRef(false)
+  const latestPersistedVqaSessionRef = React.useRef<PersistedVqaSession | null>(null)
+  const {
+    chatHistory,
+    selectedTraceId,
+    traceCache,
+    resetChat,
+    appendChatMessages,
+    setSelectedTraceId,
+    clearTraceCache,
+    upsertTraceCache,
+  } = useTaskProcessingRuntimeStore(
+    useShallow((state) => ({
+      chatHistory: state.chatHistory,
+      selectedTraceId: state.selectedTraceId,
+      traceCache: state.traceCache,
+      resetChat: state.resetChat,
+      appendChatMessages: state.appendChatMessages,
+      setSelectedTraceId: state.setSelectedTraceId,
+      clearTraceCache: state.clearTraceCache,
+      upsertTraceCache: state.upsertTraceCache,
+    })),
+  )
+
+  React.useEffect(() => {
+    hasHydratedPersistedVqaSessionRef.current = false
+    latestPersistedVqaSessionRef.current = null
+    if (persistVqaSessionTimerRef.current !== null) {
+      window.clearTimeout(persistVqaSessionTimerRef.current)
+      persistVqaSessionTimerRef.current = null
+    }
+  }, [taskId])
+
+  React.useEffect(() => {
+    const persistedSession = readPersistedVqaSession(taskId)
+    resetChat()
+    clearTraceCache()
+    if (persistedSession.chatHistory.length > 0) {
+      appendChatMessages(persistedSession.chatHistory)
+    }
+    Object.entries(persistedSession.traceCache).forEach(([traceId, payload]) => {
+      upsertTraceCache(traceId, payload)
+    })
+    if (persistedSession.selectedTraceId) {
+      setSelectedTraceId(persistedSession.selectedTraceId)
+    }
+    hasHydratedPersistedVqaSessionRef.current = true
+  }, [
+    appendChatMessages,
+    clearTraceCache,
+    resetChat,
+    setSelectedTraceId,
+    taskId,
+    upsertTraceCache,
+  ])
+
+  React.useEffect(() => {
+    if (!hasHydratedPersistedVqaSessionRef.current) {
+      return
+    }
+    latestPersistedVqaSessionRef.current = {
+      chatHistory,
+      selectedTraceId,
+      traceCache,
+    }
+    if (persistVqaSessionTimerRef.current !== null) {
+      window.clearTimeout(persistVqaSessionTimerRef.current)
+    }
+    persistVqaSessionTimerRef.current = window.setTimeout(() => {
+      persistVqaSession(taskId, latestPersistedVqaSessionRef.current || {
+        chatHistory,
+        selectedTraceId,
+        traceCache,
+      })
+      persistVqaSessionTimerRef.current = null
+    }, 320)
+    return () => {
+      if (persistVqaSessionTimerRef.current !== null) {
+        window.clearTimeout(persistVqaSessionTimerRef.current)
+        persistVqaSessionTimerRef.current = null
+      }
+    }
+  }, [chatHistory, selectedTraceId, taskId, traceCache])
+
+  React.useEffect(() => {
+    return () => {
+      if (persistVqaSessionTimerRef.current !== null) {
+        window.clearTimeout(persistVqaSessionTimerRef.current)
+        persistVqaSessionTimerRef.current = null
+      }
+      if (latestPersistedVqaSessionRef.current) {
+        persistVqaSession(taskId, latestPersistedVqaSessionRef.current)
+      }
+    }
+  }, [taskId])
+
+  return null
+})
+
 export function TaskProcessingWorkbench({
   taskId,
   workflow,
@@ -1449,11 +1554,8 @@ export function TaskProcessingWorkbench({
   const [pendingQuestionAfterReset, setPendingQuestionAfterReset] = React.useState("")
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
   const refreshTimerRef = React.useRef<number | null>(null)
-  const persistVqaSessionTimerRef = React.useRef<number | null>(null)
   const chatAbortRef = React.useRef<AbortController | null>(null)
   const hasLoadedTaskRef = React.useRef(false)
-  const hasHydratedPersistedVqaSessionRef = React.useRef(false)
-  const latestPersistedVqaSessionRef = React.useRef<PersistedVqaSession | null>(null)
   const isEditingNotesRef = React.useRef(isEditingNotes)
   const onTaskLoadedRef = React.useRef(onTaskLoaded)
   const loadTaskRequestIdRef = React.useRef(0)
@@ -1463,7 +1565,6 @@ export function TaskProcessingWorkbench({
 
   const {
     task,
-    chatHistory,
     isInitialLoading,
     isRefreshing,
     taskErrorMessage,
@@ -1478,16 +1579,13 @@ export function TaskProcessingWorkbench({
     setChatStreaming,
     upsertChatMessage,
     setSelectedTraceId,
-    selectedTraceId,
     setTraceLoadingId,
     setTraceError,
-    traceCache,
-    upsertTraceCache,
     clearTraceCache,
+    upsertTraceCache,
   } = useTaskProcessingRuntimeStore(
     useShallow((state) => ({
       task: state.task,
-      chatHistory: state.chatHistory,
       isInitialLoading: state.isInitialLoading,
       isRefreshing: state.isRefreshing,
       taskErrorMessage: state.taskErrorMessage,
@@ -1502,12 +1600,10 @@ export function TaskProcessingWorkbench({
       setChatStreaming: state.setChatStreaming,
       upsertChatMessage: state.upsertChatMessage,
       setSelectedTraceId: state.setSelectedTraceId,
-      selectedTraceId: state.selectedTraceId,
       setTraceLoadingId: state.setTraceLoadingId,
       setTraceError: state.setTraceError,
-      traceCache: state.traceCache,
-      upsertTraceCache: state.upsertTraceCache,
       clearTraceCache: state.clearTraceCache,
+      upsertTraceCache: state.upsertTraceCache,
     })),
   )
 
@@ -1530,7 +1626,6 @@ export function TaskProcessingWorkbench({
   React.useEffect(() => {
     loadTaskRequestIdRef.current += 1
     hasLoadedTaskRef.current = false
-    hasHydratedPersistedVqaSessionRef.current = false
     resetRuntime()
     setLeftTab("transcript")
     setNotesTab("notes")
@@ -1555,18 +1650,11 @@ export function TaskProcessingWorkbench({
       if (refreshTimerRef.current !== null) {
         window.clearTimeout(refreshTimerRef.current)
       }
-      if (persistVqaSessionTimerRef.current !== null) {
-        window.clearTimeout(persistVqaSessionTimerRef.current)
-        persistVqaSessionTimerRef.current = null
-      }
-      if (workflow === "vqa" && latestPersistedVqaSessionRef.current) {
-        persistVqaSession(taskId, latestPersistedVqaSessionRef.current)
-      }
       if (eventFrameRef.current !== null) {
         window.cancelAnimationFrame(eventFrameRef.current)
       }
     }
-  }, [taskId, workflow])
+  }, [])
 
   const loadTask = React.useCallback(
     async (options?: { showToastOnError?: boolean; background?: boolean }) => {
@@ -1629,53 +1717,6 @@ export function TaskProcessingWorkbench({
     }
     void onTaskChanged()
   }, [onTaskChanged, task?.status, task?.updated_at])
-
-  React.useEffect(() => {
-    if (workflow !== "vqa") {
-      return
-    }
-    const persistedSession = readPersistedVqaSession(taskId)
-    resetChat()
-    clearTraceCache()
-    if (persistedSession.chatHistory.length > 0) {
-      appendChatMessages(persistedSession.chatHistory)
-    }
-    Object.entries(persistedSession.traceCache).forEach(([traceId, payload]) => {
-      upsertTraceCache(traceId, payload)
-    })
-    if (persistedSession.selectedTraceId) {
-      setSelectedTraceId(persistedSession.selectedTraceId)
-    }
-    hasHydratedPersistedVqaSessionRef.current = true
-  }, [appendChatMessages, clearTraceCache, resetChat, setSelectedTraceId, taskId, upsertTraceCache, workflow])
-
-  React.useEffect(() => {
-    if (workflow !== "vqa" || !hasHydratedPersistedVqaSessionRef.current) {
-      return
-    }
-    latestPersistedVqaSessionRef.current = {
-      chatHistory,
-      selectedTraceId,
-      traceCache,
-    }
-    if (persistVqaSessionTimerRef.current !== null) {
-      window.clearTimeout(persistVqaSessionTimerRef.current)
-    }
-    persistVqaSessionTimerRef.current = window.setTimeout(() => {
-      persistVqaSession(taskId, latestPersistedVqaSessionRef.current || {
-        chatHistory,
-        selectedTraceId,
-        traceCache,
-      })
-      persistVqaSessionTimerRef.current = null
-    }, 180)
-    return () => {
-      if (persistVqaSessionTimerRef.current !== null) {
-        window.clearTimeout(persistVqaSessionTimerRef.current)
-        persistVqaSessionTimerRef.current = null
-      }
-    }
-  }, [chatHistory, selectedTraceId, taskId, traceCache, workflow])
 
   const liveTaskId = task?.id || ""
   const liveTaskStatus = task?.status || ""
@@ -1920,14 +1961,14 @@ export function TaskProcessingWorkbench({
     if (!trimmedQuestion || runtimeState.isChatStreaming || hasActiveAssistantStream(runtimeState.chatHistory) || !effectiveTask) {
       return
     }
-    const userTurnCount = chatHistory.filter((message) => message.role === "user").length
+    const userTurnCount = runtimeState.chatHistory.filter((message) => message.role === "user").length
     if (userTurnCount >= VQA_CHAT_MAX_TURNS) {
       setPendingQuestionAfterReset(trimmedQuestion)
       setIsChatLimitConfirmOpen(true)
       return
     }
     await executeAskQuestion(trimmedQuestion)
-  }, [chatHistory, effectiveTask, executeAskQuestion, question])
+  }, [effectiveTask, executeAskQuestion, question])
 
   const handleConfirmChatResetAndContinue = React.useCallback(() => {
     const nextQuestion = pendingQuestionAfterReset.trim()
@@ -2110,6 +2151,7 @@ export function TaskProcessingWorkbench({
         effectiveTask={effectiveTask}
         transcriptOptimizeStatus={transcriptOptimizeStatus}
       />
+      {workflow === "vqa" ? <TaskProcessingVqaSessionEffects taskId={taskId} /> : null}
       <TaskWorkspaceHeader
         effectiveTitle={effectiveTitle}
         workflow={workflow}
@@ -2833,6 +2875,194 @@ interface LeftWorkbenchPanelProps {
   taskStatus: string
 }
 
+interface EvidenceTimelineTabContentProps {
+  workflow: WorkflowType
+  taskId: string
+  effectiveTitle: string
+  onSeek: (seconds: number) => void
+}
+
+const EvidenceTimelineTabContent = React.memo(function EvidenceTimelineTabContent({
+  workflow,
+  taskId,
+  effectiveTitle,
+  onSeek,
+}: EvidenceTimelineTabContentProps) {
+  const {
+    taskTranscriptSegments,
+    liveTranscript,
+    chatHistory,
+  } = useTaskProcessingRuntimeStore(
+    useShallow((state) => ({
+      taskTranscriptSegments: state.task?.transcript_segments ?? EMPTY_TRANSCRIPT_SEGMENTS,
+      liveTranscript: state.liveTranscript,
+      chatHistory: state.chatHistory,
+    })),
+  )
+  const transcriptSegments = React.useMemo(
+    () => mergeTaskAndLiveTranscriptSegments(taskTranscriptSegments, liveTranscript),
+    [liveTranscript, taskTranscriptSegments],
+  )
+  const deferredTranscriptSegmentsForTimeline = React.useDeferredValue(transcriptSegments)
+  const deferredChatHistoryForTimeline = React.useDeferredValue(chatHistory)
+  const evidenceTimelineItems = React.useMemo(() => {
+    if (workflow === "notes") {
+      return deferredTranscriptSegmentsForTimeline.map((segment) => ({
+        id: `${segment.start}-${segment.end}`,
+        title: "转写片段",
+        content: segment.text,
+        start: segment.start,
+        end: segment.end,
+        source: segment.speaker || "transcript",
+        sourceSet: [] as string[],
+        taskTitle: effectiveTitle,
+        taskId,
+      }))
+    }
+    return deferredChatHistoryForTimeline
+      .flatMap((message) =>
+        message.role === "assistant"
+          ? message.citations.map((citation, index) => ({
+              id: `${message.id}-${citation.doc_id}-${index}`,
+              title: citation.task_title || "问答证据",
+              content: citation.text,
+              start: citation.start,
+              end: citation.end,
+              source: citation.source,
+              sourceSet: citation.source_set || [],
+              taskTitle: citation.task_title || effectiveTitle,
+              taskId: citation.task_id,
+            }))
+          : [],
+      )
+      .sort((left, right) => left.start - right.start)
+  }, [deferredChatHistoryForTimeline, deferredTranscriptSegmentsForTimeline, effectiveTitle, taskId, workflow])
+
+  if (evidenceTimelineItems.length === 0) {
+    return (
+      <div className="m-4 rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
+        {workflow === "notes" ? "当前还没有时间轴内容。" : "先发起一次视频问答，这里会自动汇总命中证据。"}
+      </div>
+    )
+  }
+
+  return (
+    <VirtualizedList
+      items={evidenceTimelineItems}
+      className="themed-thin-scrollbar h-full min-h-0 flex-1"
+      estimateSize={() => 156}
+      overscan={8}
+      getItemKey={(item) => item.id}
+      renderItem={(item, index) => (
+        <div className={cn("px-4 pb-3", index === 0 && "pt-4")}>
+          <div className="workbench-collection-item rounded-2xl border border-border/70 bg-card/65 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium">{item.title}</span>
+                  <Badge variant="outline">{item.source || "timeline"}</Badge>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{item.taskTitle}</p>
+              </div>
+              <Button variant="outline" size="sm" className="evidence-timeline-seek-button" onClick={() => onSeek(item.start)}>
+                <MapPin className="mr-1.5 h-3.5 w-3.5" />
+                {formatSecondsAsClock(item.start)}
+              </Button>
+            </div>
+            <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{item.content}</p>
+          </div>
+        </div>
+      )}
+    />
+  )
+})
+
+interface StageEventsTabContentProps {
+  stageMetrics: Record<string, Record<string, unknown>>
+  artifactTotalBytes: number
+  artifactCount: number
+  taskStatus: string
+  isRefreshing: boolean
+}
+
+const StageEventsTabContent = React.memo(function StageEventsTabContent({
+  stageMetrics,
+  artifactTotalBytes,
+  artifactCount,
+  taskStatus,
+  isRefreshing,
+}: StageEventsTabContentProps) {
+  const taskEvents = useTaskProcessingRuntimeStore((state) => state.taskEvents)
+  const deferredTaskEvents = React.useDeferredValue(taskEvents)
+
+  return (
+    <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
+      <div className="space-y-4 p-4">
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="rounded-2xl border border-border/70 bg-card/65 p-4"><p className="text-xs text-muted-foreground">任务状态</p><p className="mt-2 text-sm font-semibold">{getTaskStatusSummary(taskStatus, [])}</p></div>
+          <div className="rounded-2xl border border-border/70 bg-card/65 p-4"><p className="text-xs text-muted-foreground">产物体积</p><p className="mt-2 text-sm font-semibold">{formatBytes(artifactTotalBytes)}</p></div>
+          <div className="rounded-2xl border border-border/70 bg-card/65 p-4"><p className="text-xs text-muted-foreground">产物索引</p><p className="mt-2 text-sm font-semibold">{artifactCount} 项</p></div>
+        </div>
+        <Accordion type="single" collapsible className="rounded-2xl border border-border/70 bg-card/65 px-4">
+          {Object.entries(stageMetrics).map(([key, value]) => {
+            const phase = asObject(value)
+            return (
+              <AccordionItem key={key} value={key}>
+                <AccordionTrigger>
+                  <div className="flex flex-1 items-center justify-between gap-3 text-left">
+                    <div>
+                      <p className="text-sm font-medium">{VM_PHASE_LABELS[key] || key}</p>
+                      <p className="text-xs text-muted-foreground">{asString(phase.reason) || "没有记录异常原因"}</p>
+                    </div>
+                    <Badge variant="secondary">{getVmPhaseStatusLabel(asString(phase.status))}</Badge>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div className="space-y-2 text-xs text-muted-foreground">
+                    <p>开始时间 {asString(phase.started_at) || "-"}</p>
+                    <p>结束时间 {asString(phase.completed_at) || "-"}</p>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            )
+          })}
+        </Accordion>
+        <div className="rounded-2xl border border-border/70 bg-card/65 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-medium">最近阶段动态</h4>
+              <p className="mt-1 text-xs text-muted-foreground">仅保留关键阶段和进度更新，避免原始调试事件干扰阅读。</p>
+            </div>
+            {isRefreshing ? <Badge variant="secondary">同步中</Badge> : null}
+          </div>
+          <div className="mt-3 min-h-[16rem]">
+            {deferredTaskEvents.length > 0 ? (
+              <VirtualizedList
+                items={deferredTaskEvents}
+                className="themed-thin-scrollbar h-64 min-h-0"
+                estimateSize={() => 88}
+                overscan={6}
+                getItemKey={(event, index) => `${event.timestamp}-${index}`}
+                renderItem={(event, index) => (
+                  <div className={cn("pb-2", index === 0 && "pt-0")}>
+                    <div className="workbench-collection-item rounded-xl border border-border/60 bg-background/55 px-3 py-2.5">
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <Badge variant="outline">{formatTaskEventBadge(event)}</Badge>
+                        {formatTaskEventTimestamp(event.timestamp) ? <span className="text-muted-foreground">{formatTaskEventTimestamp(event.timestamp)}</span> : null}
+                      </div>
+                      <p className="mt-2 text-sm leading-6">{formatTaskEventMessage(event)}</p>
+                    </div>
+                  </div>
+                )}
+              />
+            ) : <p className="text-sm text-muted-foreground">当前还没有可展示的阶段动态。</p>}
+          </div>
+        </div>
+      </div>
+    </ScrollArea>
+  )
+})
+
 const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
   workflow,
   taskId,
@@ -2868,8 +3098,6 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
     persistedCorrectionText,
     persistedCorrectionFallbackUsed,
     isCorrectionPreviewLoading,
-    taskEvents,
-    chatHistory,
   } = useTaskProcessingRuntimeStore(
     useShallow((state) => ({
       taskTranscriptSegments: state.task?.transcript_segments ?? EMPTY_TRANSCRIPT_SEGMENTS,
@@ -2881,8 +3109,6 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
       persistedCorrectionText: state.persistedCorrectionText,
       persistedCorrectionFallbackUsed: state.persistedCorrectionFallbackUsed,
       isCorrectionPreviewLoading: state.isCorrectionPreviewLoading,
-      taskEvents: state.taskEvents,
-      chatHistory: state.chatHistory,
     })),
   )
   const transcriptSegments = React.useMemo(
@@ -2894,9 +3120,6 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
   const transcriptViewportRef = React.useRef<HTMLDivElement | null>(null)
   const transcriptAutoScrollRafRef = React.useRef<number | null>(null)
   const suppressTranscriptScrollBreakRef = React.useRef(false)
-  const deferredTranscriptSegmentsForTimeline = React.useDeferredValue(transcriptSegments)
-  const deferredChatHistoryForTimeline = React.useDeferredValue(chatHistory)
-  const deferredTaskEvents = React.useDeferredValue(taskEvents)
   const shouldShowCorrectionTab = workflow === "notes" || correctionStatus !== "skipped"
   const lastTranscriptSignature = React.useMemo(() => {
     const lastSegment = transcriptSegments[transcriptSegments.length - 1]
@@ -2958,39 +3181,6 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
       }
     }
   }, [isTranscriptAutoFollow, lastTranscriptSignature, transcriptSegments.length])
-
-  const evidenceTimelineItems = React.useMemo(() => {
-    if (workflow === "notes") {
-      return deferredTranscriptSegmentsForTimeline.map((segment) => ({
-        id: `${segment.start}-${segment.end}`,
-        title: "转写片段",
-        content: segment.text,
-        start: segment.start,
-        end: segment.end,
-        source: segment.speaker || "transcript",
-        sourceSet: [] as string[],
-        taskTitle: effectiveTitle,
-        taskId,
-      }))
-    }
-    return deferredChatHistoryForTimeline
-      .flatMap((message) =>
-        message.role === "assistant"
-          ? message.citations.map((citation, index) => ({
-              id: `${message.id}-${citation.doc_id}-${index}`,
-              title: citation.task_title || "问答证据",
-              content: citation.text,
-              start: citation.start,
-              end: citation.end,
-              source: citation.source,
-              sourceSet: citation.source_set || [],
-              taskTitle: citation.task_title || effectiveTitle,
-              taskId: citation.task_id,
-            }))
-          : [],
-      )
-      .sort((left, right) => left.start - right.start)
-  }, [deferredChatHistoryForTimeline, deferredTranscriptSegmentsForTimeline, effectiveTitle, taskId, workflow])
 
   const correctionMode =
     correctionPreview.mode !== "unknown" ? correctionPreview.mode : persistedCorrectionMode
@@ -3130,103 +3320,22 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
         ) : null}
 
         <TabsContent value="evidence" className="mt-0 min-h-0 flex-1 overflow-hidden">
-          {evidenceTimelineItems.length === 0 ? <div className="m-4 rounded-xl border border-dashed p-6 text-sm text-muted-foreground">{workflow === "notes" ? "当前还没有时间轴内容。" : "先发起一次视频问答，这里会自动汇总命中证据。"}</div> : null}
-          {evidenceTimelineItems.length > 0 ? (
-            <VirtualizedList
-              items={evidenceTimelineItems}
-              className="themed-thin-scrollbar h-full min-h-0 flex-1"
-              estimateSize={() => 156}
-              overscan={8}
-              getItemKey={(item) => item.id}
-              renderItem={(item, index) => (
-                <div className={cn("px-4 pb-3", index === 0 && "pt-4")}>
-                  <div className="workbench-collection-item rounded-2xl border border-border/70 bg-card/65 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm font-medium">{item.title}</span>
-                          <Badge variant="outline">{item.source || "timeline"}</Badge>
-                        </div>
-                        <p className="mt-1 text-xs text-muted-foreground">{item.taskTitle}</p>
-                      </div>
-                      <Button variant="outline" size="sm" className="evidence-timeline-seek-button" onClick={() => onSeek(item.start)}>
-                        <MapPin className="mr-1.5 h-3.5 w-3.5" />
-                        {formatSecondsAsClock(item.start)}
-                      </Button>
-                    </div>
-                    <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{item.content}</p>
-                  </div>
-                </div>
-              )}
-            />
-          ) : null}
+          <EvidenceTimelineTabContent
+            workflow={workflow}
+            taskId={taskId}
+            effectiveTitle={effectiveTitle}
+            onSeek={onSeek}
+          />
         </TabsContent>
 
         <TabsContent value="stage" className="mt-0 min-h-0 flex-1 overflow-hidden">
-          <ScrollArea className="themed-thin-scrollbar h-full min-h-0 flex-1">
-            <div className="space-y-4 p-4">
-              <div className="grid gap-3 md:grid-cols-3">
-                <div className="rounded-2xl border border-border/70 bg-card/65 p-4"><p className="text-xs text-muted-foreground">任务状态</p><p className="mt-2 text-sm font-semibold">{getTaskStatusSummary(taskStatus, [])}</p></div>
-                <div className="rounded-2xl border border-border/70 bg-card/65 p-4"><p className="text-xs text-muted-foreground">产物体积</p><p className="mt-2 text-sm font-semibold">{formatBytes(artifactTotalBytes)}</p></div>
-                <div className="rounded-2xl border border-border/70 bg-card/65 p-4"><p className="text-xs text-muted-foreground">产物索引</p><p className="mt-2 text-sm font-semibold">{artifactCount} 项</p></div>
-              </div>
-              <Accordion type="single" collapsible className="rounded-2xl border border-border/70 bg-card/65 px-4">
-                {Object.entries(stageMetrics).map(([key, value]) => {
-                  const phase = asObject(value)
-                  return (
-                    <AccordionItem key={key} value={key}>
-                      <AccordionTrigger>
-                        <div className="flex flex-1 items-center justify-between gap-3 text-left">
-                          <div>
-                            <p className="text-sm font-medium">{VM_PHASE_LABELS[key] || key}</p>
-                            <p className="text-xs text-muted-foreground">{asString(phase.reason) || "没有记录异常原因"}</p>
-                          </div>
-                          <Badge variant="secondary">{getVmPhaseStatusLabel(asString(phase.status))}</Badge>
-                        </div>
-                      </AccordionTrigger>
-                      <AccordionContent>
-                        <div className="space-y-2 text-xs text-muted-foreground">
-                          <p>开始时间 {asString(phase.started_at) || "-"}</p>
-                          <p>结束时间 {asString(phase.completed_at) || "-"}</p>
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  )
-                })}
-              </Accordion>
-              <div className="rounded-2xl border border-border/70 bg-card/65 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <h4 className="text-sm font-medium">最近阶段动态</h4>
-                    <p className="mt-1 text-xs text-muted-foreground">仅保留关键阶段和进度更新，避免原始调试事件干扰阅读。</p>
-                  </div>
-                  {isRefreshing ? <Badge variant="secondary">同步中</Badge> : null}
-                </div>
-                <div className="mt-3 min-h-[16rem]">
-                  {deferredTaskEvents.length > 0 ? (
-                    <VirtualizedList
-                      items={deferredTaskEvents}
-                      className="themed-thin-scrollbar h-64 min-h-0"
-                      estimateSize={() => 88}
-                      overscan={6}
-                      getItemKey={(event, index) => `${event.timestamp}-${index}`}
-                      renderItem={(event, index) => (
-                        <div className={cn("pb-2", index === 0 && "pt-0")}>
-                          <div className="workbench-collection-item rounded-xl border border-border/60 bg-background/55 px-3 py-2.5">
-                            <div className="flex flex-wrap items-center gap-2 text-xs">
-                              <Badge variant="outline">{formatTaskEventBadge(event)}</Badge>
-                              {formatTaskEventTimestamp(event.timestamp) ? <span className="text-muted-foreground">{formatTaskEventTimestamp(event.timestamp)}</span> : null}
-                            </div>
-                            <p className="mt-2 text-sm leading-6">{formatTaskEventMessage(event)}</p>
-                          </div>
-                        </div>
-                      )}
-                    />
-                  ) : <p className="text-sm text-muted-foreground">当前还没有可展示的阶段动态。</p>}
-                </div>
-              </div>
-            </div>
-          </ScrollArea>
+          <StageEventsTabContent
+            stageMetrics={stageMetrics}
+            artifactTotalBytes={artifactTotalBytes}
+            artifactCount={artifactCount}
+            taskStatus={taskStatus}
+            isRefreshing={isRefreshing}
+          />
         </TabsContent>
       </Tabs>
     </div>

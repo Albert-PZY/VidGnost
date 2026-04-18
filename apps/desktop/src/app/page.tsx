@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { toast } from "react-hot-toast"
+import { Loader2 } from "lucide-react"
 
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
@@ -10,10 +11,6 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { AppHeader } from "@/components/app-header"
 import { NewTaskView } from "@/components/views/new-task-view"
 import { BootstrapStatusOverlay, type BootstrapStatus } from "@/components/views/bootstrap-status-overlay"
-import { DiagnosticsView } from "@/components/views/diagnostics-view"
-import { HistoryView } from "@/components/views/history-view"
-import { SettingsView } from "@/components/views/settings-view"
-import { TaskProcessingView } from "@/components/views/task-processing-view"
 import {
   createTaskFromPath,
   createTaskFromUrl,
@@ -59,6 +56,18 @@ const DEFAULT_UI_SETTINGS: UISettingsResponse = {
 }
 
 const RUNTIME_PATHS_STORAGE_KEY = "vidgnost:runtime-paths:v1"
+const DiagnosticsView = React.lazy(async () => import("@/components/views/diagnostics-view").then((module) => ({
+  default: module.DiagnosticsView,
+})))
+const HistoryView = React.lazy(async () => import("@/components/views/history-view").then((module) => ({
+  default: module.HistoryView,
+})))
+const SettingsView = React.lazy(async () => import("@/components/views/settings-view").then((module) => ({
+  default: module.SettingsView,
+})))
+const TaskProcessingView = React.lazy(async () => import("@/components/views/task-processing-view").then((module) => ({
+  default: module.TaskProcessingView,
+})))
 
 function readStoredRuntimePaths(): RuntimePathsResponse | null {
   if (typeof window === "undefined") {
@@ -111,6 +120,17 @@ const getPageTitle = (viewState: ViewState) => {
     case "diagnostics":
       return { title: "系统自检", subtitle: "检查运行状态" }
   }
+}
+
+function ViewLoadingFallback({ label }: { label: string }) {
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center px-6">
+      <div className="flex items-center gap-2 rounded-xl border border-border/70 bg-card/70 px-4 py-3 text-sm text-muted-foreground shadow-sm">
+        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+        <span>{label}</span>
+      </div>
+    </div>
+  )
 }
 
 export default function VideoMindApp() {
@@ -537,29 +557,39 @@ export default function VideoMindApp() {
                 />
               )}
               {viewState.type === "processing" && (
-                <TaskProcessingView
-                  taskId={viewState.taskId}
-                  workflow={viewState.workflow}
-                  taskTitle={viewState.taskTitle}
-                  onBack={handleBackFromProcessing}
-                  onTaskChanged={handleTaskChanged}
-                  onTaskLoaded={handleTaskLoaded}
-                />
+                <React.Suspense fallback={<ViewLoadingFallback label="正在加载任务工作台..." />}>
+                  <TaskProcessingView
+                    taskId={viewState.taskId}
+                    workflow={viewState.workflow}
+                    taskTitle={viewState.taskTitle}
+                    onBack={handleBackFromProcessing}
+                    onTaskChanged={handleTaskChanged}
+                    onTaskLoaded={handleTaskLoaded}
+                  />
+                </React.Suspense>
               )}
               {viewState.type === "history" && (
-                <HistoryView
-                  onOpenTask={handleOpenTask}
-                  onTasksChanged={handleTaskChanged}
-                />
+                <React.Suspense fallback={<ViewLoadingFallback label="正在加载历史记录..." />}>
+                  <HistoryView
+                    onOpenTask={handleOpenTask}
+                    onTasksChanged={handleTaskChanged}
+                  />
+                </React.Suspense>
               )}
               {viewState.type === "settings" && (
-                <SettingsView
-                  uiSettings={uiSettings}
-                  onUiSettingsChange={persistUiSettings}
-                  onUiSettingsPreviewChange={setUiSettingsPreviewPatch}
-                />
+                <React.Suspense fallback={<ViewLoadingFallback label="正在加载设置中心..." />}>
+                  <SettingsView
+                    uiSettings={uiSettings}
+                    onUiSettingsChange={persistUiSettings}
+                    onUiSettingsPreviewChange={setUiSettingsPreviewPatch}
+                  />
+                </React.Suspense>
               )}
-              {viewState.type === "diagnostics" && <DiagnosticsView />}
+              {viewState.type === "diagnostics" && (
+                <React.Suspense fallback={<ViewLoadingFallback label="正在加载系统自检..." />}>
+                  <DiagnosticsView />
+                </React.Suspense>
+              )}
             </main>
             <BootstrapStatusOverlay
               status={bootstrapStatus}
