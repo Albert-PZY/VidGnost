@@ -648,7 +648,9 @@ export class TaskOrchestrator {
     }
 
     if (sourceTaskId !== taskId) {
-      await this.taskRepository.cloneTaskArtifacts(sourceTaskId, taskId)
+      await this.taskRepository.cloneTaskArtifacts(sourceTaskId, taskId, {
+        stages: ["A", "B", "C"],
+      })
     }
 
     await this.taskRepository.update(taskId, {

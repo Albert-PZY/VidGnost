@@ -123,7 +123,7 @@ export const DEFAULT_TEMPLATE_CONTENT: Record<PromptTemplateChannel, string> = {
 
 根据“当前内容块”选择最合适的图类型：
 
-* mindmap（思维导图）
+* hierarchy（层级结构图）
 
   * 概念讲解 / 知识体系 / 分类
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import type { TranscriptSegment } from "@vidgnost/contracts"
 
+import { DEFAULT_TEMPLATE_CONTENT } from "../src/modules/prompts/default-prompts.js"
 import { SummaryService } from "../src/modules/summary/summary-service.js"
 import { TranscriptCorrectionService } from "../src/modules/summary/transcript-correction-service.js"
 
@@ -322,6 +323,61 @@ describe("SummaryService", () => {
     expect(result.notesMarkdown).not.toContain("当前为回退生成结果")
   })
 
+  it("keeps the default notes prompt distinct from dedicated mindmap generation", async () => {
+    const client = createFakeClientFromPrompt((userPrompt) =>
+      userPrompt.includes("导图") ? "# 默认导图结果\n" : "## 默认笔记结果\n",
+    )
+    const service = new SummaryService(
+      {
+        async get() {
+          return {
+            api_key: "secret",
+            base_url: "https://example.com/v1",
+            model: "test-model",
+            correction_mode: "off",
+            correction_batch_size: 6,
+            correction_overlap: 1,
+          }
+        },
+        async isUserConfigured() {
+          return true
+        },
+      } as never,
+      {
+        async getBundle() {
+          return {
+            templates: [
+              { id: "correction-template", content: DEFAULT_TEMPLATE_CONTENT.correction },
+              { id: "notes-template", content: DEFAULT_TEMPLATE_CONTENT.notes },
+              { id: "mindmap-template", content: DEFAULT_TEMPLATE_CONTENT.mindmap },
+            ],
+            selection: {
+              correction: "correction-template",
+              notes: "notes-template",
+              mindmap: "mindmap-template",
+              vqa: "mindmap-template",
+            },
+          }
+        },
+      } as never,
+      client as never,
+    )
+
+    const result = await service.buildArtifacts({
+      taskId: "task-summary-default-prompts",
+      taskTitle: "默认提示词任务",
+      workflow: "notes",
+      transcriptSegments: BASE_SEGMENTS,
+      transcriptText: BASE_SEGMENTS.map((segment) => segment.text).join("\n"),
+    })
+
+    expect(client.calls).toHaveLength(2)
+    expect(client.calls[0]?.userPrompt).not.toContain("导图")
+    expect(client.calls[1]?.userPrompt).toContain("导图")
+    expect(result.notesMarkdown).toContain("默认笔记结果")
+    expect(result.mindmapMarkdown).toContain("默认导图结果")
+  })
+
   it("records fallback artifact metadata when notes and mindmap generation falls back", async () => {
     const service = new SummaryService(
       {
@@ -400,6 +456,25 @@ function createFakeClient(responses: Array<string | Error>) {
       }
       return {
         content: response ?? "",
+        raw: null,
+      }
+    },
+  }
+}
+
+function createFakeClientFromPrompt(responder: (userPrompt: string) => string | Error) {
+  const calls: Array<{ model: string; systemPrompt?: string; userPrompt: string }> = []
+
+  return {
+    calls,
+    async generateText(input: { model: string; systemPrompt?: string; userPrompt: string }) {
+      calls.push(input)
+      const response = responder(input.userPrompt)
+      if (response instanceof Error) {
+        throw response
+      }
+      return {
+        content: response,
         raw: null,
       }
     },

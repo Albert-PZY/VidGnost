@@ -26,6 +26,12 @@ export interface SummaryArtifacts {
   summaryMarkdown: string
 }
 
+interface SelectedPromptTemplates {
+  correction: string
+  mindmap: string
+  notes: string
+}
+
 export class SummaryService {
   private readonly llmReadinessProbe: LlmServiceReadinessProbe
 
@@ -48,20 +54,14 @@ export class SummaryService {
     const llmConfig = await this.llmConfigRepository.get()
     const llmEnabled = await this.isLlmGenerationEnabled()
     const promptBundle = await this.promptTemplateRepository.getBundle()
-
-    const selectedCorrectionPrompt =
-      promptBundle.templates.find((item) => item.id === promptBundle.selection.correction)?.content || ""
-    const selectedNotesPrompt =
-      promptBundle.templates.find((item) => item.id === promptBundle.selection.notes)?.content || ""
-    const selectedMindmapPrompt =
-      promptBundle.templates.find((item) => item.id === promptBundle.selection.mindmap)?.content || ""
+    const selectedPrompts = resolveSelectedPromptTemplates(promptBundle)
 
     const transcriptCorrectionService = new TranscriptCorrectionService(this.llmClient)
     const fallbackArtifactService = new FallbackArtifactService()
     const correctionResult = await transcriptCorrectionService.apply({
       transcriptSegments: input.transcriptSegments,
       transcriptText: input.transcriptText,
-      promptTemplate: selectedCorrectionPrompt,
+      promptTemplate: selectedPrompts.correction,
       correctionMode: llmConfig.correction_mode,
       correctionBatchSize: llmConfig.correction_batch_size,
       correctionOverlap: llmConfig.correction_overlap,
@@ -74,7 +74,7 @@ export class SummaryService {
     const correctedSegments = correctionResult.correctedSegments
     const correctedText = correctionResult.correctedText
 
-    const notesPrompt = renderPrompt(selectedNotesPrompt, {
+    const notesPrompt = renderPrompt(selectedPrompts.notes, {
       query: "",
       context: correctedText,
       text: correctedText,
@@ -98,7 +98,7 @@ export class SummaryService {
       },
     })
 
-    const mindmapPrompt = renderPrompt(selectedMindmapPrompt, {
+    const mindmapPrompt = renderPrompt(selectedPrompts.mindmap, {
       query: "",
       context: correctedText,
       text: correctedText,
@@ -143,15 +143,15 @@ export class SummaryService {
       fusionPromptMarkdown: [
         "# Correction Prompt",
         "",
-        selectedCorrectionPrompt || "(fallback heuristic)",
+        selectedPrompts.correction || "(fallback heuristic)",
         "",
         "# Notes Prompt",
         "",
-        selectedNotesPrompt || "(fallback heuristic)",
+        selectedPrompts.notes || "(fallback heuristic)",
         "",
         "# Mindmap Prompt",
         "",
-        selectedMindmapPrompt || "(fallback heuristic)",
+        selectedPrompts.mindmap || "(fallback heuristic)",
       ].join("\n"),
       mindmapMarkdown: mindmapArtifact.content,
       notesMarkdown: notesArtifact.content,
@@ -245,6 +245,21 @@ export class SummaryService {
         fallbackReason: "llm_generate_failed",
       }
     }
+  }
+}
+
+function resolveSelectedPromptTemplates(input: {
+  selection: { correction: string; mindmap: string; notes: string }
+  templates: Array<{ content?: string; id?: string }>
+}): SelectedPromptTemplates {
+  const templateMap = new Map(
+    input.templates.map((item) => [String(item.id || "").trim(), String(item.content || "")] as const),
+  )
+
+  return {
+    correction: templateMap.get(input.selection.correction) || "",
+    mindmap: templateMap.get(input.selection.mindmap) || "",
+    notes: templateMap.get(input.selection.notes) || "",
   }
 }
 

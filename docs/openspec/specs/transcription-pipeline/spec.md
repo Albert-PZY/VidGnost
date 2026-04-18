@@ -128,6 +128,12 @@ After phase `C` finishes, backend SHALL persist the normalized transcript into b
 - **THEN** backend MAY reuse the persisted transcript state instead of re-running transcription
 - **AND** current implementation still does not persist mid-transcription checkpoints for resuming from a partially streamed local worker request
 
+#### Scenario: Reuse transcript artifacts while regenerating stale fallback phase-D outputs
+- **WHEN** a new task matches a completed source task whose phase `D` fusion manifest still marks fallback-generated outputs
+- **AND** the current LLM runtime is available for normal phase-`D` generation
+- **THEN** backend reuses persisted `A` / `B` / `C` stage artifacts and transcript state from the matched task
+- **AND** backend reruns phase `D` instead of replaying the stale fallback fusion outputs into the new task
+
 ### Requirement: Task deletion SHALL stop active transcription and purge task-owned runtime artifacts
 Status: `implemented`
 

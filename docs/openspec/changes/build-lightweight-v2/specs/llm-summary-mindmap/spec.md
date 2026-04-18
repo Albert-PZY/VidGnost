@@ -116,6 +116,11 @@ Summary and mindmap generation SHALL resolve prompts from persisted template rec
 - **AND** `correction` and `vqa` defaults use the concise baseline copy from that same Python-era template set
 - **AND** the repair path updates stale built-in template content back to that baseline while keeping template IDs and selection wiring stable
 
+#### Scenario: Default notes prompt stays distinct from dedicated mindmap generation
+- **WHEN** backend repairs or recreates the built-in default templates
+- **THEN** the default `notes` template avoids dedicated `思维导图` wording that can collapse notes generation into the separate mindmap channel
+- **AND** the default `mindmap` template remains the only built-in template responsible for standalone markmap-style hierarchy output
+
 ### Requirement: Notes content SHALL focus on normalized synthesis
 Status: `implemented`
 

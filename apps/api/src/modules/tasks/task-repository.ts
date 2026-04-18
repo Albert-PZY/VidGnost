@@ -301,15 +301,33 @@ export class TaskRepository {
     )
   }
 
-  async cloneTaskArtifacts(sourceTaskId: string, targetTaskId: string): Promise<void> {
+  async cloneTaskArtifacts(
+    sourceTaskId: string,
+    targetTaskId: string,
+    options?: { stages?: string[] },
+  ): Promise<void> {
     const sourceDir = this.stageArtifactsTaskDir(sourceTaskId)
     const targetDir = this.stageArtifactsTaskDir(targetTaskId)
     if (!(await pathExists(sourceDir))) {
       return
     }
     await rm(targetDir, { recursive: true, force: true })
-    await ensureDirectory(path.dirname(targetDir))
-    await cp(sourceDir, targetDir, { recursive: true })
+    const requestedStages = (options?.stages || []).map((stage) => normalizeStageName(stage)).filter(Boolean)
+    if (requestedStages.length === 0) {
+      await ensureDirectory(path.dirname(targetDir))
+      await cp(sourceDir, targetDir, { recursive: true })
+      return
+    }
+
+    for (const stage of requestedStages) {
+      const sourceStageDir = path.join(sourceDir, stage)
+      if (!(await pathExists(sourceStageDir))) {
+        continue
+      }
+      const targetStageDir = path.join(targetDir, stage)
+      await ensureDirectory(path.dirname(targetStageDir))
+      await cp(sourceStageDir, targetStageDir, { recursive: true })
+    }
   }
 
   async writeTaskArtifactText(taskId: string, relativePath: string, content: string): Promise<void> {
@@ -686,6 +704,14 @@ function toSummaryItem(record: StoredTaskRecord): TaskSummaryItem {
 function normalizeString(value: unknown, fallback = ""): string {
   const candidate = String(value || "").trim()
   return candidate || fallback
+}
+
+function normalizeStageName(value: string): string {
+  const normalized = String(value || "").trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "")
+  if (!normalized || normalized.includes("..") || normalized.includes("/")) {
+    return ""
+  }
+  return normalized
 }
 
 function normalizeNullableString(value: unknown): string | null {
