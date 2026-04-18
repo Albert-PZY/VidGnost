@@ -382,7 +382,7 @@ function parseCorrectionLines(value: string, expectedCount: number): string[] | 
           }
           return ""
         })
-        .map((item) => item.trim())
+        .map((item) => sanitizeCorrectionLine(item))
         .filter(Boolean)
       if (lines.length === expectedCount) {
         return lines
@@ -394,7 +394,7 @@ function parseCorrectionLines(value: string, expectedCount: number): string[] | 
 
   const lines = normalized
     .split(/\r?\n/u)
-    .map((item) => item.replace(/^\s*(?:[-*]|\d+[\.\):、])\s*/u, "").trim())
+    .map((item) => sanitizeCorrectionLine(item))
     .filter(Boolean)
 
   if (lines.length !== expectedCount) {
@@ -428,6 +428,13 @@ function normalizeChineseText(value: string): string {
     .replace(/\s+([，。！？；：])/g, "$1")
     .replace(/([，。！？；：])(?=[^\s])/g, "$1 ")
     .replace(/ {2,}/g, " ")
+    .trim()
+}
+
+function sanitizeCorrectionLine(value: string): string {
+  return String(value || "")
+    .replace(/^\s*(?:[-*]|\d+[\.\):、])\s*/u, "")
+    .replace(/^\s*\[\s*\d{1,2}:\d{2}(?::\d{2})?\s*[-~–—]\s*\d{1,2}:\d{2}(?::\d{2})?\s*\]\s*/u, "")
     .trim()
 }
 

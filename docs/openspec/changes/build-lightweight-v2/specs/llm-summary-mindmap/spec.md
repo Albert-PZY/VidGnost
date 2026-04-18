@@ -57,6 +57,7 @@ Transcript optimization SHALL persist enough metadata for workbench inspection a
 - **WHEN** transcript optimization is running in `strict` or `rewrite` mode
 - **THEN** SSE emits `transcript_optimized_preview` reset and done markers for the active mode
 - **AND** every streamed preview segment carries the original `start` / `end` timestamp pair together with the latest corrected text
+- **AND** if the LLM echoes prompt-side numbering or timestamp labels such as `[07:00 - 07:05]`, backend strips those structural prefixes before persisting corrected segment text
 - **AND** fallback completion metadata is surfaced through the final preview event when any batch falls back to raw transcript text
 
 ### Requirement: Transcript optimization SHALL consume correction batch parameters

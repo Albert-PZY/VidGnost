@@ -173,9 +173,95 @@ describe("TranscriptCorrectionService", () => {
       "第一段 原文\n第二段 原文\n第三段 原文\n第四段 原文\n第五段 原文\n第六段 原文\n第七段 原文\n第八段 原文",
     )
   })
+
+  it("strips echoed timestamp prefixes from rewrite lines before writing corrected segments", async () => {
+    const client = createFakeClient([
+      "1. [00:00 - 00:05] 第一句 修正\n2. [00:05 - 00:09] 第二句 修正\n3. [00:09 - 00:14] 第三句 修正\n4. [00:14 - 00:18] 第四句 修正",
+    ])
+    const service = new TranscriptCorrectionService(client as never)
+
+    const result = await service.apply({
+      transcriptSegments: BASE_SEGMENTS,
+      transcriptText: BASE_SEGMENTS.map((segment) => segment.text).join("\n"),
+      promptTemplate: "请逐行重写并按编号返回：{text}",
+      correctionMode: "rewrite",
+      correctionBatchSize: 6,
+      correctionOverlap: 1,
+    })
+
+    expect(result.correctedSegments).toEqual([
+      { start: 0, end: 5, text: "第一句 修正" },
+      { start: 5, end: 9, text: "第二句 修正" },
+      { start: 9, end: 14, text: "第三句 修正" },
+      { start: 14, end: 18, text: "第四句 修正" },
+    ])
+    expect(result.correctedText).toBe("第一句 修正\n第二句 修正\n第三句 修正\n第四句 修正")
+  })
 })
 
 describe("SummaryService", () => {
+  it("uses the rewrite-mode correction system prompt instead of forcing the strict prompt", async () => {
+    const calls: Array<{ systemPrompt?: string; userPrompt: string }> = []
+    const service = new SummaryService(
+      {
+        async get() {
+          return {
+            api_key: "ollama",
+            base_url: "http://127.0.0.1:11434/v1",
+            model: "qwen2.5:3b",
+            correction_mode: "rewrite",
+            correction_batch_size: 6,
+            correction_overlap: 1,
+          }
+        },
+        async isUserConfigured() {
+          return false
+        },
+      } as never,
+      {
+        async getBundle() {
+          return {
+            templates: [
+              { id: "correction-template", content: "请逐行重写：{text}" },
+              { id: "notes-template", content: "请整理笔记：{text}" },
+              { id: "mindmap-template", content: "请整理导图：{text}" },
+            ],
+            selection: {
+              correction: "correction-template",
+              notes: "notes-template",
+              mindmap: "mindmap-template",
+              vqa: "notes-template",
+            },
+          }
+        },
+      } as never,
+      {
+        async generateText(input: { systemPrompt?: string; userPrompt: string }) {
+          calls.push(input)
+          return {
+            content: calls.length === 1
+              ? "1. 第一段 重写\n2. 第二段 重写\n3. 第三段 重写\n4. 第四段 重写"
+              : calls.length === 2
+                ? "## 笔记"
+                : "# 导图",
+            raw: null,
+          }
+        },
+      } as never,
+    )
+
+    await service.buildArtifacts({
+      taskId: "task-summary-rewrite-prompt",
+      taskTitle: "重写模式任务",
+      workflow: "notes",
+      transcriptSegments: BASE_SEGMENTS,
+      transcriptText: BASE_SEGMENTS.map((segment) => segment.text).join("\n"),
+    })
+
+    expect(calls[0]?.systemPrompt).toContain("中文转写润色助手")
+    expect(calls[0]?.systemPrompt).not.toContain("严格的中文转写纠错助手")
+  })
+
   it("uses loopback llm config even when user_configured flag is still false", async () => {
     const client = createFakeClient(["## 本地笔记\n", "# 本地导图\n"])
     const service = new SummaryService(
@@ -301,12 +387,12 @@ describe("SummaryService", () => {
 })
 
 function createFakeClient(responses: Array<string | Error>) {
-  const calls: Array<{ model: string; userPrompt: string }> = []
+  const calls: Array<{ model: string; systemPrompt?: string; userPrompt: string }> = []
   let index = 0
 
   return {
     calls,
-    async generateText(input: { model: string; userPrompt: string }) {
+    async generateText(input: { model: string; systemPrompt?: string; userPrompt: string }) {
       calls.push(input)
       const response = responses[index++]
       if (response instanceof Error) {

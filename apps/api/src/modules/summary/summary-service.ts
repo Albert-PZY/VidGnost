@@ -1,6 +1,7 @@
 import type { TranscriptSegment, WorkflowType } from "@vidgnost/contracts"
 
 import type { LlmConfigRepository } from "../llm/llm-config-repository.js"
+import { LlmServiceReadinessProbe, isLoopbackUrl } from "../llm/loopback-readiness.js"
 import type { OpenAiCompatibleClient } from "../llm/openai-compatible-client.js"
 import type { PromptTemplateRepository } from "../prompts/prompt-template-repository.js"
 import {
@@ -26,11 +27,15 @@ export interface SummaryArtifacts {
 }
 
 export class SummaryService {
+  private readonly llmReadinessProbe: LlmServiceReadinessProbe
+
   constructor(
     private readonly llmConfigRepository: LlmConfigRepository,
     private readonly promptTemplateRepository: PromptTemplateRepository,
     private readonly llmClient: OpenAiCompatibleClient,
-  ) {}
+  ) {
+    this.llmReadinessProbe = new LlmServiceReadinessProbe(llmClient)
+  }
 
   async buildArtifacts(input: {
     onCorrectionPreviewEvent?: (event: TranscriptCorrectionPreviewEvent) => Promise<void> | void
@@ -63,7 +68,6 @@ export class SummaryService {
       apiKey: llmConfig.api_key,
       baseUrl: llmConfig.base_url,
       model: llmConfig.model,
-      systemPrompt: "你是一名严格的中文转写纠错助手。",
       llmEnabled,
       onPreviewEvent: input.onCorrectionPreviewEvent,
     })
@@ -158,14 +162,18 @@ export class SummaryService {
   async isLlmGenerationEnabled(): Promise<boolean> {
     const llmConfig = await this.llmConfigRepository.get()
     const configured = await this.llmConfigRepository.isUserConfigured()
-    if (!configured && !isLoopbackUrl(llmConfig.base_url)) {
-      return false
-    }
     if (!llmConfig.base_url.trim() || !llmConfig.model.trim()) {
       return false
     }
     if (!llmConfig.api_key.trim() && !isLoopbackUrl(llmConfig.base_url)) {
       return false
+    }
+    if (!configured || isLoopbackUrl(llmConfig.base_url)) {
+      return this.llmReadinessProbe.isReachable({
+        apiKey: llmConfig.api_key,
+        baseUrl: llmConfig.base_url,
+        timeoutSeconds: 2,
+      })
     }
     return true
   }
@@ -237,15 +245,6 @@ export class SummaryService {
         fallbackReason: "llm_generate_failed",
       }
     }
-  }
-}
-
-function isLoopbackUrl(baseUrl: string): boolean {
-  try {
-    const target = new URL(baseUrl)
-    return target.hostname === "127.0.0.1" || target.hostname === "localhost" || target.hostname === "::1"
-  } catch {
-    return false
   }
 }
 
