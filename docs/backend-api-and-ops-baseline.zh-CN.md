@@ -124,6 +124,9 @@
   - 优先以 `/api/tags` 返回的真实模型标签为准
   - 若服务不可达但 `models_dir` 中仍存在有效 manifest/blob，则回退读取本地元数据判断已安装与模型大小
   - 不再通过 `models_dir/<model-id-sanitized>` 伪路径判断是否已安装
+- Ollama 重启与端口诊断：
+  - Windows 本地 loopback 端口若被系统限制，会在重启时返回明确绑定失败原因
+  - 当前实现会自动尝试切换到可用端口，并同步更新持久化的 `ollama-runtime.json` 与受管 LLM 运行时地址
 
 ### 3.5 自检
 

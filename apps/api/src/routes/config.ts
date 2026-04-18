@@ -178,6 +178,7 @@ export async function registerConfigRoutes(
 
   app.post(`${apiPrefix}/config/ollama/restart-service`, async (): Promise<OllamaRuntimeConfigResponse> => {
     const service = await dependencies.ollamaServiceManager.restartService()
+    await synchronizeManagedLlmRuntime(dependencies)
     const config = await dependencies.ollamaRuntimeConfigRepository.get()
     return {
       ...config,

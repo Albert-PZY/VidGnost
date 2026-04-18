@@ -1,6 +1,7 @@
 import path from "node:path"
 import { execFile, spawn } from "node:child_process"
 import { readdir, readFile, stat } from "node:fs/promises"
+import { createServer as createNetServer } from "node:net"
 import { promisify } from "node:util"
 import { request as httpRequest } from "node:http"
 import { request as httpsRequest } from "node:https"
@@ -28,22 +29,33 @@ export interface OllamaModelDiscoveryResult {
   source: "remote" | "offline" | "unavailable"
 }
 
+type OllamaBaseUrlDiagnosis = "available" | "occupied" | "restricted" | "unknown"
+
 interface OllamaProcessStartInput {
   baseUrl: string
   executablePath: string
   modelsDir: string
 }
 
+interface OllamaProcessStartResult {
+  reachable: boolean
+  startupError: string
+}
+
 interface OllamaServiceManagerDependencies {
+  diagnoseBaseUrl?: (baseUrl: string) => Promise<OllamaBaseUrlDiagnosis>
+  findAlternativeBaseUrl?: (baseUrl: string) => Promise<string | null>
   findProcess?: (input: { executablePath: string }) => Promise<OllamaProcessInfo>
   listModels?: (baseUrl: string) => Promise<string[]>
   pathExists?: (targetPath: string) => Promise<boolean>
   probe?: (baseUrl: string) => Promise<boolean>
-  startProcess?: (input: OllamaProcessStartInput) => Promise<void>
+  startProcess?: (input: OllamaProcessStartInput) => Promise<OllamaProcessStartResult>
   stopProcess?: (input: { executablePath: string; trayExecutablePath: string }) => Promise<void>
 }
 
 const defaultDependencies: Required<OllamaServiceManagerDependencies> = {
+  diagnoseBaseUrl: diagnoseOllamaBaseUrl,
+  findAlternativeBaseUrl: findAlternativeOllamaBaseUrl,
   findProcess: findOllamaProcess,
   listModels: listOllamaModelIds,
   pathExists,
@@ -70,11 +82,12 @@ export class OllamaServiceManager {
   async getStatus(): Promise<OllamaServiceStatusResponse> {
     const runtimeConfig = await this.#repository.get()
     const executableExists = await this.#dependencies.pathExists(runtimeConfig.executable_path)
-    const [reachable, processInfo, modelIds, manifestDirExists] = await Promise.all([
+    const [reachable, processInfo, modelIds, manifestDirExists, baseUrlDiagnosis] = await Promise.all([
       this.#dependencies.probe(runtimeConfig.base_url),
       this.#dependencies.findProcess({ executablePath: runtimeConfig.executable_path }),
       this.#dependencies.listModels(runtimeConfig.base_url),
       this.#dependencies.pathExists(path.join(runtimeConfig.models_dir, "manifests")),
+      this.#dependencies.diagnoseBaseUrl(runtimeConfig.base_url),
     ])
     const effectiveModelsDir = (process.env.OLLAMA_MODELS || runtimeConfig.models_dir).trim() || runtimeConfig.models_dir
     const normalizedConfiguredModelsDir = path.normalize(runtimeConfig.models_dir)
@@ -102,6 +115,8 @@ export class OllamaServiceManager {
       restart_required: restartRequired,
       can_self_restart: canSelfRestart,
       message: buildStatusMessage({
+        baseUrl: runtimeConfig.base_url,
+        baseUrlDiagnosis,
         executableExists,
         modelCount: modelIds.length,
         processDetected: processInfo.detected,
@@ -130,19 +145,50 @@ export class OllamaServiceManager {
       executablePath: runtimeConfig.executable_path,
       trayExecutablePath,
     })
-    await this.#dependencies.startProcess({
+    const startResult = await this.#dependencies.startProcess({
       baseUrl: runtimeConfig.base_url,
       executablePath: runtimeConfig.executable_path,
       modelsDir: runtimeConfig.models_dir,
     })
-    await waitForProbe(runtimeConfig.base_url, this.#dependencies.probe)
+    let effectiveBaseUrl = runtimeConfig.base_url
+    let startupMessagePrefix = ""
+    let effectiveStartResult = startResult
+
+    if (!startResult.reachable && shouldRetryWithAlternativeBaseUrl(runtimeConfig.base_url, startResult.startupError)) {
+      const alternativeBaseUrl = await this.#dependencies.findAlternativeBaseUrl(runtimeConfig.base_url)
+      if (alternativeBaseUrl && alternativeBaseUrl !== runtimeConfig.base_url) {
+        const retryResult = await this.#dependencies.startProcess({
+          baseUrl: alternativeBaseUrl,
+          executablePath: runtimeConfig.executable_path,
+          modelsDir: runtimeConfig.models_dir,
+        })
+        if (retryResult.reachable) {
+          effectiveBaseUrl = alternativeBaseUrl
+          effectiveStartResult = retryResult
+          startupMessagePrefix = `检测到 ${renderBaseUrlLabel(runtimeConfig.base_url)} 端口受限，已自动切换到 ${renderBaseUrlLabel(alternativeBaseUrl)}。`
+          await this.#repository.save({
+            base_url: alternativeBaseUrl,
+          })
+        } else {
+          effectiveStartResult = retryResult
+        }
+      }
+    }
 
     const status = await this.getStatus()
+    if (!effectiveStartResult.reachable || !status.reachable) {
+      return {
+        ...status,
+        message: buildRestartFailureMessage({
+          baseUrl: effectiveBaseUrl,
+          startupError: effectiveStartResult.startupError,
+          startupMessagePrefix,
+        }),
+      }
+    }
     return {
       ...status,
-      message: status.reachable
-        ? "Ollama 服务已重启并重新完成模型探测。"
-        : "已发起 Ollama 重启，但服务尚未在配置地址响应。",
+      message: `${startupMessagePrefix}${startupMessagePrefix ? " " : ""}Ollama 服务已重启并重新完成模型探测。`,
     }
   }
 
@@ -397,16 +443,52 @@ async function waitForProbe(
   baseUrl: string,
   probe: (baseUrl: string) => Promise<boolean>,
   timeoutMs = 10000,
-): Promise<void> {
+): Promise<boolean> {
   const startedAt = Date.now()
   while (Date.now() - startedAt < timeoutMs) {
     if (await probe(baseUrl)) {
-      return
+      return true
     }
     await new Promise((resolve) => {
       setTimeout(resolve, 250)
     })
   }
+  return false
+}
+
+async function diagnoseOllamaBaseUrl(baseUrl: string): Promise<OllamaBaseUrlDiagnosis> {
+  const endpoint = parseLoopbackBaseUrl(baseUrl)
+  if (!endpoint) {
+    return "unknown"
+  }
+
+  return await new Promise<OllamaBaseUrlDiagnosis>((resolve) => {
+    const server = createNetServer()
+    server.once("error", (error) => {
+      const code = typeof error === "object" && error && "code" in error ? String((error as { code?: string }).code || "") : ""
+      resolve(code === "EADDRINUSE" ? "occupied" : code === "EACCES" ? "restricted" : "unknown")
+    })
+    server.listen(endpoint.port, endpoint.hostname, () => {
+      server.close(() => {
+        resolve("available")
+      })
+    })
+  })
+}
+
+async function findAlternativeOllamaBaseUrl(baseUrl: string): Promise<string | null> {
+  const endpoint = parseLoopbackBaseUrl(baseUrl)
+  if (!endpoint) {
+    return null
+  }
+
+  for (let port = endpoint.port + 1; port <= endpoint.port + 256; port += 1) {
+    const candidateBaseUrl = `${endpoint.protocol}//${endpoint.hostname}:${port}`
+    if (await diagnoseOllamaBaseUrl(candidateBaseUrl) === "available") {
+      return candidateBaseUrl
+    }
+  }
+  return null
 }
 
 async function findOllamaProcess(input: { executablePath: string }): Promise<OllamaProcessInfo> {
@@ -476,9 +558,12 @@ async function stopOllamaProcess(input: { executablePath: string; trayExecutable
   }
 }
 
-async function startOllamaProcess(input: OllamaProcessStartInput): Promise<void> {
+async function startOllamaProcess(input: OllamaProcessStartInput): Promise<OllamaProcessStartResult> {
   if (process.platform !== "win32") {
-    return
+    return {
+      reachable: false,
+      startupError: "当前平台尚未启用项目内 Ollama 自启动。",
+    }
   }
 
   const child = spawn(
@@ -491,14 +576,61 @@ async function startOllamaProcess(input: OllamaProcessStartInput): Promise<void>
         OLLAMA_HOST: new URL(input.baseUrl).host,
         OLLAMA_MODELS: input.modelsDir,
       },
-      stdio: "ignore",
+      stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
     },
   )
-  child.unref()
+  const stdoutChunks: string[] = []
+  const stderrChunks: string[] = []
+  let spawnError = ""
+  let exited = false
+  let exitCode: number | null = null
+  let exitSignal: NodeJS.Signals | null = null
+
+  child.stdout?.on("data", (chunk) => {
+    appendDiagnosticChunk(stdoutChunks, chunk)
+  })
+  child.stderr?.on("data", (chunk) => {
+    appendDiagnosticChunk(stderrChunks, chunk)
+  })
+  child.once("error", (error) => {
+    spawnError = error instanceof Error ? error.message : String(error || "")
+  })
+  child.once("exit", (code, signal) => {
+    exited = true
+    exitCode = typeof code === "number" ? code : null
+    exitSignal = signal
+  })
+
+  const reachable = await waitForProbe(input.baseUrl, probeOllama, 10000)
+  if (reachable) {
+    child.unref()
+    return {
+      reachable: true,
+      startupError: "",
+    }
+  }
+
+  if (!exited && child.pid) {
+    await stopOllamaProcessByPid(child.pid)
+  }
+
+  return {
+    reachable: false,
+    startupError: buildStartupFailureMessage({
+      baseUrl: input.baseUrl,
+      exitCode,
+      exitSignal,
+      spawnError,
+      stderr: stderrChunks.join(""),
+      stdout: stdoutChunks.join(""),
+    }),
+  }
 }
 
 function buildStatusMessage(input: {
+  baseUrl: string
+  baseUrlDiagnosis: OllamaBaseUrlDiagnosis
   executableExists: boolean
   modelCount: number
   processDetected: boolean
@@ -514,6 +646,12 @@ function buildStatusMessage(input: {
   if (input.reachable) {
     return "Ollama 服务可达，但当前未返回任何模型标签。"
   }
+  if (input.baseUrlDiagnosis === "restricted") {
+    return `${renderBaseUrlLabel(input.baseUrl)} 当前无法绑定：本机系统限制了这个端口，请改用其他本地端口。`
+  }
+  if (input.baseUrlDiagnosis === "occupied") {
+    return `${renderBaseUrlLabel(input.baseUrl)} 已被其他进程占用，请修改 Ollama 服务地址或释放该端口。`
+  }
   if (input.executableExists && input.processDetected) {
     return "已检测到 Ollama 进程，但当前服务地址不可达。"
   }
@@ -526,4 +664,110 @@ function buildStatusMessage(input: {
 function resolveTrayExecutablePath(executablePath: string): string {
   const directory = path.dirname(executablePath || "")
   return path.join(directory, "ollama app.exe")
+}
+
+function parseLoopbackBaseUrl(baseUrl: string): { hostname: string; port: number; protocol: string } | null {
+  try {
+    const target = new URL(baseUrl)
+    const hostname = target.hostname
+    const port = Number.parseInt(target.port || (target.protocol === "https:" ? "443" : "80"), 10)
+    if (!Number.isFinite(port) || port <= 0) {
+      return null
+    }
+    if (hostname !== "127.0.0.1" && hostname !== "localhost" && hostname !== "::1") {
+      return null
+    }
+    return {
+      hostname,
+      port,
+      protocol: target.protocol,
+    }
+  } catch {
+    return null
+  }
+}
+
+function shouldRetryWithAlternativeBaseUrl(baseUrl: string, startupError: string): boolean {
+  if (!parseLoopbackBaseUrl(baseUrl)) {
+    return false
+  }
+  const normalized = String(startupError || "").toLowerCase()
+  return normalized.includes("forbidden by its access permissions") ||
+    normalized.includes("permission denied") ||
+    normalized.includes("eacces")
+}
+
+function renderBaseUrlLabel(baseUrl: string): string {
+  const endpoint = parseLoopbackBaseUrl(baseUrl)
+  if (!endpoint) {
+    return baseUrl
+  }
+  return `${endpoint.hostname}:${endpoint.port}`
+}
+
+function buildRestartFailureMessage(input: {
+  baseUrl: string
+  startupError: string
+  startupMessagePrefix: string
+}): string {
+  const detail = String(input.startupError || "").trim() || `已发起 Ollama 重启，但 ${renderBaseUrlLabel(input.baseUrl)} 尚未返回响应。`
+  return `${input.startupMessagePrefix}${input.startupMessagePrefix ? " " : ""}${detail}`.trim()
+}
+
+function buildStartupFailureMessage(input: {
+  baseUrl: string
+  exitCode: number | null
+  exitSignal: NodeJS.Signals | null
+  spawnError: string
+  stderr: string
+  stdout: string
+}): string {
+  const stderr = input.stderr.trim()
+  if (stderr) {
+    return stderr
+  }
+  const stdout = input.stdout.trim()
+  if (stdout) {
+    return stdout
+  }
+  if (input.spawnError.trim()) {
+    return input.spawnError.trim()
+  }
+  if (input.exitCode !== null) {
+    return `Ollama 进程已退出，退出码 ${input.exitCode}，服务地址 ${renderBaseUrlLabel(input.baseUrl)} 未就绪。`
+  }
+  if (input.exitSignal) {
+    return `Ollama 进程被信号 ${input.exitSignal} 终止，服务地址 ${renderBaseUrlLabel(input.baseUrl)} 未就绪。`
+  }
+  return `已发起 Ollama 重启，但 ${renderBaseUrlLabel(input.baseUrl)} 尚未返回响应。`
+}
+
+function appendDiagnosticChunk(chunks: string[], chunk: Buffer | string): void {
+  const text = Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk)
+  if (!text) {
+    return
+  }
+  chunks.push(text)
+  const joined = chunks.join("")
+  if (joined.length > 8192) {
+    chunks.splice(0, chunks.length, joined.slice(-8192))
+  }
+}
+
+async function stopOllamaProcessByPid(pid: number): Promise<void> {
+  if (process.platform !== "win32" || !Number.isFinite(pid) || pid <= 0) {
+    return
+  }
+  try {
+    await execFileAsync(
+      "taskkill",
+      ["/PID", String(pid), "/F", "/T"],
+      {
+        timeout: 5000,
+        windowsHide: true,
+      },
+    )
+  } catch {
+    // ignore when the spawned process already exited
+  }
 }

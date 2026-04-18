@@ -1172,7 +1172,11 @@ export function SettingsView({
       setModels(modelsResponse.items)
       setWhisperConfig(latestWhisperConfig)
       applyOllamaRuntimeConfig(ollamaResponse)
-      toast.success(ollamaResponse.service.message || "Ollama 服务已启动")
+      if (ollamaResponse.service.reachable) {
+        toast.success(ollamaResponse.service.message || "Ollama 服务已启动")
+      } else {
+        toast.error(ollamaResponse.service.message || "Ollama 服务仍未就绪")
+      }
     } catch (error) {
       toast.error(getApiErrorMessage(error, "重启 Ollama 服务失败"))
     } finally {
