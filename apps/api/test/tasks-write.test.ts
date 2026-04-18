@@ -300,18 +300,117 @@ describe("task mutation routes", () => {
       "vqa-prewarm",
       "index.json",
     )
+    const multimodalIndexPath = path.join(
+      storageDir,
+      "tasks",
+      "stage-artifacts",
+      "task-vqa-rerun",
+      "D",
+      "vqa-prewarm",
+      "multimodal",
+      "index.json",
+    )
+    const multimodalManifestPath = path.join(
+      storageDir,
+      "tasks",
+      "stage-artifacts",
+      "task-vqa-rerun",
+      "D",
+      "vqa-prewarm",
+      "multimodal",
+      "manifest.json",
+    )
+    const frameManifestPath = path.join(
+      storageDir,
+      "tasks",
+      "stage-artifacts",
+      "task-vqa-rerun",
+      "D",
+      "vqa-prewarm",
+      "frames",
+      "manifest.json",
+    )
+    const frameSemanticIndexPath = path.join(
+      storageDir,
+      "tasks",
+      "stage-artifacts",
+      "task-vqa-rerun",
+      "D",
+      "vqa-prewarm",
+      "frame-semantic",
+      "index.json",
+    )
 
     await waitForFile(prewarmIndexPath)
+    await waitForFile(multimodalIndexPath)
+    await waitForFile(multimodalManifestPath)
+    await waitForFile(frameManifestPath)
+    await waitForFile(frameSemanticIndexPath)
 
     const prewarmIndex = JSON.parse(await readFile(prewarmIndexPath, "utf8")) as {
       item_count: number
       retrieval_mode: string
+      items?: Array<{ source?: string; source_set?: string[] }>
+    }
+    const multimodalIndex = JSON.parse(await readFile(multimodalIndexPath, "utf8")) as {
+      mode: string
+      entries: Array<{ artifact_path?: string; kind?: string; modality?: string }>
+      task_id: string
+    }
+    const multimodalManifest = JSON.parse(await readFile(multimodalManifestPath, "utf8")) as {
+      mode: string
+      artifact_paths: string[]
+    }
+    const frameManifest = JSON.parse(await readFile(frameManifestPath, "utf8")) as {
+      task_id: string
+      frames: Array<{ path?: string }>
+      frame_count: number
+    }
+    const frameSemanticIndex = JSON.parse(await readFile(frameSemanticIndexPath, "utf8")) as {
+      task_id: string
+      item_count: number
+      items: Array<{ image_path?: string; visual_text?: string }>
     }
     expect(prewarmIndex.retrieval_mode).toBe("vector-index")
     expect(prewarmIndex.item_count).toBeGreaterThan(0)
+    expect(multimodalIndex.task_id).toBe("task-vqa-rerun")
+    expect(multimodalIndex.mode).toBe("multimodal")
+    expect(Array.isArray(multimodalIndex.entries)).toBe(true)
+    expect(multimodalIndex.entries.some((entry) => entry.kind === "frame_semantic")).toBe(true)
+    expect(multimodalManifest.mode).toBe("multimodal")
+    expect(multimodalManifest.artifact_paths).toContain("D/vqa-prewarm/index.json")
+    expect(multimodalManifest.artifact_paths).toContain("D/vqa-prewarm/frame-semantic/index.json")
+    expect(frameManifest.task_id).toBe("task-vqa-rerun")
+    expect(frameManifest.frame_count).toBeGreaterThan(0)
+    expect(frameManifest.frames[0]?.path).toMatch(/^frames\//)
+    expect(frameSemanticIndex.task_id).toBe("task-vqa-rerun")
+    expect(frameSemanticIndex.item_count).toBeGreaterThan(0)
+    expect(frameSemanticIndex.items[0]?.image_path).toMatch(/^frames\//)
+    expect(frameSemanticIndex.items[0]?.visual_text).toBeTruthy()
+    const sourceSet = new Set(
+      (prewarmIndex.items || []).flatMap((item) => {
+        const set = Array.isArray(item.source_set) ? item.source_set : []
+        if (set.length > 0) {
+          return set
+        }
+        return item.source ? [item.source] : []
+      }),
+    )
+    expect(sourceSet.has("transcript")).toBe(true)
+    expect(sourceSet.has("frame_semantic")).toBe(true)
 
     const detail = await waitForTaskStatus(app, "task-vqa-rerun", "completed")
     expect(detail.steps.map((step) => step.id)).toEqual(["extract", "transcribe", "correct", "ready"])
+    expect(detail.stage_metrics.D).toMatchObject({
+      substage_metrics: {
+        multimodal_prewarm: {
+          status: "completed",
+        },
+      },
+    })
+    expect(detail.vm_phase_metrics.multimodal_prewarm).toMatchObject({
+      status: "completed",
+    })
   }, 20_000)
 
   it("cancels an active task before fallback failure completes", async () => {

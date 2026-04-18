@@ -21,20 +21,25 @@ describe("AsrService", () => {
     }
   })
 
-  it("normalizes local whisper srt output via runner and segment parser", async () => {
+  it("normalizes local faster-whisper segments via runner output", async () => {
     const modelDir = path.join(storageDir, "models", "whisper")
-    const executablePath = path.join(storageDir, "bin", "whisper-cli.exe")
     await mkdir(modelDir, { recursive: true })
-    await mkdir(path.dirname(executablePath), { recursive: true })
-    await writeFile(path.join(modelDir, "ggml-small.bin"), "fixture-model", "utf8")
-    await writeFile(executablePath, "fixture-executable", "utf8")
+    await writeFile(path.join(modelDir, "config.json"), "{\"model_type\":\"whisper\"}\n", "utf8")
+    await writeFile(path.join(modelDir, "model.bin"), "fixture-model", "utf8")
 
-    const runnerCalls: Array<{ executablePath: string; modelPath: string }> = []
+    const runnerCalls: Array<{
+      audioPath: string
+      beamSize: number
+      computeType: string
+      device: string
+      language: string
+      modelPath: string
+      vadFilter: boolean
+    }> = []
     const service = new AsrService(
       {
         storageDir,
         tempDir: path.join(storageDir, "tmp"),
-        whisperExecutable: executablePath,
       } as never,
       {
         async listModels() {
@@ -56,8 +61,13 @@ describe("AsrService", () => {
       {
         async get() {
           return {
+            beam_size: 5,
+            chunk_seconds: 30,
+            compute_type: "float16",
+            device: "cuda",
             language: "zh",
             model_default: "small",
+            vad_filter: true,
           }
         },
       } as never,
@@ -69,27 +79,21 @@ describe("AsrService", () => {
       {
         async run(input: {
           audioPath: string
-          executablePath: string
+          beamSize: number
+          computeType: string
+          device: string
           language: string
           modelPath: string
-          outputDir: string
+          vadFilter: boolean
           signal?: AbortSignal
         }) {
-          runnerCalls.push({
-            executablePath: input.executablePath,
-            modelPath: input.modelPath,
-          })
+          runnerCalls.push(input)
           return {
-            rawSrt: [
-              "1",
-              "00:00:00,000 --> 00:00:02,400",
-              "第一 段  , 测试  文本",
-              "",
-              "2",
-              "00:00:02,400 --> 00:00:05,000",
-              "第二段!需要  规范化",
-              "",
-            ].join("\n"),
+            language: "zh",
+            segments: [
+              { start: 0, end: 2.4, text: "第一 段  , 测试  文本" },
+              { start: 2.4, end: 5, text: "第二段!需要  规范化" },
+            ],
           }
         },
       } as never,
@@ -101,6 +105,14 @@ describe("AsrService", () => {
     })
 
     expect(runnerCalls).toHaveLength(1)
+    expect(runnerCalls[0]).toMatchObject({
+      beamSize: 5,
+      computeType: "float16",
+      device: "cuda",
+      language: "zh",
+      modelPath: modelDir,
+      vadFilter: true,
+    })
     expect(result.language).toBe("zh")
     expect(result.segments).toEqual([
       { start: 0, end: 2.4, text: "第一 段, 测试 文本" },
@@ -109,26 +121,21 @@ describe("AsrService", () => {
     expect(result.text).toBe("第一 段, 测试 文本\n第二段! 需要 规范化")
   })
 
-  it("streams chunked local whisper segments with absolute timestamps", async () => {
+  it("streams local faster-whisper segments from a single full-audio pass", async () => {
     const modelDir = path.join(storageDir, "models", "whisper")
-    const executablePath = path.join(storageDir, "bin", "whisper-cli.exe")
     await mkdir(modelDir, { recursive: true })
-    await mkdir(path.dirname(executablePath), { recursive: true })
-    await writeFile(path.join(modelDir, "ggml-small.bin"), "fixture-model", "utf8")
-    await writeFile(executablePath, "fixture-executable", "utf8")
+    await writeFile(path.join(modelDir, "config.json"), "{\"model_type\":\"whisper\"}\n", "utf8")
+    await writeFile(path.join(modelDir, "model.bin"), "fixture-model", "utf8")
 
     const streamedSegments: TranscriptSegment[] = []
-    const chunkLogs: string[] = []
+    const streamLogs: string[] = []
     const runnerAudioPaths: string[] = []
-    const chunkAudioDir = path.join(storageDir, "tmp", "task-asr-chunked", "chunks")
-    const firstChunkPath = path.join(chunkAudioDir, "chunk-001.wav")
-    const secondChunkPath = path.join(chunkAudioDir, "chunk-002.wav")
+    const sourceAudioPath = path.join(storageDir, "fixture-full.wav")
 
     const service = new AsrService(
       {
         storageDir,
         tempDir: path.join(storageDir, "tmp"),
-        whisperExecutable: executablePath,
       } as never,
       {
         async listModels() {
@@ -150,9 +157,13 @@ describe("AsrService", () => {
       {
         async get() {
           return {
+            beam_size: 3,
+            compute_type: "int8_float16",
+            device: "cuda",
             language: "zh",
             model_default: "small",
             chunk_seconds: 180,
+            vad_filter: false,
           }
         },
       } as never,
@@ -164,94 +175,67 @@ describe("AsrService", () => {
       {
         async run(input: {
           audioPath: string
-          executablePath: string
+          beamSize: number
+          computeType: string
+          device: string
           language: string
           modelPath: string
-          outputDir: string
+          onSegment?: (segment: TranscriptSegment) => Promise<void> | void
+          vadFilter: boolean
           signal?: AbortSignal
         }) {
           runnerAudioPaths.push(input.audioPath)
-          if (input.audioPath === firstChunkPath) {
-            return {
-              rawSrt: [
-                "1",
-                "00:00:00,000 --> 00:00:01,500",
-                "第一段  分块",
-                "",
-              ].join("\n"),
-            }
-          }
+          expect(input.beamSize).toBe(3)
+          expect(input.computeType).toBe("int8_float16")
+          expect(input.device).toBe("cuda")
+          expect(input.modelPath).toBe(modelDir)
+          expect(input.vadFilter).toBe(true)
+          await input.onSegment?.({ start: 0, end: 1.5, text: "第一段  流式" })
+          await input.onSegment?.({ start: 30.3, end: 32, text: "第二段  流式" })
           return {
-            rawSrt: [
-              "1",
-              "00:00:00,300 --> 00:00:02,000",
-              "第二段  分块",
-              "",
-            ].join("\n"),
+            language: "zh",
+            segments: [
+              { start: 0, end: 1.5, text: "第一段  流式" },
+              { start: 30.3, end: 32, text: "第二段  流式" },
+            ],
           }
-        },
-      } as never,
-      {
-        async split() {
-          return [
-            {
-              audioPath: firstChunkPath,
-              durationSeconds: 180,
-              index: 0,
-              startSeconds: 0,
-            },
-            {
-              audioPath: secondChunkPath,
-              durationSeconds: 120,
-              index: 1,
-              startSeconds: 180,
-            },
-          ]
         },
       } as never,
     )
 
     const result = await service.transcribe({
       taskId: "task-asr-chunked",
-      audioPath: path.join(storageDir, "fixture.wav"),
+      audioPath: sourceAudioPath,
       onLog: async (message) => {
-        chunkLogs.push(message)
+        streamLogs.push(message)
       },
       onSegment: async (segment) => {
         streamedSegments.push(segment)
       },
     })
 
-    expect(runnerAudioPaths).toEqual([firstChunkPath, secondChunkPath])
-    expect(chunkLogs).toEqual([
-      "Splitting audio into chunks ...",
-      "Chunk 1/2: chunk-001.wav, start 0.000s, duration 180.000s",
-      "Chunk 2/2: chunk-002.wav, start 180.000s, duration 120.000s",
-      "Transcribing chunk 1/2: chunk-001.wav",
-      "Chunk 1/2 transcription completed",
-      "Transcribing chunk 2/2: chunk-002.wav",
-      "Chunk 2/2 transcription completed",
+    expect(runnerAudioPaths).toEqual([sourceAudioPath])
+    expect(streamLogs).toEqual([
+      "Streaming transcription started",
+      "Streaming transcription completed",
     ])
     expect(streamedSegments).toEqual([
-      { start: 0, end: 1.5, text: "第一段 分块" },
-      { start: 180.3, end: 182, text: "第二段 分块" },
+      { start: 0, end: 1.5, text: "第一段 流式" },
+      { start: 30.3, end: 32, text: "第二段 流式" },
     ])
     expect(result.chunks).toEqual([
       {
         index: 0,
         startSeconds: 0,
-        durationSeconds: 180,
-        segments: [{ start: 0, end: 1.5, text: "第一段 分块" }],
-      },
-      {
-        index: 1,
-        startSeconds: 180,
-        durationSeconds: 120,
-        segments: [{ start: 180.3, end: 182, text: "第二段 分块" }],
+        durationSeconds: 32,
+        segments: [
+          { start: 0, end: 1.5, text: "第一段 流式" },
+          { start: 30.3, end: 32, text: "第二段 流式" },
+        ],
       },
     ])
     expect(result.segments).toEqual(streamedSegments)
-    expect(result.text).toBe("第一段 分块\n第二段 分块")
+    expect(result.text).toBe("第一段 流式\n第二段 流式")
   })
 
   it("rejects remote transcription payloads with invalid timestamps", async () => {
@@ -259,7 +243,6 @@ describe("AsrService", () => {
       {
         storageDir,
         tempDir: path.join(storageDir, "tmp"),
-        whisperExecutable: "whisper-cli.exe",
       } as never,
       {
         async listModels() {
@@ -321,7 +304,6 @@ describe("AsrService", () => {
       {
         storageDir,
         tempDir: path.join(storageDir, "tmp"),
-        whisperExecutable: "whisper-cli.exe",
       } as never,
       {
         async listModels() {
@@ -377,7 +359,6 @@ describe("AsrService", () => {
       {
         storageDir,
         tempDir: path.join(storageDir, "tmp"),
-        whisperExecutable: "whisper-cli.exe",
       } as never,
       {
         async listModels() {

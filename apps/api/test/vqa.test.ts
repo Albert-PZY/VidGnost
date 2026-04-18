@@ -19,6 +19,7 @@ describe("vqa routes", () => {
     await seedVqaFixture(storageDir)
     app = await buildApp({
       apiPrefix: "/api",
+      llmBaseUrl: "http://127.0.0.1:9/v1",
       storageDir,
     })
     baseUrl = await app.listen({
@@ -47,12 +48,14 @@ describe("vqa routes", () => {
 
     expect(searchResponse.statusCode).toBe(200)
     const searchPayload = searchResponse.json<{
-      hits: Array<{ task_id: string; text: string }>
+      hits: Array<{ task_id: string; text: string; source_set?: string[] }>
       trace_id: string
     }>()
     expect(searchPayload.trace_id).toBeTruthy()
     expect(searchPayload.hits[0]?.task_id).toBe("task-vqa-1")
     expect(searchPayload.hits.length).toBeGreaterThan(0)
+    expect(Array.isArray(searchPayload.hits[0]?.source_set)).toBe(true)
+    expect(searchPayload.hits[0]?.source_set?.length || 0).toBeGreaterThan(0)
     expect("dense_hits" in (searchPayload as Record<string, unknown>)).toBe(false)
     expect("rerank_hits" in (searchPayload as Record<string, unknown>)).toBe(false)
 
@@ -92,6 +95,7 @@ describe("vqa routes", () => {
     expect(tracePayload.trace_id).toBe(streamTraceId)
     expect(tracePayload.records.some((item) => item.stage === "trace_started")).toBe(true)
     expect(tracePayload.records.some((item) => item.stage === "retrieval")).toBe(true)
+    expect(tracePayload.records.some((item) => item.stage === "llm_request")).toBe(true)
     expect(tracePayload.records.some((item) => item.stage === "trace_finished")).toBe(true)
 
     const traceStarted = tracePayload.records.find((item) => item.stage === "trace_started")
@@ -105,6 +109,11 @@ describe("vqa routes", () => {
     expect("sparse_hits" in retrievalPayload).toBe(false)
     expect("rrf_hits" in retrievalPayload).toBe(false)
     expect("rerank_hits" in retrievalPayload).toBe(false)
+    const llmRequestRecord = tracePayload.records.find((item) => item.stage === "llm_request")
+    const llmRequestPayload = (llmRequestRecord?.payload || {}) as Record<string, unknown>
+    expect(typeof llmRequestPayload.status).toBe("string")
+    expect(typeof llmRequestPayload.prompt_preview).toBe("string")
+    expect(Number(llmRequestPayload.hit_count || 0)).toBeGreaterThan(0)
 
     const prewarmIndexPath = path.join(
       storageDir,
@@ -115,20 +124,129 @@ describe("vqa routes", () => {
       "vqa-prewarm",
       "index.json",
     )
+    const multimodalIndexPath = path.join(
+      storageDir,
+      "tasks",
+      "stage-artifacts",
+      "task-vqa-1",
+      "D",
+      "vqa-prewarm",
+      "multimodal",
+      "index.json",
+    )
+    const frameSemanticIndexPath = path.join(
+      storageDir,
+      "tasks",
+      "stage-artifacts",
+      "task-vqa-1",
+      "D",
+      "vqa-prewarm",
+      "frame-semantic",
+      "index.json",
+    )
     const prewarmIndex = JSON.parse(await readFile(prewarmIndexPath, "utf8")) as {
       retrieval_mode: string
       item_count: number
+      items?: Array<{ source?: string; source_set?: string[]; image_path?: string; visual_text?: string }>
+    }
+    const multimodalIndex = JSON.parse(await readFile(multimodalIndexPath, "utf8")) as {
+      mode: string
+      task_id: string
+      entries: Array<{ artifact_path?: string; kind?: string; modality?: string }>
+    }
+    const frameSemanticIndex = JSON.parse(await readFile(frameSemanticIndexPath, "utf8")) as {
+      task_id: string
+      item_count: number
+      items: Array<{ image_path?: string; visual_text?: string }>
     }
     expect(prewarmIndex.retrieval_mode).toBe("vector-index")
     expect(prewarmIndex.item_count).toBeGreaterThan(0)
+    expect(multimodalIndex.task_id).toBe("task-vqa-1")
+    expect(multimodalIndex.mode).toBe("multimodal")
+    expect(Array.isArray(multimodalIndex.entries)).toBe(true)
+    expect(multimodalIndex.entries.some((entry) => entry.kind === "frame_semantic")).toBe(true)
+    expect(frameSemanticIndex.task_id).toBe("task-vqa-1")
+    expect(frameSemanticIndex.item_count).toBeGreaterThan(0)
+    expect(frameSemanticIndex.items[0]?.image_path).toMatch(/^frames\//)
+    expect(frameSemanticIndex.items[0]?.visual_text).toBeTruthy()
+    const sourceSet = new Set(
+      (prewarmIndex.items || []).flatMap((item) => {
+        const set = Array.isArray(item.source_set) ? item.source_set : []
+        if (set.length > 0) {
+          return set
+        }
+        return item.source ? [item.source] : []
+      }),
+    )
+    expect(sourceSet.has("transcript")).toBe(true)
+    expect(sourceSet.has("frame_semantic")).toBe(true)
+    expect((prewarmIndex.items || []).some((item) => item.image_path && item.visual_text)).toBe(true)
   })
+
+  it("exposes video frame service and keeps frame manifest fixture readable", async () => {
+    const appWithVideoFrameService = app as FastifyInstance & {
+      videoFrameService?: unknown
+    }
+    expect(appWithVideoFrameService.videoFrameService).toBeTruthy()
+
+    const frameManifestPath = path.join(
+      storageDir,
+      "tasks",
+      "stage-artifacts",
+      "task-vqa-1",
+      "D",
+      "vqa-prewarm",
+      "frames",
+      "manifest.json",
+    )
+    const frameManifest = JSON.parse(await readFile(frameManifestPath, "utf8")) as {
+      task_id: string
+      interval_seconds: number
+      frames: Array<{
+        frame_index: number
+        path: string
+      }>
+    }
+    expect(frameManifest.task_id).toBe("task-vqa-1")
+    expect(frameManifest.interval_seconds).toBeGreaterThan(0)
+    expect(frameManifest.frames.length).toBeGreaterThan(0)
+    expect(frameManifest.frames[0]?.path).toMatch(/^frames\//)
+
+    const firstFramePath = path.join(
+      storageDir,
+      "tasks",
+      "stage-artifacts",
+      "task-vqa-1",
+      "D",
+      "vqa-prewarm",
+      frameManifest.frames[0]?.path || "",
+    )
+    const firstFrame = await readFile(firstFramePath, "utf8")
+    expect(firstFrame.length).toBeGreaterThan(0)
+  })
+})
+
+describe("vlm runtime stubs", () => {
+  it.todo("calls openai-compatible image chat/completions for single-frame description")
+  it.todo("calls openai-compatible image chat/completions for batch-frame description")
+  it.todo("keeps compatibility with ollama openai-compatible vision model endpoint")
 })
 
 async function seedVqaFixture(storageDir: string): Promise<void> {
   const recordsDir = path.join(storageDir, "tasks", "records")
   const uploadsDir = path.join(storageDir, "uploads")
+  const frameDir = path.join(
+    storageDir,
+    "tasks",
+    "stage-artifacts",
+    "task-vqa-1",
+    "D",
+    "vqa-prewarm",
+    "frames",
+  )
   await mkdir(recordsDir, { recursive: true })
   await mkdir(uploadsDir, { recursive: true })
+  await mkdir(frameDir, { recursive: true })
 
   const sourcePath = path.join(uploadsDir, "task-vqa-1_fixture.mp4")
   await writeFile(sourcePath, Buffer.from("fixture-video"), "utf8")
@@ -177,4 +295,21 @@ async function seedVqaFixture(storageDir: string): Promise<void> {
   }
 
   await writeFile(path.join(recordsDir, "task-vqa-1.json"), `${JSON.stringify(record)}\n`, "utf8")
+
+  const frameManifest = {
+    task_id: "task-vqa-1",
+    source_video_path: sourcePath,
+    interval_seconds: 2,
+    frame_count: 1,
+    created_at: "2026-04-15T08:00:00.000Z",
+    frames: [
+      {
+        frame_index: 0,
+        timestamp_seconds: 0,
+        path: "frames/frame-000001.jpg",
+      },
+    ],
+  }
+  await writeFile(path.join(frameDir, "manifest.json"), `${JSON.stringify(frameManifest, null, 2)}\n`, "utf8")
+  await writeFile(path.join(frameDir, "frame-000001.jpg"), "fixture-frame", "utf8")
 }

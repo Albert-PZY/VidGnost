@@ -5,6 +5,8 @@ export interface RerankCandidate {
   terms?: string[]
   lexical_score?: number
   vector_score: number
+  source?: string
+  source_set?: string[]
 }
 
 export class RerankRuntimeService {
@@ -21,10 +23,11 @@ export class RerankRuntimeService {
         const lexicalScore = Number.isFinite(candidate.lexical_score)
           ? roundScore(candidate.lexical_score || 0)
           : scoreLexicalMatch(queryTokens, normalizedQuery, candidate.terms ?? tokenizeText(candidate.text), candidate.text)
+        const sourceWeight = resolveSourceWeight(candidate.source, candidate.source_set)
         return {
           ...candidate,
           lexical_score: lexicalScore,
-          rerank_score: roundScore((candidate.vector_score * 0.6) + (Math.min(1.5, lexicalScore) * 0.4)),
+          rerank_score: roundScore(((candidate.vector_score * 0.6) + (Math.min(1.5, lexicalScore) * 0.4)) * sourceWeight),
         }
       })
       .sort((left, right) => {
@@ -68,4 +71,16 @@ export function scoreLexicalMatch(
 
 function roundScore(value: number): number {
   return Math.round(Math.max(0, value) * 1000) / 1000
+}
+
+function resolveSourceWeight(source?: string, sourceSet?: string[]): number {
+  const normalizedSource = String(source || "").trim()
+  const normalizedSet = Array.isArray(sourceSet) ? sourceSet.map((item) => String(item || "").trim()) : []
+  if (normalizedSource === "frame_semantic" || normalizedSet.includes("frame_semantic")) {
+    return 0.98
+  }
+  if (normalizedSource === "transcript" || normalizedSet.includes("transcript")) {
+    return 1
+  }
+  return 0.99
 }

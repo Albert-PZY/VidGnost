@@ -1,6 +1,6 @@
 # VidGnost 当前完整技术栈
 
-更新时间：2026-04-16
+更新时间：2026-04-18
 
 ## 1. 架构边界
 
@@ -11,7 +11,7 @@
 - 共享常量：`packages/shared`
 - 通信方式：HTTP JSON + SSE
 - 运行时持久化：仓库根目录 `storage/`
-- 后端形态：纯 TS 全栈，不再依赖 Python 后端或 Python sidecar
+- 后端形态：主服务保持 `Fastify + TypeScript`，本地 ASR 通过隔离 Python worker 调用 `faster-whisper`
 
 ## 2. 前端技术栈
 
@@ -79,11 +79,12 @@
 
 ### 4.2 ASR
 
-- 本地：`whisper.cpp` CLI
+- 本地：`Python 3.10+`、`uv`、`faster-whisper`、`CTranslate2`
 - 远程：OpenAI-compatible ASR API
 - 当前实现边界：
-  - 本地路径要求用户提前准备 `whisper-cli` 和 `ggml` 模型文件
-  - 当前 TS 运行时不内置 Whisper 模型自动下载
+  - 本地路径要求用户提前准备 `faster-whisper` Python 运行时与 `CTranslate2` 模型目录
+  - 当前 TS 运行时不内置 Whisper 模型自动下载或依赖安装
+  - GPU 运行时优先复用现有 CUDA/cuDNN 动态库路径，例如 Ollama 安装目录下的运行库
   - 输出统一标准化为 `text + segments`
 
 ### 4.3 LLM / 检索 / 问答
@@ -91,10 +92,12 @@
 - LLM：Ollama / OpenAI-compatible API
 - Embedding：Ollama / OpenAI-compatible API
 - Rerank：Ollama / OpenAI-compatible API
+- VLM：Ollama / OpenAI-compatible API（`vlm-default`）
 - 当前实现边界：
   - LLM 自检会真实探测远端 `/models`
-  - VQA 统一使用 transcript-only `vector-index` 单路线检索
-  - 默认检索链路为向量召回 + rerank，不再保留额外模型分支或启发式双路线
+  - VQA 检索链路目标为“文本证据 + 图像证据”统一融合召回与重排
+  - 当前仍处于迁移期：允许读取旧版 `multimodal_prewarm` / transcript-only 产物并做兼容映射
+  - 默认检索链路为向量召回 + rerank，前端与 contracts 已预留 `citation_type` / `image_evidence` 字段
 
 ### 4.4 模型管理边界
 
@@ -138,6 +141,8 @@
   - `fallback_reason`
 - VQA 预热产物：
   - `D/vqa-prewarm/index.json`
+  - `D/vqa-prewarm/frame-semantic/index.json`（目标态，迁移中）
+  - `D/vqa-prewarm/frames/manifest.json`（目标态，迁移中）
 
 ## 7. 测试与质量保障
 

@@ -26,6 +26,8 @@ describe("ollama model detection and llm sync", () => {
           models: [
             { name: "qwen2.5:3b" },
             { name: "qwen2.5:7b" },
+            { name: "qwen2.5vl:3b" },
+            { name: "granite3.2-vision:2b" },
             { name: "bge-m3:latest" },
             { name: "sam860/qwen3-reranker:0.6b-q8_0" },
           ],
@@ -39,6 +41,8 @@ describe("ollama model detection and llm sync", () => {
           data: [
             { id: "qwen2.5:3b" },
             { id: "qwen2.5:7b" },
+            { id: "qwen2.5vl:3b" },
+            { id: "granite3.2-vision:2b" },
           ],
         }))
         return
@@ -92,6 +96,14 @@ describe("ollama model detection and llm sync", () => {
     })
     expect(payload.items.find((item) => item.id === "rerank-default")).toMatchObject({
       provider: "ollama",
+      status: "ready",
+      is_installed: true,
+    })
+    expect(payload.items.find((item) => item.id === "vlm-default")).toMatchObject({
+      provider: "ollama",
+      model_id: "qwen2.5vl:3b",
+      api_base_url: `${ollamaBaseUrl}/v1`,
+      api_model: "qwen2.5vl:3b",
       status: "ready",
       is_installed: true,
     })

@@ -31,11 +31,12 @@ VidGnost is a local-first Electron workbench for video analysis. The repository 
 - `apps/api` provides the Fastify API, task orchestration, config center, event streaming, diagnostics, and exports
 - `packages/contracts` provides shared schemas across frontend and backend
 - runtime data is persisted under the repository-root `storage/`
+- the TS backend remains the main service path while local ASR runs through the isolated `apps/api/python` `faster-whisper` worker
 
 Current capabilities include:
 
 - creating tasks from Bilibili URLs, local filesystem paths, or uploads
-- running transcription through local `whisper.cpp` CLI or a compatible ASR API
+- running transcription through a local `faster-whisper` Python worker or a compatible ASR API
 - generating notes and mindmaps through Ollama or OpenAI-compatible APIs
 - searching evidence and running QA against processed task artifacts
 - streaming task state, diagnostics, and chat events over SSE
@@ -43,7 +44,7 @@ Current capabilities include:
 
 Current implementation boundaries:
 
-- the local Whisper route requires an existing `whisper-cli` binary and local `ggml` model files; the TS runtime does not ship managed auto-download
+- the local Whisper route requires an existing `faster-whisper` Python runtime and local `CTranslate2` model directory; the TS runtime does not ship managed model download or dependency installation
 - Ollama is currently managed as configuration plus reachability probing, not as a self-managed pull / restart / file-migration runtime
 - VQA now uses a single transcript-only `vector-index` retrieval path with vector recall plus rerank for final evidence selection
 
@@ -69,7 +70,7 @@ Task execution stays organized as `A -> B -> C -> D`:
 
 | Component | Default path | Notes |
 | --- | --- | --- |
-| Whisper | local `whisper.cpp` CLI / compatible ASR API | local route requires manually prepared CLI and `ggml` model files |
+| Whisper | local `faster-whisper` Python worker / compatible ASR API | local route requires a manually prepared Python runtime and `CTranslate2` model directory |
 | LLM | Ollama or remote OpenAI-compatible API | used for correction, notes, mindmap, and chat |
 | Embedding | Ollama or remote API | used for transcript-only retrieval vectorization |
 | Rerank | Ollama or remote API | used for ranking fused retrieval results |
@@ -80,6 +81,7 @@ Task execution stays organized as `A -> B -> C -> D`:
 VidGnost/
 ├─ apps/
 │  ├─ api/                       # Fastify + TypeScript backend
+│  │  ├─ python/                 # isolated faster-whisper Python worker
 │  │  ├─ src/                    # backend source
 │  │  └─ test/                   # backend tests
 │  └─ desktop/                   # Electron desktop app
@@ -109,6 +111,9 @@ VidGnost/
 - Node.js `18+`
 - Corepack enabled
 - `pnpm`
+- if the local Whisper route is enabled:
+  - Python `3.10` - `3.13`
+  - `uv` for the isolated `apps/api/python` dependency environment
 - available executables in `PATH`:
   - `ffmpeg`
   - `ffprobe`

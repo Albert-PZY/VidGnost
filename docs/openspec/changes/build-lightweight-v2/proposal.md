@@ -7,7 +7,7 @@ VidGnost defines a practical video-analysis workbench for local execution plus o
 - Build a decoupled architecture with `Fastify + React`.
 - Support three ingestion paths: Bilibili URL, local path, and file upload.
 - Implement asynchronous `A/B/C/D` runtime phases with explicit phase boundaries.
-- Use local `whisper.cpp`-compatible transcription through an isolated worker process, with persisted runtime preferences controlling CPU/GPU execution and requiring pre-prepared `whisper-cli` plus local ggml model files.
+- Use local `faster-whisper` transcription through an isolated Python worker process, with persisted runtime preferences controlling CPU/GPU execution and requiring a prepared Python runtime plus local CTranslate2 model directory.
 - Surface Whisper runtime readiness from configured paths and runtime checks instead of hosting model auto-download or realtime download progress.
 - Run stage-`D` as ordered subchain: `transcript_optimize -> fusion_delivery`.
 - Generate notes and mindmap through OpenAI-compatible online API.

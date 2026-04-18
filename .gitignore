@@ -17,6 +17,7 @@ npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.playwright-mcp/
 
 # Environment and secrets
 .env
@@ -50,6 +51,9 @@ temp/
 # Local docs artifacts
 docs/.codex/
 docs/*.mp4
+apps/api/python/.venv/
+apps/api/python/__pycache__/
+apps/api/python/*.pyc
 
 # Ignore agent index from version control
 

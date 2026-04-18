@@ -67,6 +67,7 @@ When a task uses workflow `vqa`, phase `D` SHALL prepare the first-question retr
 - **WHEN** a `vqa` task finishes phase `D`
 - **THEN** backend persists a task-local retrieval artifact under `D/vqa-prewarm/index.json`
 - **AND** target chain also persists frame extraction and frame-semantic artifacts such as `D/vqa-prewarm/frames/manifest.json` and `D/vqa-prewarm/frame-semantic/index.json`
+- **AND** if frame extraction only yields fallback placeholder frames or a frame cannot be sent to VLM successfully, backend still writes template frame-semantic evidence and continues the prewarm flow instead of blocking phase `D` on VLM inference
 - **AND** task event stream exposes granular multimodal prewarm substages before `fusion_delivery` marks the final delivery step
 - **AND** current migration period MAY still reuse transcript-only prewarm artifacts when multimodal artifacts are absent
 - **AND** frontend and contracts MUST continue to accept both the new multimodal artifact keys and legacy `multimodal_prewarm` compatibility outputs
@@ -74,13 +75,13 @@ When a task uses workflow `vqa`, phase `D` SHALL prepare the first-question retr
 ### Requirement: Phase C SHALL support the current TS-native ASR routes
 Status: `implemented`
 
-Phase `C` SHALL support a local `whisper.cpp` CLI route and a remote OpenAI-compatible ASR route under the same normalized transcript contract.
+Phase `C` SHALL support a local `faster-whisper` Python worker route and a remote OpenAI-compatible ASR route under the same normalized transcript contract.
 
-#### Scenario: Run local whisper.cpp transcription
+#### Scenario: Run local faster-whisper transcription
 - **WHEN** `whisper-default` uses the local provider
-- **THEN** backend resolves an existing `whisper-cli` executable and an existing local `ggml` model file
-- **AND** backend invokes the CLI to produce SRT output
-- **AND** backend normalizes the SRT into stable `segments[]` plus `text`
+- **THEN** backend resolves an existing Python executable and an existing local `CTranslate2` model directory
+- **AND** backend invokes the isolated `faster-whisper` worker to produce normalized transcript segments
+- **AND** backend normalizes the returned `segments[]` plus `text` into the shared transcript contract
 
 #### Scenario: Run remote OpenAI-compatible transcription
 - **WHEN** `whisper-default` uses the remote OpenAI-compatible provider
@@ -92,18 +93,16 @@ Phase `C` SHALL support a local `whisper.cpp` CLI route and a remote OpenAI-comp
 - **THEN** backend submits the audio file to `/audio/transcriptions`
 - **AND** backend normalizes the returned segments and transcript text into the same task artifact shape as the local route
 
-#### Scenario: Stream chunked transcript segments during phase C
-- **WHEN** phase `C` starts and the prepared audio duration exceeds the configured `chunk_seconds`
-- **THEN** backend splits the normalized WAV into sequential time windows
-- **AND** each chunk is transcribed independently through the selected local or remote ASR route
-- **AND** for the current local `whisper.cpp` CLI route, backend emits a fast-start first chunk before regular live chunks and caps the regular live chunk window at `30s` to reduce first-segment delay on long audio
-- **AND** backend offsets every chunk-local timestamp back into absolute task time before publishing or persisting the segment
-- **AND** SSE emits an initial `transcript_delta` reset event followed by ordered `transcript_delta` segment events while phase `C` is still running
+#### Scenario: Stream segment transcript events during phase C
+- **WHEN** phase `C` starts
+- **THEN** backend emits an initial `transcript_delta` reset event followed by ordered `transcript_delta` segment events while phase `C` is still running
+- **AND** for the current local `faster-whisper` route, backend submits the full extracted WAV once to a persistent Python worker instead of splitting temporary per-chunk WAV files in Node.js
+- **AND** backend publishes segment timestamps directly in absolute task time and advances phase-`C` progress from streamed segment end timestamps instead of chunk completion counts
 
 #### Scenario: Local runtime prerequisites are missing
-- **WHEN** local `whisper-cli` or the configured `ggml` model file cannot be found
+- **WHEN** local Python runtime or the configured `CTranslate2` model directory cannot be found
 - **THEN** backend returns an actionable conflict error
-- **AND** current TS runtime does not auto-download the missing executable or model file
+- **AND** current TS runtime does not auto-download the missing model or install the missing Python dependency stack
 
 #### Scenario: Remote ASR returns invalid timestamps
 - **WHEN** the remote ASR provider returns segments with invalid timestamp ordering or missing numeric bounds
@@ -122,12 +121,12 @@ After phase `C` finishes, backend SHALL persist the normalized transcript into b
 - **WHEN** phase `C` completes successfully
 - **THEN** backend writes `C/transcript.txt` and `C/transcript.segments.json`
 - **AND** backend updates task record `transcript_text` and `transcript_segments_json`
-- **AND** backend writes `C/transcript/index.json` plus chunk-level segment artifacts under `C/transcript/chunks/*.json` for later raw-transcript inspection
+- **AND** backend writes `C/transcript/index.json` plus a single synthetic transcript artifact under `C/transcript/chunks/chunk-001.json` that mirrors the full normalized segment stream for later raw-transcript inspection
 
 #### Scenario: Rerun or resume after phase C already completed
 - **WHEN** a task resumes after transcript artifacts are already persisted and phase `D` still needs work
 - **THEN** backend MAY reuse the persisted transcript state instead of re-running transcription
-- **AND** current implementation still does not persist mid-transcription checkpoints for resuming from a partially completed chunk
+- **AND** current implementation still does not persist mid-transcription checkpoints for resuming from a partially streamed local worker request
 
 ### Requirement: Task deletion SHALL stop active transcription and purge task-owned runtime artifacts
 Status: `implemented`
@@ -140,7 +139,7 @@ Deleting a task SHALL cancel any active execution first and then remove transcri
 - **AND** backend removes the task event log, stage metrics, runtime warnings, analysis snapshots, and stage-artifact directories owned by that task
 - **AND** backend removes task-scoped VQA trace logs under `event_log_dir/traces/*.jsonl` when the trace payload references the deleted `task_id`
 
-### Requirement: Whisper runtime config SHALL persist compatibility fields without overstating current local CLI behavior
+### Requirement: Whisper runtime config SHALL persist compatibility fields without overstating current local worker behavior
 Status: `partial`
 
 The whisper config API SHALL persist `model_default`、`language`、`device`、`compute_type`、`beam_size`、`vad_filter`、`chunk_seconds` and related compatibility fields for runtime continuity.
@@ -153,10 +152,11 @@ The whisper config API SHALL persist `model_default`、`language`、`device`、`
 - **WHEN** `storage/config.toml` is absent
 - **THEN** backend returns normalized defaults including `chunk_seconds=30`
 
-#### Scenario: Execute current local whisper.cpp route
-- **WHEN** the current local `whisper.cpp` CLI path runs
-- **THEN** backend uses the persisted `language` and `model_default`
-- **AND** `device`、`compute_type`、`beam_size`、`vad_filter`、`chunk_seconds` remain persisted compatibility fields instead of a fully managed local execution contract
+#### Scenario: Execute current local faster-whisper route
+- **WHEN** the current local `faster-whisper` worker path runs
+- **THEN** backend uses the persisted `language`、`model_default`、`device`、`compute_type`、and `beam_size`
+- **AND** backend keeps `vad_filter` enabled for the local worker by default
+- **AND** `chunk_seconds` remains a persisted compatibility field and no longer drives Node-side temporary WAV chunking
 
 ### Requirement: Local and downloaded task records SHALL retain previewable source paths
 Status: `implemented`

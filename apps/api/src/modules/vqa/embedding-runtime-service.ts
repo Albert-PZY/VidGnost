@@ -3,6 +3,15 @@ const DEFAULT_DIMENSIONS = 48
 export class EmbeddingRuntimeService {
   embedText(text: string, dimensions = DEFAULT_DIMENSIONS): number[] {
     const tokens = tokenizeText(text)
+    return this.embedTokens(tokens, dimensions)
+  }
+
+  embedImageSemantic(text: string, dimensions = DEFAULT_DIMENSIONS): number[] {
+    const tokens = tokenizeImageSemanticText(text)
+    return this.embedTokens(tokens, dimensions)
+  }
+
+  private embedTokens(tokens: string[], dimensions: number): number[] {
     const vector = new Array<number>(dimensions).fill(0)
     if (tokens.length === 0) {
       return vector
@@ -37,6 +46,17 @@ export function tokenizeText(text: string): string[] {
   const cjkUnigrams = cjkText ? [...cjkText] : []
   const cjkBigrams = buildCharacterNgrams(cjkText, 2)
   return [...new Set([...latinTokens, ...cjkUnigrams, ...cjkBigrams])]
+}
+
+export function tokenizeImageSemanticText(text: string): string[] {
+  const normalized = String(text || "").toLowerCase()
+  const tokens = tokenizeText(normalized)
+  const visualHints = ["画面", "镜头", "场景", "图像", "帧", "人物", "动作", "表情", "字幕", "演示", "界面", "流程"]
+  const hasVisualHint = visualHints.some((item) => normalized.includes(item))
+  if (hasVisualHint) {
+    return [...new Set([...tokens, ...visualHints.filter((item) => normalized.includes(item))])]
+  }
+  return tokens
 }
 
 function buildCharacterNgrams(text: string, size: number): string[] {

@@ -11,7 +11,7 @@ VidGnost 当前交付目标是单仓 TS 全栈桌面工作台：
 - 后端使用 `Fastify 5 + TypeScript 5`
 - 契约层使用 `packages/contracts`
 - 本地运行时数据统一写入仓库根目录 `storage/`
-- AI 任务链允许调用外部 CLI 与本地模型服务，但业务主链不再依赖 Python 后端
+- AI 任务链允许调用外部运行时与本地模型服务，业务主链不再依赖独立 Python 后端进程
 
 这里的“彻底脱离 Python 后端”指的是：
 
@@ -53,9 +53,9 @@ VidGnost 当前交付目标是单仓 TS 全栈桌面工作台：
 | 打包工具 | `tsup`、`tsx`、`typescript` | TS 编译、watch 与类型检查 |
 | 测试 | `vitest` | 后端与 contracts 测试 |
 | 媒体处理 | `ffmpeg`、`ffprobe`、`yt-dlp` | 视频探测、抽音频、来源拉取 |
-| ASR 路径 | `whisper.cpp` CLI / OpenAI-compatible ASR fallback | TS 通过外部 CLI 或兼容 API 驱动 |
+| ASR 路径 | `faster-whisper` Python worker / OpenAI-compatible ASR fallback | TS 通过隔离 Python worker 或兼容 API 驱动 |
 | LLM 路径 | Ollama / OpenAI-compatible API | 笔记、导图、纠错、问答 |
-| 向量与问答 | TS 本地索引目录 + VQA runtime service | 不再依赖 Python sidecar |
+| 向量与问答 | TS 本地索引目录 + VQA runtime service | 问答与检索主链不依赖 Python sidecar |
 | 运行时存储 | `storage/` | 任务记录、工件、事件日志、模型配置 |
 | 旧资产 | `backend/`、若干 `.py` 脚本 | 已完成删除 |
 
@@ -70,7 +70,7 @@ VidGnost 当前交付目标是单仓 TS 全栈桌面工作台：
 | 配置校验脚本 | Python | Node `.mjs` |
 | Git Hook 守卫 | Python | Node `.mjs` |
 | 存储目录 | `backend/storage` 与 `storage/` 并存描述 | `storage/` 单目录 |
-| 文档说明 | Python/FastAPI/faster-whisper 旧表述 | TS/Fastify/whisper.cpp 现状表述 |
+| 文档说明 | Python/FastAPI/`backend/storage` 旧表述 | TS/Fastify/faster-whisper 现状表述 |
 | 运行时回退 | Python 可回退 | 无 Python 回退通道 |
 | 仓库结构 | `backend/` + `apps/api/` | `apps/* + packages/*` 标准单仓结构 |
 

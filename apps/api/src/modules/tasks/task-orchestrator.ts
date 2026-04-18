@@ -308,16 +308,15 @@ export class TaskOrchestrator {
     await this.completeStage(input.taskId, "B", 24, "音频提取完成")
 
     await this.startStage(input.taskId, "C", "Speech Transcription", 28, "transcribing")
+    const transcriptProgressState = { lastStageProgress: 0 }
     const transcription = await this.runControllable(execution, (signal) =>
       this.dependencies.asrService.transcribe({
         audioPath: audioArtifact.audioPath,
-        onChunkComplete: async ({ chunkIndex, chunkTotal }) => {
-          await this.publishTranscriptProgress(input.taskId, chunkIndex + 1, chunkTotal)
-        },
         onLog: async (message) => {
           await this.appendStageLog(input.taskId, "C", message)
         },
         onReset: async () => {
+          transcriptProgressState.lastStageProgress = 0
           await this.publishTranscriptReset(input.taskId)
         },
         onSegment: async (segment) => {
@@ -328,6 +327,12 @@ export class TaskOrchestrator {
             end: segment.end,
             text: segment.text,
           })
+          await this.publishTranscriptSegmentProgress(
+            input.taskId,
+            segment.end,
+            audioArtifact.durationSeconds,
+            transcriptProgressState,
+          )
         },
         taskId: input.taskId,
         signal,
@@ -662,6 +667,7 @@ export class TaskOrchestrator {
     manifest: {
       frames: Array<{
         frame_index: number
+        is_fallback?: boolean
         path: string
         timestamp_seconds: number
       }>
@@ -695,6 +701,7 @@ export class TaskOrchestrator {
     taskId: string,
     frames: Array<{
       frame_index: number
+      is_fallback?: boolean
       path: string
       timestamp_seconds: number
     }>,
@@ -717,9 +724,9 @@ export class TaskOrchestrator {
     const segments: FrameSemanticSegment[] = []
     for (let index = 0; index < frames.length; index += 1) {
       const frame = frames[index]
-      const frameUri = this.taskRepository.resolveArtifactPath(taskId, `D/vqa-prewarm/${frame.path}`)
-      let visualText = `画面帧 ${frame.frame_index + 1}，时间 ${frame.timestamp_seconds.toFixed(2)}s`
-      if (this.dependencies.vlmRuntimeService) {
+      let visualText = buildFallbackFrameSemanticText(frame.frame_index, frame.timestamp_seconds)
+      if (!frame.is_fallback && this.dependencies.vlmRuntimeService) {
+        const frameUri = this.taskRepository.resolveArtifactPath(taskId, `D/vqa-prewarm/${frame.path}`)
         try {
           const described = await this.runControllable(execution, () =>
             this.dependencies.vlmRuntimeService!.describeFrame({
@@ -803,9 +810,19 @@ export class TaskOrchestrator {
     })
   }
 
-  private async publishTranscriptProgress(taskId: string, completedChunks: number, totalChunks: number): Promise<void> {
-    const safeTotalChunks = Math.max(1, totalChunks)
-    const ratio = Math.max(0, Math.min(1, completedChunks / safeTotalChunks))
+  private async publishTranscriptSegmentProgress(
+    taskId: string,
+    segmentEndSeconds: number,
+    durationSeconds: number,
+    state: { lastStageProgress: number },
+  ): Promise<void> {
+    const safeDurationSeconds = Math.max(1, Number(durationSeconds) || 0)
+    const ratio = Math.max(0, Math.min(1, (Number(segmentEndSeconds) || 0) / safeDurationSeconds))
+    const stageProgress = Math.max(1, Math.round(ratio * 100))
+    if (stageProgress <= state.lastStageProgress) {
+      return
+    }
+    state.lastStageProgress = stageProgress
     const overallProgress = Math.min(67, 28 + Math.round(ratio * 39))
     await this.taskRepository.update(taskId, {
       progress: overallProgress,
@@ -816,7 +833,7 @@ export class TaskOrchestrator {
       task_id: taskId,
       stage: "C",
       overall_progress: overallProgress,
-      stage_progress: Math.round(ratio * 100),
+      stage_progress: stageProgress,
     })
   }
 
@@ -1242,4 +1259,15 @@ function pathToFileUrl(value: string): string {
     return `file://${normalized}`
   }
   return `file:///${normalized}`
+}
+
+function buildFallbackFrameSemanticText(frameIndex: number, timestampSeconds: number): string {
+  return `画面帧 ${frameIndex + 1}，时间 ${formatSeconds(timestampSeconds)}，等待视觉语义补全`
+}
+
+function formatSeconds(value: number): string {
+  const totalSeconds = Math.max(0, Math.round(Number(value) || 0))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
 }

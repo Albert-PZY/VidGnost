@@ -28,6 +28,20 @@ export const taskStepItemSchema = z.object({
 
 export type TaskStepItem = z.infer<typeof taskStepItemSchema>
 
+export const selfCheckTaskStepIdSchema = z.enum([
+  "env",
+  "gpu",
+  "whisper",
+  "llm",
+  "vlm",
+  "embedding",
+  "rerank",
+  "storage",
+  "ffmpeg",
+  "model-cache",
+])
+export type SelfCheckTaskStepId = z.infer<typeof selfCheckTaskStepIdSchema>
+
 export const taskCreateResponseSchema = z.object({
   task_id: z.string().min(1),
   status: taskStatusSchema,

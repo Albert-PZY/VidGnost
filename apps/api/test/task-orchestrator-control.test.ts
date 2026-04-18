@@ -230,47 +230,35 @@ describe("TaskOrchestrator control flow", () => {
     taskOrchestrator = new TaskOrchestrator(taskRepository, eventBus, {
       asrService: {
         transcribe: async ({
-          onChunkComplete,
           onLog,
           onReset,
           onSegment,
         }: {
-          onChunkComplete?: (payload: { chunkIndex: number; chunkTotal: number }) => Promise<void> | void
           onLog?: (message: string) => Promise<void> | void
           onReset?: () => Promise<void> | void
           onSegment?: (segment: TranscriptSegment) => Promise<void> | void
         }) => {
           await onReset?.()
-          await onLog?.("Splitting audio into chunks ...")
-          await onLog?.("Chunk 1/2: chunk-001.wav, start 0.000s, duration 60.000s")
-          await onLog?.("Chunk 2/2: chunk-002.wav, start 60.000s, duration 60.000s")
-          await onLog?.("Transcribing chunk 1/2: chunk-001.wav")
+          await onLog?.("Streaming transcription started")
           await onSegment?.({ start: 0, end: 1.2, text: "第一段 原始" })
-          await onLog?.("Chunk 1/2 transcription completed")
-          await onChunkComplete?.({ chunkIndex: 0, chunkTotal: 2 })
-          await onLog?.("Transcribing chunk 2/2: chunk-002.wav")
-          await onSegment?.({ start: 60, end: 61.8, text: "第二段 原始" })
-          await onLog?.("Chunk 2/2 transcription completed")
-          await onChunkComplete?.({ chunkIndex: 1, chunkTotal: 2 })
+          await onSegment?.({ start: 30, end: 31.8, text: "第二段 原始" })
+          await onLog?.("Streaming transcription completed")
           return {
             language: "zh",
             chunks: [
               {
-                durationSeconds: 60,
+                durationSeconds: 31.8,
                 index: 0,
-                segments: [{ start: 0, end: 1.2, text: "第一段 原始" }],
+                segments: [
+                  { start: 0, end: 1.2, text: "第一段 原始" },
+                  { start: 30, end: 31.8, text: "第二段 原始" },
+                ],
                 startSeconds: 0,
-              },
-              {
-                durationSeconds: 60,
-                index: 1,
-                segments: [{ start: 60, end: 61.8, text: "第二段 原始" }],
-                startSeconds: 60,
               },
             ],
             segments: [
               { start: 0, end: 1.2, text: "第一段 原始" },
-              { start: 60, end: 61.8, text: "第二段 原始" },
+              { start: 30, end: 31.8, text: "第二段 原始" },
             ],
             text: "第一段 原始\n第二段 原始",
           }
@@ -314,7 +302,7 @@ describe("TaskOrchestrator control flow", () => {
           })
           await onCorrectionPreviewEvent?.({
             mode: "rewrite",
-            segment: { start: 60, end: 61.8, text: "第二段 修正" },
+            segment: { start: 30, end: 31.8, text: "第二段 修正" },
           })
           await onCorrectionPreviewEvent?.({
             done: true,
@@ -325,7 +313,7 @@ describe("TaskOrchestrator control flow", () => {
             artifactManifestJson: JSON.stringify({}),
             correctedSegments: [
               { start: 0, end: 1.2, text: "第一段 修正" },
-              { start: 60, end: 61.8, text: "第二段 修正" },
+              { start: 30, end: 31.8, text: "第二段 修正" },
             ],
             correctedText: "第一段 修正\n第二段 修正",
             correctionFullText: "第一段 修正\n第二段 修正",
@@ -384,21 +372,30 @@ describe("TaskOrchestrator control flow", () => {
       .map((line) => JSON.parse(line) as Record<string, unknown>)
     const transcriptEvents = events.filter((event) => event.type === "transcript_delta")
     const correctionEvents = events.filter((event) => event.type === "transcript_optimized_preview")
+    const transcriptProgressEvents = events.filter((event) =>
+      event.type === "progress" &&
+      event.stage === "C" &&
+      typeof event.stage_progress === "number" &&
+      Number(event.stage_progress) > 0 &&
+      Number(event.stage_progress) < 100
+    )
 
     expect(transcriptEvents).toEqual([
       expect.objectContaining({ reset: true, task_id: activeTaskId, type: "transcript_delta" }),
       expect.objectContaining({ start: 0, end: 1.2, text: "第一段 原始", type: "transcript_delta" }),
-      expect.objectContaining({ start: 60, end: 61.8, text: "第二段 原始", type: "transcript_delta" }),
+      expect.objectContaining({ start: 30, end: 31.8, text: "第二段 原始", type: "transcript_delta" }),
     ])
     expect(correctionEvents).toEqual([
       expect.objectContaining({ mode: "rewrite", reset: true, type: "transcript_optimized_preview" }),
       expect.objectContaining({ mode: "rewrite", start: 0, end: 1.2, text: "第一段 修正", type: "transcript_optimized_preview" }),
-      expect.objectContaining({ mode: "rewrite", start: 60, end: 61.8, text: "第二段 修正", type: "transcript_optimized_preview" }),
+      expect.objectContaining({ mode: "rewrite", start: 30, end: 31.8, text: "第二段 修正", type: "transcript_optimized_preview" }),
       expect.objectContaining({ done: true, fallback_used: false, mode: "rewrite", type: "transcript_optimized_preview" }),
     ])
+    expect(transcriptProgressEvents.length).toBeGreaterThan(0)
 
     const transcriptChunkIndex = JSON.parse(await readFile(transcriptChunkIndexPath, "utf8")) as {
       chunks?: Array<{ relative_path?: string }>
+      mode?: string
     }
     const transcriptChunkOne = JSON.parse(await readFile(transcriptChunkOnePath, "utf8")) as {
       segments?: TranscriptSegment[]
@@ -406,9 +403,12 @@ describe("TaskOrchestrator control flow", () => {
 
     expect(transcriptChunkIndex.chunks).toEqual([
       { relative_path: "C/transcript/chunks/chunk-001.json" },
-      { relative_path: "C/transcript/chunks/chunk-002.json" },
     ])
-    expect(transcriptChunkOne.segments).toEqual([{ start: 0, end: 1.2, text: "第一段 原始" }])
+    expect(transcriptChunkIndex.mode).toBe("single")
+    expect(transcriptChunkOne.segments).toEqual([
+      { start: 0, end: 1.2, text: "第一段 原始" },
+      { start: 30, end: 31.8, text: "第二段 原始" },
+    ])
   })
 
   it("publishes granular VQA substages for transcript vectorization, frame extraction, semantics, and fusion", async () => {
@@ -562,6 +562,144 @@ describe("TaskOrchestrator control flow", () => {
       "multimodal_index_fusion",
       "fusion_delivery",
     ]))
+  })
+
+  it("skips VLM enrichment for fallback frames and writes template semantic evidence immediately", async () => {
+    activeTaskId = "task-control-vqa-fallback-frame"
+    const sourcePath = path.join(storageDir, "vqa-fallback-frame-source.mp4")
+    let describeFrameCallCount = 0
+
+    await taskRepository.create(
+      buildQueuedTaskRecord({
+        createdAt: new Date().toISOString(),
+        language: "zh",
+        modelSize: "small",
+        sourceInput: sourcePath,
+        sourceLocalPath: sourcePath,
+        sourceType: "local_path",
+        taskId: activeTaskId,
+        title: "VQA 回退帧测试",
+        workflow: "vqa",
+      }),
+    )
+
+    taskOrchestrator = new TaskOrchestrator(taskRepository, eventBus, {
+      asrService: {
+        transcribe: async () => ({
+          language: "zh",
+          segments: [
+            {
+              start: 0,
+              end: 3,
+              text: "回退帧也要能继续构建检索索引",
+            },
+          ],
+          text: "回退帧也要能继续构建检索索引",
+        }),
+      } as never,
+      mediaPipelineService: {
+        prepareSource: async ({ sourceLocalPath, taskId }: { sourceLocalPath?: string | null; taskId: string }) => ({
+          durationSeconds: 32,
+          fileSizeBytes: 128,
+          mediaPath: sourceLocalPath || path.join(storageDir, `${taskId}.mp4`),
+          sourceLabel: sourceLocalPath || `${taskId}.mp4`,
+          title: "VQA 回退帧测试",
+        }),
+        extractAudio: async ({ taskId }: { taskId: string }) => ({
+          audioPath: path.join(storageDir, `${taskId}.wav`),
+          durationSeconds: 32,
+        }),
+      } as never,
+      summaryService: {
+        buildArtifacts: async ({
+          transcriptSegments,
+          transcriptText,
+        }: {
+          transcriptSegments: TranscriptSegment[]
+          transcriptText: string
+        }) => ({
+          artifactManifestJson: JSON.stringify({}),
+          correctedSegments: transcriptSegments,
+          correctedText: transcriptText,
+          correctionFullText: transcriptText,
+          correctionIndexJson: JSON.stringify({ status: "skipped" }),
+          correctionRewriteText: transcriptText,
+          correctionStrictSegmentsJson: JSON.stringify(transcriptSegments),
+          fallbackArtifactChannels: [],
+          fusionPromptMarkdown: "# prompt",
+          mindmapMarkdown: "# mindmap",
+          notesMarkdown: "## notes",
+          summaryMarkdown: "## summary",
+        }),
+        isLlmGenerationEnabled: async () => false,
+      } as never,
+      videoFrameService: {
+        extractFrames: async () => ({
+          manifest: {
+            frames: [
+              {
+                frame_index: 0,
+                is_fallback: true,
+                path: "frames/frame-0001.jpg",
+                timestamp_seconds: 0,
+              },
+            ],
+          },
+          manifestJson: JSON.stringify({
+            task_id: activeTaskId,
+            frame_count: 1,
+            frames: [
+              {
+                frame_index: 0,
+                is_fallback: true,
+                path: "frames/frame-0001.jpg",
+                timestamp_seconds: 0,
+              },
+            ],
+          }),
+        }),
+      } as never,
+      vlmRuntimeService: {
+        describeFrame: async () => {
+          describeFrameCallCount += 1
+          return {
+            content: "这条内容不应该被使用",
+          }
+        },
+      } as never,
+    })
+
+    await taskOrchestrator.submit({
+      taskId: activeTaskId,
+      sourceInput: sourcePath,
+      sourceLocalPath: sourcePath,
+      workflow: "vqa",
+    })
+
+    await waitFor(async () => {
+      const detail = await taskRepository.getDetail(activeTaskId)
+      return detail?.status === "completed"
+    }, 5_000)
+
+    expect(describeFrameCallCount).toBe(0)
+
+    const frameSemanticIndexPath = path.join(
+      storageDir,
+      "tasks",
+      "stage-artifacts",
+      activeTaskId,
+      "D",
+      "vqa-prewarm",
+      "frame-semantic",
+      "index.json",
+    )
+    const frameSemanticIndex = JSON.parse(await readFile(frameSemanticIndexPath, "utf8")) as {
+      item_count: number
+      items: Array<{ visual_text?: string }>
+    }
+
+    expect(frameSemanticIndex.item_count).toBe(1)
+    expect(frameSemanticIndex.items[0]?.visual_text).toContain("等待视觉语义补全")
   })
 })
 

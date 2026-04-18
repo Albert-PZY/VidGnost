@@ -22,7 +22,7 @@ Status vocabulary:
 - [x] 2.9 Persist per-stage snapshots and stage artifact indexes
 - [x] 2.10 Implement readiness checks and runtime guard baselines (`partial`: 当前以自检、配置归一化和运行时探测为主，未形成 `runtime_warning` 事件主链)
 - [x] 2.11 Implement running-task cancellation with cleanup and terminal events
-- [ ] 2.12 Implement Whisper managed auto-download pipeline (`partial`: 当前仅有 readiness check，本地 `whisper.cpp` 仍需手动准备 CLI 与 ggml 模型)
+- [ ] 2.12 Implement Whisper managed auto-download pipeline (`partial`: 当前仅有 readiness check，本地 `faster-whisper` 仍需手动准备 Python 运行时与 CTranslate2 模型目录)
 - [ ] 2.13 Add realtime managed model-download progress reporting into runtime stream (planned; 当前只返回说明性 download snapshot)
 
 ## 3. Backend Runtime / History / Export

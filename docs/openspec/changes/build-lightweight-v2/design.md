@@ -51,7 +51,7 @@ VidGnost 当前以 Electron 桌面工作台形态交付：
 - 运行链路仍保持 `A -> B -> C -> D` 四阶段模型。
 - `D` 阶段固定执行 `transcript_optimize -> fusion_delivery` 子链路。
 - SSE 与任务详情共同承担运行态可观测与回放职责。
-- `C` 阶段当前通过本地 `whisper.cpp` CLI 或远程 OpenAI-compatible ASR 执行，并在完成后一次性落盘标准化 transcript 工件。
+- `C` 阶段当前通过本地 `faster-whisper` Python worker 或远程 OpenAI-compatible ASR 执行，并在完成后一次性落盘标准化 transcript 工件。
 - VQA 当前统一使用 transcript-only `vector-index` 单路线检索，并按向量召回 + rerank 生成最终证据集合。
 
 ### 8. Brand application

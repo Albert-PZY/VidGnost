@@ -9,6 +9,9 @@ import type {
 } from "@vidgnost/contracts"
 
 import { AppError } from "../../core/errors.js"
+import type { LlmConfigRepository } from "../llm/llm-config-repository.js"
+import { LlmServiceReadinessProbe, isLoopbackUrl } from "../llm/loopback-readiness.js"
+import type { OpenAiCompatibleClient } from "../llm/openai-compatible-client.js"
 import type { ModelCatalogRepository } from "../models/model-catalog-repository.js"
 import type { TaskRepository } from "../tasks/task-repository.js"
 import {
@@ -49,12 +52,22 @@ export class VqaRuntimeService {
   private readonly traceStore: VqaTraceStore
   private readonly retrievalIndexService: RetrievalIndexService
   private readonly preparedIndexCache = new Map<string, PreparedIndexCacheEntry>()
+  private readonly llmConfigRepository: LlmConfigRepository | null
+  private readonly llmClient: OpenAiCompatibleClient | null
+  private readonly llmReadinessProbe: LlmServiceReadinessProbe
 
   constructor(
     private readonly taskRepository: TaskRepository,
     private readonly modelCatalogRepository: ModelCatalogRepository,
-    traceLogDir: string,
+    third: string | LlmConfigRepository,
+    fourth?: OpenAiCompatibleClient | string,
+    fifth?: string,
   ) {
+    const usesLegacyArgs = typeof third === "string"
+    const traceLogDir = usesLegacyArgs ? third : (typeof fifth === "string" ? fifth : String(fourth || ""))
+    this.llmConfigRepository = usesLegacyArgs ? null : third
+    this.llmClient = usesLegacyArgs ? null : (fourth && typeof fourth !== "string" ? fourth : null)
+    this.llmReadinessProbe = new LlmServiceReadinessProbe(this.llmClient)
     this.traceStore = new VqaTraceStore(traceLogDir)
     this.retrievalIndexService = new RetrievalIndexService()
   }
@@ -110,6 +123,28 @@ export class VqaRuntimeService {
       },
     })
 
+    const textHits = result.textHits.slice(0, topK).map((item) => toHit(item))
+    const imageHits = result.imageHits.slice(0, topK).map((item) => toHit(item))
+    const fusedHits = result.initialHits.slice(0, topK).map((item) => toHit(item))
+
+    await this.traceStore.write(traceId, "retrieval_text", {
+      query_text: queryText,
+      task_id: input.taskId || null,
+      hit_count: textHits.length,
+      hits: textHits,
+    })
+    await this.traceStore.write(traceId, "retrieval_image", {
+      query_text: queryText,
+      task_id: input.taskId || null,
+      hit_count: imageHits.length,
+      hits: imageHits,
+    })
+    await this.traceStore.write(traceId, "retrieval_fused", {
+      query_text: queryText,
+      task_id: input.taskId || null,
+      hit_count: fusedHits.length,
+      hits: fusedHits,
+    })
     await this.traceStore.write(traceId, "retrieval", {
       query_text: queryText,
       task_id: input.taskId || null,
@@ -136,7 +171,7 @@ export class VqaRuntimeService {
     videoPaths?: string[]
   }): Promise<AnalyzeBundle> {
     const search = await this.search(input)
-    const chat = buildChatBundle(search.query_text, search.hits)
+    const chat = await this.buildChatBundleWithLlm(search.query_text, search.hits, search.trace_id)
     await this.traceStore.write(search.trace_id, "llm_stream", {
       answer_preview: chat.answer.slice(0, 800),
       citation_count: chat.citations.length,
@@ -286,14 +321,36 @@ export class VqaRuntimeService {
       return cached.index
     }
 
+    const frameSemantic = await this.readFrameSemanticSegments(task.id)
     const persisted = await this.taskRepository.readTaskArtifactText(task.id, "D/vqa-prewarm/index.json")
     const parsed = persisted ? this.retrievalIndexService.parseIndex(persisted) : null
     if (parsed && parsed.items.length > 0) {
+      if (hasFrameSemanticItems(parsed) || frameSemantic.length === 0) {
+        this.rememberPreparedIndex(task.id, {
+          updatedAt: task.updated_at,
+          index: parsed,
+        })
+        return parsed
+      }
+
+      const upgraded = await this.retrievalIndexService.buildIndexAsync({
+        taskId: task.id,
+        taskTitle: task.title || path.basename(task.source_input) || task.id,
+        transcriptSegments: task.transcript_segments,
+        transcriptText: task.transcript_text || "",
+        frameSemanticSegments: frameSemantic,
+      })
+      await this.taskRepository.writeTaskArtifactText(task.id, "D/vqa-prewarm/index.json", upgraded.indexJson)
       this.rememberPreparedIndex(task.id, {
         updatedAt: task.updated_at,
-        index: parsed,
+        index: {
+          version: upgraded.version,
+          retrieval_mode: upgraded.retrieval_mode,
+          item_count: upgraded.item_count,
+          items: upgraded.items,
+        },
       })
-      return parsed
+      return upgraded
     }
 
     const built = await this.retrievalIndexService.buildIndexAsync({
@@ -301,9 +358,31 @@ export class VqaRuntimeService {
       taskTitle: task.title || path.basename(task.source_input) || task.id,
       transcriptSegments: task.transcript_segments,
       transcriptText: task.transcript_text || "",
+      frameSemanticSegments: frameSemantic,
     })
     if (built.items.length > 0) {
       await this.taskRepository.writeTaskArtifactText(task.id, "D/vqa-prewarm/index.json", built.indexJson)
+      await this.taskRepository.writeTaskArtifactText(
+        task.id,
+        "D/vqa-prewarm/multimodal/index.json",
+        JSON.stringify({
+          task_id: task.id,
+          mode: "multimodal",
+          entries: [
+            {
+              artifact_path: "D/vqa-prewarm/index.json",
+              modality: "text",
+              kind: "retrieval_index",
+            },
+            {
+              artifact_path: "D/vqa-prewarm/frame-semantic/index.json",
+              modality: "image",
+              kind: "frame_semantic",
+            },
+          ],
+          generated_at: new Date().toISOString(),
+        }, null, 2),
+      )
       this.rememberPreparedIndex(task.id, {
         updatedAt: task.updated_at,
         index: {
@@ -315,6 +394,190 @@ export class VqaRuntimeService {
       })
     }
     return built
+  }
+
+  private async readFrameSemanticSegments(taskId: string): Promise<Array<{
+    start: number
+    end: number
+    text: string
+    image_path?: string
+    visual_text?: string
+    frame_index?: number
+    frame_timestamp?: number
+  }>> {
+    const raw = await this.taskRepository.readTaskArtifactText(taskId, "D/vqa-prewarm/frame-semantic/index.json")
+    if (raw) {
+      try {
+        const payload = JSON.parse(raw) as {
+          items?: Array<{
+            start?: number
+            end?: number
+            text?: string
+            image_path?: string
+            visual_text?: string
+            frame_index?: number
+            frame_timestamp?: number
+          }>
+        }
+        const items = Array.isArray(payload.items) ? payload.items : []
+        return items.map((item) => ({
+          start: Number(item.start) || Number(item.frame_timestamp) || 0,
+          end: Number(item.end) || Number(item.frame_timestamp) || Number(item.start) || 0,
+          text: String(item.visual_text || item.text || "").trim(),
+          image_path: String(item.image_path || "").trim() || undefined,
+          visual_text: String(item.visual_text || item.text || "").trim(),
+          frame_index: Number.isInteger(Number(item.frame_index)) ? Number(item.frame_index) : undefined,
+          frame_timestamp: Number.isFinite(Number(item.frame_timestamp)) ? Number(item.frame_timestamp) : undefined,
+        })).filter((item) => Boolean(item.text))
+      } catch {
+        return []
+      }
+    }
+
+    const manifestRaw = await this.taskRepository.readTaskArtifactText(taskId, "D/vqa-prewarm/frames/manifest.json")
+    if (!manifestRaw) {
+      return []
+    }
+
+    try {
+      const manifest = JSON.parse(manifestRaw) as {
+        frames?: Array<{
+          frame_index?: number
+          path?: string
+          timestamp_seconds?: number
+        }>
+      }
+      const frames = Array.isArray(manifest.frames) ? manifest.frames : []
+      const synthesized = frames
+        .map((frame, index) => {
+          const frameTimestamp = Number(frame.timestamp_seconds)
+          const normalizedTimestamp = Number.isFinite(frameTimestamp) ? frameTimestamp : 0
+          const frameIndex = Number(frame.frame_index)
+          const normalizedFrameIndex = Number.isInteger(frameIndex) ? frameIndex : index
+          const imagePath = String(frame.path || "").trim()
+          const visualText = buildFallbackFrameSemanticText(normalizedFrameIndex, normalizedTimestamp)
+          return {
+            start: normalizedTimestamp,
+            end: normalizedTimestamp,
+            text: visualText,
+            image_path: imagePath || undefined,
+            visual_text: visualText,
+            frame_index: normalizedFrameIndex,
+            frame_timestamp: normalizedTimestamp,
+          }
+        })
+        .filter((item) => Boolean(item.image_path || item.text))
+
+      if (synthesized.length === 0) {
+        return []
+      }
+
+      await this.taskRepository.writeTaskArtifactText(
+        taskId,
+        "D/vqa-prewarm/frame-semantic/index.json",
+        JSON.stringify({
+          task_id: taskId,
+          item_count: synthesized.length,
+          items: synthesized.map((item) => ({
+            image_path: item.image_path,
+            visual_text: item.visual_text,
+            start: item.start,
+            end: item.end,
+            frame_index: item.frame_index,
+            frame_timestamp: item.frame_timestamp,
+          })),
+          generated_at: new Date().toISOString(),
+          generated_by: "manifest_fallback",
+        }, null, 2),
+      )
+      return synthesized
+    } catch {
+      return []
+    }
+  }
+
+  private async buildChatBundleWithLlm(queryText: string, hits: RetrievalHit[], traceId: string): Promise<ChatBundle> {
+    const fallbackBundle = buildFallbackChatBundle(queryText, hits)
+    const prompt = buildVqaAnswerPrompt(queryText, hits)
+    const llmConfig = this.llmConfigRepository ? await this.llmConfigRepository.get() : null
+    const llmConfigured = this.llmConfigRepository ? await this.llmConfigRepository.isUserConfigured() : false
+    const llmEnabled = await this.isLlmEnabled(llmConfig, llmConfigured)
+    const llmStatus = !llmEnabled || !llmConfig || !this.llmClient ? "disabled" : "enabled"
+
+    await this.traceStore.write(traceId, "llm_request", {
+      status: llmStatus,
+      prompt_preview: prompt.slice(0, 320),
+      hit_count: hits.length,
+      model: llmConfig?.model || "",
+      base_url: llmConfig?.base_url || "",
+    })
+
+    if (!llmEnabled || !llmConfig || !this.llmClient) {
+      return fallbackBundle
+    }
+
+    try {
+      const response = await this.llmClient.generateText({
+        apiKey: llmConfig.api_key,
+        baseUrl: llmConfig.base_url,
+        model: llmConfig.model,
+        timeoutSeconds: llmConfigured ? 120 : (isLoopbackUrl(llmConfig.base_url) ? 4 : 6),
+        systemPrompt:
+          "你是视频问答助手。必须基于给定证据回答，不可捏造。若证据不足，明确说明不确定并建议补充问题。",
+        userPrompt: prompt,
+      })
+      const answer = String(response.content || "").trim()
+      if (!answer) {
+        await this.traceStore.write(traceId, "llm_request", {
+          status: "empty_response",
+          prompt_preview: prompt.slice(0, 320),
+          hit_count: hits.length,
+        })
+        return fallbackBundle
+      }
+      await this.traceStore.write(traceId, "llm_request", {
+        status: "ok",
+        prompt_preview: prompt.slice(0, 320),
+        hit_count: hits.length,
+      })
+      return {
+        ...fallbackBundle,
+        answer,
+      }
+    } catch (error) {
+      await this.traceStore.write(traceId, "llm_request", {
+        status: "fallback",
+        error: error instanceof Error ? error.message : String(error),
+        prompt_preview: prompt.slice(0, 320),
+        hit_count: hits.length,
+      })
+      return fallbackBundle
+    }
+  }
+
+  private async isLlmEnabled(
+    llmConfigOverride?: Awaited<ReturnType<LlmConfigRepository["get"]>> | null,
+    configuredOverride?: boolean,
+  ): Promise<boolean> {
+    if (!this.llmConfigRepository || !this.llmClient) {
+      return false
+    }
+    const llmConfig = llmConfigOverride ?? await this.llmConfigRepository.get()
+    const configured = configuredOverride ?? await this.llmConfigRepository.isUserConfigured()
+    if (!llmConfig.base_url.trim() || !llmConfig.model.trim()) {
+      return false
+    }
+    if (!llmConfig.api_key.trim() && !isLoopbackUrl(llmConfig.base_url)) {
+      return false
+    }
+    if (!configured || isLoopbackUrl(llmConfig.base_url)) {
+      return this.llmReadinessProbe.isReachable({
+        apiKey: llmConfig.api_key,
+        baseUrl: llmConfig.base_url,
+        timeoutSeconds: 2,
+      })
+    }
+    return true
   }
 
   private async resolveTopK(value: number | null | undefined): Promise<number> {
@@ -378,6 +641,10 @@ function toHit(item: RetrievalSearchHit): RetrievalHit {
     end: item.end,
     text: item.text,
     final_score: item.final_score,
+    citation_type: item.citation_type || (item.source === "frame_semantic" ? "image" : "transcript"),
+    image_path: item.image_path,
+    visual_text: item.visual_text,
+    image_evidence: item.image_evidence,
   }
 }
 
@@ -399,7 +666,7 @@ function buildTaskNotReadyError(): AppError {
   })
 }
 
-function buildChatBundle(queryText: string, hits: RetrievalHit[]): ChatBundle {
+function buildFallbackChatBundle(queryText: string, hits: RetrievalHit[]): ChatBundle {
   if (hits.length === 0) {
     return {
       answer:
@@ -445,6 +712,32 @@ function buildChatBundle(queryText: string, hits: RetrievalHit[]): ChatBundle {
   }
 }
 
+function buildVqaAnswerPrompt(queryText: string, hits: RetrievalHit[]): string {
+  const evidence = hits
+    .slice(0, 8)
+    .map((item, index) =>
+      [
+        `证据 ${index + 1}`,
+        `时间: ${formatTimeRange(item.start, item.end)}`,
+        `来源: ${item.source}`,
+        `内容: ${item.text}`,
+      ].join("\n"),
+    )
+    .join("\n\n")
+
+  return [
+    `问题: ${queryText}`,
+    "",
+    "请基于以下证据给出简洁、可追溯的中文回答。",
+    "要求：",
+    "1. 先给结论，再给2-4条关键依据。",
+    "2. 明确标注不确定性，不得扩展到证据外。",
+    "3. 不要输出 markdown 标题。",
+    "",
+    evidence || "（无可用证据）",
+  ].join("\n")
+}
+
 function formatTimeRange(start: number, end: number): string {
   return `${formatSeconds(start)} - ${formatSeconds(end)}`
 }
@@ -485,4 +778,14 @@ function splitAnswer(answer: string): string[] {
 function normalizePathKey(value: string): string {
   const normalized = path.normalize(String(value || "").trim())
   return process.platform === "win32" ? normalized.toLowerCase() : normalized
+}
+
+function hasFrameSemanticItems(index: RetrievalIndexPayload): boolean {
+  return index.items.some((item) =>
+    item.source === "frame_semantic" || item.source_set.includes("frame_semantic"),
+  )
+}
+
+function buildFallbackFrameSemanticText(frameIndex: number, timestampSeconds: number): string {
+  return `画面帧 ${frameIndex + 1}，时间 ${formatSeconds(timestampSeconds)}，等待视觉语义补全`
 }

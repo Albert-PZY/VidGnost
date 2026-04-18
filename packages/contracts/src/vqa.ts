@@ -20,6 +20,20 @@ export const vqaChatRequestSchema = vqaSearchRequestSchema.extend({
 
 export type VqaChatRequest = z.infer<typeof vqaChatRequestSchema>
 
+export const vqaCitationTypeSchema = z.enum(["transcript", "image"])
+export type VqaCitationType = z.infer<typeof vqaCitationTypeSchema>
+
+export const vqaCitationImageEvidenceSchema = z.object({
+  frame_path: z.string().min(1).optional(),
+  frame_uri: z.string().min(1).optional(),
+  frame_index: z.number().int().min(0).optional(),
+  frame_timestamp: z.number().min(0).optional(),
+  width: z.number().int().positive().optional(),
+  height: z.number().int().positive().optional(),
+  thumbnail_uri: z.string().min(1).optional(),
+})
+export type VqaCitationImageEvidence = z.infer<typeof vqaCitationImageEvidenceSchema>
+
 export const vqaCitationItemSchema = z.object({
   doc_id: z.string().min(1),
   task_id: z.string().min(1),
@@ -29,6 +43,10 @@ export const vqaCitationItemSchema = z.object({
   start: z.number(),
   end: z.number(),
   text: z.string(),
+  citation_type: vqaCitationTypeSchema.optional(),
+  image_path: z.string().min(1).optional(),
+  visual_text: z.string().optional(),
+  image_evidence: vqaCitationImageEvidenceSchema.optional(),
 })
 
 export type VqaCitationItem = z.infer<typeof vqaCitationItemSchema>

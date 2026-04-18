@@ -9,7 +9,15 @@ import type {
 } from "@vidgnost/contracts"
 
 export const STAGE_KEYS = ["A", "B", "C", "D"] as const
-export const D_SUBSTAGE_KEYS = ["transcript_optimize", "fusion_delivery"] as const
+export const D_SUBSTAGE_KEYS = [
+  "transcript_optimize",
+  "transcript_vectorize",
+  "frame_extract",
+  "frame_semantic",
+  "frame_vectorize",
+  "multimodal_index_fusion",
+  "fusion_delivery",
+] as const
 export const ALLOWED_VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"])
 
 export function createEmptyStageLogs(): Record<string, string[]> {
@@ -39,7 +47,7 @@ export function createEmptyStageMetrics(): Record<string, Record<string, unknown
         started_at: null,
         completed_at: null,
         elapsed_seconds: null,
-        optional: substage === "transcript_optimize",
+        optional: substage !== "fusion_delivery",
         reason: null,
       },
     ]),

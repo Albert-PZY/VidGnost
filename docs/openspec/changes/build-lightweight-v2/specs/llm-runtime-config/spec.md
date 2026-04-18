@@ -176,6 +176,12 @@ The system SHALL keep `whisper-default` on the local runtime path, and allow `ll
 - **THEN** backend persists `api_base_url`, `api_key`, `api_model`, and `api_timeout_seconds`
 - **AND** the entry becomes `is_installed=true` only when base URL, API key, model name, and enabled state together satisfy the remote-ready contract
 
+#### Scenario: Normalize loopback OpenAI-compatible routing without a user secret
+- **WHEN** frontend configures `llm-default`、`embedding-default`、`rerank-default`, or `vlm-default` to a loopback OpenAI-compatible endpoint such as `http://127.0.0.1:11434/v1`
+- **AND** the submitted payload leaves `api_key` empty
+- **THEN** backend normalizes a non-empty local placeholder API key into the effective runtime snapshot
+- **AND** the shared model catalog keeps the entry callable for local loopback runtimes without implying that a remote provider secret was configured
+
 ### Requirement: Managed model catalog SHALL expose `vlm-default` routing for visual inference
 Status: `implemented`
 

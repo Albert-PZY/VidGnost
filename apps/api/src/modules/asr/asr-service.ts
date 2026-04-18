@@ -7,15 +7,13 @@ import { AppError } from "../../core/errors.js"
 import type { OpenAiCompatibleClient } from "../llm/openai-compatible-client.js"
 import type { ModelCatalogRepository } from "../models/model-catalog-repository.js"
 import type { WhisperRuntimeConfigRepository } from "../runtime/whisper-runtime-config-repository.js"
-import { AudioChunker, type AudioChunkDescriptor } from "./audio-chunker.js"
 import {
   buildTranscriptText,
   hasInvalidSegmentTimestamps,
   normalizeRemoteSegments,
-  parseWhisperSrtSegments,
 } from "./transcript-segment-normalizer.js"
-import { resolveWhisperExecutable, resolveWhisperModelPath } from "./whisper-runtime-paths.js"
-import { WhisperCliRunner } from "./whisper-cli-runner.js"
+import { FasterWhisperRunner } from "./faster-whisper-runner.js"
+import { resolveWhisperModelPath } from "./whisper-runtime-paths.js"
 
 export interface AsrResult {
   chunks: AsrChunkResult[]
@@ -37,8 +35,7 @@ export class AsrService {
     private readonly modelCatalogRepository: ModelCatalogRepository,
     private readonly whisperRuntimeConfigRepository: WhisperRuntimeConfigRepository,
     private readonly llmClient: OpenAiCompatibleClient,
-    private readonly whisperCliRunner: Pick<WhisperCliRunner, "run"> = new WhisperCliRunner(),
-    private readonly audioChunker: Pick<AudioChunker, "split"> = new AudioChunker(config),
+    private readonly fasterWhisperRunner: Pick<FasterWhisperRunner, "run" | "shutdown"> = new FasterWhisperRunner(config),
   ) {}
 
   async transcribe(input: {
@@ -59,113 +56,73 @@ export class AsrService {
       })
     }
 
-    const chunks = await this.audioChunker.split({
-      audioPath: input.audioPath,
-      chunkSeconds: whisperConfig.chunk_seconds,
-      signal: input.signal,
-      taskId: input.taskId,
-    })
     await input.onReset?.()
-    const isChunked = chunks.length > 1
-    if (isChunked) {
-      await input.onLog?.("Splitting audio into chunks ...")
-      for (const chunk of chunks) {
-        await input.onLog?.(buildChunkPreparedLog(chunk, chunks.length))
-      }
-    }
 
     const useRemoteTranscription =
       whisperModel.provider === "openai_compatible" &&
       whisperModel.api_base_url.trim() &&
       whisperModel.api_model.trim()
-    const executablePath = !useRemoteTranscription ? await resolveWhisperExecutable(this.config) : ""
     const modelPath = !useRemoteTranscription
       ? await resolveWhisperModelPath(whisperModel.path, whisperConfig.model_default)
       : ""
 
-    if (!useRemoteTranscription && !executablePath) {
-      throw AppError.conflict("未检测到 whisper.cpp CLI。", {
-        code: "WHISPER_EXECUTABLE_NOT_FOUND",
-        hint: "请安装 whisper-cli，或通过 VIDGNOST_WHISPER_BIN 指定可执行文件路径。",
-      })
-    }
-
     if (!useRemoteTranscription && !modelPath) {
-      throw AppError.conflict("未找到可用的 whisper.cpp 模型文件。", {
+      throw AppError.conflict("未找到可用的 faster-whisper 模型目录。", {
         code: "WHISPER_MODEL_NOT_FOUND",
-        hint: "请在设置中为 Whisper 模型配置本地 ggml 模型文件。",
-      })
-    }
-    const localExecutablePath = executablePath || ""
-    const localModelPath = modelPath || ""
-
-    let detectedLanguage = whisperConfig.language
-    const mergedSegments: TranscriptSegment[] = []
-    const chunkResults: AsrChunkResult[] = []
-    for (const chunk of chunks) {
-      if (isChunked) {
-        await input.onLog?.(`Transcribing chunk ${chunk.index + 1}/${chunks.length}: ${path.basename(chunk.audioPath)}`)
-      }
-      const chunkTranscription = useRemoteTranscription
-        ? await this.transcribeRemoteChunk({
-          apiBaseUrl: whisperModel.api_base_url,
-          apiKey: whisperModel.api_key,
-          audioPath: chunk.audioPath,
-          language: whisperConfig.language,
-          model: whisperModel.api_model,
-          timeoutSeconds: whisperModel.api_timeout_seconds,
-        })
-        : await this.transcribeLocalChunk({
-          audioPath: chunk.audioPath,
-          executablePath: localExecutablePath,
-          language: whisperConfig.language,
-          modelPath: localModelPath,
-          outputDir: path.join(this.config.tempDir, input.taskId, "whisper-output", `chunk-${String(chunk.index + 1).padStart(3, "0")}`),
-          signal: input.signal,
-        })
-      detectedLanguage = String(chunkTranscription.language || "").trim() || detectedLanguage
-      const rawSegments = chunkTranscription.segments
-      const absoluteSegments = rawSegments.map((segment) => offsetTranscriptSegment(segment, chunk.startSeconds))
-      chunkResults.push({
-        durationSeconds: chunk.durationSeconds,
-        index: chunk.index,
-        segments: absoluteSegments,
-        startSeconds: chunk.startSeconds,
-      })
-      mergedSegments.push(...absoluteSegments)
-      for (const segment of absoluteSegments) {
-        await input.onSegment?.(segment)
-      }
-      if (isChunked) {
-        await input.onLog?.(`Chunk ${chunk.index + 1}/${chunks.length} transcription completed`)
-      }
-      await input.onChunkComplete?.({
-        chunkIndex: chunk.index,
-        chunkTotal: chunks.length,
+        hint: "请在设置中为 Whisper 模型配置本地 faster-whisper 模型目录。",
       })
     }
 
-    const text = buildTranscriptText(mergedSegments)
+    const transcription = useRemoteTranscription
+      ? await this.transcribeRemote({
+        apiBaseUrl: whisperModel.api_base_url,
+        apiKey: whisperModel.api_key,
+        audioPath: input.audioPath,
+        language: whisperConfig.language,
+        model: whisperModel.api_model,
+        onSegment: input.onSegment,
+        timeoutSeconds: whisperModel.api_timeout_seconds,
+      })
+      : await this.transcribeLocal({
+        audioPath: input.audioPath,
+        beamSize: whisperConfig.beam_size,
+        computeType: whisperConfig.compute_type,
+        device: whisperConfig.device,
+        language: whisperConfig.language,
+        modelPath: modelPath || "",
+        onLog: input.onLog,
+        onSegment: input.onSegment,
+        outputDir: path.join(this.config.tempDir, input.taskId, "whisper-output"),
+        signal: input.signal,
+        vadFilter: true,
+      })
+
+    const text = buildTranscriptText(transcription.segments)
     if (!text) {
-      throw AppError.conflict("whisper.cpp 未返回有效转写结果。", {
+      throw AppError.conflict("faster-whisper 未返回有效转写结果。", {
         code: "WHISPER_EMPTY_RESULT",
       })
     }
 
     return {
-      chunks: chunkResults,
-      language: detectedLanguage,
-      segments: mergedSegments,
+      chunks: [buildSyntheticChunk(transcription.segments)],
+      language: transcription.language,
+      segments: transcription.segments,
       text,
     }
   }
 
-  private async transcribeRemoteChunk(input: {
+  async shutdown(): Promise<void> {
+    await this.fasterWhisperRunner.shutdown?.()
+  }
+
+  private async transcribeRemote(input: {
     apiBaseUrl: string
     apiKey: string
     audioPath: string
     language: string
     model: string
+    onSegment?: (segment: TranscriptSegment) => Promise<void> | void
     timeoutSeconds: number
   }): Promise<{ language: string; segments: TranscriptSegment[] }> {
     const remote = await this.llmClient.transcribeAudio({
@@ -182,6 +139,7 @@ export class AsrService {
         detail: remote.raw,
       })
     }
+
     const normalizedSegments = normalizeRemoteSegments(remote.segments)
     if (normalizedSegments.length === 0 && String(remote.text || "").trim()) {
       throw AppError.conflict("远程转写返回了全文，但没有可用的 segments。", {
@@ -189,6 +147,7 @@ export class AsrService {
         detail: remote.raw,
       })
     }
+
     const normalizedText = buildTranscriptText(normalizedSegments) || String(remote.text || "").trim()
     if (!normalizedText) {
       throw AppError.conflict("远程转写返回了空结果。", {
@@ -196,43 +155,76 @@ export class AsrService {
         detail: remote.raw,
       })
     }
+
+    for (const segment of normalizedSegments) {
+      await input.onSegment?.(segment)
+    }
+
     return {
       language: String(remote.language || input.language || "").trim(),
       segments: normalizedSegments,
     }
   }
 
-  private async transcribeLocalChunk(input: {
+  private async transcribeLocal(input: {
     audioPath: string
-    executablePath: string
+    beamSize: number
+    computeType: string
+    device: string
     language: string
     modelPath: string
+    onLog?: (message: string) => Promise<void> | void
+    onSegment?: (segment: TranscriptSegment) => Promise<void> | void
     outputDir: string
     signal?: AbortSignal
+    vadFilter: boolean
   }): Promise<{ language: string; segments: TranscriptSegment[] }> {
-    const cliResult = await this.whisperCliRunner.run({
-      executablePath: input.executablePath,
-      modelPath: input.modelPath,
-      audioPath: input.audioPath,
-      language: input.language,
-      outputDir: input.outputDir,
-      signal: input.signal,
-    })
-    return {
-      language: input.language,
-      segments: parseWhisperSrtSegments(cliResult.rawSrt),
+    const streamedSegments: TranscriptSegment[] = []
+    try {
+      await input.onLog?.("Streaming transcription started")
+      const runtimeResult = await this.fasterWhisperRunner.run({
+        audioPath: input.audioPath,
+        beamSize: input.beamSize,
+        computeType: input.computeType,
+        device: input.device,
+        language: input.language,
+        modelPath: input.modelPath,
+        onSegment: async (segment) => {
+          const normalizedSegment = normalizeRemoteSegments([segment])[0]
+          if (!normalizedSegment) {
+            return
+          }
+          streamedSegments.push(normalizedSegment)
+          await input.onSegment?.(normalizedSegment)
+        },
+        outputDir: input.outputDir,
+        signal: input.signal,
+        vadFilter: input.vadFilter,
+      })
+      const normalizedSegments = streamedSegments.length > 0
+        ? streamedSegments
+        : normalizeRemoteSegments(runtimeResult.segments)
+      await input.onLog?.("Streaming transcription completed")
+      return {
+        language: runtimeResult.language || input.language,
+        segments: normalizedSegments,
+      }
+    } catch (error) {
+      throw AppError.conflict("faster-whisper 本地转写执行失败。", {
+        code: "WHISPER_LOCAL_EXECUTION_FAILED",
+        detail: error instanceof Error ? error.message : String(error),
+        hint: "请确认 Python 运行时、faster-whisper 依赖以及 CUDA/cuDNN 运行库均可用。",
+      })
     }
   }
 }
 
-function buildChunkPreparedLog(chunk: AudioChunkDescriptor, totalChunks: number): string {
-  return `Chunk ${chunk.index + 1}/${totalChunks}: ${path.basename(chunk.audioPath)}, start ${chunk.startSeconds.toFixed(3)}s, duration ${chunk.durationSeconds.toFixed(3)}s`
-}
-
-function offsetTranscriptSegment(segment: TranscriptSegment, offsetSeconds: number): TranscriptSegment {
+function buildSyntheticChunk(segments: TranscriptSegment[]): AsrChunkResult {
+  const durationSeconds = Math.max(0, ...segments.map((segment) => Number(segment.end) || 0))
   return {
-    ...segment,
-    start: Number((segment.start + offsetSeconds).toFixed(3)),
-    end: Number((segment.end + offsetSeconds).toFixed(3)),
+    durationSeconds,
+    index: 0,
+    segments,
+    startSeconds: 0,
   }
 }

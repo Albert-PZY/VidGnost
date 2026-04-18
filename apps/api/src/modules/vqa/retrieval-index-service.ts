@@ -211,7 +211,10 @@ export class RetrievalIndexService {
       lexicalWeight: 0.28,
     })
 
-    const branchTopK = Math.max(1, Math.ceil(Math.max(1, input.topK) * 0.75))
+    const branchTopK = Math.min(
+      input.index.items.length,
+      Math.max(6, Math.ceil(Math.max(1, input.topK) * 2)),
+    )
     const fusedHits = dedupeCandidatesByDocId([
       ...textHits.slice(0, branchTopK),
       ...imageHits.slice(0, branchTopK),

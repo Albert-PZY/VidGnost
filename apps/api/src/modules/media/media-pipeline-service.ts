@@ -222,7 +222,7 @@ export class MediaPipelineService {
   }
 }
 
-async function resolveFfmpegExecutable(configuredPath: string): Promise<string | null> {
+export async function resolveFfmpegExecutable(configuredPath: string): Promise<string | null> {
   return findCommand([configuredPath, "ffmpeg", "ffmpeg.exe"])
 }
 

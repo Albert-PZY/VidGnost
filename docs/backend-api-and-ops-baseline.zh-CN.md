@@ -1,6 +1,6 @@
 # apps/api API 与运维基线
 
-更新时间：2026-04-16
+更新时间：2026-04-18
 
 ## 1. 运行入口
 
@@ -87,9 +87,10 @@
 ### 3.1 Whisper / ASR
 
 - 本地转写：
-  - 通过 `whisper.cpp` CLI 执行
-  - 需要现有 `whisper-cli` 可执行文件和本地 `ggml` 模型文件
-  - 当前不提供托管 auto-download
+  - 通过隔离 Python worker 调用 `faster-whisper`
+  - 需要现有 Python 运行时、`faster-whisper` 依赖和本地 `CTranslate2` 模型目录
+  - GPU 优先请求 `cuda`，并优先复用已存在的 CUDA/cuDNN 动态库路径
+  - 当前不提供托管模型下载或依赖安装
 - 远程转写：
   - 通过 OpenAI-compatible `/audio/transcriptions`
   - 会对空 `segments` 和异常时间戳做错误分类
@@ -165,8 +166,9 @@
 - 媒体处理失败：
   - 检查 `ffmpeg`、`ffprobe`、`yt-dlp` 是否可执行
 - Whisper 转写失败：
-  - 检查 `whisper-cli` 是否可执行
-  - 检查 `storage/models/whisper/` 或自定义 Whisper 模型目录
+  - 检查 Python 是否可执行，以及 `apps/api/python` 或配置路径下是否已安装 `faster-whisper`
+  - 检查 `storage/models/whisper/`、自定义 Whisper 模型目录，或其下的 `whisper-default/` 是否包含 `config.json + model.bin`
+  - 检查 CUDA/cuDNN 动态库是否可通过 Ollama 安装目录或系统 `PATH` 被发现
   - 检查远程 ASR 提供方配置
 - 问答与生成失败：
   - 检查 `storage/model_config.json`

@@ -1,0 +1,11 @@
+[project]
+name = "vidgnost-faster-whisper-runtime"
+version = "0.1.0"
+description = "Local faster-whisper runtime for VidGnost"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+  "faster-whisper>=1.2.0,<2.0.0",
+]
+
+[tool.uv]
+package = false

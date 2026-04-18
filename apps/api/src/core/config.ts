@@ -34,7 +34,7 @@ export interface AppConfig {
   tempDir: string
   uploadDir: string
   version: string
-  whisperExecutable: string
+  whisperPythonExecutable: string
   ytdlpExecutable: string
 }
 
@@ -62,7 +62,7 @@ export function resolveConfig(): AppConfig {
     tempDir: resolveAppPath(process.env.VIDGNOST_TEMP_DIR, ["storage", "tmp"]),
     uploadDir: resolveAppPath(process.env.VIDGNOST_UPLOAD_DIR, ["storage", "uploads"]),
     version: process.env.VIDGNOST_APP_VERSION?.trim() || API_VERSION,
-    whisperExecutable: String(process.env.VIDGNOST_WHISPER_BIN || "").trim(),
+    whisperPythonExecutable: String(process.env.VIDGNOST_WHISPER_PYTHON || "").trim(),
     ytdlpExecutable: String(process.env.VIDGNOST_YTDLP_BIN || "").trim(),
   }
 }

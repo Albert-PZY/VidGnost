@@ -168,7 +168,10 @@ function normalizeDevice(rawValue: string): string {
 
 function normalizeComputeType(rawValue: string): string {
   const candidate = rawValue.trim().toLowerCase()
-  return candidate === "float32" ? "float32" : "int8"
+  if (candidate === "float16" || candidate === "float32" || candidate === "int8_float16" || candidate === "int8") {
+    return candidate
+  }
+  return "int8"
 }
 
 function normalizeBoolean(rawValue: string | undefined, fallback: boolean): boolean {

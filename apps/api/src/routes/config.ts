@@ -372,7 +372,7 @@ function buildManagedDownloadUnavailableMessage(
   model: Awaited<ReturnType<ModelCatalogRepository["listModels"]>>["items"][number],
 ): string {
   if (model.component === "whisper") {
-    return "当前 TS 全栈版本不内置 Whisper 模型托管下载，请在 storage/models/whisper 放置 ggml 模型文件，或切换为远程转写提供方。"
+    return "当前 TS 全栈版本不内置 Whisper 模型托管下载，请在本地 faster-whisper 模型目录放置 CTranslate2 模型文件，或切换为远程转写提供方。"
   }
   if (model.provider === "ollama") {
     return "当前 TS 全栈版本不接管 Ollama 模型拉取，请先在 Ollama 侧执行 pull，或切换为在线 API 提供方。"

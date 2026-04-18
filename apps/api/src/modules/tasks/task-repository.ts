@@ -812,6 +812,28 @@ function buildVmPhaseMetrics(stageMetrics: Record<string, Record<string, unknown
     reason: transcriptOptimizeMetric.reason ?? null,
   }
 
+  const multimodalPrewarmMetric = substageMetrics.multimodal_prewarm || substageMetrics.multimodal_index_fusion || {}
+  result.multimodal_prewarm = {
+    status: String(multimodalPrewarmMetric.status || "pending").trim().toLowerCase() || "pending",
+    started_at: multimodalPrewarmMetric.started_at ?? null,
+    completed_at: multimodalPrewarmMetric.completed_at ?? null,
+    elapsed_seconds: multimodalPrewarmMetric.elapsed_seconds ?? null,
+    optional: Boolean(multimodalPrewarmMetric.optional ?? true),
+    reason: multimodalPrewarmMetric.reason ?? null,
+  }
+
+  for (const key of ["transcript_vectorize", "frame_extract", "frame_semantic", "frame_vectorize", "multimodal_index_fusion"]) {
+    const metric = substageMetrics[key] || {}
+    result[key] = {
+      status: String(metric.status || "pending").trim().toLowerCase() || "pending",
+      started_at: metric.started_at ?? null,
+      completed_at: metric.completed_at ?? null,
+      elapsed_seconds: metric.elapsed_seconds ?? null,
+      optional: Boolean(metric.optional ?? true),
+      reason: metric.reason ?? null,
+    }
+  }
+
   const fusionMetric = substageMetrics.fusion_delivery || {}
   result.D = {
     status: String(fusionMetric.status || toVmStatus(dMetric)).trim().toLowerCase() || "pending",

@@ -6,6 +6,7 @@ import { promisify } from "node:util"
 
 import type {
   ModelDescriptor,
+  ModelListResponse,
   SelfCheckIssueResponse,
   SelfCheckReportResponse,
   SelfCheckStepResponse,
@@ -17,16 +18,22 @@ import { generateTimeKey } from "../../core/id.js"
 import type { EventBus } from "../events/event-bus.js"
 import type { LlmConfigRepository } from "../llm/llm-config-repository.js"
 import type { ModelCatalogRepository } from "../models/model-catalog-repository.js"
-import type { LlmReadinessService } from "./llm-readiness-service.js"
+import type { LlmReadinessResult, LlmReadinessService } from "./llm-readiness-service.js"
 import type { WhisperRuntimeStatusService } from "./whisper-runtime-status-service.js"
 
 const execFileAsync = promisify(execFile)
 const MAX_SESSION_CACHE = 24
+const LOCAL_VLM_SYNC_PROBE_BUDGET_MS = 400
+const LOCAL_VLM_REACHABILITY_TIMEOUT_SECONDS = 5
+const VLM_PROBE_CACHE_TTL_MS = 10 * 60 * 1000
+const VLM_MINIMAL_PROBE_IMAGE_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wj8iZcAAAAASUVORK5CYII="
 const STEP_IDS = [
   "env",
   "gpu",
   "whisper",
   "llm",
+  "vlm",
   "embedding",
   "rerank",
   "storage",
@@ -63,8 +70,15 @@ interface SelfCheckItem {
   title: string
 }
 
+interface VlmProbeCacheEntry {
+  cachedAt: number
+  result: LlmReadinessResult
+}
+
 export class SelfCheckService {
   private readonly sessions = new Map<string, SelfCheckSession>()
+  private readonly vlmProbeCache = new Map<string, VlmProbeCacheEntry>()
+  private readonly vlmProbeInflight = new Map<string, Promise<LlmReadinessResult>>()
 
   constructor(
     private readonly config: AppConfig,
@@ -153,7 +167,8 @@ export class SelfCheckService {
     }
 
     const topic = this.topic(sessionId)
-    const steps = this.buildSteps()
+    const modelListPromise = this.modelCatalogRepository.listModels()
+    const steps = this.buildSteps(modelListPromise)
     session.status = "running"
     session.progress = 0
     session.last_error = ""
@@ -272,17 +287,18 @@ export class SelfCheckService {
     session.updated_at = nowIso()
   }
 
-  private buildSteps(): SelfCheckItem[] {
+  private buildSteps(modelListPromise: Promise<ModelListResponse>): SelfCheckItem[] {
     return [
       { id: "env", title: "系统环境", run: () => this.checkEnv() },
       { id: "gpu", title: "GPU 加速", run: () => this.checkGpu() },
-      { id: "whisper", title: "Whisper 转写", run: () => this.checkWhisper() },
+      { id: "whisper", title: "Whisper 转写", run: () => this.checkWhisper(modelListPromise) },
       { id: "llm", title: "LLM 模型", run: () => this.checkLlm() },
-      { id: "embedding", title: "嵌入模型", run: () => this.checkModel("embedding-default", "默认嵌入模型") },
-      { id: "rerank", title: "重排序模型", run: () => this.checkModel("rerank-default", "默认重排序模型") },
+      { id: "vlm", title: "视觉模型", run: () => this.checkVlm(modelListPromise) },
+      { id: "embedding", title: "嵌入模型", run: () => this.checkModel(modelListPromise, "embedding-default", "默认嵌入模型") },
+      { id: "rerank", title: "重排序模型", run: () => this.checkModel(modelListPromise, "rerank-default", "默认重排序模型") },
       { id: "storage", title: "存储空间", run: () => this.checkStorage() },
       { id: "ffmpeg", title: "FFmpeg", run: () => this.checkFfmpeg() },
-      { id: "model-cache", title: "Whisper 模型缓存", run: () => this.checkModelCache() },
+      { id: "model-cache", title: "Whisper 模型缓存", run: () => this.checkModelCache(modelListPromise) },
     ]
   }
 
@@ -342,10 +358,10 @@ export class SelfCheckService {
     }
   }
 
-  private async checkWhisper(): Promise<SelfCheckOutcome> {
+  private async checkWhisper(modelListPromise?: Promise<ModelListResponse>): Promise<SelfCheckOutcome> {
     const [runtime, models] = await Promise.all([
       this.whisperRuntimeStatusService.getStatus(),
-      this.modelCatalogRepository.listModels(),
+      modelListPromise || this.modelCatalogRepository.listModels(),
     ])
     const whisperModel = models.items.find((item) => item.id === "whisper-default")
     const details = {
@@ -391,16 +407,23 @@ export class SelfCheckService {
         manual_action: "请在设置中心填写可用的 LLM Base URL、模型名和 API Key，并确认远程 /models 返回中包含当前模型。",
       }
     }
+
     return {
       status: "passed",
       check_depth: readiness.checkDepth,
       message: readiness.message,
-      details,
+      details: {
+        ...details,
+      },
     }
   }
 
-  private async checkModel(modelId: string, label: string): Promise<SelfCheckOutcome> {
-    const models = await this.modelCatalogRepository.listModels()
+  private async checkModel(
+    modelListPromise: Promise<ModelListResponse> | undefined,
+    modelId: string,
+    label: string,
+  ): Promise<SelfCheckOutcome> {
+    const models = await (modelListPromise || this.modelCatalogRepository.listModels())
     const model = models.items.find((item) => item.id === modelId)
     if (!model) {
       return {
@@ -469,6 +492,152 @@ export class SelfCheckService {
     }
   }
 
+  private async checkVlm(modelListPromise?: Promise<ModelListResponse>): Promise<SelfCheckOutcome> {
+    const models = await (modelListPromise || this.modelCatalogRepository.listModels())
+    const target = models.items.find((item) => item.id === "vlm-default")
+    if (!target) {
+      return {
+        status: "warning",
+        check_depth: "config_only",
+        message: "视觉模型配置缺失。",
+        details: {},
+        manual_action: "请在模型设置中恢复 vlm-default 条目。",
+      }
+    }
+
+    const details = buildModelDetails(target)
+    if (!target.enabled || !target.is_installed) {
+      return {
+        status: "warning",
+        check_depth: "config_only",
+        message: "视觉模型尚未就绪。",
+        details,
+        manual_action: "请启用并安装 vlm-default，然后重试。",
+      }
+    }
+
+    const probeInput = {
+      apiKey: target.api_key,
+      baseUrl: target.api_base_url,
+      label: "视觉模型",
+      model: target.api_model || target.model_id,
+      imageUrl: VLM_MINIMAL_PROBE_IMAGE_URL,
+      timeoutSeconds: target.api_timeout_seconds,
+    }
+
+    if (isLoopbackBaseUrl(probeInput.baseUrl)) {
+      const reachability = await this.llmReadinessService.verifyRemoteModel({
+        apiKey: probeInput.apiKey,
+        baseUrl: probeInput.baseUrl,
+        label: probeInput.label,
+        model: probeInput.model,
+        timeoutSeconds: LOCAL_VLM_REACHABILITY_TIMEOUT_SECONDS,
+      })
+      if (!reachability.ok) {
+        return this.buildVlmProbeOutcome(details, reachability)
+      }
+
+      const probeKey = buildVlmProbeCacheKey(probeInput.baseUrl, probeInput.model)
+      const cachedProbe = this.getCachedVlmProbe(probeKey)
+      if (cachedProbe) {
+        return this.buildVlmProbeOutcome(details, cachedProbe)
+      }
+
+      const probePromise = this.getOrStartLocalVlmProbe(probeKey, probeInput)
+      const fastProbe = await raceWithTimeout(probePromise, LOCAL_VLM_SYNC_PROBE_BUDGET_MS)
+      if (fastProbe) {
+        return this.buildVlmProbeOutcome(details, fastProbe)
+      }
+
+      return {
+        status: "passed",
+        check_depth: "reachability",
+        message: "视觉模型服务可达，真实图像探测正在后台预热。",
+        details: {
+          ...details,
+          ...reachability.details,
+          视觉能力已验证: "预热中",
+          探测模式: "快速可达性校验",
+        },
+      }
+    }
+
+    const probe = await this.llmReadinessService.probeVisionModel(probeInput)
+    return this.buildVlmProbeOutcome(details, probe)
+  }
+
+  private buildVlmProbeOutcome(details: Record<string, string>, probe: LlmReadinessResult): SelfCheckOutcome {
+    if (!probe.ok) {
+      return {
+        status: "warning",
+        check_depth: probe.checkDepth,
+        message: probe.message,
+        details: {
+          ...details,
+          ...probe.details,
+        },
+        manual_action: "请确认 vlm-default 的模型名和远程服务能力，并检查 API Key 与端口可达性。",
+      }
+    }
+
+    return {
+      status: "passed",
+      check_depth: probe.checkDepth,
+      message: probe.message,
+      details: {
+        ...details,
+        ...probe.details,
+      },
+    }
+  }
+
+  private getCachedVlmProbe(cacheKey: string): LlmReadinessResult | null {
+    const cached = this.vlmProbeCache.get(cacheKey)
+    if (!cached) {
+      return null
+    }
+    if (Date.now() - cached.cachedAt > VLM_PROBE_CACHE_TTL_MS) {
+      this.vlmProbeCache.delete(cacheKey)
+      return null
+    }
+    return cached.result
+  }
+
+  private getOrStartLocalVlmProbe(
+    cacheKey: string,
+    probeInput: {
+      apiKey: string
+      baseUrl: string
+      imageUrl: string
+      label: string
+      model: string
+      timeoutSeconds?: number
+    },
+  ): Promise<LlmReadinessResult> {
+    const inflight = this.vlmProbeInflight.get(cacheKey)
+    if (inflight) {
+      return inflight
+    }
+
+    const probePromise = this.llmReadinessService
+      .probeVisionModel(probeInput)
+      .then((result) => {
+        if (result.ok && result.checkDepth === "model_verified") {
+          this.vlmProbeCache.set(cacheKey, {
+            cachedAt: Date.now(),
+            result,
+          })
+        }
+        return result
+      })
+      .finally(() => {
+        this.vlmProbeInflight.delete(cacheKey)
+      })
+
+    this.vlmProbeInflight.set(cacheKey, probePromise)
+    return probePromise
+  }
+
   private async checkStorage(): Promise<SelfCheckOutcome> {
     await ensureDirectory(this.config.storageDir)
     try {
@@ -529,8 +698,8 @@ export class SelfCheckService {
     }
   }
 
-  private async checkModelCache(): Promise<SelfCheckOutcome> {
-    const whisperPath = await this.resolveWhisperModelPath()
+  private async checkModelCache(modelListPromise?: Promise<ModelListResponse>): Promise<SelfCheckOutcome> {
+    const whisperPath = await this.resolveWhisperModelPath(modelListPromise)
     if (!whisperPath) {
       return {
         status: "warning",
@@ -563,8 +732,8 @@ export class SelfCheckService {
     }
   }
 
-  private async resolveWhisperModelPath(): Promise<string> {
-    const models = await this.modelCatalogRepository.listModels()
+  private async resolveWhisperModelPath(modelListPromise?: Promise<ModelListResponse>): Promise<string> {
+    const models = await (modelListPromise || this.modelCatalogRepository.listModels())
     const model = models.items.find((item) => item.id === "whisper-default")
     return model?.path || model?.default_path || ""
   }
@@ -645,6 +814,35 @@ function buildModelDetails(model: ModelDescriptor): Record<string, string> {
     加载策略: model.load_profile || "balanced",
     状态: model.status,
   }
+}
+
+function buildVlmProbeCacheKey(baseUrl: string, model: string): string {
+  return `${String(baseUrl || "").trim().toLowerCase()}::${String(model || "").trim().toLowerCase()}`
+}
+
+function isLoopbackBaseUrl(baseUrl: string): boolean {
+  try {
+    const parsed = new URL(String(baseUrl || "").trim())
+    const hostname = parsed.hostname.trim().toLowerCase()
+    return hostname === "127.0.0.1" || hostname === "localhost" || hostname === "::1" || hostname === "0.0.0.0"
+  } catch {
+    return false
+  }
+}
+
+async function raceWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
+  let timer: NodeJS.Timeout | null = null
+  const timeoutToken = Symbol("timeout")
+  const result = await Promise.race<T | typeof timeoutToken>([
+    promise,
+    new Promise<typeof timeoutToken>((resolve) => {
+      timer = setTimeout(() => resolve(timeoutToken), Math.max(1, timeoutMs))
+    }),
+  ])
+  if (timer) {
+    clearTimeout(timer)
+  }
+  return result === timeoutToken ? null : result
 }
 
 function nowIso(): string {

@@ -12,6 +12,7 @@ import { OpenAiCompatibleClient } from "../modules/llm/openai-compatible-client.
 import { EventBus } from "../modules/events/event-bus.js"
 import { AsrService } from "../modules/asr/asr-service.js"
 import { MediaPipelineService } from "../modules/media/media-pipeline-service.js"
+import { VideoFrameService } from "../modules/media/video-frame-service.js"
 import { LocalModelMigrationService } from "../modules/models/local-model-migration-service.js"
 import { ModelCatalogRepository } from "../modules/models/model-catalog-repository.js"
 import { OllamaRuntimeConfigRepository } from "../modules/models/ollama-runtime-config-repository.js"
@@ -23,6 +24,7 @@ import { SelfCheckService } from "../modules/runtime/self-check-service.js"
 import { SummaryService } from "../modules/summary/summary-service.js"
 import { TaskOrchestrator } from "../modules/tasks/task-orchestrator.js"
 import { TaskRepository } from "../modules/tasks/task-repository.js"
+import { VlmRuntimeService } from "../modules/vqa/vlm-runtime-service.js"
 import { VqaRuntimeService } from "../modules/vqa/vqa-runtime-service.js"
 import { WhisperRuntimeConfigRepository } from "../modules/runtime/whisper-runtime-config-repository.js"
 import { WhisperRuntimeStatusService } from "../modules/runtime/whisper-runtime-status-service.js"
@@ -93,6 +95,7 @@ export async function buildApp(inputConfig?: Partial<AppConfig>): Promise<Fastif
   )
   const openAiCompatibleClient = new OpenAiCompatibleClient()
   const mediaPipelineService = new MediaPipelineService(config)
+  const videoFrameService = new VideoFrameService(config)
   const asrService = new AsrService(
     config,
     modelCatalogRepository,
@@ -105,10 +108,13 @@ export async function buildApp(inputConfig?: Partial<AppConfig>): Promise<Fastif
     openAiCompatibleClient,
   )
   const llmReadinessService = new LlmReadinessService(openAiCompatibleClient)
+  const vlmRuntimeService = new VlmRuntimeService(modelCatalogRepository, openAiCompatibleClient)
   const taskOrchestrator = new TaskOrchestrator(taskRepository, eventBus, {
     asrService,
     mediaPipelineService,
     summaryService,
+    videoFrameService,
+    vlmRuntimeService,
   })
   const localModelMigrationService = new LocalModelMigrationService()
   const selfCheckService = new SelfCheckService(
@@ -122,8 +128,12 @@ export async function buildApp(inputConfig?: Partial<AppConfig>): Promise<Fastif
   const vqaRuntimeService = new VqaRuntimeService(
     taskRepository,
     modelCatalogRepository,
+    llmConfigRepository,
+    openAiCompatibleClient,
     path.join(config.eventLogDir, "traces"),
   )
+
+  app.decorate("videoFrameService", videoFrameService)
 
   await registerHealthRoute(app, config)
   await registerRuntimeRoutes(app, config, runtimeMetricsService)

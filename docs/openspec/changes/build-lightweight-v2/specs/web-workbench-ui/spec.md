@@ -571,6 +571,12 @@ Diagnostics view SHALL provide a direct autofix action when the backend marks is
 - **AND** once that background probe succeeds, a subsequent self-check reuses the cached result and returns `check_depth=model_verified`
 - **AND** the step result includes the configured model/provider details together with the current verification depth and probe summary
 
+#### Scenario: Diagnostics self-check keeps a stable shared step contract
+- **WHEN** the diagnostics surface renders self-check progress from the shared contracts payload
+- **THEN** it accepts the ordered step ids `env`、`gpu`、`whisper`、`llm`、`vlm`、`embedding`、`rerank`、`storage`、`ffmpeg`、`model-cache`
+- **AND** the `视觉模型` step is rendered as an independent row between `LLM 模型` and `嵌入模型` instead of being folded into another model check
+- **AND** renderer-side type usage stays aligned with the shared contracts exports for VLM citations and self-check steps rather than duplicating a divergent local schema
+
 #### Scenario: Diagnostics view survives page navigation during self-check
 - **WHEN** user starts a self-check, leaves the diagnostics page, and later returns within the same desktop session
 - **THEN** the renderer restores the last active self-check session from local persistence
