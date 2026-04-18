@@ -170,6 +170,12 @@ Electron desktop startup SHALL open a dedicated splash window first, keep the ma
 - **AND** the main window is revealed only after startup bootstrap reports completion or explicitly enters degraded mode
 - **AND** no page-level or prompt-editor loading placeholder is shown as part of the initial desktop startup chain before the main window becomes interactive
 
+#### Scenario: Preload common shell views before shell becomes interactive
+- **WHEN** desktop bootstrap enters the final `稳定首帧并挂载 UI` phase
+- **THEN** the renderer preloads the common shell views `历史记录`、`设置中心`、`系统自检`、`任务处理` in the background before marking bootstrap ready
+- **AND** the first view switch within the same desktop session does not need to fetch those page modules lazily after the shell is already interactive
+- **AND** an in-place loading placeholder remains available only as a fallback when a later view import or refresh path truly has not been resolved yet
+
 #### Scenario: Bootstrap script enforces fixed service ports
 - **WHEN** the Windows or shell startup script launches the local desktop workbench
 - **THEN** the backend process binds only to `8666` and the frontend dev server binds only to `6221`

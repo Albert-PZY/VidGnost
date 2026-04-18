@@ -12,6 +12,13 @@ import { AppHeader } from "@/components/app-header"
 import { NewTaskView } from "@/components/views/new-task-view"
 import { BootstrapStatusOverlay, type BootstrapStatus } from "@/components/views/bootstrap-status-overlay"
 import {
+  DiagnosticsView,
+  HistoryView,
+  preloadWorkbenchViewModules,
+  SettingsView,
+  TaskProcessingView,
+} from "@/app/workbench-view-loader"
+import {
   createTaskFromPath,
   createTaskFromUrl,
   getApiErrorMessage,
@@ -56,18 +63,6 @@ const DEFAULT_UI_SETTINGS: UISettingsResponse = {
 }
 
 const RUNTIME_PATHS_STORAGE_KEY = "vidgnost:runtime-paths:v1"
-const DiagnosticsView = React.lazy(async () => import("@/components/views/diagnostics-view").then((module) => ({
-  default: module.DiagnosticsView,
-})))
-const HistoryView = React.lazy(async () => import("@/components/views/history-view").then((module) => ({
-  default: module.HistoryView,
-})))
-const SettingsView = React.lazy(async () => import("@/components/views/settings-view").then((module) => ({
-  default: module.SettingsView,
-})))
-const TaskProcessingView = React.lazy(async () => import("@/components/views/task-processing-view").then((module) => ({
-  default: module.TaskProcessingView,
-})))
 
 function readStoredRuntimePaths(): RuntimePathsResponse | null {
   if (typeof window === "undefined") {
@@ -202,6 +197,7 @@ export default function VideoMindApp() {
   const runBootstrap = React.useCallback(
     async (showToastOnError = false) => {
       let currentPhaseId = "connect-backend"
+      const preloadViewsPromise = preloadWorkbenchViewModules()
 
       setBootstrapStatus((current) => (current === "ready" ? "connecting" : "initializing"))
       setBootstrapMessage("正在连接本地服务并准备同步工作台初始化数据。")
@@ -247,10 +243,10 @@ export default function VideoMindApp() {
           phaseId: currentPhaseId,
           title: "初始化引擎",
           message: "稳定首帧并挂载 UI",
-          detail: "正在等待字体、首帧绘制和主工作台挂载完成。",
+          detail: "正在等待字体、首帧绘制、主工作台挂载和核心页面预加载完成。",
         }))
 
-        await settleStartupFrame()
+        await Promise.allSettled([settleStartupFrame(), preloadViewsPromise])
         setBootstrapStatus("ready")
         setBootstrapMessage("系统运行正常。")
         completeDesktopBootstrap(createDesktopBootstrapState({
@@ -264,7 +260,7 @@ export default function VideoMindApp() {
         const message = getApiErrorMessage(error, "后端当前不可用，请稍后重试。")
         setBootstrapStatus("degraded")
         setBootstrapMessage(message)
-        await settleStartupFrame()
+        await Promise.allSettled([settleStartupFrame(), preloadViewsPromise])
         const degradedBootstrapState = createDesktopBootstrapState({
           phaseId: currentPhaseId,
           phaseStatus: "error",
