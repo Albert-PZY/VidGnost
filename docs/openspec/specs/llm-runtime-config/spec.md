@@ -149,6 +149,7 @@ The system SHALL expose `/config/models` and related model-management APIs with 
 - **WHEN** frontend requests `/config/models`
 - **THEN** backend returns each model entry with `provider`, `model_id`, `default_path`, `path`, `is_installed`, `supports_managed_download`, and optional `download` status
 - **AND** online-capable entries also expose `api_base_url`, `api_key_configured`, `api_model`, and `api_timeout_seconds`
+- **AND** each entry includes `size_bytes` from the current runtime source instead of a synthesized display path
 
 ### Requirement: Managed model catalog SHALL support provider-specific routing with absolute local paths
 Status: `implemented`
@@ -159,6 +160,12 @@ The system SHALL keep `whisper-default` on the local runtime path, and allow `ll
 - **WHEN** frontend requests `/config/models`
 - **THEN** Ollama-backed entries expose `path` and `default_path` as absolute paths resolved under the configured Ollama `models_dir`
 - **AND** backend derives `is_installed` from live Ollama tag discovery or the remote-ready contract rather than from a synthesized filesystem path or managed pull job
+
+#### Scenario: Resolve managed model sizes from live runtime sources
+- **WHEN** frontend requests `/config/models`
+- **THEN** Ollama-backed entries derive `size_bytes` from the live `/api/tags` response returned by the configured Ollama service
+- **AND** local entries such as `whisper-default` derive `size_bytes` by measuring the effective filesystem path recursively when it exists
+- **AND** backend returns `size_bytes=0` when the runtime source is unavailable or the effective local path does not exist
 
 #### Scenario: Run runtime diagnostics for retrieval models
 - **WHEN** backend executes system self-check for managed retrieval models

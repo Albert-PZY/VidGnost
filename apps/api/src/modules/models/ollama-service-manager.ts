@@ -17,6 +17,11 @@ interface OllamaProcessInfo {
   pid: number | null
 }
 
+export interface OllamaModelInfo {
+  modelId: string
+  sizeBytes: number
+}
+
 interface OllamaProcessStartInput {
   baseUrl: string
   executablePath: string
@@ -171,17 +176,33 @@ export async function probeOllama(baseUrl: string): Promise<boolean> {
 }
 
 export async function listOllamaModelIds(baseUrl: string): Promise<string[]> {
+  const models = await listOllamaModels(baseUrl)
+  return models.map((item) => item.modelId)
+}
+
+export async function listOllamaModels(baseUrl: string): Promise<OllamaModelInfo[]> {
   try {
     const payload = await readJsonFromUrl(`${baseUrl.replace(/\/+$/, "")}/api/tags`)
     const models = Array.isArray((payload as { models?: unknown[] })?.models)
       ? (payload as { models: Array<Record<string, unknown>> }).models
       : []
     return models
-      .map((item) => String(item.name || item.model || "").trim())
-      .filter(Boolean)
+      .map((item) => ({
+        modelId: String(item.name || item.model || "").trim(),
+        sizeBytes: normalizeOllamaModelSize(item.size),
+      }))
+      .filter((item) => Boolean(item.modelId))
   } catch {
     return []
   }
+}
+
+function normalizeOllamaModelSize(rawValue: unknown): number {
+  const value = Number(rawValue)
+  if (!Number.isFinite(value) || value < 0) {
+    return 0
+  }
+  return Math.trunc(value)
 }
 
 async function readJsonFromUrl(targetUrl: string): Promise<unknown> {

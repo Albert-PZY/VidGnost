@@ -24,12 +24,12 @@ describe("ollama model detection and llm sync", () => {
         response.writeHead(200, { "Content-Type": "application/json" })
         response.end(JSON.stringify({
           models: [
-            { name: "qwen2.5:3b" },
-            { name: "qwen2.5:7b" },
-            { name: "qwen2.5vl:3b" },
-            { name: "granite3.2-vision:2b" },
-            { name: "bge-m3:latest" },
-            { name: "sam860/qwen3-reranker:0.6b-q8_0" },
+            { name: "qwen2.5:3b", size: 1929912432 },
+            { name: "qwen2.5:7b", size: 4680000000 },
+            { name: "qwen2.5vl:3b", size: 3200627168 },
+            { name: "granite3.2-vision:2b", size: 2437852465 },
+            { name: "bge-m3:latest", size: 1157672605 },
+            { name: "sam860/qwen3-reranker:0.6b-q8_0", size: 639152832 },
           ],
         }))
         return
@@ -88,16 +88,19 @@ describe("ollama model detection and llm sync", () => {
       provider: "ollama",
       status: "ready",
       is_installed: true,
+      size_bytes: 1929912432,
     })
     expect(payload.items.find((item) => item.id === "embedding-default")).toMatchObject({
       provider: "ollama",
       status: "ready",
       is_installed: true,
+      size_bytes: 1157672605,
     })
     expect(payload.items.find((item) => item.id === "rerank-default")).toMatchObject({
       provider: "ollama",
       status: "ready",
       is_installed: true,
+      size_bytes: 639152832,
     })
     expect(payload.items.find((item) => item.id === "vlm-default")).toMatchObject({
       provider: "ollama",
@@ -106,6 +109,7 @@ describe("ollama model detection and llm sync", () => {
       api_model: "qwen2.5vl:3b",
       status: "ready",
       is_installed: true,
+      size_bytes: 3200627168,
     })
   })
 

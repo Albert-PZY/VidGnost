@@ -215,6 +215,7 @@ describe("config routes", () => {
       "vlm-default",
       "whisper-default",
     ])
+    expect(modelList.items.find((item) => item.id === "whisper-default")?.size_bytes).toBeGreaterThan(0)
 
     const updateModelResponse = await app.inject({
       method: "PATCH",

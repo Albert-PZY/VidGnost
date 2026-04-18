@@ -1,4 +1,5 @@
 import path from "node:path"
+import { readdir, stat } from "node:fs/promises"
 
 import type {
   ModelDescriptor,
@@ -12,7 +13,7 @@ import { resolveAppPath, type AppConfig } from "../../core/config.js"
 import { pathExists, readJsonFile, writeJsonFile } from "../../core/fs.js"
 import { clampInteger, clampNumber } from "../../core/number.js"
 import type { OllamaRuntimeConfigRepository } from "./ollama-runtime-config-repository.js"
-import { listOllamaModelIds } from "./ollama-service-manager.js"
+import { listOllamaModels } from "./ollama-service-manager.js"
 
 const DEFAULT_API_TIMEOUT_SECONDS = 120
 const DEFAULT_OLLAMA_API_KEY = "ollama"
@@ -331,7 +332,8 @@ export class ModelCatalogRepository {
 
   async #hydrate(models: ModelDescriptor[]): Promise<ModelDescriptor[]> {
     const ollamaRuntimeConfig = await this.#ollamaRuntimeConfigRepository.get()
-    const ollamaModelIds = await listOllamaModelIds(ollamaRuntimeConfig.base_url)
+    const ollamaModels = await listOllamaModels(ollamaRuntimeConfig.base_url)
+    const ollamaModelIds = ollamaModels.map((item) => item.modelId)
     const effectiveModels = synchronizeManagedModels(models, {
       llmApiKey: this.#config.llmApiKey,
       ollamaBaseUrl: ollamaRuntimeConfig.base_url,
@@ -342,6 +344,7 @@ export class ModelCatalogRepository {
     }
 
     const installedModelIds = new Set(ollamaModelIds)
+    const ollamaModelSizes = new Map(ollamaModels.map((item) => [item.modelId, item.sizeBytes] as const))
     const hydrated: ModelDescriptor[] = []
     for (const item of effectiveModels) {
       const defaultPath = resolveDefaultPath(item, this.#config.storageDir, ollamaRuntimeConfig.models_dir)
@@ -354,6 +357,11 @@ export class ModelCatalogRepository {
         : item.provider === "ollama"
           ? isOllamaModelInstalled(item.model_id, installedModelIds)
           : Boolean(effectivePath && await pathExists(effectivePath))
+      const sizeBytes = item.provider === "ollama"
+        ? resolveOllamaModelSize(item.model_id, ollamaModelSizes)
+        : item.provider === "local"
+          ? await measurePathSizeBytes(effectivePath)
+          : 0
 
       hydrated.push({
         ...item,
@@ -363,6 +371,7 @@ export class ModelCatalogRepository {
         api_model: effectiveApiModel,
         api_key: effectiveApiKey,
         is_installed: installed,
+        size_bytes: sizeBytes,
         supports_managed_download: false,
         api_key_configured: Boolean(effectiveApiKey.trim()),
         status: installed ? "ready" : "not_ready",
@@ -568,6 +577,19 @@ function isOllamaModelInstalled(modelId: string, installedModelIds: Set<string>)
   return false
 }
 
+function resolveOllamaModelSize(modelId: string, modelSizes: Map<string, number>): number {
+  const targetAliases = buildOllamaModelAliases(modelId)
+  for (const [candidateModelId, sizeBytes] of modelSizes.entries()) {
+    const candidateAliases = buildOllamaModelAliases(candidateModelId)
+    for (const alias of targetAliases) {
+      if (candidateAliases.has(alias)) {
+        return sizeBytes
+      }
+    }
+  }
+  return 0
+}
+
 function buildOllamaModelAliases(rawModelId: string): Set<string> {
   const normalized = String(rawModelId || "").trim().replace(/^\/+|\/+$/g, "").toLowerCase()
   const aliases = new Set<string>()
@@ -612,6 +634,38 @@ function buildOllamaModelAliases(rawModelId: string): Set<string> {
   }
 
   return aliases
+}
+
+async function measurePathSizeBytes(targetPath: string): Promise<number> {
+  const normalized = String(targetPath || "").trim()
+  if (!normalized || !(await pathExists(normalized))) {
+    return 0
+  }
+  return measureExistingPathSizeBytes(normalized)
+}
+
+async function measureExistingPathSizeBytes(targetPath: string): Promise<number> {
+  const targetStat = await stat(targetPath)
+  if (targetStat.isFile()) {
+    return targetStat.size
+  }
+  if (!targetStat.isDirectory()) {
+    return 0
+  }
+
+  const entries = await readdir(targetPath, { withFileTypes: true })
+  let totalBytes = 0
+  for (const entry of entries) {
+    const entryPath = path.join(targetPath, entry.name)
+    if (entry.isDirectory()) {
+      totalBytes += await measureExistingPathSizeBytes(entryPath)
+      continue
+    }
+    if (entry.isFile()) {
+      totalBytes += (await stat(entryPath)).size
+    }
+  }
+  return totalBytes
 }
 
 function isLoopbackUrl(rawUrl: string): boolean {
