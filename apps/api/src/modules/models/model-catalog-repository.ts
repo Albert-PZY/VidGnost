@@ -13,7 +13,7 @@ import { resolveAppPath, type AppConfig } from "../../core/config.js"
 import { pathExists, readJsonFile, writeJsonFile } from "../../core/fs.js"
 import { clampInteger, clampNumber } from "../../core/number.js"
 import type { OllamaRuntimeConfigRepository } from "./ollama-runtime-config-repository.js"
-import { listOllamaModels } from "./ollama-service-manager.js"
+import { discoverOllamaModels } from "./ollama-service-manager.js"
 
 const DEFAULT_API_TIMEOUT_SECONDS = 120
 const DEFAULT_OLLAMA_API_KEY = "ollama"
@@ -332,7 +332,11 @@ export class ModelCatalogRepository {
 
   async #hydrate(models: ModelDescriptor[]): Promise<ModelDescriptor[]> {
     const ollamaRuntimeConfig = await this.#ollamaRuntimeConfigRepository.get()
-    const ollamaModels = await listOllamaModels(ollamaRuntimeConfig.base_url)
+    const ollamaDiscovery = await discoverOllamaModels({
+      baseUrl: ollamaRuntimeConfig.base_url,
+      modelsDir: ollamaRuntimeConfig.models_dir,
+    })
+    const ollamaModels = ollamaDiscovery.models
     const ollamaModelIds = ollamaModels.map((item) => item.modelId)
     const effectiveModels = synchronizeManagedModels(models, {
       llmApiKey: this.#config.llmApiKey,
@@ -362,6 +366,9 @@ export class ModelCatalogRepository {
         : item.provider === "local"
           ? await measurePathSizeBytes(effectivePath)
           : 0
+      const status = item.provider === "ollama"
+        ? installed && ollamaDiscovery.source === "remote" ? "ready" : "not_ready"
+        : installed ? "ready" : "not_ready"
 
       hydrated.push({
         ...item,
@@ -374,7 +381,7 @@ export class ModelCatalogRepository {
         size_bytes: sizeBytes,
         supports_managed_download: false,
         api_key_configured: Boolean(effectiveApiKey.trim()),
-        status: installed ? "ready" : "not_ready",
+        status,
       })
     }
     return hydrated

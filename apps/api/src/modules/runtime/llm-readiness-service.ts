@@ -71,12 +71,13 @@ export class LlmReadinessService {
       return {
         ok: false,
         checkDepth: "reachability",
-        message: error instanceof Error && error.message.trim() ? error.message : `${input.label} 远程服务不可达。`,
+        message: buildReachabilityMessage(input.label, baseUrl),
         details: {
           "Base URL": baseUrl,
           模型: model,
           远程可达: "否",
           鉴权: "已配置",
+          ...buildErrorDetail(error),
         },
       }
     }
@@ -148,16 +149,56 @@ export class LlmReadinessService {
       return {
         ok: false,
         checkDepth: "reachability",
-        message: error instanceof Error && error.message.trim() ? error.message : `${input.label} 视觉服务不可达。`,
+        message: buildReachabilityMessage(input.label, baseUrl),
         details: {
           "Base URL": baseUrl,
           模型: model,
           探测图片: imageUrl,
           远程可达: "否",
           鉴权: "已配置",
+          ...buildErrorDetail(error),
         },
       }
     }
+  }
+}
+
+function buildReachabilityMessage(label: string, baseUrl: string): string {
+  if (isLoopbackUrl(baseUrl)) {
+    const host = resolveHostLabel(baseUrl)
+    return `${label} 无法连接到本地 Ollama 服务，请确认 ${host} 已启动且可访问。`
+  }
+  return `${label} 无法连接到远程模型服务，请检查 Base URL、网络连通性或网关配置。`
+}
+
+function buildErrorDetail(error: unknown): Record<string, string> {
+  if (!(error instanceof Error)) {
+    return {}
+  }
+  const message = error.message.trim()
+  if (!message) {
+    return {}
+  }
+  return {
+    底层错误: message,
+  }
+}
+
+function isLoopbackUrl(rawUrl: string): boolean {
+  try {
+    const target = new URL(rawUrl)
+    return target.hostname === "127.0.0.1" || target.hostname === "localhost" || target.hostname === "::1"
+  } catch {
+    return false
+  }
+}
+
+function resolveHostLabel(rawUrl: string): string {
+  try {
+    const target = new URL(rawUrl)
+    return target.host || rawUrl
+  } catch {
+    return rawUrl
   }
 }
 

@@ -1,5 +1,6 @@
 import path from "node:path"
 import { execFile, spawn } from "node:child_process"
+import { readdir, readFile, stat } from "node:fs/promises"
 import { promisify } from "node:util"
 import { request as httpRequest } from "node:http"
 import { request as httpsRequest } from "node:https"
@@ -20,6 +21,11 @@ interface OllamaProcessInfo {
 export interface OllamaModelInfo {
   modelId: string
   sizeBytes: number
+}
+
+export interface OllamaModelDiscoveryResult {
+  models: OllamaModelInfo[]
+  source: "remote" | "offline" | "unavailable"
 }
 
 interface OllamaProcessStartInput {
@@ -181,6 +187,37 @@ export async function listOllamaModelIds(baseUrl: string): Promise<string[]> {
 }
 
 export async function listOllamaModels(baseUrl: string): Promise<OllamaModelInfo[]> {
+  const models = await tryListRemoteOllamaModels(baseUrl)
+  return models || []
+}
+
+export async function discoverOllamaModels(input: {
+  baseUrl: string
+  modelsDir: string
+}): Promise<OllamaModelDiscoveryResult> {
+  const remoteModels = await tryListRemoteOllamaModels(input.baseUrl)
+  if (remoteModels) {
+    return {
+      models: remoteModels,
+      source: "remote",
+    }
+  }
+
+  const offlineModels = await listOfflineOllamaModels(input.modelsDir)
+  if (offlineModels.length > 0) {
+    return {
+      models: offlineModels,
+      source: "offline",
+    }
+  }
+
+  return {
+    models: [],
+    source: "unavailable",
+  }
+}
+
+async function tryListRemoteOllamaModels(baseUrl: string): Promise<OllamaModelInfo[] | null> {
   try {
     const payload = await readJsonFromUrl(`${baseUrl.replace(/\/+$/, "")}/api/tags`)
     const models = Array.isArray((payload as { models?: unknown[] })?.models)
@@ -193,7 +230,7 @@ export async function listOllamaModels(baseUrl: string): Promise<OllamaModelInfo
       }))
       .filter((item) => Boolean(item.modelId))
   } catch {
-    return []
+    return null
   }
 }
 
@@ -203,6 +240,117 @@ function normalizeOllamaModelSize(rawValue: unknown): number {
     return 0
   }
   return Math.trunc(value)
+}
+
+async function listOfflineOllamaModels(modelsDir: string): Promise<OllamaModelInfo[]> {
+  const normalizedModelsDir = String(modelsDir || "").trim()
+  if (!normalizedModelsDir) {
+    return []
+  }
+
+  const manifestsDir = path.join(normalizedModelsDir, "manifests")
+  if (!(await pathExists(manifestsDir))) {
+    return []
+  }
+
+  const manifestPaths = await collectFilesRecursively(manifestsDir)
+  const discovered = new Map<string, number>()
+  for (const manifestPath of manifestPaths) {
+    try {
+      const raw = await readFile(manifestPath, "utf8")
+      const manifest = JSON.parse(raw) as {
+        config?: { digest?: unknown; size?: unknown }
+        layers?: Array<{ digest?: unknown; size?: unknown }>
+      }
+      const modelId = buildModelIdFromManifestPath(path.relative(manifestsDir, manifestPath))
+      if (!modelId) {
+        continue
+      }
+      discovered.set(
+        modelId,
+        await measureManifestBlobSizeBytes(path.join(normalizedModelsDir, "blobs"), manifest),
+      )
+    } catch {
+      // ignore malformed local manifest files during best-effort offline discovery
+    }
+  }
+
+  return Array.from(discovered.entries())
+    .map(([modelId, sizeBytes]) => ({ modelId, sizeBytes }))
+    .sort((left, right) => left.modelId.localeCompare(right.modelId))
+}
+
+async function collectFilesRecursively(directoryPath: string): Promise<string[]> {
+  const entries = await readdir(directoryPath, { withFileTypes: true })
+  const files: string[] = []
+  for (const entry of entries) {
+    const entryPath = path.join(directoryPath, entry.name)
+    if (entry.isDirectory()) {
+      files.push(...await collectFilesRecursively(entryPath))
+      continue
+    }
+    if (entry.isFile()) {
+      files.push(entryPath)
+    }
+  }
+  return files
+}
+
+function buildModelIdFromManifestPath(relativeManifestPath: string): string {
+  const segments = String(relativeManifestPath || "").split(/[\\/]+/).filter(Boolean)
+  if (segments.length < 4) {
+    return ""
+  }
+
+  const [, namespace, ...repositoryAndTag] = segments
+  const tag = repositoryAndTag.pop()
+  const repository = repositoryAndTag.join("/")
+  if (!namespace || !repository || !tag) {
+    return ""
+  }
+
+  return namespace === "library" ? `${repository}:${tag}` : `${namespace}/${repository}:${tag}`
+}
+
+async function measureManifestBlobSizeBytes(
+  blobsDir: string,
+  manifest: {
+    config?: { digest?: unknown; size?: unknown }
+    layers?: Array<{ digest?: unknown; size?: unknown }>
+  },
+): Promise<number> {
+  const blobDescriptors = [
+    manifest.config ? [manifest.config] : [],
+    Array.isArray(manifest.layers) ? manifest.layers : [],
+  ].flat()
+  const seenDigests = new Set<string>()
+  let totalBytes = 0
+
+  for (const descriptor of blobDescriptors) {
+    const digest = normalizeOllamaDigest(descriptor.digest)
+    if (!digest || seenDigests.has(digest)) {
+      continue
+    }
+    seenDigests.add(digest)
+
+    const blobPath = path.join(blobsDir, digest.replace(":", "-"))
+    try {
+      totalBytes += (await stat(blobPath)).size
+      continue
+    } catch {
+      totalBytes += normalizeOllamaModelSize(descriptor.size)
+    }
+  }
+
+  return totalBytes
+}
+
+function normalizeOllamaDigest(rawValue: unknown): string {
+  const digest = String(rawValue || "").trim().toLowerCase()
+  if (!digest.startsWith("sha256:")) {
+    return ""
+  }
+  return digest
 }
 
 async function readJsonFromUrl(targetUrl: string): Promise<unknown> {

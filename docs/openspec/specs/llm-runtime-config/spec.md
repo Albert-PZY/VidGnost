@@ -163,7 +163,9 @@ The system SHALL keep `whisper-default` on the local runtime path, and allow `ll
 
 #### Scenario: Resolve managed model sizes from live runtime sources
 - **WHEN** frontend requests `/config/models`
-- **THEN** Ollama-backed entries derive `size_bytes` from the live `/api/tags` response returned by the configured Ollama service
+- **THEN** Ollama-backed entries derive `size_bytes` from the live `/api/tags` response returned by the configured Ollama service when that service is reachable
+- **AND** if the configured Ollama service is unreachable but the configured `models_dir` still contains valid local manifest and blob files, backend derives `is_installed=true` and `size_bytes` from those local Ollama artifacts
+- **AND** the same offline fallback does not upgrade Ollama-backed entries to `ready`; readiness still reflects current service reachability
 - **AND** local entries such as `whisper-default` derive `size_bytes` by measuring the effective filesystem path recursively when it exists
 - **AND** backend returns `size_bytes=0` when the runtime source is unavailable or the effective local path does not exist
 

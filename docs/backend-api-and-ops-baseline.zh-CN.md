@@ -121,13 +121,15 @@
   - 未就绪模型返回说明性 failed / guidance snapshot
   - 当前不触发 `Ollama pull`
 - Ollama 模型安装状态：
-  - 以 `/api/tags` 返回的真实模型标签为准
+  - 优先以 `/api/tags` 返回的真实模型标签为准
+  - 若服务不可达但 `models_dir` 中仍存在有效 manifest/blob，则回退读取本地元数据判断已安装与模型大小
   - 不再通过 `models_dir/<model-id-sanitized>` 伪路径判断是否已安装
 
 ### 3.5 自检
 
 - LLM / Embedding 会复用 `/models` 远程探测
 - 自检结果包含 `check_depth`
+- 本地 loopback Ollama 探测失败时返回可读诊断文案，而不是直接透传底层 `fetch failed`
 
 ## 4. 存储基线
 

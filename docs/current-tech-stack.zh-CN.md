@@ -107,6 +107,7 @@
   - 不自动搬迁 Ollama 现有模型文件
   - `restart-service` 当前支持在 Windows 上按已配置的 `OLLAMA_MODELS` 与服务地址执行项目内重启
   - Ollama 模型就绪状态基于 `/api/tags` 真实探测，而不是伪造的本地目录占位路径
+  - 当 Ollama 服务不可达但配置的 `models_dir` 仍保留有效 manifest/blob 时，模型目录页会回退显示真实安装状态与大小，但不会误报为运行就绪
 
 ## 5. 数据与存储
 
