@@ -190,6 +190,7 @@ describe("config routes", () => {
     expect(whisperConfigResponseSchema.parse(whisperResponse.json())).toMatchObject({
       model_default: "small",
       language: "zh",
+      chunk_seconds: 30,
     })
     expect(whisperConfigResponseSchema.parse(whisperResponse.json()).runtime_libraries).toMatchObject({
       bin_dir: path.join(storageDir, "runtime-bin"),
@@ -209,11 +210,12 @@ describe("config routes", () => {
     })
 
     const modelList = modelListResponseSchema.parse(modelsResponse.json())
-    expect(modelList.items).toHaveLength(4)
+    expect(modelList.items).toHaveLength(5)
     expect(modelList.items.map((item) => item.id).sort()).toEqual([
       "embedding-default",
       "llm-default",
       "rerank-default",
+      "vlm-default",
       "whisper-default",
     ])
 

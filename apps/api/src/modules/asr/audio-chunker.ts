@@ -11,6 +11,9 @@ export interface AudioChunkDescriptor {
   startSeconds: number
 }
 
+const FAST_START_CHUNK_SECONDS = 8
+const MAX_LIVE_CHUNK_SECONDS = 30
+
 export class AudioChunker {
   constructor(private readonly config: AppConfig) {}
 
@@ -23,8 +26,12 @@ export class AudioChunker {
     const sourceAudioPath = path.normalize(input.audioPath)
     const chunkSeconds = Number(input.chunkSeconds)
     const durationSeconds = await probeAudioDuration(this.config, sourceAudioPath, input.signal)
+    const plan = planAudioChunks({
+      durationSeconds,
+      requestedChunkSeconds: chunkSeconds,
+    })
 
-    if (!Number.isFinite(chunkSeconds) || chunkSeconds <= 0 || durationSeconds <= 0 || durationSeconds <= chunkSeconds) {
+    if (plan.length <= 1) {
       return [{
         audioPath: sourceAudioPath,
         durationSeconds: durationSeconds > 0 ? Number(durationSeconds.toFixed(3)) : 0,
@@ -47,16 +54,8 @@ export class AudioChunker {
     await ensureDirectory(outputDir)
 
     const chunks: AudioChunkDescriptor[] = []
-    const chunkCount = Math.max(1, Math.ceil(durationSeconds / chunkSeconds))
-    for (let index = 0; index < chunkCount; index += 1) {
-      const startSeconds = Number((index * chunkSeconds).toFixed(3))
-      const remainingSeconds = Math.max(0, durationSeconds - startSeconds)
-      const nextDuration = Number(Math.min(chunkSeconds, remainingSeconds).toFixed(3))
-      if (nextDuration <= 0) {
-        continue
-      }
-
-      const chunkPath = path.join(outputDir, `chunk-${String(index + 1).padStart(3, "0")}.wav`)
+    for (const chunkPlan of plan) {
+      const chunkPath = path.join(outputDir, `chunk-${String(chunkPlan.index + 1).padStart(3, "0")}.wav`)
       await runCommand({
         command: ffmpegPath,
         args: [
@@ -64,9 +63,9 @@ export class AudioChunker {
           "-i",
           sourceAudioPath,
           "-ss",
-          formatSeconds(startSeconds),
+          formatSeconds(chunkPlan.startSeconds),
           "-t",
-          formatSeconds(nextDuration),
+          formatSeconds(chunkPlan.durationSeconds),
           "-vn",
           "-c",
           "copy",
@@ -76,9 +75,9 @@ export class AudioChunker {
       })
       chunks.push({
         audioPath: chunkPath,
-        durationSeconds: nextDuration,
-        index,
-        startSeconds,
+        durationSeconds: chunkPlan.durationSeconds,
+        index: chunkPlan.index,
+        startSeconds: chunkPlan.startSeconds,
       })
     }
 
@@ -89,6 +88,56 @@ export class AudioChunker {
       startSeconds: 0,
     }]
   }
+}
+
+export function planAudioChunks(input: {
+  durationSeconds: number
+  requestedChunkSeconds: number
+}): Array<Pick<AudioChunkDescriptor, "durationSeconds" | "index" | "startSeconds">> {
+  const durationSeconds = Number(input.durationSeconds)
+  const requestedChunkSeconds = Number(input.requestedChunkSeconds)
+
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    return [{
+      durationSeconds: 0,
+      index: 0,
+      startSeconds: 0,
+    }]
+  }
+
+  const effectiveChunkSeconds = resolveLiveChunkSeconds(requestedChunkSeconds)
+  if (durationSeconds <= effectiveChunkSeconds) {
+    return [{
+      durationSeconds: Number(durationSeconds.toFixed(3)),
+      index: 0,
+      startSeconds: 0,
+    }]
+  }
+
+  const firstChunkSeconds = Math.min(FAST_START_CHUNK_SECONDS, effectiveChunkSeconds)
+  const chunks: Array<Pick<AudioChunkDescriptor, "durationSeconds" | "index" | "startSeconds">> = []
+  let startSeconds = 0
+  let index = 0
+
+  while (startSeconds < durationSeconds) {
+    const chunkLimitSeconds = index === 0 ? firstChunkSeconds : effectiveChunkSeconds
+    const remainingSeconds = Math.max(0, durationSeconds - startSeconds)
+    const nextDuration = Number(Math.min(chunkLimitSeconds, remainingSeconds).toFixed(3))
+    if (nextDuration <= 0) {
+      break
+    }
+
+    chunks.push({
+      durationSeconds: nextDuration,
+      index,
+      startSeconds: Number(startSeconds.toFixed(3)),
+    })
+
+    startSeconds = Number((startSeconds + nextDuration).toFixed(3))
+    index += 1
+  }
+
+  return chunks
 }
 
 async function probeAudioDuration(config: AppConfig, audioPath: string, signal?: AbortSignal): Promise<number> {
@@ -133,4 +182,11 @@ async function resolveFfprobeExecutable(config: AppConfig): Promise<string | nul
 
 function formatSeconds(value: number): string {
   return Number(value || 0).toFixed(3)
+}
+
+function resolveLiveChunkSeconds(requestedChunkSeconds: number): number {
+  if (!Number.isFinite(requestedChunkSeconds) || requestedChunkSeconds <= 0) {
+    return MAX_LIVE_CHUNK_SECONDS
+  }
+  return Math.max(FAST_START_CHUNK_SECONDS, Math.min(MAX_LIVE_CHUNK_SECONDS, requestedChunkSeconds))
 }

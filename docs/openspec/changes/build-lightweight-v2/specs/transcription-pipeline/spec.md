@@ -96,6 +96,7 @@ Phase `C` SHALL support a local `whisper.cpp` CLI route and a remote OpenAI-comp
 - **WHEN** phase `C` starts and the prepared audio duration exceeds the configured `chunk_seconds`
 - **THEN** backend splits the normalized WAV into sequential time windows
 - **AND** each chunk is transcribed independently through the selected local or remote ASR route
+- **AND** for the current local `whisper.cpp` CLI route, backend emits a fast-start first chunk before regular live chunks and caps the regular live chunk window at `30s` to reduce first-segment delay on long audio
 - **AND** backend offsets every chunk-local timestamp back into absolute task time before publishing or persisting the segment
 - **AND** SSE emits an initial `transcript_delta` reset event followed by ordered `transcript_delta` segment events while phase `C` is still running
 
@@ -147,6 +148,10 @@ The whisper config API SHALL persist `model_default`、`language`、`device`、`
 #### Scenario: Save Whisper config
 - **WHEN** client updates `/config/whisper`
 - **THEN** backend normalizes and persists the supported field set into `storage/config.toml`
+
+#### Scenario: Read normalized Whisper defaults without a local config file
+- **WHEN** `storage/config.toml` is absent
+- **THEN** backend returns normalized defaults including `chunk_seconds=30`
 
 #### Scenario: Execute current local whisper.cpp route
 - **WHEN** the current local `whisper.cpp` CLI path runs

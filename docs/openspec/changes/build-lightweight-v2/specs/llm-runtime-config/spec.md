@@ -113,6 +113,7 @@ The system SHALL expose `/config/whisper` read/update endpoints and persist effe
 #### Scenario: Read Whisper config
 - **WHEN** client requests `/config/whisper`
 - **THEN** backend returns current persisted config or normalized defaults
+- **AND** when `storage/config.toml` is absent, normalized defaults include `chunk_seconds=30`
 - **AND** the response includes nested `runtime_libraries` status derived from current executable and model detection
 
 #### Scenario: Save Whisper config
@@ -163,10 +164,40 @@ The system SHALL keep `whisper-default` on the local runtime path, and allow `ll
 - **THEN** it verifies `embedding-default` and `rerank-default` independently against the current managed model catalog
 - **AND** Ollama-backed entries use the current Ollama tag discovery result for readiness instead of assuming that a configured local path alone means the model is available
 
+#### Scenario: Accept equivalent Ollama model aliases during retrieval self-check
+- **WHEN** `embedding-default` or `rerank-default` is configured with an Ollama model id such as `bge-m3`
+- **AND** the reachable OpenAI-compatible `/models` response reports the same model through an equivalent alias such as `bge-m3:latest` or a registry-prefixed variant
+- **THEN** backend treats the configured id and the reported alias as the same managed model
+- **AND** the retrieval self-check reports `check_depth=model_verified` instead of a false missing-model result
+
 #### Scenario: Configure remote API routing for model entries
 - **WHEN** frontend updates `llm-default`, `embedding-default`, or `rerank-default` with `provider=openai_compatible`
 - **THEN** backend persists `api_base_url`, `api_key`, `api_model`, and `api_timeout_seconds`
 - **AND** the entry becomes `is_installed=true` only when base URL, API key, model name, and enabled state together satisfy the remote-ready contract
+
+### Requirement: Managed model catalog SHALL expose `vlm-default` routing for visual inference
+Status: `implemented`
+
+The model catalog SHALL expose `vlm-default` as a first-class configurable component in settings so VQA visual stages can bind to a managed model entry.
+
+#### Scenario: Load VLM entry in settings
+- **WHEN** frontend requests `/config/models`
+- **THEN** response includes the `vlm-default` entry with provider, model_id, routing fields, and readiness flags aligned to shared contracts
+- **AND** UI shows the VLM entry in the same model configuration workflow as LLM/embedding/rerank
+
+#### Scenario: Auto-adopt local Ollama vision model for `vlm-default`
+- **WHEN** frontend requests `/config/models`
+- **AND** the configured Ollama runtime already exposes an installed vision-capable model
+- **AND** persisted `vlm-default` still points to the baseline remote default routing
+- **THEN** backend normalizes `vlm-default.provider=ollama`
+- **AND** `model_id` and `api_model` follow the preferred local vision model discovered from Ollama tags
+- **AND** `api_base_url` follows `<configured_ollama_base_url>/v1`
+- **AND** `api_key` is normalized to a non-empty local placeholder so loopback OpenAI-compatible calls work without a user-supplied secret
+
+#### Scenario: Configure remote API routing for `vlm-default`
+- **WHEN** frontend updates `vlm-default` with `provider=openai_compatible`
+- **THEN** backend persists `api_base_url`, `api_key`, `api_model`, and `api_timeout_seconds` for visual inference routing
+- **AND** the catalog keeps the explicit remote routing instead of auto-replacing it with an Ollama model
 
 #### Scenario: Configure default rerank output count from settings
 - **WHEN** frontend loads or updates the `rerank-default` model entry through `/config/models`

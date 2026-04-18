@@ -27,7 +27,7 @@ const DEFAULT_WHISPER_CONFIG: StoredWhisperConfig = {
   model_load_profile: "balanced",
   beam_size: 5,
   vad_filter: true,
-  chunk_seconds: 180,
+  chunk_seconds: 30,
   target_sample_rate: 16000,
   target_channels: 1,
 }
