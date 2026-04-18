@@ -44,8 +44,9 @@ interface OllamaProcessStartResult {
 
 interface OllamaServiceManagerDependencies {
   diagnoseBaseUrl?: (baseUrl: string) => Promise<OllamaBaseUrlDiagnosis>
-  findAlternativeBaseUrl?: (baseUrl: string) => Promise<string | null>
+  findPortOwnerPid?: (baseUrl: string) => Promise<number | null>
   findProcess?: (input: { executablePath: string }) => Promise<OllamaProcessInfo>
+  killProcessByPid?: (pid: number) => Promise<void>
   listModels?: (baseUrl: string) => Promise<string[]>
   pathExists?: (targetPath: string) => Promise<boolean>
   probe?: (baseUrl: string) => Promise<boolean>
@@ -55,8 +56,9 @@ interface OllamaServiceManagerDependencies {
 
 const defaultDependencies: Required<OllamaServiceManagerDependencies> = {
   diagnoseBaseUrl: diagnoseOllamaBaseUrl,
-  findAlternativeBaseUrl: findAlternativeOllamaBaseUrl,
+  findPortOwnerPid: findPortOwnerPid,
   findProcess: findOllamaProcess,
+  killProcessByPid: stopProcessByPid,
   listModels: listOllamaModelIds,
   pathExists,
   probe: probeOllama,
@@ -150,28 +152,21 @@ export class OllamaServiceManager {
       executablePath: runtimeConfig.executable_path,
       modelsDir: runtimeConfig.models_dir,
     })
-    let effectiveBaseUrl = runtimeConfig.base_url
-    let startupMessagePrefix = ""
     let effectiveStartResult = startResult
+    let restartFailureDiagnosis = diagnoseStartupFailure(runtimeConfig.base_url, startResult.startupError)
+    let clearedOccupiedPort = false
 
-    if (!startResult.reachable && shouldRetryWithAlternativeBaseUrl(runtimeConfig.base_url, startResult.startupError)) {
-      const alternativeBaseUrl = await this.#dependencies.findAlternativeBaseUrl(runtimeConfig.base_url)
-      if (alternativeBaseUrl && alternativeBaseUrl !== runtimeConfig.base_url) {
-        const retryResult = await this.#dependencies.startProcess({
-          baseUrl: alternativeBaseUrl,
+    if (!startResult.reachable && restartFailureDiagnosis === "occupied") {
+      const ownerPid = await this.#dependencies.findPortOwnerPid(runtimeConfig.base_url)
+      if (ownerPid && ownerPid !== process.pid) {
+        await this.#dependencies.killProcessByPid(ownerPid)
+        clearedOccupiedPort = true
+        effectiveStartResult = await this.#dependencies.startProcess({
+          baseUrl: runtimeConfig.base_url,
           executablePath: runtimeConfig.executable_path,
           modelsDir: runtimeConfig.models_dir,
         })
-        if (retryResult.reachable) {
-          effectiveBaseUrl = alternativeBaseUrl
-          effectiveStartResult = retryResult
-          startupMessagePrefix = `检测到 ${renderBaseUrlLabel(runtimeConfig.base_url)} 端口受限，已自动切换到 ${renderBaseUrlLabel(alternativeBaseUrl)}。`
-          await this.#repository.save({
-            base_url: alternativeBaseUrl,
-          })
-        } else {
-          effectiveStartResult = retryResult
-        }
+        restartFailureDiagnosis = diagnoseStartupFailure(runtimeConfig.base_url, effectiveStartResult.startupError)
       }
     }
 
@@ -180,15 +175,18 @@ export class OllamaServiceManager {
       return {
         ...status,
         message: buildRestartFailureMessage({
-          baseUrl: effectiveBaseUrl,
+          baseUrl: runtimeConfig.base_url,
+          failureDiagnosis: restartFailureDiagnosis,
+          clearedOccupiedPort,
           startupError: effectiveStartResult.startupError,
-          startupMessagePrefix,
         }),
       }
     }
     return {
       ...status,
-      message: `${startupMessagePrefix}${startupMessagePrefix ? " " : ""}Ollama 服务已重启并重新完成模型探测。`,
+      message: clearedOccupiedPort
+        ? `${renderBaseUrlLabel(runtimeConfig.base_url)} 原先被其他进程占用，已清退占用进程并已重启 Ollama。`
+        : "Ollama 服务已重启并重新完成模型探测。",
     }
   }
 
@@ -476,19 +474,51 @@ async function diagnoseOllamaBaseUrl(baseUrl: string): Promise<OllamaBaseUrlDiag
   })
 }
 
-async function findAlternativeOllamaBaseUrl(baseUrl: string): Promise<string | null> {
+async function findPortOwnerPid(baseUrl: string): Promise<number | null> {
+  if (process.platform !== "win32") {
+    return null
+  }
+
   const endpoint = parseLoopbackBaseUrl(baseUrl)
   if (!endpoint) {
     return null
   }
 
-  for (let port = endpoint.port + 1; port <= endpoint.port + 256; port += 1) {
-    const candidateBaseUrl = `${endpoint.protocol}//${endpoint.hostname}:${port}`
-    if (await diagnoseOllamaBaseUrl(candidateBaseUrl) === "available") {
-      return candidateBaseUrl
+  try {
+    const { stdout } = await execFileAsync(
+      "netstat",
+      ["-ano", "-p", "tcp"],
+      {
+        timeout: 3000,
+        windowsHide: true,
+      },
+    )
+    const lines = String(stdout || "").split(/\r?\n/)
+    let fallbackPid: number | null = null
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed.startsWith("TCP")) {
+        continue
+      }
+      const columns = trimmed.split(/\s+/)
+      if (columns.length < 5) {
+        continue
+      }
+      const localPort = extractPortFromNetstatAddress(columns[1] || "")
+      const state = String(columns[3] || "").toUpperCase()
+      const pid = Number.parseInt(columns[4] || "", 10)
+      if (localPort !== endpoint.port || !Number.isFinite(pid) || pid <= 0) {
+        continue
+      }
+      if (state === "LISTENING") {
+        return pid
+      }
+      fallbackPid = pid
     }
+    return fallbackPid
+  } catch {
+    return null
   }
-  return null
 }
 
 async function findOllamaProcess(input: { executablePath: string }): Promise<OllamaProcessInfo> {
@@ -612,7 +642,7 @@ async function startOllamaProcess(input: OllamaProcessStartInput): Promise<Ollam
   }
 
   if (!exited && child.pid) {
-    await stopOllamaProcessByPid(child.pid)
+    await stopProcessByPid(child.pid)
   }
 
   return {
@@ -647,10 +677,10 @@ function buildStatusMessage(input: {
     return "Ollama 服务可达，但当前未返回任何模型标签。"
   }
   if (input.baseUrlDiagnosis === "restricted") {
-    return `${renderBaseUrlLabel(input.baseUrl)} 当前无法绑定：本机系统限制了这个端口，请改用其他本地端口。`
+    return `${renderBaseUrlLabel(input.baseUrl)} 当前无法绑定：本机系统限制了这个端口，请解除端口保留或访问限制后重试。`
   }
   if (input.baseUrlDiagnosis === "occupied") {
-    return `${renderBaseUrlLabel(input.baseUrl)} 已被其他进程占用，请修改 Ollama 服务地址或释放该端口。`
+    return `${renderBaseUrlLabel(input.baseUrl)} 已被其他进程占用，可使用启动/重启操作自动清退占用进程后重试。`
   }
   if (input.executableExists && input.processDetected) {
     return "已检测到 Ollama 进程，但当前服务地址不可达。"
@@ -687,14 +717,26 @@ function parseLoopbackBaseUrl(baseUrl: string): { hostname: string; port: number
   }
 }
 
-function shouldRetryWithAlternativeBaseUrl(baseUrl: string, startupError: string): boolean {
+function diagnoseStartupFailure(baseUrl: string, startupError: string): OllamaBaseUrlDiagnosis {
   if (!parseLoopbackBaseUrl(baseUrl)) {
-    return false
+    return "unknown"
   }
   const normalized = String(startupError || "").toLowerCase()
-  return normalized.includes("forbidden by its access permissions") ||
+  if (
+    normalized.includes("forbidden by its access permissions") ||
     normalized.includes("permission denied") ||
     normalized.includes("eacces")
+  ) {
+    return "restricted"
+  }
+  if (
+    normalized.includes("already in use") ||
+    normalized.includes("only one usage of each socket address is normally permitted") ||
+    normalized.includes("eaddrinuse")
+  ) {
+    return "occupied"
+  }
+  return "unknown"
 }
 
 function renderBaseUrlLabel(baseUrl: string): string {
@@ -707,11 +749,21 @@ function renderBaseUrlLabel(baseUrl: string): string {
 
 function buildRestartFailureMessage(input: {
   baseUrl: string
+  clearedOccupiedPort: boolean
+  failureDiagnosis: OllamaBaseUrlDiagnosis
   startupError: string
-  startupMessagePrefix: string
 }): string {
   const detail = String(input.startupError || "").trim() || `已发起 Ollama 重启，但 ${renderBaseUrlLabel(input.baseUrl)} 尚未返回响应。`
-  return `${input.startupMessagePrefix}${input.startupMessagePrefix ? " " : ""}${detail}`.trim()
+  if (input.failureDiagnosis === "restricted") {
+    return `${renderBaseUrlLabel(input.baseUrl)} 当前无法绑定：本机系统限制了这个端口，请解除端口保留或访问限制后重试。`
+  }
+  if (input.failureDiagnosis === "occupied" && input.clearedOccupiedPort) {
+    return `${renderBaseUrlLabel(input.baseUrl)} 原先被其他进程占用，已尝试清退占用进程并重启 Ollama，但服务仍未就绪。 ${detail}`.trim()
+  }
+  if (input.failureDiagnosis === "occupied") {
+    return `${renderBaseUrlLabel(input.baseUrl)} 已被其他进程占用，请先释放该端口后重试。`
+  }
+  return detail
 }
 
 function buildStartupFailureMessage(input: {
@@ -754,7 +806,21 @@ function appendDiagnosticChunk(chunks: string[], chunk: Buffer | string): void {
   }
 }
 
-async function stopOllamaProcessByPid(pid: number): Promise<void> {
+function extractPortFromNetstatAddress(address: string): number | null {
+  const bracketMatch = /\]:(\d+)$/.exec(address)
+  if (bracketMatch) {
+    const port = Number.parseInt(bracketMatch[1] || "", 10)
+    return Number.isFinite(port) && port > 0 ? port : null
+  }
+  const match = /:(\d+)$/.exec(address)
+  if (!match) {
+    return null
+  }
+  const port = Number.parseInt(match[1] || "", 10)
+  return Number.isFinite(port) && port > 0 ? port : null
+}
+
+async function stopProcessByPid(pid: number): Promise<void> {
   if (process.platform !== "win32" || !Number.isFinite(pid) || pid <= 0) {
     return
   }

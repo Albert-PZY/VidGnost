@@ -104,7 +104,8 @@ The system SHALL expose `/config/ollama`、`/config/ollama/migrate-models` and `
 - **THEN** backend returns the refreshed probe status together with the persisted runtime config
 - **AND** on supported local runtimes, backend restarts `ollama serve` with the configured executable path, service address, and `OLLAMA_MODELS`
 - **AND** on Windows, backend stops both the active `ollama.exe` server process and the companion `ollama app.exe` tray process before relaunch so the configured `models_dir` can actually take effect
-- **AND** when the configured local loopback port cannot be rebound because Windows restricts that port, backend detects the bind failure, chooses another available local port, persists the new `base_url`, and keeps managed `/config/llm.base_url` synchronized to the new Ollama endpoint
+- **AND** when the configured local loopback port `127.0.0.1:11434` is occupied by another process, backend attempts to identify and terminate the occupying process before retrying Ollama on the same port
+- **AND** when Windows itself restricts or reserves `127.0.0.1:11434`, backend keeps the persisted `base_url` unchanged and returns a clear bind-failure message instead of switching to another port
 - **AND** when self-managed restart is unavailable, response keeps `can_self_restart=false` and explains the required manual action
 
 ### Requirement: System SHALL expose editable Whisper runtime config API

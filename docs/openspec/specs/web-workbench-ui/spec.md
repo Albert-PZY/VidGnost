@@ -62,7 +62,7 @@ The settings-center model surface SHALL expose dedicated `Ollama 运行时与模
 - **AND** the card states that the configured model directory is the desired target for later manual migration or manual pull guidance rather than a guaranteed reflection of the running service
 - **AND** when backend reports `can_self_restart=false`, renderer surfaces the probe-only status instead of implying that restart is already self-managed
 - **AND** when backend reports a restart failure or a restricted local port, the restart action surfaces that backend message as an error-state toast instead of a success toast
-- **AND** when backend auto-switches Ollama to another local port during restart, the refreshed settings state reflects the persisted new `服务地址`
+- **AND** when backend reports that `127.0.0.1:11434` was occupied and has been cleared, the refreshed settings state keeps the same persisted `服务地址`
 
 #### Scenario: Prompt manual pull after Ollama model migration
 - **WHEN** user clicks an Ollama model pull guidance action after model files have already been moved into the configured directory

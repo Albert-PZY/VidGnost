@@ -159,8 +159,88 @@ describe("OllamaServiceManager", () => {
     expect(status.message).toContain("限制")
   })
 
-  it("falls back to another loopback port when the configured port is restricted", async () => {
-    let probeBaseUrl = "http://127.0.0.1:11434"
+  it("kills the process occupying 11434 and retries Ollama on the same port", async () => {
+    let currentConfig = {
+      install_dir: path.join(storageDir, "ollama"),
+      executable_path: path.join(storageDir, "ollama", "ollama.exe"),
+      models_dir: path.join(storageDir, "ollama-models"),
+      base_url: "http://127.0.0.1:11434",
+    }
+    const startInputs: Array<{ baseUrl: string; executablePath: string; modelsDir: string }> = []
+    const killedPids: number[] = []
+    let startAttempt = 0
+    let serviceReachable = false
+
+    const manager = new OllamaServiceManager({
+      async get() {
+        return currentConfig
+      },
+      async save(payload: Partial<typeof currentConfig>) {
+        currentConfig = {
+          ...currentConfig,
+          ...payload,
+        }
+        return currentConfig
+      },
+    } as never, {
+      async findProcess() {
+        return {
+          detected: true,
+          pid: 5120,
+        }
+      },
+      async listModels() {
+        return serviceReachable ? ["qwen2.5:3b"] : []
+      },
+      async pathExists(targetPath) {
+        return targetPath.endsWith("ollama.exe")
+      },
+      async probe() {
+        return serviceReachable
+      },
+      async startProcess(input) {
+        startInputs.push(input)
+        startAttempt += 1
+        if (startAttempt === 1) {
+          return {
+            reachable: false,
+            startupError: "listen tcp 127.0.0.1:11434: bind: Only one usage of each socket address is normally permitted.",
+          }
+        }
+        serviceReachable = true
+        return {
+          reachable: true,
+          startupError: "",
+        }
+      },
+      async stopProcess() {
+        return
+      },
+      async diagnoseBaseUrl() {
+        return serviceReachable ? "available" : "occupied"
+      },
+      async findPortOwnerPid() {
+        return 7788
+      },
+      async killProcessByPid(pid) {
+        killedPids.push(pid)
+      },
+    })
+
+    const restarted = await manager.restartService()
+    expect(startInputs.map((item) => item.baseUrl)).toEqual([
+      "http://127.0.0.1:11434",
+      "http://127.0.0.1:11434",
+    ])
+    expect(killedPids).toEqual([7788])
+    expect(restarted).toMatchObject({
+      reachable: true,
+      process_detected: true,
+    })
+    expect(restarted.message).toContain("已重启")
+  })
+
+  it("does not switch to another port when 11434 is restricted by Windows", async () => {
     let currentConfig = {
       install_dir: path.join(storageDir, "ollama"),
       executable_path: path.join(storageDir, "ollama", "ollama.exe"),
@@ -169,6 +249,7 @@ describe("OllamaServiceManager", () => {
     }
     const startInputs: Array<{ baseUrl: string; executablePath: string; modelsDir: string }> = []
     const savedBaseUrls: string[] = []
+    const killedPids: number[] = []
 
     const manager = new OllamaServiceManager({
       async get() {
@@ -180,60 +261,53 @@ describe("OllamaServiceManager", () => {
           ...payload,
         }
         savedBaseUrls.push(currentConfig.base_url)
-        probeBaseUrl = currentConfig.base_url
         return currentConfig
       },
     } as never, {
       async findProcess() {
         return {
-          detected: true,
-          pid: 5120,
+          detected: false,
+          pid: null,
         }
       },
       async listModels() {
-        return ["qwen2.5:3b"]
+        return []
       },
       async pathExists(targetPath) {
         return targetPath.endsWith("ollama.exe")
       },
-      async probe(baseUrl) {
-        return baseUrl === probeBaseUrl && baseUrl === "http://127.0.0.1:11527"
+      async probe() {
+        return false
       },
       async startProcess(input) {
         startInputs.push(input)
-        if (input.baseUrl === "http://127.0.0.1:11434") {
-          return {
-            reachable: false,
-            startupError: "listen tcp 127.0.0.1:11434: bind: An attempt was made to access a socket in a way forbidden by its access permissions.",
-          }
-        }
         return {
-          reachable: true,
-          startupError: "",
+          reachable: false,
+          startupError: "listen tcp 127.0.0.1:11434: bind: An attempt was made to access a socket in a way forbidden by its access permissions.",
         }
       },
       async stopProcess() {
         return
       },
-      async findAlternativeBaseUrl() {
-        return "http://127.0.0.1:11527"
-      },
       async diagnoseBaseUrl() {
-        return "available"
+        return "restricted"
+      },
+      async findPortOwnerPid() {
+        return null
+      },
+      async killProcessByPid(pid) {
+        killedPids.push(pid)
       },
     })
 
     const restarted = await manager.restartService()
     expect(startInputs.map((item) => item.baseUrl)).toEqual([
       "http://127.0.0.1:11434",
-      "http://127.0.0.1:11527",
     ])
-    expect(savedBaseUrls).toEqual(["http://127.0.0.1:11527"])
-    expect(restarted).toMatchObject({
-      reachable: true,
-      process_detected: true,
-    })
-    expect(restarted.message).toContain("11527")
-    expect(restarted.message).toContain("自动切换")
+    expect(savedBaseUrls).toEqual([])
+    expect(killedPids).toEqual([])
+    expect(restarted.reachable).toBe(false)
+    expect(restarted.message).toContain("11434")
+    expect(restarted.message).toContain("限制")
   })
 })
