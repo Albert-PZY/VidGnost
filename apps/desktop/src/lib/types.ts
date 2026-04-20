@@ -1,3 +1,69 @@
+import type {
+  ApiErrorPayload,
+  BackgroundImageFillMode,
+  HealthResponse,
+  KnowledgeLibraryResponse,
+  KnowledgeNote as ContractsKnowledgeNote,
+  KnowledgeNoteCreateRequest,
+  KnowledgeNoteUpdateRequest,
+  LLMConfigResponse,
+  LocalModelsMigrationResponse,
+  ModelComponentType,
+  ModelDescriptor,
+  ModelDownloadState,
+  ModelDownloadStatus,
+  ModelListResponse,
+  ModelRuntimeStatus,
+  OllamaModelsMigrationResponse,
+  OllamaRuntimeConfigResponse,
+  OllamaServiceStatusResponse,
+  PromptTemplateBundleResponse,
+  PromptTemplateChannel,
+  PromptTemplateItem,
+  RuntimeMetricsResponse,
+  RuntimePathsResponse,
+  SelfCheckIssueResponse,
+  SelfCheckReportResponse,
+  SelfCheckStartResponse,
+  SelfCheckStepResponse,
+  SelfCheckStreamEvent,
+  SourceType,
+  TaskBatchCreateResponse,
+  TaskCreateFromPathRequest,
+  TaskCreateFromUrlRequest,
+  TaskCreateResponse,
+  TaskDetailResponse as ContractsTaskDetailResponse,
+  TaskExportKind,
+  TaskListResponse,
+  TaskRecentItem as ContractsTaskRecentItem,
+  TaskRecentResponse,
+  TaskArtifactsUpdateRequest,
+  TaskStatsResponse,
+  TaskStatus,
+  TaskStreamEvent,
+  TaskSummaryItem as ContractsTaskSummaryItem,
+  TaskTitleUpdateRequest,
+  TaskStepItem,
+  TaskStepStatus,
+  TaskSourceCreatePayload,
+  TranscriptSegment,
+  StudyPreview,
+  StudyState,
+  StudyWorkbenchResponse,
+  UISettingsResponse,
+  VqaChatStreamEvent,
+  VqaCitationImageEvidence,
+  VqaCitationItem,
+  VqaTraceRecord,
+  VqaTraceResponse,
+  WhisperConfigResponse,
+  WhisperRuntimeLibrariesInstallState,
+  WhisperRuntimeLibrariesProgressResponse,
+  WhisperRuntimeLibrariesResponse,
+  WhisperRuntimeLibrariesStatus,
+  WorkflowType,
+} from "@vidgnost/contracts"
+
 export type {
   ApiErrorPayload,
   BackgroundImageFillMode,
@@ -26,10 +92,8 @@ export type {
   SourceType,
   TaskBatchCreateResponse,
   TaskCreateResponse,
-  TaskDetailResponse,
   TaskExportKind,
   TaskListResponse,
-  TaskRecentItem,
   TaskRecentResponse,
   TaskArtifactsUpdateRequest,
   TaskStatsResponse,
@@ -38,11 +102,13 @@ export type {
   TaskTitleUpdateRequest,
   TaskStepItem,
   TaskStepStatus,
-  TaskSummaryItem,
   TaskCreateFromPathRequest,
   TaskCreateFromUrlRequest,
   TaskSourceCreatePayload,
   TranscriptSegment,
+  StudyPreview,
+  StudyState,
+  StudyWorkbenchResponse,
   UISettingsResponse,
   VqaChatStreamEvent,
   VqaCitationImageEvidence,
@@ -55,4 +121,30 @@ export type {
   WhisperRuntimeLibrariesResponse,
   WhisperRuntimeLibrariesStatus,
   WorkflowType,
-} from "@vidgnost/contracts"
+  KnowledgeLibraryResponse,
+  KnowledgeNoteCreateRequest,
+  KnowledgeNoteUpdateRequest,
+}
+
+export type StudyPackResponse = StudyWorkbenchResponse
+export type StudyStateResponse = StudyState & {
+  last_selected_subtitle_track_id?: string | null
+}
+export type StudyStateUpdateRequest = Partial<StudyStateResponse> & {
+  playback_position_seconds?: number | null
+  last_selected_subtitle_track_id?: string | null
+}
+export type KnowledgeNoteItem = ContractsKnowledgeNote
+export type KnowledgeNoteListResponse = KnowledgeLibraryResponse
+
+export type TaskSummaryItem = ContractsTaskSummaryItem & {
+  study_preview?: Partial<StudyPreview> | null
+}
+
+export type TaskRecentItem = ContractsTaskRecentItem & {
+  study_preview?: Partial<StudyPreview> | null
+}
+
+export type TaskDetailResponse = ContractsTaskDetailResponse & {
+  study_preview?: Partial<StudyPreview> | null
+}

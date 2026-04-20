@@ -115,12 +115,13 @@ Study-domain state SHALL persist task-scoped continue-learning information in a 
 ### Requirement: Knowledge notes SHALL persist task-attributed study assets
 Status: `implemented`
 
-Study-domain knowledge notes SHALL persist excerpts and note text that remain attributable to a task, source type, source kind, and optional study theme.
+Study-domain knowledge notes SHALL persist excerpts and note text that remain attributable to a task, source type, source kind, optional study theme, and optional time/reference context.
 
 #### Scenario: Create a knowledge note
 - **WHEN** client posts a knowledge note
-- **THEN** backend persists `task_id`、`study_theme_id`、`source_type`、`source_kind`、`title`、`excerpt`、`note_markdown`、`tags`、`created_at`、and `updated_at`
+- **THEN** backend persists `task_id`、`study_theme_id`、`source_type`、`source_kind`、`title`、`excerpt`、`note_markdown`、`source_start_seconds`、`source_end_seconds`、`source_reference_id`、`source_reference_label`、`tags`、`created_at`、and `updated_at`
 - **AND** `source_kind` is restricted to `transcript`、`qa_answer`、`summary`、`highlight`、`quote`、or `manual`
+- **AND** timestamp or reference context remains nullable so manually created notes can still be stored without fabricating transcript offsets
 
 #### Scenario: Filter knowledge library
 - **WHEN** client requests `GET /api/knowledge/notes`

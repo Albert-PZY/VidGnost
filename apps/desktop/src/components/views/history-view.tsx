@@ -48,6 +48,7 @@ import {
   openTaskLocation,
 } from "@/lib/api"
 import { formatBytes, formatDateTime, formatDurationSeconds } from "@/lib/format"
+import { getTaskStudyPreviewMeta } from "@/lib/study-workbench"
 import type { TaskStatsResponse, TaskSummaryItem, WorkflowType } from "@/lib/types"
 
 interface HistoryViewProps {
@@ -88,6 +89,205 @@ const getStatusBadge = (status: string) => {
     default:
       return <Badge variant="outline">{status}</Badge>
   }
+}
+
+const getStudyReadinessBadge = (readiness: ReturnType<typeof getTaskStudyPreviewMeta>["readiness"]) => {
+  switch (readiness) {
+    case "ready":
+      return <Badge variant="secondary">Study 就绪</Badge>
+    case "processing":
+      return <Badge variant="outline">Study 生成中</Badge>
+    default:
+      return <Badge variant="outline">Study 缺失</Badge>
+  }
+}
+
+function getContinueLearningCopy(studyPreview: ReturnType<typeof getTaskStudyPreviewMeta>): string {
+  if (studyPreview.readiness !== "ready") {
+    return "Study 资料仍在整理中，可先查看任务状态与基础产物。"
+  }
+  if (studyPreview.lastOpenedAt) {
+    return `上次学习于 ${formatDateTime(studyPreview.lastOpenedAt)}，可继续回到任务上下文整理资料。`
+  }
+  if (studyPreview.noteCount > 0) {
+    return `已沉淀 ${studyPreview.noteCount} 张知识卡片，可继续回看并扩写学习记录。`
+  }
+  if (studyPreview.highlightCount > 0 || studyPreview.questionCount > 0) {
+    return "已提炼出重点片段与学习问题，可继续从历史页进入任务深挖。"
+  }
+  return "Study 已就绪，可进入任务继续整理知识卡片与 Flow 产物。"
+}
+
+interface HistoryTaskStudyCardProps {
+  task: TaskSummaryItem
+  selectionMode: boolean
+  isSelected: boolean
+  busyTaskId: string
+  onOpenTask: (taskId: string, meta?: { title?: string; workflow?: WorkflowType }) => void
+  onExportTask: (taskId: string) => void | Promise<void>
+  onOpenLocation: (taskId: string) => void | Promise<void>
+  onRequestDelete: (task: TaskSummaryItem) => void
+  onToggleTaskSelection: (taskId: string) => void
+}
+
+export function HistoryTaskStudyCard({
+  task,
+  selectionMode,
+  isSelected,
+  busyTaskId,
+  onOpenTask,
+  onExportTask,
+  onOpenLocation,
+  onRequestDelete,
+  onToggleTaskSelection,
+}: HistoryTaskStudyCardProps) {
+  const canDeleteTask = isTaskDeletable(task.status)
+  const studyPreview = getTaskStudyPreviewMeta(task)
+  const canContinueLearning = studyPreview.readiness === "ready" && (
+    Boolean(studyPreview.lastOpenedAt) ||
+    studyPreview.noteCount > 0 ||
+    studyPreview.highlightCount > 0 ||
+    studyPreview.questionCount > 0
+  )
+
+  return (
+    <div
+      className={cn(
+        "flex items-start gap-4 p-3.5 transition-colors hover:bg-muted/35",
+        selectionMode && isSelected && "bg-primary/5",
+      )}
+    >
+      {selectionMode ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className={cn(
+            "history-selection-toggle shrink-0 rounded-full",
+            isSelected && "text-primary",
+          )}
+          aria-pressed={isSelected}
+          title={
+            canDeleteTask
+              ? isSelected
+                ? "取消选择"
+                : "选择任务"
+              : "当前任务不可删除"
+          }
+          disabled={!canDeleteTask || Boolean(busyTaskId)}
+          onClick={() => onToggleTaskSelection(task.id)}
+        >
+          {isSelected ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+        </Button>
+      ) : null}
+      <div
+        className={cn(
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
+          task.workflow === "notes" ? "bg-primary/10" : "bg-accent",
+        )}
+      >
+        {task.workflow === "notes" ? (
+          <FileText className="h-4.5 w-4.5 text-primary" />
+        ) : (
+          <MessageSquareText className="h-4.5 w-4.5 text-accent-foreground" />
+        )}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="truncate font-medium">{task.title || task.source_input}</span>
+          {getStatusBadge(task.status)}
+          {getStudyReadinessBadge(studyPreview.readiness)}
+          {studyPreview.isFavorite ? <Badge variant="secondary">已收藏</Badge> : null}
+        </div>
+        <div className="mt-1 flex items-center gap-4 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <Calendar className="h-3 w-3" />
+            {formatDateTime(task.created_at)}
+          </span>
+          <span className="flex items-center gap-1">
+            <Clock className="h-3 w-3" />
+            {formatDurationSeconds(task.duration_seconds)}
+          </span>
+          <span>{formatBytes(task.file_size_bytes)}</span>
+        </div>
+        <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-lg border border-border/60 bg-background/55 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground/80">学习素材</div>
+            <div className="mt-1 font-medium text-foreground">重点 {studyPreview.highlightCount} · 问题 {studyPreview.questionCount}</div>
+          </div>
+          <div className="rounded-lg border border-border/60 bg-background/55 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground/80">知识沉淀</div>
+            <div className="mt-1 font-medium text-foreground">知识卡片 {studyPreview.noteCount}</div>
+          </div>
+          <div className="rounded-lg border border-border/60 bg-background/55 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground/80">学习进度</div>
+            <div className="mt-1 font-medium text-foreground">
+              {studyPreview.lastOpenedAt ? `最近学习 ${formatDateTime(studyPreview.lastOpenedAt)}` : "尚未进入 Study"}
+            </div>
+          </div>
+          <div className="rounded-lg border border-border/60 bg-background/55 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-wide text-muted-foreground/80">导出记录</div>
+            <div className="mt-1 font-medium text-foreground">
+              {studyPreview.lastExportedAt ? `最近导出 ${formatDateTime(studyPreview.lastExportedAt)}` : "尚未导出"}
+            </div>
+          </div>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <Badge variant="outline">知识卡片 {studyPreview.noteCount}</Badge>
+          {canContinueLearning ? <Badge variant="secondary">继续学习</Badge> : null}
+          {studyPreview.lastExportedAt ? <Badge variant="outline">最近导出</Badge> : null}
+        </div>
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">
+          {getContinueLearningCopy(studyPreview)}
+        </p>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="history-open-button"
+          onClick={() =>
+            onOpenTask(task.id, {
+              title: task.title || task.source_input,
+              workflow: task.workflow,
+            })
+          }
+          disabled={task.status !== "completed" && task.status !== "running" && task.status !== "queued"}
+        >
+          <Play className="mr-1 h-4 w-4" />
+          查看
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8" disabled={busyTaskId === task.id}>
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => void onExportTask(task.id)} disabled={task.status !== "completed"}>
+              <Download className="mr-2 h-4 w-4" />
+              导出结果
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void onOpenLocation(task.id)}>
+              <FolderOpen className="mr-2 h-4 w-4" />
+              打开文件位置
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-destructive"
+              disabled={!canDeleteTask}
+              onClick={() => onRequestDelete(task)}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              删除
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
+  )
 }
 
 export function HistoryView({ onOpenTask, onTasksChanged }: HistoryViewProps) {
@@ -294,7 +494,7 @@ export function HistoryView({ onOpenTask, onTasksChanged }: HistoryViewProps) {
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold tracking-tight">历史记录</h1>
           <p className="text-muted-foreground">
-            查看和管理所有分析任务
+            以学习资料库的方式回看任务、重点片段和继续学习线索
           </p>
         </div>
 
@@ -476,121 +676,20 @@ export function HistoryView({ onOpenTask, onTasksChanged }: HistoryViewProps) {
                   暂无匹配的历史任务
                 </div>
               )}
-              {tasks.map((task) => {
-                const canDeleteTask = isTaskDeletable(task.status)
-                const isSelected = selectedTaskIdSet.has(task.id)
-
-                return (
-                  <div
-                    key={task.id}
-                    className={cn(
-                      "flex items-center gap-4 p-3.5 transition-colors hover:bg-muted/35",
-                      selectionMode && isSelected && "bg-primary/5",
-                    )}
-                  >
-                    {selectionMode ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        className={cn(
-                          "history-selection-toggle shrink-0 rounded-full",
-                          isSelected && "text-primary",
-                        )}
-                        aria-pressed={isSelected}
-                        title={
-                          canDeleteTask
-                            ? isSelected
-                              ? "取消选择"
-                              : "选择任务"
-                            : "当前任务不可删除"
-                        }
-                        disabled={!canDeleteTask || Boolean(busyTaskId)}
-                        onClick={() => toggleTaskSelection(task.id)}
-                      >
-                        {isSelected ? <CheckCircle2 className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
-                      </Button>
-                    ) : null}
-                    {/* 图标 */}
-                    <div
-                      className={cn(
-                        "flex h-9 w-9 shrink-0 items-center justify-center rounded-md",
-                        task.workflow === "notes" ? "bg-primary/10" : "bg-accent",
-                      )}
-                    >
-                      {task.workflow === "notes" ? (
-                        <FileText className="h-4.5 w-4.5 text-primary" />
-                      ) : (
-                        <MessageSquareText className="h-4.5 w-4.5 text-accent-foreground" />
-                      )}
-                    </div>
-
-                    {/* 信息 */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium truncate">{task.title || task.source_input}</span>
-                        {getStatusBadge(task.status)}
-                      </div>
-                      <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          {formatDateTime(task.created_at)}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {formatDurationSeconds(task.duration_seconds)}
-                        </span>
-                        <span>{formatBytes(task.file_size_bytes)}</span>
-                      </div>
-                    </div>
-
-                    {/* 操作 */}
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="history-open-button"
-                        onClick={() =>
-                          onOpenTask(task.id, {
-                            title: task.title || task.source_input,
-                            workflow: task.workflow,
-                          })
-                        }
-                        disabled={task.status !== "completed" && task.status !== "running" && task.status !== "queued"}
-                      >
-                        <Play className="h-4 w-4 mr-1" />
-                        查看
-                      </Button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" disabled={busyTaskId === task.id}>
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => void handleExportTask(task.id)} disabled={task.status !== "completed"}>
-                            <Download className="h-4 w-4 mr-2" />
-                            导出结果
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => void handleOpenLocation(task.id)}>
-                            <FolderOpen className="h-4 w-4 mr-2" />
-                            打开文件位置
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            disabled={!canDeleteTask}
-                            onClick={() => requestSingleDelete(task)}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            删除
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </div>
-                )
-              })}
+              {tasks.map((task) => (
+                <HistoryTaskStudyCard
+                  key={task.id}
+                  task={task}
+                  selectionMode={selectionMode}
+                  isSelected={selectedTaskIdSet.has(task.id)}
+                  busyTaskId={busyTaskId}
+                  onOpenTask={onOpenTask}
+                  onExportTask={handleExportTask}
+                  onOpenLocation={handleOpenLocation}
+                  onRequestDelete={requestSingleDelete}
+                  onToggleTaskSelection={toggleTaskSelection}
+                />
+              ))}
             </div>
             <div className="flex items-center justify-between border-t border-border/60 px-3 py-2.5 text-sm">
               <span className="text-muted-foreground">

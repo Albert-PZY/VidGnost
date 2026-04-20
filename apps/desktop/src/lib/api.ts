@@ -1,6 +1,10 @@
 import type {
   ApiErrorPayload,
   HealthResponse,
+  KnowledgeNoteCreateRequest,
+  KnowledgeNoteItem,
+  KnowledgeNoteListResponse,
+  KnowledgeNoteUpdateRequest,
   LLMConfigResponse,
   LocalModelsMigrationResponse,
   ModelListResponse,
@@ -18,6 +22,10 @@ import type {
   TaskDetailResponse,
   TaskListResponse,
   TaskRecentResponse,
+  StudyPackResponse,
+  StudyStateResponse,
+  StudyStateUpdateRequest,
+  TaskExportKind,
   TaskStatsResponse,
   TaskStreamEvent,
   UISettingsResponse,
@@ -27,6 +35,7 @@ import type {
   WorkflowType,
 } from "@/lib/types"
 import { getUnsupportedVideoNames, SUPPORTED_VIDEO_LABEL } from "@/lib/video-format"
+import { buildStudyStateUpdatePayload } from "@/lib/study-workbench"
 
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:8666/api"
 
@@ -276,6 +285,24 @@ export function getTaskDetail(taskId: string): Promise<TaskDetailResponse> {
   return apiFetch<TaskDetailResponse>(`/tasks/${taskId}`, { method: "GET" })
 }
 
+export function getTaskStudyPreview(taskId: string): Promise<TaskDetailResponse["study_preview"]> {
+  return apiFetch<TaskDetailResponse["study_preview"]>(`/tasks/${taskId}/study-preview`, { method: "GET" })
+}
+
+export function getTaskStudyPack(taskId: string): Promise<StudyPackResponse> {
+  return apiFetch<StudyPackResponse>(`/tasks/${taskId}/study-pack`, { method: "GET" })
+}
+
+export function updateTaskStudyState(
+  taskId: string,
+  payload: StudyStateUpdateRequest,
+): Promise<StudyStateResponse> {
+  return apiFetch<StudyStateResponse>(`/tasks/${taskId}/study-state`, {
+    method: "PATCH",
+    body: JSON.stringify(buildStudyStateUpdatePayload(payload)),
+  })
+}
+
 export function cancelTask(taskId: string) {
   return apiFetch(`/tasks/${taskId}/cancel`, { method: "POST", body: JSON.stringify({}) })
 }
@@ -314,9 +341,91 @@ export async function openTaskLocation(taskId: string): Promise<{ task_id: strin
   return apiFetch<{ task_id: string; path: string }>(`/tasks/${taskId}/open-location`, { method: "GET" })
 }
 
+export function listKnowledgeNotes(params: {
+  q?: string
+  task_id?: string
+  study_theme_id?: string
+  tag?: string
+  source_kind?: KnowledgeNoteItem["source_kind"] | "all"
+  limit?: number
+  offset?: number
+} = {}): Promise<KnowledgeNoteListResponse> {
+  return fetchJson<KnowledgeNoteListResponse>(buildApiUrl("/knowledge/notes", params))
+}
+
+export function createKnowledgeNote(payload: KnowledgeNoteCreateRequest): Promise<KnowledgeNoteItem> {
+  return apiFetch<KnowledgeNoteItem>("/knowledge/notes", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+export function updateKnowledgeNote(
+  noteId: string,
+  payload: KnowledgeNoteUpdateRequest,
+): Promise<KnowledgeNoteItem> {
+  return apiFetch<KnowledgeNoteItem>(`/knowledge/notes/${noteId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function deleteKnowledgeNote(noteId: string): Promise<void> {
+  await apiFetch<void>(`/knowledge/notes/${noteId}`, { method: "DELETE" })
+}
+
+export function createTaskStudyExport(
+  taskId: string,
+  payload: {
+    export_kind: Extract<TaskExportKind, "study_pack" | "subtitle_tracks" | "translation_records" | "knowledge_notes">
+    format?: string
+  },
+): Promise<{
+  id: string
+  task_id: string
+  export_kind: TaskExportKind
+  format: string
+  file_path: string
+  created_at: string
+}> {
+  return apiFetch(`/tasks/${taskId}/exports`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function downloadTaskArtifactFile(
+  taskId: string,
+  relativePath: string,
+  suggestedFileName?: string,
+): Promise<void> {
+  const response = await fetch(buildTaskArtifactFileUrl(taskId, relativePath), {
+    headers: { Accept: "*/*" },
+  })
+
+  if (!response.ok) {
+    throw new ApiError(response.status, await readErrorPayload(response))
+  }
+
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement("a")
+  const disposition = response.headers.get("content-disposition") || ""
+  const fileNameMatch = disposition.match(/filename\*=UTF-8''([^;]+)|filename=\"?([^\";]+)\"?/)
+  const fallbackName = suggestedFileName || relativePath.split(/[\\/]/).pop() || "artifact"
+  const fileName = decodeURIComponent(fileNameMatch?.[1] || fileNameMatch?.[2] || fallbackName)
+
+  anchor.href = url
+  anchor.download = fileName
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
+
 export async function downloadTaskArtifact(
   taskId: string,
-  kind: "transcript" | "notes" | "mindmap" | "srt" | "vtt" | "bundle",
+  kind: TaskExportKind,
   archive: "zip" | "tar" = "zip",
 ): Promise<void> {
   const response = await fetch(buildApiUrl(`/tasks/${taskId}/export/${kind}`, { archive }), {
@@ -493,6 +602,7 @@ export function updateUiSettings(payload: {
   language?: "zh" | "en"
   font_size?: number
   auto_save?: boolean
+  study_default_translation_target?: string | null
   theme_hue?: number
   background_image?: string | null
   background_image_opacity?: number
@@ -663,7 +773,7 @@ async function fetchJson<T>(url: string): Promise<T> {
 
 function ensureArtifactDownloadFileName(input: {
   taskId: string
-  kind: "transcript" | "notes" | "mindmap" | "srt" | "vtt" | "bundle"
+  kind: TaskExportKind
   archive: "zip" | "tar"
   contentType: string
   fileName: string
@@ -676,7 +786,7 @@ function ensureArtifactDownloadFileName(input: {
 }
 
 function resolveArtifactFileExtension(
-  kind: "transcript" | "notes" | "mindmap" | "srt" | "vtt" | "bundle",
+  kind: TaskExportKind,
   archive: "zip" | "tar",
   contentType: string,
 ): string {
@@ -710,6 +820,14 @@ function resolveArtifactFileExtension(
       return ".vtt"
     case "bundle":
       return archive === "tar" ? ".tar" : ".zip"
+    case "study_pack":
+      return ".md"
+    case "subtitle_tracks":
+      return ".zip"
+    case "translation_records":
+      return ".json"
+    case "knowledge_notes":
+      return ".zip"
     default:
       return ""
   }

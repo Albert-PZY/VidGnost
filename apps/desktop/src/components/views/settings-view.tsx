@@ -387,6 +387,9 @@ export function SettingsView({
   const [activeSection, setActiveSection] = React.useState("models")
   const [fontSize, setFontSize] = React.useState([uiSettings.font_size])
   const [themeHue, setThemeHue] = React.useState([uiSettings.theme_hue])
+  const [studyDefaultTranslationTarget, setStudyDefaultTranslationTarget] = React.useState(
+    uiSettings.study_default_translation_target || "",
+  )
   const [models, setModels] = React.useState<ModelDescriptor[]>([])
   const [promptBundle, setPromptBundle] = React.useState<PromptTemplateBundleResponse | null>(null)
   const [whisperConfig, setWhisperConfig] = React.useState<WhisperConfigResponse | null>(null)
@@ -436,6 +439,10 @@ export function SettingsView({
   React.useEffect(() => {
     setThemeHue([uiSettings.theme_hue])
   }, [uiSettings.theme_hue])
+
+  React.useEffect(() => {
+    setStudyDefaultTranslationTarget(uiSettings.study_default_translation_target || "")
+  }, [uiSettings.study_default_translation_target])
 
   React.useEffect(() => {
     const activeHue = themeHue[0] ?? uiSettings.theme_hue
@@ -1024,6 +1031,13 @@ export function SettingsView({
     setThemeHue([DEFAULT_THEME_HUE])
     void handleUiSettingChange({ theme_hue: DEFAULT_THEME_HUE }, "主题色调已重置")
   }
+
+  const handleSaveStudyDefaultTranslationTarget = React.useCallback(() => {
+    const normalizedValue = studyDefaultTranslationTarget.trim()
+    void handleUiSettingChange({
+      study_default_translation_target: normalizedValue || null,
+    }, normalizedValue ? "Study 默认翻译目标已保存" : "Study 默认翻译目标已清除")
+  }, [studyDefaultTranslationTarget])
 
   const resolvePickedSkinImage = React.useCallback(async (file: File): Promise<PickedSkinImage | null> => {
     if (!file.type.startsWith("image/")) {
@@ -3000,6 +3014,45 @@ export function SettingsView({
                     <p className="text-sm text-muted-foreground">
                       更改语言后会立即同步到本地 UI 设置
                     </p>
+                  </div>
+                  <Separator />
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="study-default-translation-target">Study 默认翻译目标</Label>
+                      <p className="text-sm text-muted-foreground">
+                        当在线视频没有可直接复用的翻译字幕轨时，Study 工作台会优先用这里的目标语言匹配可用翻译结果。
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Input
+                        id="study-default-translation-target"
+                        value={studyDefaultTranslationTarget}
+                        onChange={(event) => setStudyDefaultTranslationTarget(event.target.value)}
+                        onBlur={handleSaveStudyDefaultTranslationTarget}
+                        placeholder="例如 en / ja / zh-Hans"
+                        className="w-full max-w-sm"
+                        disabled={isSavingUi}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={isSavingUi}
+                        onClick={handleSaveStudyDefaultTranslationTarget}
+                      >
+                        保存
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={isSavingUi || !studyDefaultTranslationTarget.trim()}
+                        onClick={() => {
+                          setStudyDefaultTranslationTarget("")
+                          void handleUiSettingChange({ study_default_translation_target: null }, "Study 默认翻译目标已清除")
+                        }}
+                      >
+                        清除
+                      </Button>
+                    </div>
                   </div>
                   <Separator />
                 </CardContent>

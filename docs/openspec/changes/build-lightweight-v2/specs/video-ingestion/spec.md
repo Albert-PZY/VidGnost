@@ -1,48 +1,54 @@
 ## ADDED Requirements
 
-### Requirement: System SHALL accept bilibili URL as processing input
-The system SHALL accept Bilibili video URLs or BV identifiers, normalize them into canonical URLs, and create processing tasks with source type `bilibili`.
+### Requirement: System SHALL accept study-first online and local video inputs
+Status: `partial`
 
-#### Scenario: Submit bilibili URL
-- **WHEN** client submits a valid Bilibili URL
-- **THEN** server creates a task and returns task ID with status `queued`
+The system SHALL accept both在线视频 and本地视频输入，并在任务记录中保留该任务是通过 `online` 还是 `local` 通路进入学习工作台，同时把来源归一到 `youtube` / `bilibili` / `local_file` / `local_path` 这组 study-first 来源类型。
 
-#### Scenario: Submit invalid URL
-- **WHEN** client submits an unsupported or malformed URL
-- **THEN** server returns validation error with machine-readable error code
+#### Scenario: Submit supported online URL
+- **WHEN** client submits a supported online video URL such as `bilibili` or `youtube`
+- **THEN** server normalizes the source into a canonical URL and creates a queued task
+- **AND** task record preserves `source_mode=online`
+- **AND** task record preserves canonical `source_type` as `youtube` or `bilibili`
 
-### Requirement: System SHALL accept local video file upload as processing input
-The system SHALL accept local uploads (`mp4`, `mkv`, `mov`, `webm`, `avi`, `m4v`) and create processing tasks with source type `local_file`.
+#### Scenario: Submit supported local input
+- **WHEN** client uploads a supported local video file (`mp4`, `mkv`, `mov`, `webm`, `avi`, `m4v`) or submits an existing absolute local path
+- **THEN** server creates a queued task with source type `local_file` or `local_path`
+- **AND** task record preserves `source_mode=local`
+- **AND** task detail keeps the persisted local source metadata available for later Study preview and workbench replay
 
-#### Scenario: Upload supported local file
-- **WHEN** client uploads a supported video file within size limit
-- **THEN** server stores input metadata and returns task ID with status `queued`
+#### Scenario: Submit invalid source
+- **WHEN** client submits a malformed online URL, a missing local file path, or an unsupported file extension
+- **THEN** server returns a machine-readable validation error
+- **AND** backend does not create the task
 
-#### Scenario: Upload large local file through batch endpoint
-- **WHEN** client submits a supported local video file through the batch upload endpoint and the file remains within the configured size limit
-- **THEN** server consumes the multipart file stream during request handling without stalling on large payloads
-- **AND** server returns the queued task response after the upload request body is fully processed
+### Requirement: Online sources SHALL prioritize subtitle-track discovery before fallback transcription
+Status: `planned`
 
-#### Scenario: Upload avi or m4v file
-- **WHEN** client uploads an `.avi` or `.m4v` local video file within size limit
-- **THEN** server accepts the request through the same local-file task creation flow
+For online sources, the backend SHALL treat platform subtitle tracks as the preferred transcript source. Media download and Whisper fallback SHALL remain available when the platform cannot provide usable subtitles.
 
-#### Scenario: Upload unsupported file format
-- **WHEN** client uploads a file with unsupported extension
-- **THEN** server rejects request with explicit format error
+#### Scenario: Online source exposes subtitle tracks
+- **WHEN** backend inspects a supported online video
+- **THEN** it records available original subtitle tracks and available translated subtitle tracks as source metadata before transcript normalization begins
 
-### Requirement: System SHALL accept local filesystem path as processing input
-The system SHALL accept local path input, validate path existence and extension, and create processing tasks.
+#### Scenario: Online source has no usable subtitle track
+- **WHEN** backend cannot resolve a usable platform subtitle track for the online video
+- **THEN** task remains on the online-source path
+- **AND** downstream transcription MAY fallback to Whisper without making frame extraction, VLM inference, or image-semantic retrieval a prerequisite
 
-#### Scenario: Submit valid local path
-- **WHEN** client submits existing local video path with supported extension
-- **THEN** server creates task and returns task ID with status `queued`
+### Requirement: Local sources SHALL enter the workbench through a Whisper-first path
+Status: `implemented`
 
-#### Scenario: Submit missing local path
-- **WHEN** client submits non-existing local file path
-- **THEN** server returns validation error and does not create task
+For local uploads and local filesystem paths, the backend SHALL preserve the source asset and route the task into the local audio extraction plus Whisper-compatible transcription path without requiring online subtitle discovery.
+
+#### Scenario: Start local study task
+- **WHEN** client creates a task from a local upload or a local path
+- **THEN** backend persists local source metadata for later preview and replay
+- **AND** downstream transcription uses the local Whisper-compatible route as the default transcript source
 
 ### Requirement: Task submission SHALL create records before runtime validation completes
+Status: `implemented`
+
 The backend SHALL validate request payload shape at submission time, create the task record, and enqueue analysis work without requiring a submission-time runtime preflight gate.
 
 #### Scenario: Submit task with valid input
@@ -63,6 +69,8 @@ The backend SHALL validate request payload shape at submission time, create the 
 - **AND** backend reruns phase `D` instead of reusing the older fallback fusion outputs
 
 ### Requirement: Task deletion SHALL remove task-owned source ingestion artifacts
+Status: `implemented`
+
 Deleting a task SHALL also remove source files and temporary workspaces owned exclusively by that task, regardless of the task status at deletion time.
 
 #### Scenario: Delete a task that owns uploaded or downloaded source assets

@@ -35,7 +35,7 @@ The pipeline SHALL keep these phase boundaries:
 - `A`: source ingestion and normalization
 - `B`: audio extraction and preprocessing
 - `C`: ASR transcription and normalization
-- `D`: transcript optimization and fusion delivery
+- `D`: study-first transcript shaping、学习工件收口、transcript-only QA 预热与最终交付
 
 #### Scenario: Phase ordering
 - **WHEN** task starts from any valid source
@@ -45,12 +45,17 @@ The pipeline SHALL keep these phase boundaries:
 ### Requirement: Stage D SHALL execute ordered substage chain
 Status: `implemented`
 
-Inside phase `D`, backend SHALL execute `transcript_optimize -> fusion_delivery` in order. For workflow `vqa`, backend SHALL keep transcript-only QA prewarm on the same study-first chain without making frame extraction, VLM inference, or image-semantic retrieval a default prerequisite.
+Inside phase `D`, backend SHALL execute `transcript_optimize -> subtitle_resolve -> translation_resolve -> study_pack_generate -> notes_mindmap_generate -> fusion_delivery` in order. For workflow `vqa`, backend SHALL insert `transcript_vectorize -> vqa_prewarm` before `fusion_delivery` while keeping transcript-only QA prewarm on the same study-first chain without making frame extraction, VLM inference, or image-semantic retrieval a default prerequisite.
 
 #### Scenario: Ordered stage-D execution
 - **WHEN** phase `D` starts
-- **THEN** `transcript_optimize` runs before `fusion_delivery`
-- **AND** `fusion_delivery` starts only after transcript optimization completes or is skipped
+- **THEN** `transcript_optimize` runs before `subtitle_resolve`、`translation_resolve`、`study_pack_generate`、and `notes_mindmap_generate`
+- **AND** `fusion_delivery` starts only after those study-first substages have completed or been skipped according to workflow
+
+#### Scenario: Ordered stage-D execution for notes workflow
+- **WHEN** phase `D` runs for a `notes` task
+- **THEN** backend completes subtitle、translation、study-pack、and notes/mindmap substages before `fusion_delivery`
+- **AND** transcript-only QA preparation substages such as `transcript_vectorize` and `vqa_prewarm` are explicitly marked as skipped instead of expanding back into multimodal work
 
 #### Scenario: Ordered stage-D execution for VQA
 - **WHEN** phase `D` runs for a `vqa` task
@@ -59,7 +64,7 @@ Inside phase `D`, backend SHALL execute `transcript_optimize -> fusion_delivery`
 - **AND** current migration period MAY still expose legacy compatibility markers for older task artifacts without redefining the default study-first chain
 
 ### Requirement: VQA tasks SHALL persist transcript-only retrieval prewarm artifacts before completion
-Status: `partial`
+Status: `implemented`
 
 When a task uses workflow `vqa`, phase `D` SHALL prepare the first-question retrieval corpus before the task enters the completed state.
 

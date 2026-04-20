@@ -338,11 +338,6 @@ describe("TaskOrchestrator control flow", () => {
       workflow: "notes",
     })
 
-    await waitFor(async () => {
-      const detail = await taskRepository.getDetail(activeTaskId)
-      return detail?.status === "completed"
-    }, 5_000)
-
     const eventLogPath = path.join(storageDir, "event-logs", `${activeTaskId}.jsonl`)
     const transcriptChunkIndexPath = path.join(
       storageDir,
@@ -363,6 +358,25 @@ describe("TaskOrchestrator control flow", () => {
       "chunks",
       "chunk-001.json",
     )
+
+    await waitFor(async () => {
+      const detail = await taskRepository.getDetail(activeTaskId)
+      if (detail?.status !== "completed") {
+        return false
+      }
+
+      const [eventLog, transcriptChunkIndex, transcriptChunkOne] = await Promise.all([
+        readUtf8IfExists(eventLogPath),
+        readUtf8IfExists(transcriptChunkIndexPath),
+        readUtf8IfExists(transcriptChunkOnePath),
+      ])
+
+      return Boolean(
+        eventLog?.includes("\"type\":\"task_complete\"") &&
+        transcriptChunkIndex &&
+        transcriptChunkOne,
+      )
+    }, 10_000)
 
     const eventLog = await readFile(eventLogPath, "utf8")
     const events = eventLog
@@ -409,9 +423,9 @@ describe("TaskOrchestrator control flow", () => {
       { start: 0, end: 1.2, text: "第一段 原始" },
       { start: 30, end: 31.8, text: "第二段 原始" },
     ])
-  })
+  }, 15_000)
 
-  it("publishes granular VQA substages for transcript vectorization, frame extraction, semantics, and fusion", async () => {
+  it("publishes study-first substages and transcript-only vqa prewarm for vqa tasks", async () => {
     activeTaskId = "task-control-vqa-stages"
     const sourcePath = path.join(storageDir, "vqa-source.mp4")
     await taskRepository.create(
@@ -490,35 +504,6 @@ describe("TaskOrchestrator control flow", () => {
         }),
         isLlmGenerationEnabled: async () => false,
       } as never,
-      videoFrameService: {
-        extractFrames: async () => ({
-          manifest: {
-            frames: [
-              {
-                frame_index: 0,
-                path: "frames/frame-0001.jpg",
-                timestamp_seconds: 4,
-              },
-            ],
-          },
-          manifestJson: JSON.stringify({
-            task_id: activeTaskId,
-            frame_count: 1,
-            frames: [
-              {
-                frame_index: 0,
-                path: "frames/frame-0001.jpg",
-                timestamp_seconds: 4,
-              },
-            ],
-          }),
-        }),
-      } as never,
-      vlmRuntimeService: {
-        describeFrame: async () => ({
-          content: "画面里有人在讲解白板内容",
-        }),
-      } as never,
     })
 
     await taskOrchestrator.submit({
@@ -549,157 +534,75 @@ describe("TaskOrchestrator control flow", () => {
       .map((event) => String(event.substage || ""))
 
     expect(substageStarts).toEqual(expect.arrayContaining([
+      "subtitle_resolve",
+      "translation_resolve",
+      "study_pack_generate",
+      "notes_mindmap_generate",
       "transcript_vectorize",
-      "frame_extract",
-      "frame_semantic",
-      "multimodal_index_fusion",
+      "vqa_prewarm",
       "fusion_delivery",
     ]))
     expect(substageCompletions).toEqual(expect.arrayContaining([
+      "subtitle_resolve",
+      "translation_resolve",
+      "study_pack_generate",
+      "notes_mindmap_generate",
       "transcript_vectorize",
+      "vqa_prewarm",
+      "fusion_delivery",
+    ]))
+    expect(substageStarts).not.toEqual(expect.arrayContaining([
       "frame_extract",
       "frame_semantic",
       "multimodal_index_fusion",
-      "fusion_delivery",
     ]))
-  })
+    expect(substageCompletions).not.toEqual(expect.arrayContaining([
+      "frame_extract",
+      "frame_semantic",
+      "multimodal_index_fusion",
+    ]))
 
-  it("skips VLM enrichment for fallback frames and writes template semantic evidence immediately", async () => {
-    activeTaskId = "task-control-vqa-fallback-frame"
-    const sourcePath = path.join(storageDir, "vqa-fallback-frame-source.mp4")
-    let describeFrameCallCount = 0
-
-    await taskRepository.create(
-      buildQueuedTaskRecord({
-        createdAt: new Date().toISOString(),
-        language: "zh",
-        modelSize: "small",
-        sourceInput: sourcePath,
-        sourceLocalPath: sourcePath,
-        sourceType: "local_path",
-        taskId: activeTaskId,
-        title: "VQA 回退帧测试",
-        workflow: "vqa",
-      }),
-    )
-
-    taskOrchestrator = new TaskOrchestrator(taskRepository, eventBus, {
-      asrService: {
-        transcribe: async () => ({
-          language: "zh",
-          segments: [
-            {
-              start: 0,
-              end: 3,
-              text: "回退帧也要能继续构建检索索引",
-            },
-          ],
-          text: "回退帧也要能继续构建检索索引",
-        }),
-      } as never,
-      mediaPipelineService: {
-        prepareSource: async ({ sourceLocalPath, taskId }: { sourceLocalPath?: string | null; taskId: string }) => ({
-          durationSeconds: 32,
-          fileSizeBytes: 128,
-          mediaPath: sourceLocalPath || path.join(storageDir, `${taskId}.mp4`),
-          sourceLabel: sourceLocalPath || `${taskId}.mp4`,
-          title: "VQA 回退帧测试",
-        }),
-        extractAudio: async ({ taskId }: { taskId: string }) => ({
-          audioPath: path.join(storageDir, `${taskId}.wav`),
-          durationSeconds: 32,
-        }),
-      } as never,
-      summaryService: {
-        buildArtifacts: async ({
-          transcriptSegments,
-          transcriptText,
-        }: {
-          transcriptSegments: TranscriptSegment[]
-          transcriptText: string
-        }) => ({
-          artifactManifestJson: JSON.stringify({}),
-          correctedSegments: transcriptSegments,
-          correctedText: transcriptText,
-          correctionFullText: transcriptText,
-          correctionIndexJson: JSON.stringify({ status: "skipped" }),
-          correctionRewriteText: transcriptText,
-          correctionStrictSegmentsJson: JSON.stringify(transcriptSegments),
-          fallbackArtifactChannels: [],
-          fusionPromptMarkdown: "# prompt",
-          mindmapMarkdown: "# mindmap",
-          notesMarkdown: "## notes",
-          summaryMarkdown: "## summary",
-        }),
-        isLlmGenerationEnabled: async () => false,
-      } as never,
-      videoFrameService: {
-        extractFrames: async () => ({
-          manifest: {
-            frames: [
-              {
-                frame_index: 0,
-                is_fallback: true,
-                path: "frames/frame-0001.jpg",
-                timestamp_seconds: 0,
-              },
-            ],
-          },
-          manifestJson: JSON.stringify({
-            task_id: activeTaskId,
-            frame_count: 1,
-            frames: [
-              {
-                frame_index: 0,
-                is_fallback: true,
-                path: "frames/frame-0001.jpg",
-                timestamp_seconds: 0,
-              },
-            ],
-          }),
-        }),
-      } as never,
-      vlmRuntimeService: {
-        describeFrame: async () => {
-          describeFrameCallCount += 1
-          return {
-            content: "这条内容不应该被使用",
-          }
-        },
-      } as never,
-    })
-
-    await taskOrchestrator.submit({
-      taskId: activeTaskId,
-      sourceInput: sourcePath,
-      sourceLocalPath: sourcePath,
-      workflow: "vqa",
-    })
-
-    await waitFor(async () => {
-      const detail = await taskRepository.getDetail(activeTaskId)
-      return detail?.status === "completed"
-    }, 5_000)
-
-    expect(describeFrameCallCount).toBe(0)
-
-    const frameSemanticIndexPath = path.join(
+    const prewarmIndexPath = path.join(
       storageDir,
       "tasks",
       "stage-artifacts",
       activeTaskId,
       "D",
       "vqa-prewarm",
-      "frame-semantic",
       "index.json",
     )
-    const frameSemanticIndex = JSON.parse(await readFile(frameSemanticIndexPath, "utf8")) as {
-      item_count: number
-      items: Array<{ visual_text?: string }>
+    const transcriptOnlyPrewarmPath = path.join(
+      storageDir,
+      "tasks",
+      "stage-artifacts",
+      activeTaskId,
+      "D",
+      "vqa-prewarm",
+      "transcript-only",
+      "index.json",
+    )
+
+    const prewarmIndex = JSON.parse(await readFile(prewarmIndexPath, "utf8")) as {
+      item_count?: number
+      mode?: string
+    }
+    const transcriptOnlyPrewarm = JSON.parse(await readFile(transcriptOnlyPrewarmPath, "utf8")) as {
+      artifact_paths?: string[]
+      mode?: string
+      task_id?: string
     }
 
-    expect(frameSemanticIndex.item_count).toBe(1)
-    expect(frameSemanticIndex.items[0]?.visual_text).toContain("等待视觉语义补全")
+    expect(prewarmIndex.mode).toBe("transcript-only")
+    expect(prewarmIndex.item_count).toBeGreaterThan(0)
+    expect(transcriptOnlyPrewarm).toMatchObject({
+      mode: "transcript-only",
+      task_id: activeTaskId,
+    })
+    expect(transcriptOnlyPrewarm.artifact_paths).toEqual(
+      expect.arrayContaining([
+        "D/vqa-prewarm/index.json",
+      ]),
+    )
   })
 })
 
@@ -728,4 +631,12 @@ async function waitFor(
     await new Promise((resolve) => setTimeout(resolve, intervalMs))
   }
   throw new Error("Condition was not met in time")
+}
+
+async function readUtf8IfExists(targetPath: string): Promise<string | null> {
+  try {
+    return await readFile(targetPath, "utf8")
+  } catch {
+    return null
+  }
 }

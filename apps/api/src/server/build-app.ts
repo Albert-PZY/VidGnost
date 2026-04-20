@@ -22,6 +22,7 @@ import { LlmReadinessService } from "../modules/runtime/llm-readiness-service.js
 import { RuntimeMetricsService } from "../modules/runtime/runtime-metrics-service.js"
 import { SelfCheckService } from "../modules/runtime/self-check-service.js"
 import { SummaryService } from "../modules/summary/summary-service.js"
+import { StudyService } from "../modules/study/study-service.js"
 import { TaskOrchestrator } from "../modules/tasks/task-orchestrator.js"
 import { TaskRepository } from "../modules/tasks/task-repository.js"
 import { VlmRuntimeService } from "../modules/vqa/vlm-runtime-service.js"
@@ -37,6 +38,7 @@ import { registerTaskEventRoutes } from "../routes/task-events.js"
 import { registerTaskExportRoutes } from "../routes/task-exports.js"
 import { registerTaskMutationRoutes } from "../routes/task-mutations.js"
 import { registerTaskRoutes } from "../routes/tasks.js"
+import { registerStudyRoutes } from "../routes/study.js"
 import { registerVqaRoutes } from "../routes/vqa.js"
 
 export async function buildApp(inputConfig?: Partial<AppConfig>): Promise<FastifyInstance> {
@@ -107,12 +109,17 @@ export async function buildApp(inputConfig?: Partial<AppConfig>): Promise<Fastif
     promptTemplateRepository,
     openAiCompatibleClient,
   )
+  const studyService = new StudyService(config, taskRepository, {
+    llmClient: openAiCompatibleClient,
+    llmConfigRepository,
+  })
   const llmReadinessService = new LlmReadinessService(openAiCompatibleClient)
   const vlmRuntimeService = new VlmRuntimeService(modelCatalogRepository, openAiCompatibleClient)
   const taskOrchestrator = new TaskOrchestrator(taskRepository, eventBus, {
     asrService,
     mediaPipelineService,
     summaryService,
+    studyService,
     videoFrameService,
     vlmRuntimeService,
   })
@@ -141,6 +148,7 @@ export async function buildApp(inputConfig?: Partial<AppConfig>): Promise<Fastif
   await registerTaskMutationRoutes(app, config, config.apiPrefix, taskRepository, taskOrchestrator)
   await registerTaskEventRoutes(app, config.apiPrefix, taskRepository, eventBus)
   await registerTaskExportRoutes(app, config, config.apiPrefix, taskRepository)
+  await registerStudyRoutes(app, config.apiPrefix, studyService)
   await registerSelfCheckRoutes(app, config.apiPrefix, selfCheckService, eventBus)
   await registerVqaRoutes(app, config.apiPrefix, vqaRuntimeService)
   await registerConfigRoutes(app, config.apiPrefix, {
@@ -153,6 +161,9 @@ export async function buildApp(inputConfig?: Partial<AppConfig>): Promise<Fastif
     ollamaServiceManager,
     modelCatalogRepository,
     localModelMigrationService,
+  })
+  app.addHook("onClose", async () => {
+    await studyService.close()
   })
   return app
 }

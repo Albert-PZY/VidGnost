@@ -9,7 +9,7 @@ Backend SHALL persist task metadata, source info, transcript, study artifacts, s
 - **WHEN** client requests task listing endpoint
 - **THEN** backend returns tasks ordered by latest update time with total count
 - **AND** each task summary carries `duration_seconds` when persisted transcript segments or source media metadata can provide a reliable duration
-- **AND** each task summary MAY include study-pack readiness, knowledge-note count, recent export timestamp, and continue-learning metadata when those fields are already persisted
+- **AND** each task summary returns a `study_preview` payload with readiness、generation tier、highlight count、question count、note count、favorite flag、and last-opened/export timestamps, using persisted `D/study/preview.json` when available and transcript-derived heuristic defaults otherwise
 
 #### Scenario: Query task detail
 - **WHEN** client requests task detail by ID
@@ -102,6 +102,7 @@ System SHALL support transcript, subtitle, notes, mindmap, knowledge-note, study
 - **WHEN** client requests a study-pack, knowledge-note bundle, or task bundle export
 - **THEN** backend packages the persisted study artifacts that exist for that task
 - **AND** transcript, overview, highlights, themes, questions, notes, and export metadata keep stable relative paths inside the package
+- **AND** during the current migration period, the stable implemented export path remains `transcript` / `notes` / `mindmap` / `bundle`, while dedicated study-pack or knowledge-note export records MAY remain absent until the corresponding task artifacts are explicitly persisted
 
 #### Scenario: Show success confirmation after workbench export
 - **WHEN** user exports `notes`, `study pack`, or `bundle` from the workbench and the renderer finishes downloading the response payload
@@ -143,6 +144,11 @@ History view SHALL evolve toward a learning-library surface that supports `workf
 - **THEN** the shell keeps the title bar and sidebar interactive while the history module loads
 - **AND** the content region MAY show a compact in-place loading placeholder before the first history payload renders
 - **AND** the renderer does not block the entire shell behind a full-window loading mask for this view switch
+
+#### Scenario: Hydrate learning-library metadata before history cards are fully redesigned
+- **WHEN** renderer receives task-list payloads on the current refactor baseline
+- **THEN** it can already read `study_preview` metadata for readiness、counts、favorite state、and continue-learning timestamps
+- **AND** the history surface MAY temporarily stay on the classic row-list presentation until the full learning-library card layout lands
 
 #### Scenario: Query recent-task sidebar summary
 - **WHEN** client requests the recent-task summary endpoint

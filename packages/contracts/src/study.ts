@@ -20,7 +20,7 @@ export type SubtitleTrackKind = z.infer<typeof subtitleTrackKindSchema>
 export const subtitleTrackAvailabilitySchema = z.enum(["available", "generated", "missing", "failed"])
 export type SubtitleTrackAvailability = z.infer<typeof subtitleTrackAvailabilitySchema>
 
-export const translationRecordSourceSchema = z.enum(["disabled", "original", "platform_track", "llm_cache"])
+export const translationRecordSourceSchema = z.enum(["disabled", "original", "platform_track", "llm_generated"])
 export type TranslationRecordSource = z.infer<typeof translationRecordSourceSchema>
 
 export const translationRecordStatusSchema = z.enum(["disabled", "pending", "ready", "failed"])
@@ -114,6 +114,7 @@ export const studyStateSchema = z.object({
   playback_position_seconds: z.number().min(0),
   selected_theme_id: z.string().min(1).nullable(),
   active_highlight_id: z.string().min(1).nullable(),
+  last_selected_subtitle_track_id: z.string().min(1).nullable(),
   is_favorite: z.boolean(),
   last_opened_at: z.string().nullable(),
 })
@@ -159,6 +160,17 @@ export const exportRecordSchema = z.object({
   created_at: z.string().min(1),
 })
 export type ExportRecord = z.infer<typeof exportRecordSchema>
+
+export const subtitleSwitchRequestSchema = z.object({
+  track_id: z.string().min(1),
+})
+export type SubtitleSwitchRequest = z.infer<typeof subtitleSwitchRequestSchema>
+
+export const taskExportCreateRequestSchema = z.object({
+  export_kind: taskExportKindSchema,
+  format: exportRecordFormatSchema.optional(),
+})
+export type TaskExportCreateRequest = z.infer<typeof taskExportCreateRequestSchema>
 
 export const studyWorkbenchTaskSchema = z.object({
   id: z.string().min(1),

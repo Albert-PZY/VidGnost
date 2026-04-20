@@ -404,7 +404,8 @@ Task processing workbench SHALL use a horizontal resizable split layout and defa
 - **WHEN** user opens a completed task in the processing workbench
 - **THEN** the renderer shows the resizable video-and-artifact layout
 - **AND** the default selected mode is `Study`
-- **AND** the `Study` mode exposes subtitle tracks, overview, highlights, themes, suggested questions, transcript linkage, and study-pack driven reading surfaces when those artifacts are available
+- **AND** the `Study` mode uses `study_preview` as the baseline payload and hydrates subtitle tracks、overview、highlights、themes、suggested questions、and transcript-linked reading surfaces when explicit study-pack artifacts are available
+- **AND** on the current migration baseline, the renderer MAY temporarily show preview-driven overview and metric scaffolding before the dedicated study-pack route has finished loading
 - **AND** the workbench still exposes transcript and stage-oriented detail surfaces for deeper inspection
 - **AND** left and right workspace tab bars use a clear filled selected state instead of relying only on a thin bottom border
 - **AND** the Markdown workspace renders a single notes Markdown surface instead of duplicating equivalent summary content beside it
@@ -522,9 +523,9 @@ Frontend UI library SHALL provide a reusable virtual-list component under `apps/
 - **AND** user and assistant bubbles both use explicit avatar affordances instead of rendering the user side as an anonymous color block
 - **AND** each answer may expose a retrieval trace identifier, citations, and citation jump actions
 - **AND** retrieval-trace and citation actions use compact icon buttons with hover tooltips instead of long inline labels
-- **AND** citations prefer the shared contracts fields `citation_type` and `image_evidence` for visual evidence rendering
-- **AND** `image_path` and `visual_text` remain compatibility-only fields for legacy task artifacts
-- **AND** opening Trace Theater reveals a single final retrieval-hits panel with deduplicated candidates from the unified vector-index chain
+- **AND** citations prefer transcript timestamp and transcript text evidence on the study-first baseline
+- **AND** `image_evidence`、`image_path`、and `visual_text` remain compatibility-only fields for legacy task artifacts and SHALL NOT redefine the default QA evidence path
+- **AND** opening Trace Theater reveals a single final retrieval-hits panel with deduplicated transcript-first candidates from the prepared vector-index chain
 - **AND** Trace Theater does not render legacy `dense_hits`, `sparse_hits`, `rrf_hits`, or `rerank_hits` sections in the current baseline
 - **AND** Trace Theater states that retrieval uses the original user question directly without query expansion
 - **AND** Trace Theater shows human-readable normalized scores instead of raw backend magnitude values that collapse visually to zero

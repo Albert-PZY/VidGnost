@@ -10,6 +10,7 @@ export const DEFAULT_UI_SETTINGS: UISettingsResponse = {
   language: "zh",
   font_size: 14,
   auto_save: true,
+  study_default_translation_target: null,
   theme_hue: 220,
   background_image: null,
   background_image_opacity: 28,
@@ -54,11 +55,17 @@ export class UiSettingsRepository {
     const backgroundImageRaw = payload.background_image
     const background_image =
       typeof backgroundImageRaw === "string" ? backgroundImageRaw.trim() || null : null
+    const studyDefaultTranslationTargetRaw = payload.study_default_translation_target
+    const study_default_translation_target =
+      typeof studyDefaultTranslationTargetRaw === "string"
+        ? studyDefaultTranslationTargetRaw.trim() || null
+        : null
 
     return {
       language,
       font_size: clampInteger(payload.font_size, DEFAULT_UI_SETTINGS.font_size, 12, 20),
       auto_save: typeof payload.auto_save === "boolean" ? payload.auto_save : DEFAULT_UI_SETTINGS.auto_save,
+      study_default_translation_target,
       theme_hue: clampInteger(payload.theme_hue, DEFAULT_UI_SETTINGS.theme_hue, 0, 360),
       background_image,
       background_image_opacity: clampInteger(

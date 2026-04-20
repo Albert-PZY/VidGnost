@@ -2,6 +2,7 @@ import path from "node:path"
 import { cp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises"
 
 import type {
+  StudyPreview,
   TaskDetailResponse,
   TaskListResponse,
   TaskRecentResponse,
@@ -98,7 +99,11 @@ export class TaskRepository {
     sortRecords(filteredRecords, options.sortBy)
 
     return {
-      items: filteredRecords.slice(options.offset, options.offset + options.limit).map((record) => toSummaryItem(record)),
+      items: await Promise.all(
+        filteredRecords
+          .slice(options.offset, options.offset + options.limit)
+          .map((record) => toSummaryItem(record, this.stageArtifactsDir)),
+      ),
       total: filteredRecords.length,
     }
   }
@@ -179,6 +184,7 @@ export class TaskRepository {
       vm_phase_metrics: vmPhaseMetrics,
       artifact_total_bytes: normalizeNonNegativeInteger(record.artifact_total_bytes),
       artifact_index: parseArtifactIndex(record.artifact_index_json),
+      study_preview: await resolveStudyPreview(this.stageArtifactsDir, String(record.id || ""), record),
       created_at: normalizeDate(record.created_at),
       updated_at: normalizeDate(record.updated_at),
     }
@@ -685,7 +691,7 @@ function sortRecords(records: StoredTaskRecord[], sortBy: SortBy): void {
   records.sort((left, right) => parseTimestamp(right.updated_at) - parseTimestamp(left.updated_at))
 }
 
-function toSummaryItem(record: StoredTaskRecord): TaskSummaryItem {
+async function toSummaryItem(record: StoredTaskRecord, stageArtifactsDir: string): Promise<TaskSummaryItem> {
   return {
     id: normalizeString(record.id),
     title: normalizeNullableString(record.title),
@@ -696,6 +702,7 @@ function toSummaryItem(record: StoredTaskRecord): TaskSummaryItem {
     progress: normalizeProgress(record.progress),
     file_size_bytes: normalizeNonNegativeInteger(record.file_size_bytes),
     duration_seconds: resolveEffectiveDurationSeconds(record),
+    study_preview: await resolveStudyPreview(stageArtifactsDir, normalizeString(record.id), record),
     created_at: normalizeDate(record.created_at),
     updated_at: normalizeDate(record.updated_at),
   }
@@ -838,17 +845,7 @@ function buildVmPhaseMetrics(stageMetrics: Record<string, Record<string, unknown
     reason: transcriptOptimizeMetric.reason ?? null,
   }
 
-  const multimodalPrewarmMetric = substageMetrics.multimodal_prewarm || substageMetrics.multimodal_index_fusion || {}
-  result.multimodal_prewarm = {
-    status: String(multimodalPrewarmMetric.status || "pending").trim().toLowerCase() || "pending",
-    started_at: multimodalPrewarmMetric.started_at ?? null,
-    completed_at: multimodalPrewarmMetric.completed_at ?? null,
-    elapsed_seconds: multimodalPrewarmMetric.elapsed_seconds ?? null,
-    optional: Boolean(multimodalPrewarmMetric.optional ?? true),
-    reason: multimodalPrewarmMetric.reason ?? null,
-  }
-
-  for (const key of ["transcript_vectorize", "frame_extract", "frame_semantic", "frame_vectorize", "multimodal_index_fusion"]) {
+  for (const key of ["subtitle_resolve", "translation_resolve", "study_pack_generate", "notes_mindmap_generate", "transcript_vectorize", "vqa_prewarm"]) {
     const metric = substageMetrics[key] || {}
     result[key] = {
       status: String(metric.status || "pending").trim().toLowerCase() || "pending",
@@ -1130,4 +1127,38 @@ function formatDuration(elapsedSeconds: number | null): string {
 
 function normalizeWritableRecord(record: StoredTaskRecord): StoredTaskRecord {
   return JSON.parse(JSON.stringify(record)) as StoredTaskRecord
+}
+
+async function resolveStudyPreview(
+  stageArtifactsDir: string,
+  taskId: string,
+  record: StoredTaskRecord,
+): Promise<StudyPreview | null> {
+  const previewPath = path.join(stageArtifactsDir, taskId, "D", "study", "preview.json")
+  const persisted = await readJsonFile<StudyPreview | null>(previewPath, null)
+  if (persisted && typeof persisted === "object") {
+    return persisted
+  }
+
+  const segments = parseTranscriptSegments(record.transcript_segments_json)
+  const status = toPublicStatus(record.status)
+  const readiness: StudyPreview["readiness"] =
+    status === "failed" || status === "cancelled"
+      ? segments.length > 0
+        ? "degraded"
+        : "failed"
+      : segments.length > 0
+        ? "ready"
+        : "pending"
+
+  return {
+    readiness,
+    generation_tier: segments.length > 0 ? "heuristic" : null,
+    highlight_count: Math.min(3, segments.length),
+    question_count: segments.length > 0 ? 2 : 0,
+    note_count: 0,
+    is_favorite: false,
+    last_opened_at: null,
+    last_exported_at: null,
+  }
 }

@@ -58,6 +58,21 @@ Frontend model configuration for `llm-default` SHALL allow users to switch betwe
 - **THEN** dialog shows OpenAI-compatible provider fields and common runtime parameters together
 - **AND** the same dialog keeps `文本纠错模式`、`批大小`、`重叠窗口` controls visible for `llm-default`
 
+### Requirement: UI settings SHALL expose Study translation defaults for LLM-backed translation decisions
+Status: `implemented`
+
+Frontend UI settings SHALL persist a normalized `study_default_translation_target` value so the study-first workbench can decide whether subtitle fallback translation may request the configured LLM runtime.
+
+#### Scenario: Read UI settings for the Study workbench
+- **WHEN** frontend requests `/config/ui`
+- **THEN** backend returns `study_default_translation_target` together with other UI settings
+- **AND** the value is `null` when the user has not configured a default Study translation language
+
+#### Scenario: Save empty or blank Study translation target
+- **WHEN** frontend updates `/config/ui` with an empty or whitespace-only `study_default_translation_target`
+- **THEN** backend normalizes the persisted value to `null`
+- **AND** study-first translation fallback keeps the LLM translation path disabled unless a platform translation track is already available
+
 ### Requirement: LLM runtime SHALL stay synchronized with the managed `llm-default` entry
 Status: `implemented`
 

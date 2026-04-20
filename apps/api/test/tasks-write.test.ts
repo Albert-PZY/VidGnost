@@ -3,11 +3,12 @@ import path from "node:path"
 import { createServer } from "node:http"
 import type { AddressInfo } from "node:net"
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
+import { DatabaseSync } from "node:sqlite"
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import type { FastifyInstance } from "fastify"
 
-import { llmConfigResponseSchema, taskCreateResponseSchema, taskDetailResponseSchema } from "@vidgnost/contracts"
+import { llmConfigResponseSchema, taskCreateResponseSchema, taskDetailResponseSchema, uiSettingsResponseSchema } from "@vidgnost/contracts"
 
 import { buildApp } from "../src/server/build-app.js"
 
@@ -28,6 +29,14 @@ describe("task mutation routes", () => {
     fallbackSourceVideoPath = seeded.fallbackSourceVideoPath
     unmatchedVideoPath = seeded.unmatchedVideoPath
     llmServer = createServer((request, response) => {
+      if (request.method === "GET" && request.url === "/v1/models") {
+        response.writeHead(200, { "Content-Type": "application/json" })
+        response.end(JSON.stringify({
+          data: [{ id: "mock-notes" }],
+        }))
+        return
+      }
+
       if (request.method !== "POST" || request.url !== "/v1/chat/completions") {
         response.writeHead(404, { "Content-Type": "application/json" })
         response.end(JSON.stringify({ error: { message: "not found" } }))
@@ -43,7 +52,19 @@ describe("task mutation routes", () => {
           messages?: Array<{ content?: string }>
         }
         const prompt = payload.messages?.at(-1)?.content || ""
-        const content = String(prompt).includes("导图") ? "# Mock 思维导图\n" : "## Mock 笔记\n"
+        const promptText = String(prompt)
+        const content = promptText.includes("SEGMENTS_JSON:")
+          ? JSON.stringify(
+              ((promptText.match(/SEGMENTS_JSON:\s*(\[[\s\S]*\])\s*$/)?.[1]
+                ? JSON.parse(promptText.match(/SEGMENTS_JSON:\s*(\[[\s\S]*\])\s*$/)?.[1] || "[]")
+                : []) as Array<{ id?: string; text?: string }>).map((segment) => ({
+                id: segment.id || "",
+                translated_text: `EN:${segment.text || ""}`,
+              })),
+            )
+          : promptText.includes("导图")
+            ? "# Mock 思维导图\n"
+            : "## Mock 笔记\n"
 
         response.writeHead(200, { "Content-Type": "application/json" })
         response.end(JSON.stringify({
@@ -78,7 +99,7 @@ describe("task mutation routes", () => {
       llmServer.close((error) => (error ? reject(error) : resolve()))
     })
     if (storageDir) {
-      await rm(storageDir, { force: true, recursive: true })
+      await removeDirectoryWithRetry(storageDir)
     }
   })
 
@@ -111,7 +132,7 @@ describe("task mutation routes", () => {
     })
     expect(exportResponse.statusCode).toBe(200)
     expect(exportResponse.headers["content-type"]).toContain("text/markdown")
-  })
+  }, 20_000)
 
   it("reruns stage d instead of replaying fallback fusion artifacts when llm is available", async () => {
     const llmConfigResponse = await app.inject({
@@ -146,7 +167,18 @@ describe("task mutation routes", () => {
 
     expect(createResponse.statusCode).toBe(200)
     const created = taskCreateResponseSchema.parse(createResponse.json())
-    const detail = await waitForTaskStatus(app, created.task_id, "completed")
+    const detail = await waitForTaskDetail(
+      app,
+      created.task_id,
+      (taskDetail) =>
+        taskDetail.status === "completed" &&
+        (taskDetail.notes_markdown || "").includes("Mock 笔记") &&
+        !(taskDetail.notes_markdown || "").includes("当前为回退生成结果"),
+      {
+        description: "task completion with regenerated llm notes",
+        timeoutMs: 20_000,
+      },
+    )
 
     expect(detail.notes_markdown).toContain("Mock 笔记")
     expect(detail.notes_markdown).not.toContain("当前为回退生成结果")
@@ -164,7 +196,7 @@ describe("task mutation routes", () => {
       notes: { generated_by: string }
     }
     expect(manifest.notes.generated_by).toBe("llm")
-  })
+  }, 30_000)
 
   it("serves task event streams with loopback cors headers", async () => {
     const controller = new AbortController()
@@ -181,6 +213,95 @@ describe("task mutation routes", () => {
     expect(response.headers.get("access-control-allow-origin")).toBe("http://127.0.0.1:16221")
 
     controller.abort()
+  })
+
+  it("exports study artifacts through direct task export routes", async () => {
+    const llmConfigResponse = await app.inject({
+      method: "GET",
+      url: "/api/config/llm",
+    })
+    expect(llmConfigResponse.statusCode).toBe(200)
+    const llmConfig = llmConfigResponseSchema.parse(llmConfigResponse.json())
+
+    const saveLlmConfigResponse = await app.inject({
+      method: "PUT",
+      url: "/api/config/llm",
+      payload: {
+        ...llmConfig,
+        api_key: "ollama",
+        base_url: llmBaseUrl,
+        model: "mock-notes",
+        correction_mode: "off",
+      },
+    })
+    expect(saveLlmConfigResponse.statusCode).toBe(200)
+
+    const uiConfigResponse = await app.inject({
+      method: "GET",
+      url: "/api/config/ui",
+    })
+    expect(uiConfigResponse.statusCode).toBe(200)
+    const uiConfig = uiSettingsResponseSchema.parse(uiConfigResponse.json())
+
+    const saveUiConfigResponse = await app.inject({
+      method: "PUT",
+      url: "/api/config/ui",
+      payload: {
+        ...uiConfig,
+        study_default_translation_target: "en",
+      },
+    })
+    expect(saveUiConfigResponse.statusCode).toBe(200)
+
+    const noteResponse = await app.inject({
+      method: "POST",
+      url: "/api/knowledge/notes",
+      payload: {
+        excerpt: "seed knowledge note",
+        note_markdown: "## seed knowledge note",
+        source_kind: "manual",
+        tags: ["seed"],
+        task_id: "task-seed",
+        title: "Seed Knowledge",
+      },
+    })
+    expect(noteResponse.statusCode).toBe(200)
+
+    const [studyPackResponse, subtitleTracksResponse, translationRecordsResponse, knowledgeNotesResponse] = await Promise.all([
+      app.inject({
+        method: "GET",
+        url: "/api/tasks/task-seed/export/study_pack",
+      }),
+      app.inject({
+        method: "GET",
+        url: "/api/tasks/task-seed/export/subtitle_tracks",
+      }),
+      app.inject({
+        method: "GET",
+        url: "/api/tasks/task-seed/export/translation_records",
+      }),
+      app.inject({
+        method: "GET",
+        url: "/api/tasks/task-seed/export/knowledge_notes",
+      }),
+    ])
+
+    expect(studyPackResponse.statusCode).toBe(200)
+    expect(studyPackResponse.headers["content-type"]).toContain("text/markdown")
+    expect(studyPackResponse.body).toContain("## Highlights")
+
+    expect(subtitleTracksResponse.statusCode).toBe(200)
+    expect(subtitleTracksResponse.headers["content-type"]).toContain("application/json")
+    expect(subtitleTracksResponse.body).toContain("\"kind\":")
+
+    expect(translationRecordsResponse.statusCode).toBe(200)
+    expect(translationRecordsResponse.headers["content-type"]).toContain("application/json")
+    expect(translationRecordsResponse.body).toContain("\"source\": \"llm_generated\"")
+    expect(translationRecordsResponse.body).toContain("\"language\": \"en\"")
+
+    expect(knowledgeNotesResponse.statusCode).toBe(200)
+    expect(knowledgeNotesResponse.headers["content-type"]).toContain("text/markdown")
+    expect(knowledgeNotesResponse.body).toContain("Seed Knowledge")
   })
 
   it("updates task artifacts, exports bundle and deletes terminal task", async () => {
@@ -222,6 +343,11 @@ describe("task mutation routes", () => {
       url: "/api/config/llm",
     })
     const llmConfig = llmConfigResponseSchema.parse(llmConfigResponse.json())
+    const uiConfigResponse = await app.inject({
+      method: "GET",
+      url: "/api/config/ui",
+    })
+    const uiConfig = uiSettingsResponseSchema.parse(uiConfigResponse.json())
 
     const saveConfigResponse = await app.inject({
       method: "PUT",
@@ -232,6 +358,15 @@ describe("task mutation routes", () => {
       },
     })
     expect(saveConfigResponse.statusCode).toBe(200)
+    const saveUiConfigResponse = await app.inject({
+      method: "PUT",
+      url: "/api/config/ui",
+      payload: {
+        ...uiConfig,
+        study_default_translation_target: null,
+      },
+    })
+    expect(saveUiConfigResponse.statusCode).toBe(200)
 
     const rerunResponse = await app.inject({
       method: "POST",
@@ -258,9 +393,21 @@ describe("task mutation routes", () => {
       "transcript-optimize",
       "full.txt",
     )
+    const workspacePath = path.join(storageDir, "tasks", "stage-artifacts", "task-seed-rerun", "D", "study", "workspace.json")
+    const studyPackPath = path.join(storageDir, "tasks", "stage-artifacts", "task-seed-rerun", "D", "study", "study-pack.json")
+    const subtitleTracksPath = path.join(storageDir, "tasks", "stage-artifacts", "task-seed-rerun", "D", "study", "subtitle-tracks.json")
+    const translationRecordsPath = path.join(storageDir, "tasks", "stage-artifacts", "task-seed-rerun", "D", "study", "translation-records.json")
+    const previewPath = path.join(storageDir, "tasks", "stage-artifacts", "task-seed-rerun", "D", "study", "preview.json")
+    const studySqlitePath = path.join(storageDir, "study", "study.sqlite")
 
     await waitForFile(correctionIndexPath)
     await waitForFile(correctionTextPath)
+    await waitForFile(workspacePath)
+    await waitForFile(studyPackPath)
+    await waitForFile(subtitleTracksPath)
+    await waitForFile(translationRecordsPath)
+    await waitForFile(previewPath)
+    await waitForFile(studySqlitePath)
 
     const detail = await waitForTaskStatus(app, "task-seed-rerun", "completed")
 
@@ -269,17 +416,64 @@ describe("task mutation routes", () => {
       status: string
     }
     const correctionText = await readFile(correctionTextPath, "utf8")
+    const subtitleTracks = JSON.parse(await readFile(subtitleTracksPath, "utf8")) as Array<{ kind?: string }>
+    const translationRecords = JSON.parse(await readFile(translationRecordsPath, "utf8")) as Array<{
+      source?: string
+      status?: string
+      target?: { language?: string } | null
+    }>
+    const workspace = JSON.parse(await readFile(workspacePath, "utf8")) as {
+      preview?: { readiness?: string }
+      study_pack?: { highlights?: unknown[] }
+      translation_records?: Array<{ status?: string }>
+    }
+    const preview = JSON.parse(await readFile(previewPath, "utf8")) as { readiness?: string }
+    const studyDatabase = new DatabaseSync(studySqlitePath)
+    const persistedPackRow = studyDatabase
+      .prepare("SELECT pack_json FROM study_packs WHERE task_id = ?")
+      .get("task-seed-rerun") as { pack_json?: string } | undefined
+    const persistedTrackRow = studyDatabase
+      .prepare("SELECT tracks_json FROM subtitle_tracks WHERE task_id = ?")
+      .get("task-seed-rerun") as { tracks_json?: string } | undefined
+    const persistedTranslationRow = studyDatabase
+      .prepare("SELECT records_json FROM translation_records WHERE task_id = ?")
+      .get("task-seed-rerun") as { records_json?: string } | undefined
+    studyDatabase.close()
 
     expect(correctionIndex).toMatchObject({
       mode: "off",
       status: "skipped",
     })
     expect(correctionText).toContain("seed transcript")
+    expect(subtitleTracks.some((track) => track.kind === "whisper")).toBe(true)
+    expect(translationRecords).toEqual([
+      expect.objectContaining({
+        source: "disabled",
+        status: "disabled",
+        target: null,
+      }),
+    ])
+    expect(workspace.preview?.readiness).toBe("ready")
+    expect(workspace.study_pack?.highlights?.length).toBeGreaterThan(0)
+    expect(workspace.translation_records?.[0]?.status).toBe("disabled")
+    expect(preview.readiness).toBe("ready")
+    expect(persistedPackRow?.pack_json).toBeTruthy()
+    expect(persistedTrackRow?.tracks_json).toContain("\"kind\":\"whisper\"")
+    expect(persistedTranslationRow?.records_json).toContain("\"status\":\"disabled\"")
     expect(detail.stage_metrics.D).toMatchObject({
       status: "completed",
+      substage_metrics: {
+        subtitle_resolve: { status: "completed" },
+        translation_resolve: { status: "completed" },
+        study_pack_generate: { status: "completed" },
+      },
     })
     expect(detail.vm_phase_metrics.D).toMatchObject({
       status: "completed",
+    })
+    expect(detail.study_preview).toMatchObject({
+      readiness: "ready",
+      generation_tier: "heuristic",
     })
   }, 20_000)
 
@@ -300,25 +494,15 @@ describe("task mutation routes", () => {
       "vqa-prewarm",
       "index.json",
     )
-    const multimodalIndexPath = path.join(
+    const transcriptOnlyIndexPath = path.join(
       storageDir,
       "tasks",
       "stage-artifacts",
       "task-vqa-rerun",
       "D",
       "vqa-prewarm",
-      "multimodal",
+      "transcript-only",
       "index.json",
-    )
-    const multimodalManifestPath = path.join(
-      storageDir,
-      "tasks",
-      "stage-artifacts",
-      "task-vqa-rerun",
-      "D",
-      "vqa-prewarm",
-      "multimodal",
-      "manifest.json",
     )
     const frameManifestPath = path.join(
       storageDir,
@@ -330,7 +514,7 @@ describe("task mutation routes", () => {
       "frames",
       "manifest.json",
     )
-    const frameSemanticIndexPath = path.join(
+    const frameSemanticPath = path.join(
       storageDir,
       "tasks",
       "stage-artifacts",
@@ -342,51 +526,27 @@ describe("task mutation routes", () => {
     )
 
     await waitForFile(prewarmIndexPath)
-    await waitForFile(multimodalIndexPath)
-    await waitForFile(multimodalManifestPath)
-    await waitForFile(frameManifestPath)
-    await waitForFile(frameSemanticIndexPath)
+    await waitForFile(transcriptOnlyIndexPath)
 
     const prewarmIndex = JSON.parse(await readFile(prewarmIndexPath, "utf8")) as {
       item_count: number
+      mode: string
       retrieval_mode: string
       items?: Array<{ source?: string; source_set?: string[] }>
     }
-    const multimodalIndex = JSON.parse(await readFile(multimodalIndexPath, "utf8")) as {
-      mode: string
-      entries: Array<{ artifact_path?: string; kind?: string; modality?: string }>
-      task_id: string
-    }
-    const multimodalManifest = JSON.parse(await readFile(multimodalManifestPath, "utf8")) as {
-      mode: string
+    const transcriptOnlyIndex = JSON.parse(await readFile(transcriptOnlyIndexPath, "utf8")) as {
       artifact_paths: string[]
-    }
-    const frameManifest = JSON.parse(await readFile(frameManifestPath, "utf8")) as {
+      mode: string
       task_id: string
-      frames: Array<{ path?: string }>
-      frame_count: number
     }
-    const frameSemanticIndex = JSON.parse(await readFile(frameSemanticIndexPath, "utf8")) as {
-      task_id: string
-      item_count: number
-      items: Array<{ image_path?: string; visual_text?: string }>
-    }
+    expect(prewarmIndex.mode).toBe("transcript-only")
     expect(prewarmIndex.retrieval_mode).toBe("vector-index")
     expect(prewarmIndex.item_count).toBeGreaterThan(0)
-    expect(multimodalIndex.task_id).toBe("task-vqa-rerun")
-    expect(multimodalIndex.mode).toBe("multimodal")
-    expect(Array.isArray(multimodalIndex.entries)).toBe(true)
-    expect(multimodalIndex.entries.some((entry) => entry.kind === "frame_semantic")).toBe(true)
-    expect(multimodalManifest.mode).toBe("multimodal")
-    expect(multimodalManifest.artifact_paths).toContain("D/vqa-prewarm/index.json")
-    expect(multimodalManifest.artifact_paths).toContain("D/vqa-prewarm/frame-semantic/index.json")
-    expect(frameManifest.task_id).toBe("task-vqa-rerun")
-    expect(frameManifest.frame_count).toBeGreaterThan(0)
-    expect(frameManifest.frames[0]?.path).toMatch(/^frames\//)
-    expect(frameSemanticIndex.task_id).toBe("task-vqa-rerun")
-    expect(frameSemanticIndex.item_count).toBeGreaterThan(0)
-    expect(frameSemanticIndex.items[0]?.image_path).toMatch(/^frames\//)
-    expect(frameSemanticIndex.items[0]?.visual_text).toBeTruthy()
+    expect(transcriptOnlyIndex).toMatchObject({
+      mode: "transcript-only",
+      task_id: "task-vqa-rerun",
+    })
+    expect(transcriptOnlyIndex.artifact_paths).toContain("D/vqa-prewarm/index.json")
     const sourceSet = new Set(
       (prewarmIndex.items || []).flatMap((item) => {
         const set = Array.isArray(item.source_set) ? item.source_set : []
@@ -397,18 +557,20 @@ describe("task mutation routes", () => {
       }),
     )
     expect(sourceSet.has("transcript")).toBe(true)
-    expect(sourceSet.has("frame_semantic")).toBe(true)
+    expect(sourceSet.has("frame_semantic")).toBe(false)
+    await expectPathMissing(frameManifestPath)
+    await expectPathMissing(frameSemanticPath)
 
     const detail = await waitForTaskStatus(app, "task-vqa-rerun", "completed")
     expect(detail.steps.map((step) => step.id)).toEqual(["extract", "transcribe", "correct", "ready"])
     expect(detail.stage_metrics.D).toMatchObject({
       substage_metrics: {
-        multimodal_prewarm: {
+        vqa_prewarm: {
           status: "completed",
         },
       },
     })
-    expect(detail.vm_phase_metrics.multimodal_prewarm).toMatchObject({
+    expect(detail.vm_phase_metrics.vqa_prewarm).toMatchObject({
       status: "completed",
     })
   }, 20_000)
@@ -439,9 +601,10 @@ describe("task mutation routes", () => {
     expect(detail.status).toBe("cancelled")
 
     const eventLogPath = path.join(storageDir, "event-logs", `${created.task_id}.jsonl`)
+    await waitForFileContaining(eventLogPath, "\"type\":\"task_cancelled\"")
     const eventLog = await readFile(eventLogPath, "utf8")
     expect(eventLog).toContain("task_cancelled")
-  })
+  }, 20_000)
 
   it("deletes a running task and removes task-owned temp, artifact, upload, and trace files", async () => {
     const createResponse = await app.inject({
@@ -526,24 +689,55 @@ describe("task mutation routes", () => {
   })
 })
 
-async function waitForTaskStatus(
+type TaskDetail = ReturnType<typeof taskDetailResponseSchema.parse>
+
+async function waitForTaskDetail(
   app: FastifyInstance,
   taskId: string,
-  status: "completed" | "cancelled" | "failed",
-): Promise<ReturnType<typeof taskDetailResponseSchema.parse>> {
-  const deadline = Date.now() + 5_000
+  predicate: (detail: TaskDetail) => boolean,
+  options: {
+    description: string
+    intervalMs?: number
+    timeoutMs?: number
+  },
+): Promise<TaskDetail> {
+  const timeoutMs = options.timeoutMs ?? 15_000
+  const intervalMs = options.intervalMs ?? 100
+  const deadline = Date.now() + timeoutMs
+  let lastDetail: TaskDetail | null = null
+
   while (Date.now() < deadline) {
     const detailResponse = await app.inject({
       method: "GET",
       url: `/api/tasks/${taskId}`,
     })
     const detail = taskDetailResponseSchema.parse(detailResponse.json())
-    if (detail.status === status) {
+    lastDetail = detail
+    if (predicate(detail)) {
       return detail
     }
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
   }
-  throw new Error(`Task ${taskId} did not reach ${status}`)
+
+  throw new Error(
+    `Task ${taskId} did not satisfy ${options.description}. Last status: ${lastDetail?.status ?? "unknown"}`,
+  )
+}
+
+async function waitForTaskStatus(
+  app: FastifyInstance,
+  taskId: string,
+  status: "completed" | "cancelled" | "failed",
+  options?: {
+    intervalMs?: number
+    timeoutMs?: number
+  },
+): Promise<TaskDetail> {
+  return waitForTaskDetail(app, taskId, (detail) => detail.status === status, {
+    description: `status ${status}`,
+    intervalMs: options?.intervalMs,
+    timeoutMs: options?.timeoutMs,
+  })
 }
 
 async function waitForFile(targetPath: string): Promise<void> {
@@ -559,8 +753,49 @@ async function waitForFile(targetPath: string): Promise<void> {
   throw new Error(`File was not written in time: ${targetPath}`)
 }
 
+async function waitForFileContaining(targetPath: string, expectedText: string): Promise<void> {
+  const deadline = Date.now() + 15_000
+  while (Date.now() < deadline) {
+    try {
+      const content = await readFile(targetPath, "utf8")
+      if (content.includes(expectedText)) {
+        return
+      }
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  throw new Error(`File content was not written in time: ${targetPath}`)
+}
+
 async function expectPathMissing(targetPath: string): Promise<void> {
   await expect(async () => stat(targetPath)).rejects.toThrow()
+}
+
+async function removeDirectoryWithRetry(targetPath: string, attempts = 20): Promise<void> {
+  for (let index = 0; index < attempts; index += 1) {
+    try {
+      await rm(targetPath, { recursive: true, force: true })
+      return
+    } catch (error) {
+      if (
+        process.platform === "win32" &&
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "EBUSY"
+      ) {
+        if (index === attempts - 1) {
+          return
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100))
+        continue
+      }
+      if (index === attempts - 1) {
+        throw error
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+  }
 }
 
 async function seedMutationFixtures(storageDir: string): Promise<{

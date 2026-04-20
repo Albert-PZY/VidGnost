@@ -46,11 +46,15 @@ import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { VirtualizedList } from "@/components/ui/virtualized-list"
 import { PromptMarkdownEditor } from "@/components/editors/prompt-markdown-editor"
+import { KnowledgeView } from "@/components/views/knowledge-view"
+import { StudyView } from "@/components/views/study-view"
 import { MarkdownArtifactViewer } from "@/components/ui/markdown-artifact-viewer"
 import {
   ApiError,
   buildTaskSourceMediaUrl,
   cancelTask,
+  createTaskStudyExport,
+  downloadTaskArtifactFile,
   downloadTaskArtifact,
   getApiErrorMessage,
   getChatTrace,
@@ -58,13 +62,22 @@ import {
   getTaskArtifactFileText,
   getTaskArtifactText,
   getTaskDetail,
+  getTaskStudyPack,
   pauseTask,
   resumeTask,
   streamChatWithTask,
   streamTaskEvents,
+  updateTaskStudyState,
   updateTaskArtifacts,
 } from "@/lib/api"
 import { formatBytes, formatDateTime, formatSecondsAsClock } from "@/lib/format"
+import {
+  normalizeStudyWorkspace,
+  resolveStudyPlaybackSource,
+  resolveSubtitleTrackSelection,
+  type NormalizedStudyWorkspace,
+  type StudyPlaybackSource,
+} from "@/lib/study-workbench"
 import {
   buildTranscriptSegmentKey,
   getVqaStreamErrorText,
@@ -84,9 +97,11 @@ import type {
 } from "@/stores/task-processing-runtime-types"
 import type {
   TaskDetailResponse,
+  TaskExportKind,
   TaskStepItem,
   TaskStreamEvent,
   TranscriptSegment,
+  UISettingsResponse,
   VqaChatStreamEvent,
   VqaCitationItem,
   VqaTraceResponse,
@@ -100,6 +115,7 @@ interface TaskProcessingWorkbenchProps {
   taskId: string
   workflow: WorkflowType
   taskTitle: string
+  uiSettings: UISettingsResponse
   onBack: () => void
   onTaskChanged: () => void
   onTaskLoaded?: (task: TaskDetailResponse) => void
@@ -128,6 +144,7 @@ interface VqaCitationImageEvidencePayload {
 type LeftTab = "transcript" | "correction" | "evidence" | "stage"
 type NotesTab = "notes" | "mindmap"
 type VqaTab = "chat" | "trace"
+type WorkspaceMode = "study" | "qa" | "flow" | "trace" | "knowledge"
 
 const EMPTY_TRANSCRIPT_SEGMENTS: TranscriptSegment[] = []
 
@@ -136,16 +153,18 @@ const WORKFLOW_STEPS: Record<WorkflowType, Array<{ id: string; name: string }>> 
     { id: "extract", name: "音频提取" },
     { id: "transcribe", name: "语音转写" },
     { id: "correct", name: "文本纠错" },
-    { id: "notes", name: "笔记生成" },
+    { id: "study_pack_generate", name: "Study 资料生成" },
+    { id: "notes_mindmap_generate", name: "笔记与导图收口" },
+    { id: "fusion_delivery", name: "结果交付" },
   ],
   vqa: [
     { id: "extract", name: "音频提取" },
     { id: "transcribe", name: "语音转写" },
     { id: "correct", name: "文本纠错" },
-    { id: "transcript_vectorize", name: "文本向量化" },
-    { id: "frame_extract", name: "视频抽帧" },
-    { id: "frame_semantic", name: "画面语义识别" },
-    { id: "multimodal_fusion", name: "多模态融合与就绪" },
+    { id: "study_pack_generate", name: "Study 资料生成" },
+    { id: "transcript_vectorize", name: "QA 语料向量化" },
+    { id: "vqa_prewarm", name: "QA 预热" },
+    { id: "fusion_delivery", name: "结果交付" },
   ],
 }
 
@@ -154,35 +173,65 @@ const VM_PHASE_LABELS: Record<string, string> = {
   B: "阶段 B · 媒体预处理",
   C: "阶段 C · 语音转写",
   transcript_optimize: "阶段 D1 · 文本优化",
-  transcript_vectorize: "阶段 D2 · 文本向量化",
-  frame_extract: "阶段 D3 · 视频抽帧",
-  frame_semantic: "阶段 D4 · 画面语义识别",
-  frame_vectorize: "阶段 D5 · 画面语义向量化",
-  multimodal_index_fusion: "阶段 D6 · 多模态融合索引",
-  multimodal_prewarm: "阶段 D6 · 多模态融合索引",
-  fusion_delivery: "阶段 D7 · 结果交付",
-  D: "阶段 D · 多模态交付",
+  subtitle_resolve: "阶段 D2 · 字幕轨收口",
+  translation_resolve: "阶段 D3 · 翻译收口",
+  study_pack_generate: "阶段 D4 · Study 资料生成",
+  notes_mindmap_generate: "阶段 D5 · 笔记与导图收口",
+  transcript_vectorize: "阶段 D6 · QA 语料向量化",
+  vqa_prewarm: "阶段 D7 · QA 预热",
+  fusion_delivery: "阶段 D8 · 结果交付",
+  frame_extract: "阶段 D7 · QA 预热",
+  frame_semantic: "阶段 D7 · QA 预热",
+  frame_vectorize: "阶段 D7 · QA 预热",
+  multimodal_index_fusion: "阶段 D7 · QA 预热",
+  multimodal_prewarm: "阶段 D7 · QA 预热",
+  D: "阶段 D · Study-first 交付",
 }
 
 const TASK_EVENT_BADGE_LABELS: Record<string, string> = {
   transcript_optimize: "文本优化",
-  transcript_vectorize: "文本向量化",
-  frame_extract: "视频抽帧",
-  frame_semantic: "画面语义识别",
-  frame_vectorize: "画面语义向量化",
-  multimodal_index_fusion: "多模态融合索引",
-  multimodal_prewarm: "多模态融合索引",
+  subtitle_resolve: "字幕轨收口",
+  translation_resolve: "翻译收口",
+  study_pack_generate: "Study 资料生成",
+  notes_mindmap_generate: "笔记与导图收口",
+  transcript_vectorize: "QA 语料向量化",
+  vqa_prewarm: "QA 预热",
   fusion_delivery: "结果交付",
+  frame_extract: "QA 预热",
+  frame_semantic: "QA 预热",
+  frame_vectorize: "QA 预热",
+  multimodal_index_fusion: "QA 预热",
+  multimodal_prewarm: "QA 预热",
 }
 
 const VQA_SUBSTAGE_TO_STEP_ID: Record<string, string> = {
+  subtitle_resolve: "study_pack_generate",
+  translation_resolve: "study_pack_generate",
+  study_pack_generate: "study_pack_generate",
+  notes_mindmap_generate: "notes_mindmap_generate",
   transcript_vectorize: "transcript_vectorize",
-  frame_extract: "frame_extract",
-  frame_semantic: "frame_semantic",
-  frame_vectorize: "frame_semantic",
-  multimodal_index_fusion: "multimodal_fusion",
-  multimodal_prewarm: "multimodal_fusion",
-  fusion_delivery: "multimodal_fusion",
+  vqa_prewarm: "vqa_prewarm",
+  fusion_delivery: "fusion_delivery",
+  frame_extract: "vqa_prewarm",
+  frame_semantic: "vqa_prewarm",
+  frame_vectorize: "vqa_prewarm",
+  multimodal_index_fusion: "vqa_prewarm",
+  multimodal_prewarm: "vqa_prewarm",
+}
+
+const WORKSPACE_MODE_OPTIONS: Array<{ id: WorkspaceMode; label: string }> = [
+  { id: "study", label: "Study" },
+  { id: "qa", label: "QA" },
+  { id: "flow", label: "Flow" },
+  { id: "trace", label: "Trace" },
+  { id: "knowledge", label: "Knowledge" },
+]
+
+function isWorkspaceModeAvailable(mode: WorkspaceMode, workflow: WorkflowType): boolean {
+  if (mode === "qa" || mode === "trace") {
+    return workflow === "vqa"
+  }
+  return true
 }
 
 const TRACE_SECTIONS = [
@@ -396,6 +445,110 @@ function buildFallbackSteps(workflow: WorkflowType): TaskStepItem[] {
     duration: "",
     logs: [],
   }))
+}
+
+function normalizeStudyFirstSubstageKey(substage: string): string {
+  switch (substage) {
+    case "frame_extract":
+    case "frame_semantic":
+    case "frame_vectorize":
+    case "multimodal_index_fusion":
+    case "multimodal_prewarm":
+      return "vqa_prewarm"
+    default:
+      return substage
+  }
+}
+
+function normalizeDisplayStepId(stepId: string, workflow: WorkflowType): string {
+  const normalized = normalizeStudyFirstSubstageKey(stepId)
+  if (normalized === "subtitle_resolve" || normalized === "translation_resolve") {
+    return "study_pack_generate"
+  }
+  if (normalized === "notes") {
+    return "notes_mindmap_generate"
+  }
+  if (normalized === "multimodal_fusion") {
+    return "fusion_delivery"
+  }
+  if (normalized === "notes_mindmap_generate" && workflow === "vqa") {
+    return "study_pack_generate"
+  }
+  return normalized
+}
+
+function mergeDisplayStepStatus(
+  current: TaskStepItem["status"],
+  next: TaskStepItem["status"],
+): TaskStepItem["status"] {
+  if (current === "error" || next === "error") {
+    return "error"
+  }
+  if (current === "processing" || next === "processing") {
+    return "processing"
+  }
+  if (current === "completed" && next === "completed") {
+    return "completed"
+  }
+  if (current === "completed" || next === "completed") {
+    return "processing"
+  }
+  return current === "pending" ? next : current
+}
+
+function buildDisplaySteps(task: TaskDetailResponse | null, workflow: WorkflowType): TaskStepItem[] {
+  const stepDefinitions = WORKFLOW_STEPS[workflow]
+  const fallbackSteps = buildFallbackSteps(workflow)
+  if (!task || task.steps.length === 0) {
+    return fallbackSteps
+  }
+
+  const aggregated = new Map<string, TaskStepItem>()
+  task.steps.forEach((step) => {
+    const normalizedId = normalizeDisplayStepId(step.id, workflow)
+    if (!stepDefinitions.some((definition) => definition.id === normalizedId)) {
+      return
+    }
+    const existing = aggregated.get(normalizedId)
+    if (!existing) {
+      aggregated.set(normalizedId, {
+        ...step,
+        id: normalizedId,
+      })
+      return
+    }
+    const mergedStatus = mergeDisplayStepStatus(existing.status, step.status)
+    const mergedProgress =
+      mergedStatus === "completed"
+        ? 100
+        : mergedStatus === "processing"
+          ? Math.min(99, Math.max(existing.progress, step.progress))
+          : Math.max(existing.progress, step.progress)
+    aggregated.set(normalizedId, {
+      ...existing,
+      status: mergedStatus,
+      progress: mergedProgress,
+      duration: existing.duration || step.duration,
+      logs: [...existing.logs, ...(Array.isArray(step.logs) ? step.logs : [])],
+    })
+  })
+
+  return stepDefinitions.map((definition) => {
+    const matched = aggregated.get(definition.id)
+    return matched
+      ? {
+        ...matched,
+        name: definition.name,
+      }
+      : {
+        id: definition.id,
+        name: definition.name,
+        status: "pending",
+        progress: 0,
+        duration: "",
+        logs: [],
+      }
+  })
 }
 
 function findActiveTranscriptId(segments: TranscriptSegment[], currentTime: number): string {
@@ -655,14 +808,15 @@ function getStreamStepId(
   if (substage === "transcript_optimize") {
     return "correct"
   }
-  if (workflow === "vqa") {
-    const mapped = VQA_SUBSTAGE_TO_STEP_ID[substage]
+  const normalizedSubstage = normalizeStudyFirstSubstageKey(substage)
+  if (workflow === "vqa" || workflow === "notes") {
+    const mapped = VQA_SUBSTAGE_TO_STEP_ID[normalizedSubstage]
     if (mapped) {
       return mapped
     }
   }
   if (stage === "D" && rawType === "stage_complete") {
-    return workflow === "notes" ? "notes" : "multimodal_fusion"
+    return "fusion_delivery"
   }
   return null
 }
@@ -795,49 +949,50 @@ function updateVmPhaseMetrics(
     return nextMetrics
   }
 
+  const normalizedSubstage = normalizeStudyFirstSubstageKey(substage)
   const dMetricKey = [
+    "subtitle_resolve",
+    "translation_resolve",
+    "study_pack_generate",
+    "notes_mindmap_generate",
     "transcript_vectorize",
-    "frame_extract",
-    "frame_semantic",
-    "frame_vectorize",
-    "multimodal_index_fusion",
-    "multimodal_prewarm",
+    "vqa_prewarm",
     "fusion_delivery",
-  ].includes(substage)
-    ? substage
+  ].includes(normalizedSubstage)
+    ? normalizedSubstage
     : null
 
   if (dMetricKey && (rawType === "substage_start" || rawType === "substage_complete")) {
+    const substageStatus =
+      rawType === "substage_start"
+        ? "running"
+        : asString(event.status).trim().toLowerCase() === "failed"
+          ? "failed"
+          : asString(event.status).trim().toLowerCase() === "skipped"
+            ? "skipped"
+            : "completed"
     updateMetric(dMetricKey, (metric) => ({
       ...metric,
-      status:
-        rawType === "substage_start"
-          ? "running"
-          : asString(event.status).trim().toLowerCase() === "failed"
-            ? "failed"
-            : asString(event.status).trim().toLowerCase() === "skipped"
-              ? "skipped"
-              : "completed",
+      status: substageStatus,
       started_at: rawType === "substage_start" ? (timestamp || metric.started_at) : metric.started_at,
       completed_at: rawType === "substage_complete" ? (timestamp || metric.completed_at) : null,
       reason: rawType === "substage_complete" ? asString(event.message).trim() || null : null,
     }))
-    if (dMetricKey === "fusion_delivery" || dMetricKey === "multimodal_index_fusion" || dMetricKey === "multimodal_prewarm") {
-      updateMetric("D", (metric) => ({
-        ...metric,
-        status:
-          rawType === "substage_start"
-            ? "running"
-            : asString(event.status).trim().toLowerCase() === "failed"
-              ? "failed"
-              : asString(event.status).trim().toLowerCase() === "skipped"
-                ? "skipped"
-                : "completed",
-        started_at: asString(metric.started_at) || timestamp,
-        completed_at: rawType === "substage_complete" ? (timestamp || metric.completed_at) : null,
-        reason: rawType === "substage_complete" ? asString(event.message).trim() || null : null,
-      }))
-    }
+    updateMetric("D", (metric) => ({
+      ...metric,
+      status:
+        substageStatus === "failed"
+          ? "failed"
+          : rawType === "substage_complete" && dMetricKey === "fusion_delivery"
+            ? substageStatus
+            : "running",
+      started_at: asString(metric.started_at) || timestamp,
+      completed_at:
+        rawType === "substage_complete" && dMetricKey === "fusion_delivery"
+          ? (timestamp || metric.completed_at)
+          : metric.completed_at,
+      reason: rawType === "substage_complete" ? asString(event.message).trim() || null : metric.reason ?? null,
+    }))
     return nextMetrics
   }
 
@@ -1026,7 +1181,7 @@ function formatTaskEventBadge(event: TaskStreamEvent): string {
     !explicitSubstage && asString(event.stage).trim() === "D"
       ? inferTranscriptOptimizeSubstageFromMessage(asString(event.message || event.text || event.title))
       : ""
-  const substage = explicitSubstage || inferredSubstage
+  const substage = normalizeStudyFirstSubstageKey(explicitSubstage || inferredSubstage)
   if (substage) {
     return TASK_EVENT_BADGE_LABELS[substage] || substage
   }
@@ -1060,29 +1215,46 @@ function inferTranscriptOptimizeSubstageFromMessage(message: string): string {
     return "transcript_vectorize"
   }
   if (
-    normalized.includes("extract frame") ||
-    normalized.includes("视频抽帧")
+    normalized.includes("字幕轨") ||
+    normalized.includes("subtitle")
   ) {
-    return "frame_extract"
+    return "subtitle_resolve"
   }
   if (
-    normalized.includes("frame semantic") ||
-    normalized.includes("画面语义")
+    normalized.includes("翻译记录") ||
+    normalized.includes("translation")
   ) {
-    return "frame_semantic"
+    return "translation_resolve"
   }
   if (
-    normalized.includes("multimodal index fusion") ||
-    normalized.includes("多模态融合索引")
+    normalized.includes("学习包") ||
+    normalized.includes("study pack")
   ) {
-    return "multimodal_index_fusion"
+    return "study_pack_generate"
+  }
+  if (
+    normalized.includes("笔记") ||
+    normalized.includes("导图") ||
+    normalized.includes("mindmap")
+  ) {
+    return "notes_mindmap_generate"
   }
   if (
     normalized === "多模态预热入口已就绪" ||
+    normalized.includes("问答预热") ||
+    normalized.includes("qa prewarm") ||
+    normalized.includes("transcript-only") ||
     normalized.includes("multimodal") ||
     normalized.includes("多模态预热")
   ) {
-    return "multimodal_prewarm"
+    return "vqa_prewarm"
+  }
+  if (
+    normalized.includes("融合生成") ||
+    normalized.includes("结果交付") ||
+    normalized.includes("fusion delivery")
+  ) {
+    return "fusion_delivery"
   }
   return ""
 }
@@ -1151,7 +1323,7 @@ function translateTaskLogMessage(message: string): string {
       .replace(/\.\.\.$/, "")
   }
   if (normalized === "多模态预热入口已就绪") {
-    return "多模态问答预热已完成，可直接复用 transcript 与 frame semantic 索引"
+    return "QA 预热已完成，可直接复用 transcript-only 检索索引"
   }
 
   const chunkPreparedMatch = normalized.match(
@@ -1531,10 +1703,12 @@ export function TaskProcessingWorkbench({
   taskId,
   workflow,
   taskTitle,
+  uiSettings,
   onBack,
   onTaskChanged,
   onTaskLoaded,
 }: TaskProcessingWorkbenchProps) {
+  const [workspaceMode, setWorkspaceMode] = React.useState<WorkspaceMode>("study")
   const [leftTab, setLeftTab] = React.useState<LeftTab>("transcript")
   const [notesTab, setNotesTab] = React.useState<NotesTab>("notes")
   const [vqaTab, setVqaTab] = React.useState<VqaTab>("chat")
@@ -1552,6 +1726,13 @@ export function TaskProcessingWorkbench({
   const [isWorkbenchResizing, setIsWorkbenchResizing] = React.useState(false)
   const [isChatLimitConfirmOpen, setIsChatLimitConfirmOpen] = React.useState(false)
   const [pendingQuestionAfterReset, setPendingQuestionAfterReset] = React.useState("")
+  const [studyWorkspace, setStudyWorkspace] = React.useState<NormalizedStudyWorkspace | null>(null)
+  const [isStudyWorkspaceLoading, setIsStudyWorkspaceLoading] = React.useState(false)
+  const [isStudyStateSaving, setIsStudyStateSaving] = React.useState(false)
+  const [isKnowledgeExporting, setIsKnowledgeExporting] = React.useState(false)
+  const [studyWorkspaceError, setStudyWorkspaceError] = React.useState("")
+  const [knowledgeViewRefreshToken, setKnowledgeViewRefreshToken] = React.useState(0)
+  const [remotePlaybackStartSeconds, setRemotePlaybackStartSeconds] = React.useState(0)
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
   const refreshTimerRef = React.useRef<number | null>(null)
   const chatAbortRef = React.useRef<AbortController | null>(null)
@@ -1562,6 +1743,9 @@ export function TaskProcessingWorkbench({
   const isWorkbenchMountedRef = React.useRef(true)
   const eventQueueRef = React.useRef<TaskStreamEvent[]>([])
   const eventFrameRef = React.useRef<number | null>(null)
+  const studyPlaybackPersistTimerRef = React.useRef<number | null>(null)
+  const lastPersistedPlaybackPositionRef = React.useRef<number | null>(null)
+  const lastStudyOpenedTaskIdRef = React.useRef("")
 
   const {
     task,
@@ -1627,6 +1811,7 @@ export function TaskProcessingWorkbench({
     loadTaskRequestIdRef.current += 1
     hasLoadedTaskRef.current = false
     resetRuntime()
+    setWorkspaceMode("study")
     setLeftTab("transcript")
     setNotesTab("notes")
     setVqaTab("chat")
@@ -1637,6 +1822,15 @@ export function TaskProcessingWorkbench({
     setNotesDraft("")
     setPendingQuestionAfterReset("")
     setIsChatLimitConfirmOpen(false)
+    setStudyWorkspace(null)
+    setStudyWorkspaceError("")
+    setIsStudyWorkspaceLoading(false)
+    lastPersistedPlaybackPositionRef.current = null
+    lastStudyOpenedTaskIdRef.current = ""
+    if (studyPlaybackPersistTimerRef.current !== null) {
+      window.clearTimeout(studyPlaybackPersistTimerRef.current)
+      studyPlaybackPersistTimerRef.current = null
+    }
     if (eventFrameRef.current !== null) {
       window.cancelAnimationFrame(eventFrameRef.current)
       eventFrameRef.current = null
@@ -1649,6 +1843,9 @@ export function TaskProcessingWorkbench({
       chatAbortRef.current?.abort()
       if (refreshTimerRef.current !== null) {
         window.clearTimeout(refreshTimerRef.current)
+      }
+      if (studyPlaybackPersistTimerRef.current !== null) {
+        window.clearTimeout(studyPlaybackPersistTimerRef.current)
       }
       if (eventFrameRef.current !== null) {
         window.cancelAnimationFrame(eventFrameRef.current)
@@ -1807,11 +2004,202 @@ export function TaskProcessingWorkbench({
 
   const effectiveTask = task
   const effectiveTitle = effectiveTask?.title || effectiveTask?.source_input || taskTitle
-  const steps = effectiveTask?.steps.length ? effectiveTask.steps : buildFallbackSteps(workflow)
+  const steps = React.useMemo(
+    () => buildDisplaySteps(effectiveTask ?? null, workflow),
+    [effectiveTask, workflow],
+  )
   const totalProgress = effectiveTask?.overall_progress ?? 0
-  const videoUrl = effectiveTask?.source_local_path ? buildTaskSourceMediaUrl(effectiveTask.id) : ""
+  const localVideoUrl = effectiveTask?.source_local_path ? buildTaskSourceMediaUrl(effectiveTask.id) : ""
+  const playbackSource = React.useMemo<StudyPlaybackSource>(
+    () => effectiveTask
+      ? resolveStudyPlaybackSource(effectiveTask, localVideoUrl, remotePlaybackStartSeconds)
+      : { kind: "none", reason: "任务详情暂时不可用" },
+    [effectiveTask, localVideoUrl, remotePlaybackStartSeconds],
+  )
   const canEditArtifacts = isTerminalTask(effectiveTask?.status)
+  const canOpenQaModes = workflow === "vqa"
   const transcriptOptimizeStatus = asString(effectiveTask?.vm_phase_metrics?.transcript_optimize?.status).trim().toLowerCase()
+  const applyStudyWorkspacePayload = React.useCallback((payload: Awaited<ReturnType<typeof getTaskStudyPack>>) => {
+    const normalizedWorkspace = normalizeStudyWorkspace(payload)
+    const resolvedSubtitleTrackId = resolveSubtitleTrackSelection(
+      normalizedWorkspace,
+      uiSettings.study_default_translation_target,
+    )
+    setStudyWorkspace({
+      ...normalizedWorkspace,
+      studyState: {
+        ...normalizedWorkspace.studyState,
+        selectedSubtitleTrackId: resolvedSubtitleTrackId,
+      },
+    })
+    lastPersistedPlaybackPositionRef.current = normalizedWorkspace.studyState.playbackPositionSeconds
+  }, [uiSettings.study_default_translation_target])
+
+  const syncPersistedStudyState = React.useCallback((
+    current: NormalizedStudyWorkspace,
+    nextState: Awaited<ReturnType<typeof updateTaskStudyState>>,
+  ): NormalizedStudyWorkspace => ({
+    ...current,
+    preview: {
+      ...current.preview,
+      isFavorite: nextState.is_favorite,
+      lastOpenedAt: nextState.last_opened_at ?? null,
+    },
+    studyState: {
+      ...current.studyState,
+      activeHighlightId: nextState.active_highlight_id ?? null,
+      playbackPositionSeconds: nextState.playback_position_seconds,
+      selectedThemeId: nextState.selected_theme_id ?? null,
+      selectedSubtitleTrackId: nextState.last_selected_subtitle_track_id ?? null,
+      isFavorite: nextState.is_favorite,
+      lastOpenedAt: nextState.last_opened_at ?? null,
+    },
+  }), [])
+
+  const persistStudyStatePatch = React.useCallback(async (input: {
+    patch: Parameters<typeof updateTaskStudyState>[1]
+    applyOptimistic?: (current: NormalizedStudyWorkspace) => NormalizedStudyWorkspace
+    errorMessage: string
+  }) => {
+    if (!effectiveTask) {
+      return null
+    }
+    const previousWorkspace = studyWorkspace
+    const applyOptimistic = input.applyOptimistic
+    if (applyOptimistic) {
+      setStudyWorkspace((current) => current ? applyOptimistic(current) : current)
+    }
+    setIsStudyStateSaving(true)
+    try {
+      const nextState = await updateTaskStudyState(effectiveTask.id, input.patch)
+      if (input.patch.playback_position_seconds !== undefined) {
+        lastPersistedPlaybackPositionRef.current = nextState.playback_position_seconds
+      }
+      setStudyWorkspace((current) => current ? syncPersistedStudyState(current, nextState) : current)
+      return nextState
+    } catch (error) {
+      setStudyWorkspace(previousWorkspace)
+      toast.error(getApiErrorMessage(error, input.errorMessage))
+      return null
+    } finally {
+      setIsStudyStateSaving(false)
+    }
+  }, [effectiveTask, studyWorkspace, syncPersistedStudyState])
+
+  const scheduleStudyPlaybackPersistence = React.useCallback((seconds: number) => {
+    if (!effectiveTask || !studyWorkspace || (workspaceMode !== "study" && workspaceMode !== "knowledge")) {
+      return
+    }
+    const nextSeconds = Math.max(0, Number(seconds) || 0)
+    setStudyWorkspace((current) => current ? {
+      ...current,
+      studyState: {
+        ...current.studyState,
+        playbackPositionSeconds: nextSeconds,
+      },
+    } : current)
+
+    if (studyPlaybackPersistTimerRef.current !== null) {
+      window.clearTimeout(studyPlaybackPersistTimerRef.current)
+    }
+    studyPlaybackPersistTimerRef.current = window.setTimeout(() => {
+      studyPlaybackPersistTimerRef.current = null
+      if (
+        lastPersistedPlaybackPositionRef.current !== null &&
+        Math.abs(lastPersistedPlaybackPositionRef.current - nextSeconds) < 0.5
+      ) {
+        return
+      }
+      void persistStudyStatePatch({
+        patch: {
+          playback_position_seconds: nextSeconds,
+        },
+        errorMessage: "保存学习进度失败",
+      })
+    }, 700)
+  }, [effectiveTask, persistStudyStatePatch, studyWorkspace, workspaceMode])
+
+  React.useEffect(() => {
+    setRemotePlaybackStartSeconds(0)
+  }, [effectiveTask?.id])
+
+  React.useEffect(() => {
+    if (!effectiveTask || (workspaceMode !== "study" && workspaceMode !== "knowledge")) {
+      return
+    }
+    let cancelled = false
+    setIsStudyWorkspaceLoading(true)
+    setStudyWorkspaceError("")
+
+    void getTaskStudyPack(effectiveTask.id)
+      .then((payload) => {
+        if (cancelled) {
+          return
+        }
+        applyStudyWorkspacePayload(payload)
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return
+        }
+        setStudyWorkspace(null)
+        setStudyWorkspaceError(getApiErrorMessage(error, "加载 Study 资料失败"))
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsStudyWorkspaceLoading(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [applyStudyWorkspacePayload, effectiveTask, workspaceMode])
+
+  React.useEffect(() => {
+    if (
+      !effectiveTask ||
+      !studyWorkspace ||
+      (workspaceMode !== "study" && workspaceMode !== "knowledge") ||
+      lastStudyOpenedTaskIdRef.current === effectiveTask.id
+    ) {
+      return
+    }
+    const nextOpenedAt = new Date().toISOString()
+    lastStudyOpenedTaskIdRef.current = effectiveTask.id
+    void persistStudyStatePatch({
+      patch: {
+        last_opened_at: nextOpenedAt,
+      },
+      applyOptimistic: (current) => ({
+        ...current,
+        preview: {
+          ...current.preview,
+          lastOpenedAt: nextOpenedAt,
+        },
+        studyState: {
+          ...current.studyState,
+          lastOpenedAt: nextOpenedAt,
+        },
+      }),
+      errorMessage: "记录最近学习时间失败",
+    })
+  }, [effectiveTask, persistStudyStatePatch, studyWorkspace, workspaceMode])
+
+  const handleWorkspaceModeChange = React.useCallback((mode: WorkspaceMode) => {
+    if (!isWorkspaceModeAvailable(mode, workflow)) {
+      return
+    }
+    setWorkspaceMode(mode)
+    if (mode === "qa") {
+      setVqaTab("chat")
+      return
+    }
+    if (mode === "trace") {
+      setVqaTab("trace")
+    }
+  }, [workflow])
+
   const closeStreamingAssistantMessages = React.useCallback((statusMessage: string) => {
     const { chatHistory: currentChatHistory } = getTaskProcessingRuntimeState()
     currentChatHistory
@@ -1829,11 +2217,16 @@ export function TaskProcessingWorkbench({
   const jumpToTime = React.useCallback(
     (time: number) => {
       const nextTime = Math.max(0, time)
+      scheduleStudyPlaybackPersistence(nextTime)
+      if (playbackSource.kind === "remote-iframe") {
+        setRemotePlaybackStartSeconds(nextTime)
+        return
+      }
       if (videoRef.current) {
         videoRef.current.currentTime = nextTime
       }
     },
-    [],
+    [playbackSource.kind, scheduleStudyPlaybackPersistence],
   )
 
   const executeAskQuestion = React.useCallback(async (
@@ -1854,6 +2247,7 @@ export function TaskProcessingWorkbench({
     const userId = crypto.randomUUID()
     const assistantId = crypto.randomUUID()
     chatAbortRef.current = controller
+    setWorkspaceMode("qa")
     setQuestion("")
     setVqaTab("chat")
     setChatStreaming(true)
@@ -1985,6 +2379,7 @@ export function TaskProcessingWorkbench({
       if (!traceId) {
         return
       }
+      setWorkspaceMode("trace")
       setSelectedTraceId(traceId)
       setTraceError("")
       setVqaTab("trace")
@@ -2018,7 +2413,7 @@ export function TaskProcessingWorkbench({
   }, [effectiveTask?.transcript_text])
 
   const handleDownloadArtifact = React.useCallback(
-    async (kind: "transcript" | "notes" | "mindmap" | "srt" | "vtt" | "bundle") => {
+    async (kind: TaskExportKind) => {
       try {
         await downloadTaskArtifact(taskId, kind)
         if (kind === "notes") {
@@ -2027,6 +2422,18 @@ export function TaskProcessingWorkbench({
         }
         if (kind === "bundle") {
           toast.success("结果包导出完成，文件已开始下载")
+          return
+        }
+        if (kind === "study_pack") {
+          toast.success("Study 包导出完成，文件已开始下载")
+          return
+        }
+        if (kind === "subtitle_tracks") {
+          toast.success("字幕导出完成，文件已开始下载")
+          return
+        }
+        if (kind === "translation_records") {
+          toast.success("翻译记录导出完成，文件已开始下载")
         }
       } catch (error) {
         toast.error(getApiErrorMessage(error, "导出产物失败"))
@@ -2034,6 +2441,142 @@ export function TaskProcessingWorkbench({
     },
     [taskId],
   )
+
+  const handleStudyExportArtifact = React.useCallback(
+    async (kind: Extract<TaskExportKind, "study_pack" | "subtitle_tracks" | "translation_records">) => {
+      if (!effectiveTask) {
+        return
+      }
+      try {
+        const createdExport = await createTaskStudyExport(effectiveTask.id, {
+          export_kind: kind,
+        })
+        await downloadTaskArtifactFile(effectiveTask.id, createdExport.file_path)
+        const workspacePayload = await getTaskStudyPack(effectiveTask.id)
+        applyStudyWorkspacePayload(workspacePayload)
+
+        if (kind === "study_pack") {
+          toast.success("Study 包导出完成，导出记录已更新")
+          return
+        }
+        if (kind === "subtitle_tracks") {
+          toast.success("字幕导出完成，导出记录已更新")
+          return
+        }
+        toast.success("翻译记录导出完成，导出记录已更新")
+      } catch (error) {
+        toast.error(getApiErrorMessage(error, "创建 Study 导出失败"))
+      }
+    },
+    [applyStudyWorkspacePayload, effectiveTask],
+  )
+
+  const handleKnowledgeNotesExport = React.useCallback(async () => {
+    if (!effectiveTask) {
+      return
+    }
+    setIsKnowledgeExporting(true)
+    try {
+      const createdExport = await createTaskStudyExport(effectiveTask.id, {
+        export_kind: "knowledge_notes",
+      })
+      await downloadTaskArtifactFile(effectiveTask.id, createdExport.file_path)
+      const workspacePayload = await getTaskStudyPack(effectiveTask.id)
+      applyStudyWorkspacePayload(workspacePayload)
+      setKnowledgeViewRefreshToken((current) => current + 1)
+      toast.success("知识卡片导出完成，导出记录已更新")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "创建知识卡片导出失败"))
+    } finally {
+      setIsKnowledgeExporting(false)
+    }
+  }, [applyStudyWorkspacePayload, effectiveTask])
+
+  const handleSelectSubtitleTrack = React.useCallback(async (trackId: string) => {
+    if (!effectiveTask || !trackId) {
+      return
+    }
+    const previousTrackId = studyWorkspace?.studyState.selectedSubtitleTrackId || null
+    if (previousTrackId === trackId) {
+      return
+    }
+    await persistStudyStatePatch({
+      patch: {
+        last_selected_subtitle_track_id: trackId,
+      },
+      applyOptimistic: (current) => ({
+        ...current,
+        studyState: {
+          ...current.studyState,
+          selectedSubtitleTrackId: trackId,
+        },
+      }),
+      errorMessage: "保存字幕轨选择失败",
+    })
+  }, [effectiveTask, persistStudyStatePatch, studyWorkspace])
+
+  const handleSelectStudyTheme = React.useCallback(async (themeId: string | null) => {
+    if (!effectiveTask || !studyWorkspace || studyWorkspace.studyState.selectedThemeId === themeId) {
+      return
+    }
+    await persistStudyStatePatch({
+      patch: {
+        selected_theme_id: themeId,
+      },
+      applyOptimistic: (current) => ({
+        ...current,
+        studyState: {
+          ...current.studyState,
+          selectedThemeId: themeId,
+        },
+      }),
+      errorMessage: "保存当前主题失败",
+    })
+  }, [effectiveTask, persistStudyStatePatch, studyWorkspace])
+
+  const handleSelectStudyHighlight = React.useCallback(async (highlightId: string, startSeconds: number) => {
+    if (!effectiveTask || !studyWorkspace) {
+      return
+    }
+    await persistStudyStatePatch({
+      patch: {
+        active_highlight_id: highlightId,
+        playback_position_seconds: Math.max(0, startSeconds),
+      },
+      applyOptimistic: (current) => ({
+        ...current,
+        studyState: {
+          ...current.studyState,
+          activeHighlightId: highlightId,
+          playbackPositionSeconds: Math.max(0, startSeconds),
+        },
+      }),
+      errorMessage: "保存当前阅读焦点失败",
+    })
+  }, [effectiveTask, persistStudyStatePatch, studyWorkspace])
+
+  const handleToggleStudyFavorite = React.useCallback(async (nextValue: boolean) => {
+    if (!effectiveTask || !studyWorkspace || studyWorkspace.studyState.isFavorite === nextValue) {
+      return
+    }
+    await persistStudyStatePatch({
+      patch: {
+        is_favorite: nextValue,
+      },
+      applyOptimistic: (current) => ({
+        ...current,
+        preview: {
+          ...current.preview,
+          isFavorite: nextValue,
+        },
+        studyState: {
+          ...current.studyState,
+          isFavorite: nextValue,
+        },
+      }),
+      errorMessage: nextValue ? "加入收藏失败" : "取消收藏失败",
+    })
+  }, [effectiveTask, persistStudyStatePatch, studyWorkspace])
 
   const handleDownloadTranscript = React.useCallback(() => {
     void handleDownloadArtifact("transcript")
@@ -2070,6 +2613,7 @@ export function TaskProcessingWorkbench({
   }, [canEditArtifacts, notesDraft, taskId, updateTask])
 
   const handleAddTranscriptToNotes = React.useCallback((segment: TranscriptSegment) => {
+    setWorkspaceMode("flow")
     setNotesDraft((current) => appendMarkdownSection(current, "补充引用片段", buildTranscriptSnippet(segment)))
     setIsEditingNotes(true)
     setNotesTab("notes")
@@ -2077,6 +2621,7 @@ export function TaskProcessingWorkbench({
   }, [])
 
   const handleUseTranscriptAsQuestion = React.useCallback((segment: TranscriptSegment) => {
+    setWorkspaceMode("qa")
     setQuestion(`请结合上下文解释这段内容的重点：${segment.text}`)
     setVqaTab("chat")
     toast.success("已把片段设为提问草稿")
@@ -2155,12 +2700,14 @@ export function TaskProcessingWorkbench({
       <TaskWorkspaceHeader
         effectiveTitle={effectiveTitle}
         workflow={workflow}
+        workspaceMode={workspaceMode}
         updatedAt={effectiveTask?.updated_at || ""}
         totalProgress={totalProgress}
         errorMessage={effectiveTask?.error_message || ""}
         status={effectiveTask?.status || "queued"}
         steps={steps}
         onBack={onBack}
+        onWorkspaceModeChange={handleWorkspaceModeChange}
         isCancelling={isCancelling}
         isPausing={isPausing}
         isResuming={isResuming}
@@ -2171,6 +2718,9 @@ export function TaskProcessingWorkbench({
         onResume={handleResumeTask}
         canExportBundle={effectiveTask?.status === "completed"}
         onExportBundle={handleExportBundle}
+        canExportKnowledgeNotes={workspaceMode === "knowledge" && effectiveTask?.status === "completed"}
+        isExportingKnowledgeNotes={isKnowledgeExporting}
+        onExportKnowledgeNotes={handleKnowledgeNotesExport}
       />
 
       <ResizablePanelGroup direction="horizontal" className="min-h-0 flex-1">
@@ -2179,10 +2729,11 @@ export function TaskProcessingWorkbench({
             workflow={workflow}
             taskId={taskId}
             effectiveTitle={effectiveTitle}
-            videoUrl={videoUrl}
+            playbackSource={playbackSource}
             videoRef={videoRef}
             fallbackDurationSeconds={effectiveTask?.duration_seconds || 0}
             onSeek={jumpToTime}
+            onPlaybackPositionChange={scheduleStudyPlaybackPersistence}
             leftTab={leftTab}
             onLeftTabChange={setLeftTab}
             videoErrorMessage={videoLoadError}
@@ -2206,10 +2757,27 @@ export function TaskProcessingWorkbench({
 
         <ResizablePanel defaultSize={50} minSize={34}>
           {isInitialLoading && !effectiveTask ? (
-            <TaskWorkbenchDetailLoading workflow={workflow} />
+            <TaskWorkbenchDetailLoading workspaceMode={workspaceMode} />
           ) : !effectiveTask ? (
             <TaskWorkbenchDetailState message={taskErrorMessage || "任务详情暂时不可用，请稍后重试。"} />
-          ) : workflow === "notes" ? (
+          ) : workspaceMode === "study" ? (
+            <StudyView
+              task={effectiveTask}
+              isLoading={isStudyWorkspaceLoading}
+              errorMessage={studyWorkspaceError}
+              workspace={studyWorkspace}
+              defaultTranslationTarget={uiSettings.study_default_translation_target}
+              isPersistingStudyState={isStudyStateSaving}
+              onSeek={jumpToTime}
+              onSelectSubtitleTrack={handleSelectSubtitleTrack}
+              onSelectHighlight={handleSelectStudyHighlight}
+              onSelectTheme={handleSelectStudyTheme}
+              onToggleFavorite={handleToggleStudyFavorite}
+              onExportArtifact={handleStudyExportArtifact}
+            />
+          ) : workspaceMode === "knowledge" ? (
+            <KnowledgeView key={`${taskId}:${knowledgeViewRefreshToken}`} taskId={taskId} workspace={studyWorkspace} />
+          ) : workspaceMode === "flow" ? (
             <NotesWorkbench
               taskId={taskId}
               effectiveTitle={effectiveTitle}
@@ -2229,11 +2797,13 @@ export function TaskProcessingWorkbench({
               isMindmapLoading={isMindmapLoading}
               isTaskCompleted={effectiveTask?.status === "completed"}
             />
+          ) : !canOpenQaModes ? (
+            <TaskWorkbenchDetailState message={workspaceMode === "trace" ? "当前任务没有可展示的 Trace 视图。" : "当前任务未启用 QA 模式，请使用 Study、Flow 或 Knowledge 查看学习资料。"} />
           ) : (
             <VqaWorkbench
               taskId={taskId}
               effectiveTitle={effectiveTitle}
-              vqaTab={vqaTab}
+              vqaTab={workspaceMode === "trace" ? "trace" : vqaTab}
               onVqaTabChange={setVqaTab}
               question={question}
               onQuestionChange={setQuestion}
@@ -2241,6 +2811,7 @@ export function TaskProcessingWorkbench({
               onStopAnswer={handleStopAnswer}
               onSeek={jumpToTime}
               onOpenTrace={handleLoadTrace}
+              hideTabs
             />
           )}
         </ResizablePanel>
@@ -2266,12 +2837,14 @@ export function TaskProcessingWorkbench({
 interface TaskWorkspaceHeaderProps {
   effectiveTitle: string
   workflow: WorkflowType
+  workspaceMode: WorkspaceMode
   updatedAt: string
   totalProgress: number
   errorMessage: string
   status: string
   steps: TaskStepItem[]
   onBack: () => void
+  onWorkspaceModeChange: (mode: WorkspaceMode) => void
   isCancelling: boolean
   isPausing: boolean
   isResuming: boolean
@@ -2282,17 +2855,22 @@ interface TaskWorkspaceHeaderProps {
   onResume: () => void
   canExportBundle: boolean
   onExportBundle: () => void
+  canExportKnowledgeNotes: boolean
+  isExportingKnowledgeNotes: boolean
+  onExportKnowledgeNotes: () => void
 }
 
 const TaskWorkspaceHeader = React.memo(function TaskWorkspaceHeader({
   effectiveTitle,
   workflow,
+  workspaceMode,
   updatedAt,
   totalProgress,
   errorMessage,
   status,
   steps,
   onBack,
+  onWorkspaceModeChange,
   isCancelling,
   isPausing,
   isResuming,
@@ -2303,6 +2881,9 @@ const TaskWorkspaceHeader = React.memo(function TaskWorkspaceHeader({
   onResume,
   canExportBundle,
   onExportBundle,
+  canExportKnowledgeNotes,
+  isExportingKnowledgeNotes,
+  onExportKnowledgeNotes,
 }: TaskWorkspaceHeaderProps) {
   const statusSummary = getTaskStatusSummary(status, steps)
   return (
@@ -2317,7 +2898,7 @@ const TaskWorkspaceHeader = React.memo(function TaskWorkspaceHeader({
             <div>
               <h2 className="text-sm font-semibold">{effectiveTitle}</h2>
               <p className="text-xs text-muted-foreground">
-                {workflow === "notes" ? "笔记整理工作区" : "视频问答工作区"} · 最近更新时间 {formatDateTime(updatedAt)}
+                {workflow === "notes" ? "Study-first 笔记工作台" : "Study-first QA 工作台"} · 最近更新时间 {formatDateTime(updatedAt)}
               </p>
             </div>
           </div>
@@ -2351,10 +2932,32 @@ const TaskWorkspaceHeader = React.memo(function TaskWorkspaceHeader({
               导出结果包
             </Button>
           ) : null}
+          {canExportKnowledgeNotes ? (
+            <Button variant="outline" size="sm" disabled={isExportingKnowledgeNotes} onClick={onExportKnowledgeNotes}>
+              {isExportingKnowledgeNotes ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Download className="mr-1.5 h-4 w-4" />}
+              导出知识卡片
+            </Button>
+          ) : null}
         </div>
       </div>
       <div className="mt-3">
         <Progress value={totalProgress} className="h-1.5" />
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {WORKSPACE_MODE_OPTIONS.map((option) => {
+          const enabled = isWorkspaceModeAvailable(option.id, workflow)
+          return (
+            <Button
+              key={option.id}
+              variant={workspaceMode === option.id ? "default" : "outline"}
+              size="sm"
+              disabled={!enabled}
+              onClick={() => onWorkspaceModeChange(option.id)}
+            >
+              {option.label}
+            </Button>
+          )
+        })}
       </div>
       <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1">
         {steps.map((step, index) => (
@@ -2373,24 +2976,26 @@ const TaskWorkspaceHeader = React.memo(function TaskWorkspaceHeader({
 })
 
 interface VideoPreviewPaneProps {
-  videoUrl: string
+  playbackSource: StudyPlaybackSource
   videoRef: React.RefObject<HTMLVideoElement | null>
   fallbackDurationSeconds: number
   transcriptSegments: TranscriptSegment[]
   videoErrorMessage: string
   onVideoError: (message: string) => void
   onSeek: (seconds: number) => void
+  onPlaybackPositionChange: (seconds: number) => void
   onActiveTranscriptChange: (segmentId: string) => void
 }
 
 const VideoPreviewPane = React.memo(function VideoPreviewPane({
-  videoUrl,
+  playbackSource,
   videoRef,
   fallbackDurationSeconds,
   transcriptSegments,
   videoErrorMessage,
   onVideoError,
   onSeek,
+  onPlaybackPositionChange,
   onActiveTranscriptChange,
 }: VideoPreviewPaneProps) {
   const [currentTime, setCurrentTime] = React.useState(0)
@@ -2398,6 +3003,10 @@ const VideoPreviewPane = React.memo(function VideoPreviewPane({
   const [isPlaying, setIsPlaying] = React.useState(false)
   const [isMuted, setIsMuted] = React.useState(false)
   const activeTranscriptRef = React.useRef("")
+  const playbackSourceIdentity = React.useMemo(
+    () => playbackSource.kind === "none" ? `${playbackSource.kind}:${playbackSource.reason}` : `${playbackSource.kind}:${playbackSource.src}`,
+    [playbackSource],
+  )
 
   const syncActiveTranscript = React.useCallback(
     (time: number) => {
@@ -2425,13 +3034,13 @@ const VideoPreviewPane = React.memo(function VideoPreviewPane({
       return
     }
     node.pause()
-    if (videoUrl) {
+    if (playbackSource.kind === "local-video") {
       node.load()
       return
     }
     node.removeAttribute("src")
     node.load()
-  }, [onActiveTranscriptChange, onVideoError, videoRef, videoUrl])
+  }, [onActiveTranscriptChange, onVideoError, playbackSource.kind, playbackSourceIdentity, videoRef])
 
   React.useEffect(() => {
     setTotalDuration((current) => (current > 0 ? current : fallbackDurationSeconds))
@@ -2484,15 +3093,18 @@ const VideoPreviewPane = React.memo(function VideoPreviewPane({
 
   return (
     <div className="relative aspect-video shrink-0 bg-black">
-      {videoUrl ? (
+      {playbackSource.kind === "local-video" ? (
         <video
           ref={videoRef}
-          src={videoUrl}
+          src={playbackSource.src}
           className="absolute inset-0 h-full w-full object-contain"
           preload="metadata"
           playsInline
           onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
+          onPause={(event) => {
+            setIsPlaying(false)
+            onPlaybackPositionChange(event.currentTarget.currentTime)
+          }}
           onVolumeChange={(event) => setIsMuted(event.currentTarget.muted)}
           onDurationChange={(event) => {
             const nextDuration = event.currentTarget.duration || 0
@@ -2507,11 +3119,13 @@ const VideoPreviewPane = React.memo(function VideoPreviewPane({
             const nextTime = event.currentTarget.currentTime
             setCurrentTime(nextTime)
             syncActiveTranscript(nextTime)
+            onPlaybackPositionChange(nextTime)
           }}
           onSeeked={(event) => {
             const nextTime = event.currentTarget.currentTime
             setCurrentTime(nextTime)
             syncActiveTranscript(nextTime)
+            onPlaybackPositionChange(nextTime)
           }}
           onCanPlay={() => onVideoError("")}
           onError={() => {
@@ -2520,17 +3134,33 @@ const VideoPreviewPane = React.memo(function VideoPreviewPane({
             onVideoError("当前视频预览加载失败，请检查源文件是否仍可访问。")
           }}
         />
+      ) : playbackSource.kind === "remote-iframe" ? (
+        <iframe
+          title={`${playbackSource.provider}-study-player`}
+          src={playbackSource.src}
+          className="absolute inset-0 h-full w-full"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+          referrerPolicy="origin-when-cross-origin"
+        />
       ) : (
         <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-white/55">
-          当前任务没有可预览的本地视频文件
+          {playbackSource.reason}
         </div>
       )}
-      {videoUrl && videoErrorMessage ? (
+      {playbackSource.kind === "local-video" && videoErrorMessage ? (
         <div className="absolute inset-0 flex items-center justify-center bg-black/55 px-6 text-center text-sm text-white/80">
           {videoErrorMessage}
         </div>
       ) : null}
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/82 to-transparent px-4 py-3">
+        {playbackSource.kind === "remote-iframe" ? (
+          <div className="flex items-center justify-between gap-3 text-xs text-white/80">
+            <span>{playbackSource.provider === "youtube" ? "YouTube 远程播放器" : "Bilibili 远程播放器"}</span>
+            <span>点击 Study / Transcript 中的时间点会从对应位置重新打开播放器</span>
+          </div>
+        ) : playbackSource.kind === "local-video" ? (
+          <>
         <input
           type="range"
           min={0}
@@ -2562,6 +3192,8 @@ const VideoPreviewPane = React.memo(function VideoPreviewPane({
             </Button>
           </div>
         </div>
+          </>
+        ) : null}
       </div>
     </div>
   )
@@ -2853,10 +3485,11 @@ interface LeftWorkbenchPanelProps {
   workflow: WorkflowType
   taskId: string
   effectiveTitle: string
-  videoUrl: string
+  playbackSource: StudyPlaybackSource
   videoRef: React.RefObject<HTMLVideoElement | null>
   fallbackDurationSeconds: number
   onSeek: (seconds: number) => void
+  onPlaybackPositionChange: (seconds: number) => void
   leftTab: LeftTab
   onLeftTabChange: (value: LeftTab) => void
   videoErrorMessage: string
@@ -3067,10 +3700,11 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
   workflow,
   taskId,
   effectiveTitle,
-  videoUrl,
+  playbackSource,
   videoRef,
   fallbackDurationSeconds,
   onSeek,
+  onPlaybackPositionChange,
   leftTab,
   onLeftTabChange,
   videoErrorMessage,
@@ -3128,6 +3762,10 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
     }
     return `${transcriptSegments.length}:${lastSegment.start}:${lastSegment.end}:${lastSegment.text}`
   }, [transcriptSegments])
+  const playbackSourceIdentity = React.useMemo(
+    () => playbackSource.kind === "none" ? `${playbackSource.kind}:${playbackSource.reason}` : `${playbackSource.kind}:${playbackSource.src}`,
+    [playbackSource],
+  )
 
   React.useEffect(() => {
     setActiveTranscriptId("")
@@ -3137,7 +3775,7 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
       window.cancelAnimationFrame(transcriptAutoScrollRafRef.current)
       transcriptAutoScrollRafRef.current = null
     }
-  }, [taskId, videoUrl])
+  }, [playbackSource.kind, playbackSourceIdentity, taskId])
 
   React.useEffect(() => {
     if (shouldShowCorrectionTab || leftTab !== "correction") {
@@ -3229,13 +3867,14 @@ const LeftWorkbenchPanel = React.memo(function LeftWorkbenchPanel({
   return (
     <div className="flex h-full min-h-0 flex-col border-r">
       <VideoPreviewPane
-        videoUrl={videoUrl}
+        playbackSource={playbackSource}
         videoRef={videoRef}
         fallbackDurationSeconds={fallbackDurationSeconds}
         transcriptSegments={transcriptSegments}
         videoErrorMessage={videoErrorMessage}
         onVideoError={onVideoError}
         onSeek={handleSeekWithTranscriptSync}
+        onPlaybackPositionChange={onPlaybackPositionChange}
         onActiveTranscriptChange={handleActiveTranscriptChange}
       />
 
@@ -3362,7 +4001,8 @@ interface NotesWorkbenchProps {
   isTaskCompleted: boolean
 }
 
-function TaskWorkbenchDetailLoading({ workflow }: { workflow: WorkflowType }) {
+function TaskWorkbenchDetailLoading({ workspaceMode }: { workspaceMode: WorkspaceMode }) {
+  const modeLabel = WORKSPACE_MODE_OPTIONS.find((option) => option.id === workspaceMode)?.label || "工作台"
   return (
     <div className="workbench-detail-loading-shell flex h-full min-h-0 flex-col p-4">
       <div className="workbench-detail-loading-card flex min-h-0 flex-1 flex-col overflow-hidden rounded-[calc(var(--radius)+0.45rem)] border border-border/70 bg-card/65">
@@ -3388,7 +4028,7 @@ function TaskWorkbenchDetailLoading({ workflow }: { workflow: WorkflowType }) {
       </div>
       <div className="mt-3 flex items-center gap-2 px-1 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin text-primary" />
-        <span>{workflow === "notes" ? "正在载入笔记整理详情..." : "正在载入视频问答详情..."}</span>
+        <span>{`正在载入 ${modeLabel} 视图...`}</span>
       </div>
     </div>
   )
@@ -3547,6 +4187,7 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
   onStopAnswer,
   onSeek,
   onOpenTrace,
+  hideTabs = false,
 }: VqaWorkbenchProps) {
   const {
     chatHistory,
@@ -3577,10 +4218,12 @@ const VqaWorkbench = React.memo(function VqaWorkbench({
 
   return (
     <Tabs value={vqaTab} onValueChange={(value) => onVqaTabChange(value as VqaTab)} className="workbench-detail-pane vqa-workbench-pane flex h-full min-h-0 flex-col">
-      <TabsList className="workbench-detail-tabs workbench-tab-list w-full justify-start rounded-none border-b bg-transparent p-0">
-        <TabsTrigger value="chat" className="workbench-tab-trigger workbench-right-tab-trigger">流式问答</TabsTrigger>
-        <TabsTrigger value="trace" className="workbench-tab-trigger workbench-right-tab-trigger">Trace Theater</TabsTrigger>
-      </TabsList>
+      {!hideTabs ? (
+        <TabsList className="workbench-detail-tabs workbench-tab-list w-full justify-start rounded-none border-b bg-transparent p-0">
+          <TabsTrigger value="chat" className="workbench-tab-trigger workbench-right-tab-trigger">流式问答</TabsTrigger>
+          <TabsTrigger value="trace" className="workbench-tab-trigger workbench-right-tab-trigger">Trace Theater</TabsTrigger>
+        </TabsList>
+      ) : null}
 
       <TabsContent value="chat" className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="flex h-full min-h-0 flex-col">
@@ -3789,4 +4432,5 @@ interface VqaWorkbenchProps {
   onStopAnswer: () => void
   onSeek: (seconds: number) => void
   onOpenTrace: (traceId: string) => void | Promise<void>
+  hideTabs?: boolean
 }

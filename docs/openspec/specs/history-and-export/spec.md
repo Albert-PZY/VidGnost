@@ -1,33 +1,41 @@
 ## ADDED Requirements
 
-### Requirement: System SHALL persist task history in local files
-Backend SHALL persist task metadata, source info, phase logs, transcript, notes, mindmap, and timestamps for replay retrieval.
+### Requirement: System SHALL persist study history and learning-library metadata
+Status: `partial`
+
+Backend SHALL persist task metadata, source info, transcript, study artifacts, subtitle selection, translation state, and export metadata for replay retrieval and continue-learning surfaces.
 
 #### Scenario: Query task list
 - **WHEN** client requests task listing endpoint
 - **THEN** backend returns tasks ordered by latest update time with total count
 - **AND** each task summary carries `duration_seconds` when persisted transcript segments or source media metadata can provide a reliable duration
+- **AND** each task summary returns a `study_preview` payload with readiness、generation tier、highlight count、question count、note count、favorite flag、and last-opened/export timestamps, using persisted `D/study/preview.json` when available and transcript-derived heuristic defaults otherwise
 
 #### Scenario: Query task detail
 - **WHEN** client requests task detail by ID
-- **THEN** backend returns persisted logs, artifacts, metrics, and artifact index metadata
+- **THEN** backend returns persisted logs, artifacts, metrics, transcript outputs, and artifact index metadata
 - **AND** task-detail markdown keeps only task-relative image references whose artifact files still exist on disk
 - **AND** stale task-relative image references are removed before the renderer receives the payload so the client does not request missing artifact files
-- **AND** VQA-related detail payloads in the current baseline keep transcript timestamp/text citations and MAY include frame-semantic citation fields such as `image_path` and `visual_text` when retrieval hits originate from VLM keyframe evidence
-- **AND** when phase `D` has persisted VQA prewarm artifacts, task detail payloads can expose `D/vqa-prewarm/frames.json` and `D/vqa-prewarm/index.json` through the existing artifact index and file routes
-- **AND** when phase `C` has finished chunked transcription, task detail file routes can expose `C/transcript/index.json` and `C/transcript/chunks/*.json` for raw transcript replay surfaces
+- **AND** transcript timestamp and transcript text citations remain the primary evidence contract for QA replay
+- **AND** compatibility-only evidence fields such as `image_path` and `visual_text` MAY still appear for legacy tasks without redefining the default study-first evidence path
+- **AND** when phase `D` has persisted transcript-only QA prewarm artifacts, task detail payloads can expose `D/vqa-prewarm/index.json` through the existing artifact index and file routes
+- **AND** when phase `C` has finished transcript normalization, task detail file routes can expose `C/transcript/index.json` and `C/transcript/chunks/*.json` for transcript replay surfaces
+- **AND** subtitle-track artifacts, translation outputs, and study-pack artifacts MAY be exposed through the same artifact index when they exist
 
 #### Scenario: Read persisted task history without an upfront storage migration
 - **WHEN** the frontend-driven TypeScript backend queries local task history during the refactor transition
 - **THEN** it can read compatible task records directly from `storage/tasks/records/*.json`
 - **AND** the same persisted record payload can hydrate list、stats、recent、detail responses without requiring an immediate one-time migration step
+- **AND** study-first metadata that is still absent in older task records falls back to empty or compatibility defaults instead of blocking history reads
 
-#### Scenario: Read persisted task media and fusion artifacts through backend file routes
+#### Scenario: Read persisted task media and study artifacts through backend file routes
 - **WHEN** client requests `GET /tasks/{task_id}/source-media` or `GET /tasks/{task_id}/artifacts/file`
 - **THEN** backend resolves the task-scoped local file under persisted storage and streams it through the HTTP API
-- **AND** renderer does not need direct `file://` access to source media or generated fusion artifacts
+- **AND** renderer does not need direct `file://` access to source media or generated study artifacts
 
 ### Requirement: Runtime snapshots SHALL be persisted by stage
+Status: `implemented`
+
 Backend SHALL persist per-stage analysis snapshots under `analysis-results/<task_id>/<stage>.json`.
 
 #### Scenario: Stage status changes
@@ -35,6 +43,8 @@ Backend SHALL persist per-stage analysis snapshots under `analysis-results/<task
 - **THEN** backend updates corresponding stage snapshot files
 
 ### Requirement: History operations SHALL support title update and task deletion
+Status: `implemented`
+
 Backend SHALL allow title update for any persisted task and SHALL allow task deletion regardless of the current task status.
 
 #### Scenario: Update history title
@@ -62,7 +72,9 @@ Backend SHALL allow title update for any persisted task and SHALL allow task del
 - **AND** after batch deletion succeeds, the history list refreshes, the recent-task summary no longer shows deleted tasks, and pagination stays within the new valid page range
 
 ### Requirement: Artifact markdown edits SHALL be supported after terminal status
-Backend SHALL allow notes/mindmap markdown update only after task reaches terminal state.
+Status: `implemented`
+
+Backend SHALL allow notes or mindmap markdown update only after task reaches terminal status.
 
 #### Scenario: Persist edited notes and mindmap
 - **WHEN** client updates artifacts for terminal task
@@ -72,25 +84,36 @@ Backend SHALL allow notes/mindmap markdown update only after task reaches termin
 - **WHEN** client updates artifacts for non-terminal task
 - **THEN** backend returns conflict and does not mutate artifacts
 
-### Requirement: Export endpoints SHALL provide deterministic deliverables
-System SHALL support transcript, notes, mindmap, subtitle, and bundle exports for completed tasks.
+### Requirement: Export endpoints SHALL provide deterministic study deliverables
+Status: `partial`
+
+System SHALL support transcript, subtitle, notes, mindmap, knowledge-note, study-pack, and bundle exports for completed tasks or persisted study materials as appropriate.
 
 #### Scenario: Export transcript and notes
-- **WHEN** client calls transcript/notes export APIs on completed task
+- **WHEN** client calls transcript or notes export APIs on a completed task
 - **THEN** backend returns UTF-8 payload with deterministic filename headers
 - **AND** `notes` export returns a `.md` file when the task has no generated note-image assets
 - **AND** `notes` export returns an archive containing the Markdown file plus `notes-images/**` assets when the task has generated note-image attachments
 
-#### Scenario: Show success confirmation after workbench notes or bundle export
-- **WHEN** user exports `notes` or `bundle` from the processing workbench and the renderer finishes downloading the response payload
+#### Scenario: Export subtitles and optional translation outputs
+- **WHEN** client requests subtitle-related exports such as `srt` or `vtt`
+- **THEN** backend generates subtitles from the persisted transcript or selected subtitle-track output
+- **AND** backend normalizes timeline ordering and minimum segment duration
+- **AND** when the task already contains a persisted translated subtitle layer, export endpoints MAY expose that translated output as an additional deterministic deliverable
+
+#### Scenario: Export study pack or knowledge materials
+- **WHEN** client requests a study-pack, knowledge-note bundle, or task bundle export
+- **THEN** backend packages the persisted study artifacts that exist for that task
+- **AND** transcript, overview, highlights, themes, questions, notes, and export metadata keep stable relative paths inside the package
+- **AND** during the current migration period, the stable implemented export path remains `transcript` / `notes` / `mindmap` / `bundle`, while dedicated study-pack or knowledge-note export records MAY remain absent until the corresponding task artifacts are explicitly persisted
+
+#### Scenario: Show success confirmation after workbench export
+- **WHEN** user exports `notes`, `study pack`, or `bundle` from the workbench and the renderer finishes downloading the response payload
 - **THEN** the renderer shows a non-blocking success toast confirming the export has completed and the file download has started
 
-#### Scenario: Export subtitles
-- **WHEN** client requests `srt` or `vtt`
-- **THEN** backend generates subtitles from persisted transcript segments
-- **AND** backend normalizes timeline ordering and minimum segment duration
-
 ### Requirement: Bundle export SHALL include notes image assets
+Status: `implemented`
+
 Bundle export SHALL include markdown artifacts and PNG image assets referenced from notes markdown.
 
 #### Scenario: Bundle includes notes-images
@@ -99,14 +122,18 @@ Bundle export SHALL include markdown artifacts and PNG image assets referenced f
 - **AND** `notes.md` keeps relative image paths consistent with bundle layout
 
 ### Requirement: Mindmap HTML export SHALL remain desktop-readable
+Status: `implemented`
+
 Mindmap HTML export SHALL use a white default canvas background for consistent readability.
 
 #### Scenario: Export mindmap html
 - **WHEN** client requests mindmap HTML export or bundle
 - **THEN** generated HTML uses readable default text/background contrast in common desktop browsers
 
-### Requirement: History list SHALL support composable filters and pagination
-History view SHALL support `workflow`, `status`, `query`, and `sort` filters together with paginated list retrieval so long-lived desktop sessions can locate tasks without rendering the entire archive at once.
+### Requirement: Learning-library list SHALL support composable filters and pagination
+Status: `partial`
+
+History view SHALL evolve toward a learning-library surface that supports `workflow`, `status`, `query`, and `sort` filters together with paginated retrieval so long-lived desktop sessions can locate tasks and learning materials without rendering the entire archive at once.
 
 #### Scenario: Filter failed VQA tasks
 - **WHEN** client requests task list with `workflow=vqa`, `status=failed`, and a search query
@@ -123,12 +150,20 @@ History view SHALL support `workflow`, `status`, `query`, and `sort` filters tog
 - **AND** the content region MAY show a compact in-place loading placeholder before the first history payload renders
 - **AND** the renderer does not block the entire shell behind a full-window loading mask for this view switch
 
+#### Scenario: Hydrate learning-library metadata before history cards are fully redesigned
+- **WHEN** renderer receives task-list payloads on the current refactor baseline
+- **THEN** it can already read `study_preview` metadata for readiness、counts、favorite state、and continue-learning timestamps
+- **AND** the history surface MAY temporarily stay on the classic row-list presentation until the full learning-library card layout lands
+
 #### Scenario: Query recent-task sidebar summary
 - **WHEN** client requests the recent-task summary endpoint
 - **THEN** backend returns recent tasks ordered by latest update time
 - **AND** each recent-task item includes `workflow`, `updated_at`, and `duration_seconds` so the sidebar can render compact status context
+- **AND** each recent-task item MAY also include continue-learning context such as study-pack readiness or knowledge-note count when available
 
 ### Requirement: History actions SHALL expose bundle export and task directory access
+Status: `implemented`
+
 History view SHALL expose direct task bundle export and task-directory access for each listed task.
 
 #### Scenario: Open task directory from history view

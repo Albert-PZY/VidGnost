@@ -43,14 +43,15 @@ export async function registerTaskMutationRoutes(
     const workflow = normalizeWorkflow(payload.workflow)
     const taskId = createTaskId()
     const createdAt = new Date().toISOString()
+    const sourceInput = String(payload.url || "").trim()
 
     await taskRepository.create(
       buildQueuedTaskRecord({
         createdAt,
         language: String(payload.language || "zh"),
         modelSize: String(payload.model_size || "small"),
-        sourceInput: String(payload.url || "").trim(),
-        sourceType: "bilibili",
+        sourceInput,
+        sourceType: inferRemoteSourceType(sourceInput),
         taskId,
         workflow,
       }),
@@ -58,7 +59,7 @@ export async function registerTaskMutationRoutes(
 
     await taskOrchestrator.submit({
       taskId,
-      sourceInput: String(payload.url || "").trim(),
+      sourceInput,
       workflow,
     })
 
@@ -420,4 +421,16 @@ function clampProgress(value: unknown): number {
 function normalizeNullableNumber(value: unknown): number | null {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : null
+}
+
+function inferRemoteSourceType(sourceInput: string): "youtube" | "bilibili" {
+  const normalized = sourceInput.trim().toLowerCase()
+  if (
+    normalized.includes("youtube.com/") ||
+    normalized.includes("youtu.be/") ||
+    normalized.includes("m.youtube.com/")
+  ) {
+    return "youtube"
+  }
+  return "bilibili"
 }

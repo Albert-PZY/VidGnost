@@ -6,9 +6,10 @@ import type { AsrChunkResult, AsrService } from "../asr/asr-service.js"
 import { EventBus } from "../events/event-bus.js"
 import type { MediaPipelineService } from "../media/media-pipeline-service.js"
 import type { VideoFrameService } from "../media/video-frame-service.js"
+import type { StudyService } from "../study/study-service.js"
 import type { SummaryService } from "../summary/summary-service.js"
 import type { TranscriptCorrectionPreviewEvent } from "../summary/transcript-correction-service.js"
-import { RetrievalIndexService, type FrameSemanticSegment } from "../vqa/retrieval-index-service.js"
+import { RetrievalIndexService } from "../vqa/retrieval-index-service.js"
 import type { VlmRuntimeService } from "../vqa/vlm-runtime-service.js"
 import { TaskRepository, type StoredTaskRecord } from "./task-repository.js"
 import {
@@ -42,19 +43,9 @@ interface TaskExecutionDependencies {
   asrService: AsrService
   mediaPipelineService: MediaPipelineService
   summaryService: SummaryService
+  studyService?: Pick<StudyService, "materializeSubtitleTracks" | "materializeTranslationRecords" | "materializeWorkspace">
   videoFrameService?: VideoFrameService
   vlmRuntimeService?: VlmRuntimeService
-}
-
-interface VqaMultimodalPrewarmArtifact {
-  task_id: string
-  mode: "multimodal"
-  entries: Array<{
-    artifact_path: string
-    modality: "text" | "image"
-    kind: "retrieval_index" | "frame_manifest" | "frame_semantic"
-  }>
-  generated_at: string
 }
 
 export class TaskOrchestrator {
@@ -479,80 +470,79 @@ export class TaskOrchestrator {
     if (artifacts.fallbackArtifactChannels.length > 0) {
       await this.appendStageLog(taskId, "D", `融合生成已回退：${artifacts.fallbackArtifactChannels.join(", ")}`)
     }
+    await this.startSubstage(taskId, "subtitle_resolve", "字幕轨收口", 86)
+    await this.dependencies.studyService?.materializeSubtitleTracks(taskId)
+    await this.completeSubstage(taskId, "subtitle_resolve", 87, "字幕轨已按 study 契约收口")
+
+    await this.startSubstage(taskId, "translation_resolve", "翻译记录收口", 87)
+    await this.dependencies.studyService?.materializeTranslationRecords(taskId)
+    await this.completeSubstage(taskId, "translation_resolve", 88, "翻译记录已按 study 契约收口")
+
+    await this.startSubstage(taskId, "study_pack_generate", "学习包生成", 88)
+    await this.dependencies.studyService?.materializeWorkspace(taskId)
+    await this.completeSubstage(taskId, "study_pack_generate", 89, "学习包产物已生成")
+
+    await this.startSubstage(taskId, "notes_mindmap_generate", "笔记与导图收口", 89)
+    await this.completeSubstage(taskId, "notes_mindmap_generate", workflow === "vqa" ? 91 : 96, "笔记、摘要与导图已收口")
+
     if (workflow === "vqa") {
-      await this.startSubstage(taskId, "multimodal_prewarm", "多模态问答预热", 86)
-      await this.startSubstage(taskId, "transcript_vectorize", "文本向量化", 86)
+      await this.startSubstage(taskId, "transcript_vectorize", "文本向量化", 92)
       const transcriptItems = await this.retrievalIndexService.buildTranscriptItemsAsync({
         taskId,
         taskTitle: normalizeNullableTitle(record.title) || taskId,
         transcriptSegments: artifacts.correctedSegments,
         transcriptText: artifacts.correctedText,
       })
-      await this.completeSubstage(taskId, "transcript_vectorize", 89, `文本证据向量化完成，共 ${transcriptItems.length} 条`)
+      await this.completeSubstage(taskId, "transcript_vectorize", 94, `文本证据向量化完成，共 ${transcriptItems.length} 条`)
 
-      await this.startSubstage(taskId, "frame_extract", "视频抽帧", 90)
-      const mediaPath = String(record.source_local_path || "").trim()
-      const framesResult = await this.buildFrameArtifacts(taskId, mediaPath, execution)
-      await this.completeSubstage(
-        taskId,
-        "frame_extract",
-        92,
-        framesResult ? `视频抽帧完成，共 ${framesResult.manifest.frames.length} 帧` : "视频抽帧失败，已回退纯文本检索",
-      )
-
-      await this.startSubstage(taskId, "frame_semantic", "画面语义识别", 92)
-      const frameSemanticResult = await this.buildFrameSemanticArtifacts(taskId, framesResult?.manifest.frames || [], execution)
-      await this.completeSubstage(
-        taskId,
-        "frame_semantic",
-        94,
-        frameSemanticResult.segments.length > 0
-          ? `画面语义识别完成，共 ${frameSemanticResult.segments.length} 条`
-          : "未生成画面语义证据，已回退纯文本召回",
-      )
-
-      await this.startSubstage(taskId, "multimodal_index_fusion", "多模态融合索引", 95)
-      const frameSemanticItems = await this.retrievalIndexService.buildFrameSemanticItemsAsync({
-        taskId,
-        taskTitle: normalizeNullableTitle(record.title) || taskId,
-        frameSemanticSegments: frameSemanticResult.segments,
-      })
-      const prewarmIndex = this.retrievalIndexService.buildIndexFromItems([
-        ...transcriptItems,
-        ...frameSemanticItems,
-      ])
-      await this.taskRepository.writeTaskArtifactText(taskId, "D/vqa-prewarm/index.json", prewarmIndex.indexJson)
-      const multimodalArtifact = buildMultimodalPrewarmArtifact(taskId)
+      await this.startSubstage(taskId, "vqa_prewarm", "Transcript-only 问答预热", 95)
+      const prewarmIndex = this.retrievalIndexService.buildIndexFromItems(transcriptItems)
       await this.taskRepository.writeTaskArtifactText(
         taskId,
-        "D/vqa-prewarm/multimodal/index.json",
-        JSON.stringify(multimodalArtifact, null, 2),
-      )
-      await this.taskRepository.writeTaskArtifactText(
-        taskId,
-        "D/vqa-prewarm/multimodal/manifest.json",
+        "D/vqa-prewarm/index.json",
         JSON.stringify({
-          mode: multimodalArtifact.mode,
-          artifact_paths: multimodalArtifact.entries.map((entry) => entry.artifact_path),
-          generated_at: multimodalArtifact.generated_at,
+          version: prewarmIndex.version,
+          retrieval_mode: prewarmIndex.retrieval_mode,
+          item_count: prewarmIndex.item_count,
+          items: prewarmIndex.items,
+          mode: "transcript-only",
         }, null, 2),
       )
-      await this.appendStageLog(taskId, "D", `VQA 检索索引预热完成，共 ${prewarmIndex.item_count} 条证据`)
-      await this.completeSubstage(taskId, "multimodal_index_fusion", 96, "多模态融合索引已生成")
-      await this.completeSubstage(taskId, "multimodal_prewarm", 96, "多模态预热入口已就绪")
+      await this.taskRepository.writeTaskArtifactText(
+        taskId,
+        "D/vqa-prewarm/transcript-only/index.json",
+        JSON.stringify({
+          mode: "transcript-only",
+          task_id: taskId,
+          artifact_paths: ["D/vqa-prewarm/index.json"],
+          generated_at: new Date().toISOString(),
+        }, null, 2),
+      )
+      await this.appendStageLog(taskId, "D", `VQA transcript-only 检索索引预热完成，共 ${prewarmIndex.item_count} 条证据`)
+      await this.completeSubstage(taskId, "vqa_prewarm", 97, "VQA transcript-only 预热完成")
       await this.startSubstage(taskId, "fusion_delivery", "融合生成与交付", 97)
     } else {
-      await this.startSubstage(taskId, "fusion_delivery", "融合生成与交付", 90)
       await this.updateStageMetric({
         taskId,
         stage: "D",
-        substage: "multimodal_prewarm",
+        substage: "transcript_vectorize",
         patch: {
           status: "skipped",
           completed_at: new Date().toISOString(),
           reason: "workflow_not_vqa",
         },
       })
+      await this.updateStageMetric({
+        taskId,
+        stage: "D",
+        substage: "vqa_prewarm",
+        patch: {
+          status: "skipped",
+          completed_at: new Date().toISOString(),
+          reason: "workflow_not_vqa",
+        },
+      })
+      await this.startSubstage(taskId, "fusion_delivery", "融合生成与交付", 97)
     }
     await this.completeSubstage(taskId, "fusion_delivery", 100, "笔记、摘要与导图已生成")
 
@@ -659,117 +649,6 @@ export class TaskOrchestrator {
       transcript_text: sourceRecord.transcript_text,
       title: normalizeNullableTitle(sourceRecord.title),
     })
-  }
-
-  private async buildFrameArtifacts(
-    taskId: string,
-    mediaPath: string,
-    execution: ActiveExecution,
-  ): Promise<{
-    manifest: {
-      frames: Array<{
-        frame_index: number
-        is_fallback?: boolean
-        path: string
-        timestamp_seconds: number
-      }>
-    }
-  } | null> {
-    if (!this.dependencies.videoFrameService || !mediaPath) {
-      return null
-    }
-
-    try {
-      const result = await this.runControllable(execution, (signal) =>
-        this.dependencies.videoFrameService!.extractFrames({
-          taskId,
-          mediaPath,
-          outputRootDir: this.taskRepository.resolveArtifactPath(taskId, "D/vqa-prewarm"),
-          intervalSeconds: 4,
-          signal,
-        }),
-      )
-      await this.taskRepository.writeTaskArtifactText(taskId, "D/vqa-prewarm/frames/manifest.json", result.manifestJson)
-      return {
-        manifest: result.manifest,
-      }
-    } catch (error) {
-      await this.appendStageLog(taskId, "D", `视频抽帧失败，已降级为纯文本检索：${toErrorMessage(error)}`)
-      return null
-    }
-  }
-
-  private async buildFrameSemanticArtifacts(
-    taskId: string,
-    frames: Array<{
-      frame_index: number
-      is_fallback?: boolean
-      path: string
-      timestamp_seconds: number
-    }>,
-    execution: ActiveExecution,
-  ): Promise<{ segments: FrameSemanticSegment[] }> {
-    if (frames.length === 0) {
-      await this.taskRepository.writeTaskArtifactText(
-        taskId,
-        "D/vqa-prewarm/frame-semantic/index.json",
-        JSON.stringify({
-          task_id: taskId,
-          item_count: 0,
-          items: [],
-          generated_at: new Date().toISOString(),
-        }, null, 2),
-      )
-      return { segments: [] }
-    }
-
-    const segments: FrameSemanticSegment[] = []
-    for (let index = 0; index < frames.length; index += 1) {
-      const frame = frames[index]
-      let visualText = buildFallbackFrameSemanticText(frame.frame_index, frame.timestamp_seconds)
-      if (!frame.is_fallback && this.dependencies.vlmRuntimeService) {
-        const frameUri = this.taskRepository.resolveArtifactPath(taskId, `D/vqa-prewarm/${frame.path}`)
-        try {
-          const described = await this.runControllable(execution, () =>
-            this.dependencies.vlmRuntimeService!.describeFrame({
-              imageUrl: pathToFileUrl(frameUri),
-              userPrompt: "请用一句中文描述该帧的关键信息，聚焦人物、动作、字幕与场景。",
-            }),
-          )
-          visualText = String(described.content || "").trim() || visualText
-        } catch (error) {
-          await this.appendStageLog(taskId, "D", `VLM 帧语义识别失败，已回退模板描述：${toErrorMessage(error)}`)
-        }
-      }
-      segments.push({
-        start: frame.timestamp_seconds,
-        end: frame.timestamp_seconds,
-        text: visualText,
-        visual_text: visualText,
-        image_path: frame.path,
-        frame_index: frame.frame_index,
-        frame_timestamp: frame.timestamp_seconds,
-      })
-    }
-
-    await this.taskRepository.writeTaskArtifactText(
-      taskId,
-      "D/vqa-prewarm/frame-semantic/index.json",
-      JSON.stringify({
-        task_id: taskId,
-        item_count: segments.length,
-        items: segments.map((segment) => ({
-          image_path: segment.image_path,
-          visual_text: segment.visual_text,
-          start: segment.start,
-          end: segment.end,
-          frame_index: segment.frame_index,
-          frame_timestamp: segment.frame_timestamp,
-        })),
-        generated_at: new Date().toISOString(),
-      }, null, 2),
-    )
-    return { segments }
   }
 
   private async writeTranscriptChunkArtifacts(taskId: string, chunks: AsrChunkResult[] | undefined): Promise<void> {
@@ -1230,46 +1109,3 @@ function syncStageMetricFromSubstages(
   stageMetric.completed_at = null
 }
 
-function buildMultimodalPrewarmArtifact(taskId: string): VqaMultimodalPrewarmArtifact {
-  return {
-    task_id: taskId,
-    mode: "multimodal",
-    entries: [
-      {
-        artifact_path: "D/vqa-prewarm/index.json",
-        modality: "text",
-        kind: "retrieval_index",
-      },
-      {
-        artifact_path: "D/vqa-prewarm/frames/manifest.json",
-        modality: "image",
-        kind: "frame_manifest",
-      },
-      {
-        artifact_path: "D/vqa-prewarm/frame-semantic/index.json",
-        modality: "image",
-        kind: "frame_semantic",
-      },
-    ],
-    generated_at: new Date().toISOString(),
-  }
-}
-
-function pathToFileUrl(value: string): string {
-  const normalized = value.replace(/\\/g, "/")
-  if (normalized.startsWith("/")) {
-    return `file://${normalized}`
-  }
-  return `file:///${normalized}`
-}
-
-function buildFallbackFrameSemanticText(frameIndex: number, timestampSeconds: number): string {
-  return `画面帧 ${frameIndex + 1}，时间 ${formatSeconds(timestampSeconds)}，等待视觉语义补全`
-}
-
-function formatSeconds(value: number): string {
-  const totalSeconds = Math.max(0, Math.round(Number(value) || 0))
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
-}

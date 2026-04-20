@@ -212,7 +212,7 @@ export function buildQueuedTaskRecord(input: {
   modelSize?: string
   sourceInput: string
   sourceLocalPath?: string | null
-  sourceType: "bilibili" | "local_file" | "local_path"
+  sourceType: "youtube" | "bilibili" | "local_file" | "local_path"
   taskId: string
   title?: string | null
   workflow: WorkflowType
@@ -343,7 +343,18 @@ export async function buildZipPayload(files: Record<string, Buffer>): Promise<Bu
 
 export function normalizeExportKind(kind: string | undefined): TaskExportKind {
   const normalized = String(kind || "").trim().toLowerCase()
-  if (["transcript", "notes", "mindmap", "srt", "vtt", "bundle"].includes(normalized)) {
+  if ([
+    "transcript",
+    "notes",
+    "mindmap",
+    "srt",
+    "vtt",
+    "bundle",
+    "study_pack",
+    "subtitle_tracks",
+    "translation_records",
+    "knowledge_notes",
+  ].includes(normalized)) {
     return normalized as TaskExportKind
   }
   throw AppError.badRequest("Unsupported export kind", {
