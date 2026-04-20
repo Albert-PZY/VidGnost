@@ -11,6 +11,7 @@
 - `llm-summary-mindmap`
 - `history-and-export`
 - `web-workbench-ui`
+- `study-domain`
 
 ## 维护原则
 

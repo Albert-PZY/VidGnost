@@ -19,12 +19,30 @@
   - `docs/openspec/changes/build-lightweight-v2/design.md`
 - Tasks:
   - `docs/openspec/changes/build-lightweight-v2/tasks.md`
+- Active capability specs:
+  - `docs/openspec/changes/build-lightweight-v2/specs/video-ingestion/spec.md`
+  - `docs/openspec/changes/build-lightweight-v2/specs/transcription-pipeline/spec.md`
+  - `docs/openspec/changes/build-lightweight-v2/specs/sse-runtime-stream/spec.md`
+  - `docs/openspec/changes/build-lightweight-v2/specs/llm-runtime-config/spec.md`
+  - `docs/openspec/changes/build-lightweight-v2/specs/llm-summary-mindmap/spec.md`
+  - `docs/openspec/changes/build-lightweight-v2/specs/history-and-export/spec.md`
+  - `docs/openspec/changes/build-lightweight-v2/specs/web-workbench-ui/spec.md`
+  - `docs/openspec/changes/build-lightweight-v2/specs/study-domain/spec.md`
 
 ## 3. 基线规格（Base Specs）
 
 稳定后的能力要求沉淀在这里：
 
 - `docs/openspec/specs/`
+- 当前基线能力包括：
+  - `video-ingestion`
+  - `transcription-pipeline`
+  - `sse-runtime-stream`
+  - `llm-runtime-config`
+  - `llm-summary-mindmap`
+  - `history-and-export`
+  - `web-workbench-ui`
+  - `study-domain`
 
 ## 4. 归档区
 
