@@ -7,6 +7,11 @@ import {
   taskStepStatusSchema,
   workflowTypeSchema,
 } from "./domain.js"
+import {
+  exportRecordSchema,
+  studyPreviewSchema,
+  taskExportKindSchema,
+} from "./study.js"
 
 export const transcriptSegmentSchema = z.object({
   start: z.number(),
@@ -68,6 +73,7 @@ export const taskSummaryItemSchema = z.object({
   progress: z.number().int().min(0).max(100),
   file_size_bytes: z.number().int().nonnegative(),
   duration_seconds: z.number().nullable(),
+  study_preview: studyPreviewSchema.nullable().optional(),
   created_at: z.string().min(1),
   updated_at: z.string().min(1),
 })
@@ -137,6 +143,7 @@ export const taskDetailResponseSchema = z.object({
   vm_phase_metrics: taskMetricsRecordSchema,
   artifact_total_bytes: z.number().int().nonnegative(),
   artifact_index: z.array(taskArtifactIndexItemSchema),
+  study_preview: studyPreviewSchema.nullable().optional(),
   created_at: z.string().min(1),
   updated_at: z.string().min(1),
 })
@@ -177,8 +184,11 @@ export const taskArtifactsUpdateRequestSchema = z.object({
 
 export type TaskArtifactsUpdateRequest = z.infer<typeof taskArtifactsUpdateRequestSchema>
 
-export const taskExportKindSchema = z.enum(["transcript", "notes", "mindmap", "srt", "vtt", "bundle"])
+export { taskExportKindSchema } from "./study.js"
 export type TaskExportKind = z.infer<typeof taskExportKindSchema>
+
+export const taskExportRecordSchema = exportRecordSchema
+export type TaskExportRecord = z.infer<typeof taskExportRecordSchema>
 
 export const taskStreamEventSchema = z.object({
   type: z.string().min(1),
