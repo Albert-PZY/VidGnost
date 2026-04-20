@@ -23,17 +23,20 @@ The system SHALL accept both在线视频 and本地视频输入，并在任务记
 - **AND** backend does not create the task
 
 ### Requirement: Online sources SHALL prioritize subtitle-track discovery before fallback transcription
-Status: `planned`
+Status: `implemented`
 
-For online sources, the backend SHALL treat platform subtitle tracks as the preferred transcript source. Media download and Whisper fallback SHALL remain available when the platform cannot provide usable subtitles.
+For online sources, the backend SHALL use `yt-dlp` to probe platform subtitle tracks before phase `C` falls back to Whisper-compatible ASR. When a usable platform subtitle track can be downloaded and parsed, backend SHALL normalize that track into the same transcript contract and task artifacts consumed by the downstream study-first pipeline.
 
-#### Scenario: Online source exposes subtitle tracks
+#### Scenario: Online source exposes usable subtitle tracks
 - **WHEN** backend inspects a supported online video
-- **THEN** it records available original subtitle tracks and available translated subtitle tracks as source metadata before transcript normalization begins
+- **THEN** it probes available original subtitle tracks and available translated subtitle tracks through `yt-dlp` before transcript normalization begins
+- **AND** it records those subtitle-track candidates as source metadata for later study-domain materialization
+- **AND** if phase `C` can download and parse a usable platform subtitle track, backend persists `transcript_text` and `transcript_segments_json` from that platform track without invoking Whisper
 
 #### Scenario: Online source has no usable subtitle track
-- **WHEN** backend cannot resolve a usable platform subtitle track for the online video
+- **WHEN** backend cannot resolve or parse a usable platform subtitle track for the online video
 - **THEN** task remains on the online-source path
+- **AND** phase `C` falls back to Whisper-compatible ASR while preserving the same normalized transcript artifact contract
 - **AND** downstream transcription MAY fallback to Whisper without making frame extraction, VLM inference, or image-semantic retrieval a prerequisite
 
 ### Requirement: Local sources SHALL enter the workbench through a Whisper-first path

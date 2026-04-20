@@ -3,6 +3,7 @@ import { stat } from "node:fs/promises"
 import type { TaskStatus, WorkflowType } from "@vidgnost/contracts"
 
 import type { AsrChunkResult, AsrService } from "../asr/asr-service.js"
+import type { PlatformSubtitleTranscriptService } from "../asr/platform-subtitle-transcript-service.js"
 import { EventBus } from "../events/event-bus.js"
 import type { MediaPipelineService } from "../media/media-pipeline-service.js"
 import type { VideoFrameService } from "../media/video-frame-service.js"
@@ -42,6 +43,7 @@ interface ActiveExecution {
 interface TaskExecutionDependencies {
   asrService: AsrService
   mediaPipelineService: MediaPipelineService
+  platformTranscriptService?: Pick<PlatformSubtitleTranscriptService, "transcribeFromPlatformSubtitles">
   summaryService: SummaryService
   studyService?: Pick<StudyService, "materializeSubtitleTracks" | "materializeTranslationRecords" | "materializeWorkspace">
   videoFrameService?: VideoFrameService
@@ -300,31 +302,50 @@ export class TaskOrchestrator {
 
     await this.startStage(input.taskId, "C", "Speech Transcription", 28, "transcribing")
     const transcriptProgressState = { lastStageProgress: 0 }
-    const transcription = await this.runControllable(execution, (signal) =>
+    const transcriptCallbacks = {
+      onLog: async (message: string) => {
+        await this.appendStageLog(input.taskId, "C", message)
+      },
+      onReset: async () => {
+        transcriptProgressState.lastStageProgress = 0
+        await this.publishTranscriptReset(input.taskId)
+      },
+      onSegment: async (segment: { end: number; start: number; text: string }) => {
+        await this.eventBus.publish(input.taskId, {
+          type: "transcript_delta",
+          task_id: input.taskId,
+          start: segment.start,
+          end: segment.end,
+          text: segment.text,
+        })
+        await this.publishTranscriptSegmentProgress(
+          input.taskId,
+          segment.end,
+          audioArtifact.durationSeconds,
+          transcriptProgressState,
+        )
+      },
+    }
+    const remoteSourceType = resolveRemoteSourceType(record.source_type)
+    const platformTranscription = remoteSourceType
+      ? await this.runControllable(execution, (signal) =>
+        this.dependencies.platformTranscriptService?.transcribeFromPlatformSubtitles({
+          ...transcriptCallbacks,
+          preferredLanguage: String(record.language || "").trim(),
+          signal,
+          sourceInput: String(input.sourceInput || record.source_input || "").trim(),
+          sourceType: remoteSourceType,
+          taskId: input.taskId,
+        }) ?? Promise.resolve(null),
+      )
+      : null
+    if (remoteSourceType && !platformTranscription) {
+      await this.appendStageLog(input.taskId, "C", "平台字幕不可用，已回退 Whisper 转写链路")
+    }
+    const transcription = platformTranscription ?? await this.runControllable(execution, (signal) =>
       this.dependencies.asrService.transcribe({
         audioPath: audioArtifact.audioPath,
-        onLog: async (message) => {
-          await this.appendStageLog(input.taskId, "C", message)
-        },
-        onReset: async () => {
-          transcriptProgressState.lastStageProgress = 0
-          await this.publishTranscriptReset(input.taskId)
-        },
-        onSegment: async (segment) => {
-          await this.eventBus.publish(input.taskId, {
-            type: "transcript_delta",
-            task_id: input.taskId,
-            start: segment.start,
-            end: segment.end,
-            text: segment.text,
-          })
-          await this.publishTranscriptSegmentProgress(
-            input.taskId,
-            segment.end,
-            audioArtifact.durationSeconds,
-            transcriptProgressState,
-          )
-        },
+        ...transcriptCallbacks,
         taskId: input.taskId,
         signal,
       }),
@@ -1046,6 +1067,11 @@ class TaskPauseRequestedError extends Error {
 function normalizeNullableTitle(value: unknown): string | null {
   const candidate = String(value || "").trim()
   return candidate || null
+}
+
+function resolveRemoteSourceType(value: unknown): "youtube" | "bilibili" | null {
+  const candidate = String(value || "").trim().toLowerCase()
+  return candidate === "youtube" || candidate === "bilibili" ? candidate : null
 }
 
 function toErrorMessage(error: unknown): string {

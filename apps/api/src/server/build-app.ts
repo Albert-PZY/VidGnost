@@ -11,6 +11,7 @@ import { LlmConfigRepository } from "../modules/llm/llm-config-repository.js"
 import { OpenAiCompatibleClient } from "../modules/llm/openai-compatible-client.js"
 import { EventBus } from "../modules/events/event-bus.js"
 import { AsrService } from "../modules/asr/asr-service.js"
+import { PlatformSubtitleTranscriptService } from "../modules/asr/platform-subtitle-transcript-service.js"
 import { MediaPipelineService } from "../modules/media/media-pipeline-service.js"
 import { VideoFrameService } from "../modules/media/video-frame-service.js"
 import { LocalModelMigrationService } from "../modules/models/local-model-migration-service.js"
@@ -98,6 +99,7 @@ export async function buildApp(inputConfig?: Partial<AppConfig>): Promise<Fastif
   const openAiCompatibleClient = new OpenAiCompatibleClient()
   const mediaPipelineService = new MediaPipelineService(config)
   const videoFrameService = new VideoFrameService(config)
+  const platformTranscriptService = new PlatformSubtitleTranscriptService(config, taskRepository)
   const asrService = new AsrService(
     config,
     modelCatalogRepository,
@@ -118,6 +120,7 @@ export async function buildApp(inputConfig?: Partial<AppConfig>): Promise<Fastif
   const taskOrchestrator = new TaskOrchestrator(taskRepository, eventBus, {
     asrService,
     mediaPipelineService,
+    platformTranscriptService,
     summaryService,
     studyService,
     videoFrameService,

@@ -20,6 +20,13 @@ describe("TaskOrchestrator control flow", () => {
   let taskOrchestrator: TaskOrchestrator
   let taskRepository: TaskRepository
   let activeTaskId = ""
+  let blockFirstAsrRun = true
+  let platformTranscriptAttemptCount = 0
+  let platformTranscriptResponse: {
+    language: string
+    segments: TranscriptSegment[]
+    text: string
+  } | null = null
   let transcribeRunCount = 0
   let activeTranscribeSignal: AbortSignal | null = null
 
@@ -29,6 +36,9 @@ describe("TaskOrchestrator control flow", () => {
     taskRepository = new TaskRepository(config)
     eventBus = new EventBus(config.eventLogDir)
     activeTaskId = ""
+    blockFirstAsrRun = true
+    platformTranscriptAttemptCount = 0
+    platformTranscriptResponse = null
     transcribeRunCount = 0
     activeTranscribeSignal = null
 
@@ -37,7 +47,7 @@ describe("TaskOrchestrator control flow", () => {
         transcribe: async ({ signal }: { signal?: AbortSignal }) => {
           transcribeRunCount += 1
           activeTranscribeSignal = signal ?? null
-          if (transcribeRunCount === 1 && signal) {
+          if (blockFirstAsrRun && transcribeRunCount === 1 && signal) {
             await new Promise<never>((_, reject) => {
               signal.addEventListener("abort", () => reject(new Error("transcription aborted")), { once: true })
             })
@@ -53,6 +63,24 @@ describe("TaskOrchestrator control flow", () => {
             ],
             text: "测试转写",
           }
+        },
+      } as never,
+      platformTranscriptService: {
+        transcribeFromPlatformSubtitles: async ({
+          onReset,
+          onSegment,
+        }: {
+          onReset?: () => Promise<void> | void
+          onSegment?: (segment: TranscriptSegment) => Promise<void> | void
+        }) => {
+          platformTranscriptAttemptCount += 1
+          if (platformTranscriptResponse) {
+            await onReset?.()
+            for (const segment of platformTranscriptResponse.segments) {
+              await onSegment?.(segment)
+            }
+          }
+          return platformTranscriptResponse
         },
       } as never,
       mediaPipelineService: {
@@ -91,7 +119,7 @@ describe("TaskOrchestrator control flow", () => {
         }),
         isLlmGenerationEnabled: async () => false,
       } as never,
-    })
+    } as never)
   })
 
   afterEach(async () => {
@@ -424,6 +452,97 @@ describe("TaskOrchestrator control flow", () => {
       { start: 30, end: 31.8, text: "第二段 原始" },
     ])
   }, 15_000)
+
+  it("prefers platform subtitles over ASR for remote tasks", async () => {
+    activeTaskId = "task-control-platform-subtitles"
+    blockFirstAsrRun = false
+    platformTranscriptResponse = {
+      language: "zh",
+      segments: [
+        { start: 0, end: 1.2, text: "平台字幕第一句" },
+        { start: 1.2, end: 2.6, text: "平台字幕第二句" },
+      ],
+      text: "平台字幕第一句\n平台字幕第二句",
+    }
+    await taskRepository.create(
+      buildQueuedTaskRecord({
+        createdAt: new Date().toISOString(),
+        language: "zh",
+        modelSize: "small",
+        sourceInput: "https://www.youtube.com/watch?v=platform-subtitles",
+        sourceType: "youtube",
+        taskId: activeTaskId,
+        title: "平台字幕优先测试",
+        workflow: "notes",
+      }),
+    )
+
+    await taskOrchestrator.submit({
+      taskId: activeTaskId,
+      sourceInput: "https://www.youtube.com/watch?v=platform-subtitles",
+      workflow: "notes",
+    })
+
+    await waitFor(async () => {
+      if (transcribeRunCount > 0) {
+        return true
+      }
+      const detail = await taskRepository.getDetail(activeTaskId)
+      return detail?.status === "completed"
+    }, 2_000)
+
+    expect(transcribeRunCount).toBe(0)
+
+    await waitFor(async () => {
+      const detail = await taskRepository.getDetail(activeTaskId)
+      return detail?.status === "completed"
+    }, 5_000)
+
+    const stored = await taskRepository.getStoredRecord(activeTaskId)
+    const eventLogPath = path.join(storageDir, "event-logs", `${activeTaskId}.jsonl`)
+    const eventLog = await readFile(eventLogPath, "utf8")
+
+    expect(platformTranscriptAttemptCount).toBe(1)
+    expect(stored?.transcript_text).toBe("平台字幕第一句\n平台字幕第二句")
+    expect(stored?.transcript_segments_json).toBe(JSON.stringify(platformTranscriptResponse.segments))
+    expect(eventLog).toContain("\"type\":\"transcript_delta\"")
+    expect(eventLog).toContain("平台字幕第一句")
+  })
+
+  it("falls back to ASR after attempting platform subtitles for remote tasks", async () => {
+    activeTaskId = "task-control-platform-subtitles-fallback"
+    blockFirstAsrRun = false
+    platformTranscriptResponse = null
+    await taskRepository.create(
+      buildQueuedTaskRecord({
+        createdAt: new Date().toISOString(),
+        language: "zh",
+        modelSize: "small",
+        sourceInput: "https://www.bilibili.com/video/BV1fallback",
+        sourceType: "bilibili",
+        taskId: activeTaskId,
+        title: "平台字幕回退测试",
+        workflow: "notes",
+      }),
+    )
+
+    await taskOrchestrator.submit({
+      taskId: activeTaskId,
+      sourceInput: "https://www.bilibili.com/video/BV1fallback",
+      workflow: "notes",
+    })
+
+    await waitFor(async () => {
+      const detail = await taskRepository.getDetail(activeTaskId)
+      return detail?.status === "completed"
+    }, 5_000)
+
+    const stored = await taskRepository.getStoredRecord(activeTaskId)
+
+    expect(platformTranscriptAttemptCount).toBe(1)
+    expect(transcribeRunCount).toBe(1)
+    expect(stored?.transcript_text).toBe("测试转写")
+  })
 
   it("publishes study-first substages and transcript-only vqa prewarm for vqa tasks", async () => {
     activeTaskId = "task-control-vqa-stages"

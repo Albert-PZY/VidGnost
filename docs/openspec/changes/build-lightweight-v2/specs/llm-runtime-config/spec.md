@@ -73,6 +73,11 @@ Frontend UI settings SHALL persist a normalized `study_default_translation_targe
 - **THEN** backend normalizes the persisted value to `null`
 - **AND** study-first translation fallback keeps the LLM translation path disabled unless a platform translation track is already available
 
+#### Scenario: Enable platform-subtitle-first online transcription without new runtime fields
+- **WHEN** backend enables `yt-dlp`-first platform subtitle acquisition for online `youtube` or `bilibili` tasks
+- **THEN** existing `/config/llm` and `/config/ui` contracts remain unchanged
+- **AND** the persisted `study_default_translation_target` continues to affect only later Study translation decisions rather than introducing new LLM or Whisper runtime config fields
+
 ### Requirement: LLM runtime SHALL stay synchronized with the managed `llm-default` entry
 Status: `implemented`
 

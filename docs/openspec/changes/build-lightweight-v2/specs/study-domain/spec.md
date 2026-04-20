@@ -74,7 +74,8 @@ Study-domain contracts SHALL expose subtitle-track candidates and translation de
 - **WHEN** backend builds subtitle-track metadata
 - **THEN** `SubtitleTrack.kind` is one of `source`、`platform_translation`、`whisper`、or `llm_translation`
 - **AND** `SubtitleTrack.availability` is one of `available`、`generated`、`missing`、or `failed`
-- **AND** online `youtube` or `bilibili` tasks probe platform subtitle metadata before populating fallback Whisper tracks
+- **AND** online `youtube` or `bilibili` tasks probe platform subtitle metadata through `yt-dlp` and reuse that probe result before populating fallback Whisper tracks
+- **AND** when phase `C` can normalize a usable platform subtitle track, study-domain consumes that same task transcript state instead of forcing a second Whisper transcript source
 - **AND** local tasks still expose a `source` track placeholder together with a Whisper track on the study-domain surface
 
 #### Scenario: Resolve preferred study subtitle track
@@ -92,10 +93,11 @@ Study-domain contracts SHALL expose subtitle-track candidates and translation de
 - **AND** if a matching platform translation track exists, backend records `source=platform_track`
 - **AND** only when the preferred target language exists and no usable platform translation track is available MAY backend generate or reuse an `llm_translation` subtitle track
 
-#### Scenario: Keep subtitle-track metadata separate from transcript-source replacement
+#### Scenario: Keep subtitle-track metadata aligned with the main transcript source
 - **WHEN** study-domain materializes subtitle tracks and translation records on the current baseline
 - **THEN** study-pack generation still derives from normalized transcript artifacts produced by the main pipeline
-- **AND** subtitle-track discovery does not yet replace phase-`C` transcript generation as the default implemented path
+- **AND** for online `youtube` or `bilibili` tasks, those phase-`C` transcript artifacts MAY originate from `yt-dlp` platform subtitles before Whisper fallback is considered
+- **AND** when platform subtitles are unavailable, study-domain continues to consume the fallback Whisper transcript artifacts without changing downstream study contracts
 
 ### Requirement: Study state SHALL capture continue-learning state per task
 Status: `implemented`

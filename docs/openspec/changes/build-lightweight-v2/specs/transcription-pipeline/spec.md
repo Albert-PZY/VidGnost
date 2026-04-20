@@ -34,7 +34,7 @@ Status: `implemented`
 The pipeline SHALL keep these phase boundaries:
 - `A`: source ingestion and normalization
 - `B`: audio extraction and preprocessing
-- `C`: ASR transcription and normalization
+- `C`: platform-subtitle-first transcript acquisition plus ASR fallback normalization
 - `D`: study-first transcript shaping、学习工件收口、transcript-only QA 预热与最终交付
 
 #### Scenario: Phase ordering
@@ -76,10 +76,21 @@ When a task uses workflow `vqa`, phase `D` SHALL prepare the first-question retr
 - **AND** compatibility-only multimodal artifacts MAY still appear on legacy tasks without changing the default retrieval contract
 - **AND** frontend and contracts MUST continue to accept compatibility evidence fields from older tasks while preferring transcript timestamp and text citations on the study-first baseline
 
-### Requirement: Phase C SHALL support the current TS-native ASR routes
+### Requirement: Phase C SHALL support platform-subtitle-first routing plus the current TS-native ASR routes
 Status: `implemented`
 
-Phase `C` SHALL support a local `faster-whisper` Python worker route and a remote OpenAI-compatible ASR route under the same normalized transcript contract.
+Phase `C` SHALL first attempt `yt-dlp` platform subtitles for supported online `youtube` and `bilibili` tasks, and SHALL fall back to the local `faster-whisper` Python worker route or the remote OpenAI-compatible ASR route under the same normalized transcript contract when platform subtitles are unavailable or unusable.
+
+#### Scenario: Use platform subtitles for a supported online task
+- **WHEN** phase `C` runs for an online `youtube` or `bilibili` task and `yt-dlp` can download and parse a usable platform subtitle track
+- **THEN** backend emits the same `transcript_delta` reset and segment events as the ASR path
+- **AND** backend persists the resulting normalized transcript into `transcript_text`、`transcript_segments_json`、`C/transcript.txt`、and `C/transcript.segments.json`
+- **AND** backend does not invoke Whisper for that task
+
+#### Scenario: Fall back after platform subtitles are unavailable
+- **WHEN** phase `C` runs for an online `youtube` or `bilibili` task but `yt-dlp` cannot resolve or parse a usable platform subtitle track
+- **THEN** backend records the platform-subtitle miss in stage-`C` logs
+- **AND** backend continues on the same phase-`C` execution by falling back to the Whisper-compatible ASR route instead of failing the task solely because platform subtitles were absent
 
 #### Scenario: Run local faster-whisper transcription
 - **WHEN** `whisper-default` uses the local provider
