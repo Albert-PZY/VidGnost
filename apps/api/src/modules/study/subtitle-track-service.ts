@@ -1,31 +1,22 @@
-import { spawn } from "node:child_process"
-
 import type { AppConfig } from "../../core/config.js"
 import type { StoredTaskRecord, TaskRepository } from "../tasks/task-repository.js"
 import { normalizeSourceType } from "../tasks/task-support.js"
+import {
+  PlatformSubtitleProbeService,
+  SUBTITLE_PROBE_ARTIFACT_PATH,
+  expandSubtitleProbeEntries,
+} from "../subtitles/platform-subtitle-probe-service.js"
 import type { SubtitleTrackBundle } from "./study-workspace-types.js"
 
-interface SubtitleProbeEntry {
-  ext?: string
-  name?: string
-  url?: string
-}
-
-interface SubtitleProbePayload {
-  automatic_captions?: Record<string, SubtitleProbeEntry[]>
-  subtitles?: Record<string, SubtitleProbeEntry[]>
-}
-
-interface ResolvedProbe {
-  payload: SubtitleProbePayload | null
-  status: "available" | "failed" | "missing"
-}
-
 export class SubtitleTrackService {
+  private readonly probeService: PlatformSubtitleProbeService
+
   constructor(
-    private readonly config: AppConfig,
+    config: AppConfig,
     private readonly taskRepository: TaskRepository,
-  ) {}
+  ) {
+    this.probeService = new PlatformSubtitleProbeService(config, taskRepository)
+  }
 
   async buildTracks(task: StoredTaskRecord): Promise<SubtitleTrackBundle> {
     const taskId = String(task.id || "")
@@ -33,9 +24,10 @@ export class SubtitleTrackService {
     const language = normalizeLanguage(task.language)
     const now = normalizeTimestamp(task.updated_at || task.created_at)
     const whisperTrackId = "track-whisper-primary"
+    const sourceInput = String(task.source_input || "").trim()
 
     const tracks = sourceType === "youtube" || sourceType === "bilibili"
-      ? await this.buildRemoteTracks(taskId, sourceType, language, now)
+      ? await this.buildRemoteTracks(taskId, sourceInput, sourceType, language, now)
       : buildLocalTracks(taskId, sourceType, language, now)
 
     const whisperTrack = {
@@ -70,14 +62,15 @@ export class SubtitleTrackService {
 
   private async buildRemoteTracks(
     taskId: string,
+    sourceInput: string,
     sourceType: "youtube" | "bilibili",
     language: string,
     now: string,
   ) {
     const platformLabel = sourceType === "youtube" ? "YouTube" : "Bilibili"
-    const probe = await this.resolveProbe(taskId)
-    const subtitles = normalizeTrackEntries(probe.payload?.subtitles)
-    const automaticCaptions = normalizeTrackEntries(probe.payload?.automatic_captions)
+    const probe = await this.probeService.resolveProbe({ sourceInput, taskId })
+    const subtitles = expandSubtitleProbeEntries(probe.payload?.subtitles)
+    const automaticCaptions = expandSubtitleProbeEntries(probe.payload?.automatic_captions)
     const sourceEntry =
       subtitles.find((entry) => normalizeLanguage(entry.language) === language) ??
       subtitles[0] ??
@@ -92,7 +85,7 @@ export class SubtitleTrackService {
       kind: "source" as const,
       availability: sourceEntry ? "available" as const : probe.status,
       is_default: false,
-      artifact_path: sourceEntry ? "D/study/subtitle-probe.json" : null,
+      artifact_path: sourceEntry ? SUBTITLE_PROBE_ARTIFACT_PATH : null,
       source_url: sourceEntry?.url ?? null,
       created_at: now,
       updated_at: now,
@@ -108,84 +101,13 @@ export class SubtitleTrackService {
         kind: "platform_translation" as const,
         availability: "available" as const,
         is_default: false,
-        artifact_path: "D/study/subtitle-probe.json",
+        artifact_path: SUBTITLE_PROBE_ARTIFACT_PATH,
         source_url: entry.url ?? null,
         created_at: now,
         updated_at: now,
       }))
 
     return [sourceTrack, ...translationTracks]
-  }
-
-  private async resolveProbe(taskId: string): Promise<ResolvedProbe> {
-    const cached = await this.readCachedProbe(taskId)
-    if (cached) {
-      const subtitles = normalizeTrackEntries(cached.subtitles)
-      const automaticCaptions = normalizeTrackEntries(cached.automatic_captions)
-      return {
-        payload: cached,
-        status: subtitles.length > 0 || automaticCaptions.length > 0 ? "available" : "missing",
-      }
-    }
-
-    const task = await this.taskRepository.getStoredRecord(taskId)
-    const sourceInput = String(task?.source_input || "").trim()
-    if (!sourceInput) {
-      return { payload: null, status: "failed" }
-    }
-
-    const probed = await this.runYtDlpProbe(sourceInput)
-    if (!probed) {
-      return { payload: null, status: "failed" }
-    }
-    await this.taskRepository.writeTaskArtifactText(taskId, "D/study/subtitle-probe.json", JSON.stringify(probed, null, 2))
-    const subtitles = normalizeTrackEntries(probed.subtitles)
-    const automaticCaptions = normalizeTrackEntries(probed.automatic_captions)
-    return {
-      payload: probed,
-      status: subtitles.length > 0 || automaticCaptions.length > 0 ? "available" : "missing",
-    }
-  }
-
-  private async readCachedProbe(taskId: string): Promise<SubtitleProbePayload | null> {
-    const cached = await this.taskRepository.readTaskArtifactText(taskId, "D/study/subtitle-probe.json")
-    if (!cached) {
-      return null
-    }
-    try {
-      return JSON.parse(cached) as SubtitleProbePayload
-    } catch {
-      return null
-    }
-  }
-
-  private async runYtDlpProbe(sourceInput: string): Promise<SubtitleProbePayload | null> {
-    const binary = this.config.ytdlpExecutable || "yt-dlp"
-    return new Promise<SubtitleProbePayload | null>((resolve) => {
-      const child = spawn(binary, ["--dump-single-json", "--skip-download", "--no-warnings", sourceInput], {
-        stdio: ["ignore", "pipe", "pipe"],
-      })
-      const stdoutChunks: Buffer[] = []
-      child.stdout.on("data", (chunk) => {
-        stdoutChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
-      })
-      child.on("error", () => resolve(null))
-      child.on("close", (code) => {
-        if (code !== 0) {
-          resolve(null)
-          return
-        }
-        try {
-          const parsed = JSON.parse(Buffer.concat(stdoutChunks).toString("utf8")) as SubtitleProbePayload
-          resolve({
-            automatic_captions: parsed.automatic_captions || {},
-            subtitles: parsed.subtitles || {},
-          })
-        } catch {
-          resolve(null)
-        }
-      })
-    })
   }
 }
 
@@ -206,15 +128,6 @@ function buildLocalTracks(taskId: string, sourceType: "local_file" | "local_path
       updated_at: now,
     },
   ]
-}
-
-function normalizeTrackEntries(payload: Record<string, SubtitleProbeEntry[]> | undefined) {
-  return Object.entries(payload || {})
-    .flatMap(([language, entries]) => (entries || []).map((entry) => ({
-      ...entry,
-      language,
-    })))
-    .filter((entry) => Boolean(entry.language))
 }
 
 function dedupeTracks<T extends { track_id: string }>(tracks: T[]): T[] {

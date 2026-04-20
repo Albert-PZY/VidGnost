@@ -85,11 +85,13 @@ Phase `C` SHALL first attempt `yt-dlp` platform subtitles for supported online `
 - **WHEN** phase `C` runs for an online `youtube` or `bilibili` task and `yt-dlp` can download and parse a usable platform subtitle track
 - **THEN** backend emits the same `transcript_delta` reset and segment events as the ASR path
 - **AND** backend persists the resulting normalized transcript into `transcript_text`、`transcript_segments_json`、`C/transcript.txt`、and `C/transcript.segments.json`
+- **AND** backend persists the normalized `yt-dlp` subtitle probe payload under `D/study/subtitle-probe.json` so later subtitle-track resolution reuses the same probe result instead of re-running divergent platform discovery
 - **AND** backend does not invoke Whisper for that task
 
 #### Scenario: Fall back after platform subtitles are unavailable
 - **WHEN** phase `C` runs for an online `youtube` or `bilibili` task but `yt-dlp` cannot resolve or parse a usable platform subtitle track
 - **THEN** backend records the platform-subtitle miss in stage-`C` logs
+- **AND** backend keeps any successfully normalized subtitle probe payload reusable through the same `D/study/subtitle-probe.json` artifact contract for later study-domain track resolution
 - **AND** backend continues on the same phase-`C` execution by falling back to the Whisper-compatible ASR route instead of failing the task solely because platform subtitles were absent
 
 #### Scenario: Run local faster-whisper transcription

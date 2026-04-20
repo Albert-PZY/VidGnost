@@ -1,8 +1,11 @@
 import type { TranscriptSegment } from "@vidgnost/contracts"
 
 import type { AppConfig } from "../../core/config.js"
-import { runCommand } from "../../core/process.js"
-import { resolveYtDlpExecutable } from "../media/media-pipeline-service.js"
+import {
+  PlatformSubtitleProbeService,
+  type SubtitleProbePayload,
+  expandSubtitleProbeEntries,
+} from "../subtitles/platform-subtitle-probe-service.js"
 import type { TaskRepository } from "../tasks/task-repository.js"
 import {
   buildTranscriptText,
@@ -11,17 +14,6 @@ import {
   parseSrtSegments,
   parseVttSegments,
 } from "./transcript-segment-normalizer.js"
-
-interface SubtitleProbeEntry {
-  ext?: string
-  name?: string
-  url?: string
-}
-
-interface SubtitleProbePayload {
-  automatic_captions?: Record<string, SubtitleProbeEntry[]>
-  subtitles?: Record<string, SubtitleProbeEntry[]>
-}
 
 interface ProbeTrackCandidate {
   ext: string
@@ -48,10 +40,14 @@ export interface PlatformSubtitleTranscriptionResult {
 }
 
 export class PlatformSubtitleTranscriptService {
+  private readonly probeService: PlatformSubtitleProbeService
+
   constructor(
-    private readonly config: AppConfig,
+    config: AppConfig,
     private readonly taskRepository: TaskRepository,
-  ) {}
+  ) {
+    this.probeService = new PlatformSubtitleProbeService(config, taskRepository)
+  }
 
   async transcribeFromPlatformSubtitles(input: {
     onLog?: (message: string) => Promise<void> | void
@@ -73,17 +69,17 @@ export class PlatformSubtitleTranscriptService {
       return null
     }
 
-    const probe = await this.resolveProbe({
+    const probe = await this.probeService.resolveProbe({
       onLog: input.onLog,
       signal: input.signal,
       sourceInput,
       taskId: input.taskId,
     })
-    if (!probe) {
+    if (!probe.payload) {
       return null
     }
 
-    const selectedTrack = selectBestTrack(probe, input.preferredLanguage)
+    const selectedTrack = selectBestTrack(probe.payload, input.preferredLanguage)
     if (!selectedTrack) {
       await input.onLog?.("yt-dlp 未发现可用平台字幕，已回退 ASR 转写")
       return null
@@ -142,46 +138,6 @@ export class PlatformSubtitleTranscriptService {
     }
   }
 
-  private async resolveProbe(input: {
-    onLog?: (message: string) => Promise<void> | void
-    signal?: AbortSignal
-    sourceInput: string
-    taskId: string
-  }): Promise<SubtitleProbePayload | null> {
-    const cached = await this.taskRepository.readTaskArtifactText(input.taskId, "D/study/subtitle-probe.json")
-    if (cached) {
-      try {
-        return JSON.parse(cached) as SubtitleProbePayload
-      } catch {
-        await input.onLog?.("已忽略损坏的 subtitle-probe 缓存，准备重新探测平台字幕")
-      }
-    }
-
-    const ytdlpPath = await resolveYtDlpExecutable(this.config, input.signal)
-    if (!ytdlpPath) {
-      await input.onLog?.("未找到可用 yt-dlp，跳过平台字幕，直接回退 ASR 转写")
-      return null
-    }
-
-    try {
-      const result = await runCommand({
-        command: ytdlpPath,
-        args: ["--dump-single-json", "--skip-download", "--no-warnings", "--no-playlist", input.sourceInput],
-        signal: input.signal,
-      })
-      const parsed = JSON.parse(result.stdout) as SubtitleProbePayload
-      const payload = {
-        automatic_captions: parsed.automatic_captions || {},
-        subtitles: parsed.subtitles || {},
-      }
-      await this.taskRepository.writeTaskArtifactText(input.taskId, "D/study/subtitle-probe.json", JSON.stringify(payload, null, 2))
-      return payload
-    } catch (error) {
-      await input.onLog?.(`yt-dlp 平台字幕探测失败，已回退 ASR 转写: ${toErrorMessage(error)}`)
-      return null
-    }
-  }
-
   private async downloadSubtitle(candidate: ProbeTrackCandidate, signal?: AbortSignal): Promise<string | null> {
     try {
       const response = await fetch(candidate.url, {
@@ -221,19 +177,17 @@ function selectBestTrack(
 }
 
 function normalizeProbeTrackCandidates(
-  payload: Record<string, SubtitleProbeEntry[]> | undefined,
+  payload: SubtitleProbePayload["automatic_captions"] | SubtitleProbePayload["subtitles"] | undefined,
   kind: ProbeTrackCandidate["kind"],
 ): ProbeTrackCandidate[] {
-  return Object.entries(payload || {})
-    .flatMap(([language, entries]) =>
-      (entries || []).map((entry) => ({
-        ext: sanitizeSegment(entry.ext || ""),
-        kind,
-        label: String(entry.name || "").trim(),
-        language: normalizeLanguage(language),
-        url: String(entry.url || "").trim(),
-      })),
-    )
+  return expandSubtitleProbeEntries(payload)
+    .map((entry) => ({
+      ext: sanitizeSegment(entry.ext || ""),
+      kind,
+      label: String(entry.name || "").trim(),
+      language: normalizeLanguage(entry.language),
+      url: String(entry.url || "").trim(),
+    }))
     .filter((entry) => Boolean(entry.language) && Boolean(entry.url))
 }
 
@@ -353,8 +307,4 @@ function sanitizeSegment(value: string): string {
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9_-]+/gu, "")
-}
-
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error && error.message.trim() ? error.message : "unknown error"
 }
