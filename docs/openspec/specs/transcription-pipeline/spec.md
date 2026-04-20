@@ -45,7 +45,7 @@ The pipeline SHALL keep these phase boundaries:
 ### Requirement: Stage D SHALL execute ordered substage chain
 Status: `implemented`
 
-Inside phase `D`, backend SHALL execute `transcript_optimize -> fusion_delivery` in order. For workflow `vqa`, backend SHALL insert multimodal prewarm substages between those two anchors instead of collapsing them into a single opaque completion hop.
+Inside phase `D`, backend SHALL execute `transcript_optimize -> fusion_delivery` in order. For workflow `vqa`, backend SHALL keep transcript-only QA prewarm on the same study-first chain without making frame extraction, VLM inference, or image-semantic retrieval a default prerequisite.
 
 #### Scenario: Ordered stage-D execution
 - **WHEN** phase `D` starts
@@ -54,23 +54,22 @@ Inside phase `D`, backend SHALL execute `transcript_optimize -> fusion_delivery`
 
 #### Scenario: Ordered stage-D execution for VQA
 - **WHEN** phase `D` runs for a `vqa` task
-- **THEN** backend emits ordered substage transitions for `transcript_vectorize`、`frame_extract`、`frame_semantic`、`multimodal_index_fusion`
+- **THEN** backend emits ordered substage transitions for transcript preparation and transcript-only QA prewarm before `fusion_delivery`
 - **AND** those VQA substages complete before `fusion_delivery`
-- **AND** current migration period MAY still emit the legacy umbrella marker `multimodal_prewarm` together with the granular VQA substages for compatibility
+- **AND** current migration period MAY still expose legacy compatibility markers for older task artifacts without redefining the default study-first chain
 
-### Requirement: VQA tasks SHALL persist multimodal retrieval prewarm artifacts before completion
+### Requirement: VQA tasks SHALL persist transcript-only retrieval prewarm artifacts before completion
 Status: `partial`
 
 When a task uses workflow `vqa`, phase `D` SHALL prepare the first-question retrieval corpus before the task enters the completed state.
 
-#### Scenario: Complete a VQA task with multimodal retrieval prewarm
+#### Scenario: Complete a VQA task with transcript-only retrieval prewarm
 - **WHEN** a `vqa` task finishes phase `D`
 - **THEN** backend persists a task-local retrieval artifact under `D/vqa-prewarm/index.json`
-- **AND** target chain also persists frame extraction and frame-semantic artifacts such as `D/vqa-prewarm/frames/manifest.json` and `D/vqa-prewarm/frame-semantic/index.json`
-- **AND** if frame extraction only yields fallback placeholder frames or a frame cannot be sent to VLM successfully, backend still writes template frame-semantic evidence and continues the prewarm flow instead of blocking phase `D` on VLM inference
-- **AND** task event stream exposes granular multimodal prewarm substages before `fusion_delivery` marks the final delivery step
-- **AND** current migration period MAY still reuse transcript-only prewarm artifacts when multimodal artifacts are absent
-- **AND** frontend and contracts MUST continue to accept both the new multimodal artifact keys and legacy `multimodal_prewarm` compatibility outputs
+- **AND** the default prepared corpus is built from normalized transcript chunks, transcript citations, and transcript-derived retrieval metadata
+- **AND** task event stream exposes transcript-only QA prewarm progress before `fusion_delivery` marks the final delivery step
+- **AND** compatibility-only multimodal artifacts MAY still appear on legacy tasks without changing the default retrieval contract
+- **AND** frontend and contracts MUST continue to accept compatibility evidence fields from older tasks while preferring transcript timestamp and text citations on the study-first baseline
 
 ### Requirement: Phase C SHALL support the current TS-native ASR routes
 Status: `implemented`
@@ -180,13 +179,13 @@ Tasks created from local files, explicit local paths, or supported downloadable 
 ### Requirement: Task detail SHALL expose stage-D observability
 Status: `implemented`
 
-Task detail response SHALL expose `vm_phase_metrics` entries for `transcript_optimize` and final phase `D` delivery. For VQA tasks, the same observability surface SHALL also expose the granular multimodal prewarm substages.
+Task detail response SHALL expose `vm_phase_metrics` entries for `transcript_optimize` and final phase `D` delivery. For VQA tasks, the same observability surface SHALL also expose transcript-only QA prewarm progress without requiring multimodal stage metrics on the default study-first baseline.
 
 #### Scenario: Query task detail after phase D
 - **WHEN** client requests task detail after phase `D`
 - **THEN** response includes timing and status fields for `transcript_optimize`
 - **AND** the final phase-`D` metric reflects fusion delivery completion state
-- **AND** for `vqa` tasks, response includes timing and status fields for `transcript_vectorize`、`frame_extract`、`frame_semantic`、`multimodal_index_fusion`
+- **AND** for `vqa` tasks, response includes timing and status fields for transcript preparation and transcript-only QA prewarm when those metrics are persisted
 - **AND** once `fusion_delivery` has completed, parent `stage_metrics.D.status` is persisted as `completed` instead of remaining at a stale in-progress status
 
 #### Scenario: Query task detail while pipeline is still running

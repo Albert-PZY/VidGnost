@@ -397,13 +397,15 @@ Workbench bootstrap SHALL expose a desktop splash progress state before the main
 - **THEN** the renderer caches `event_log_dir` and `trace_log_dir` as the preferred degraded recovery targets for `打开日志目录`
 - **AND** the degraded recovery panel keeps the log action unavailable until at least one runtime log path has been resolved
 
-### Requirement: Task processing workbench SHALL provide a resizable evidence-driven workspace
-Task processing workbench SHALL use a horizontal resizable split layout. For notes tasks, the left workspace SHALL provide `转写片段`, `文本纠错`, `证据时间轴`, and `阶段输出` tabs. For VQA tasks, the left workspace SHALL provide `转写片段`, `证据时间轴`, `阶段输出`, and a conditional `文本纠错` tab whenever transcript correction is enabled for that task. The right workspace SHALL switch between `Markdown 工作区 / 思维导图` for notes tasks and `流式问答 / Trace Theater` for VQA tasks.
+### Requirement: Task processing workbench SHALL provide a study-first resizable workspace
+Task processing workbench SHALL use a horizontal resizable split layout and default to a study-first workbench structure. The workbench SHALL expose `Study / QA / Flow / Trace / Knowledge` task modes while keeping transcript, stage output, and runtime inspection available through the same task shell.
 
-#### Scenario: Open a completed notes task
-- **WHEN** user opens a notes task in the processing workbench
+#### Scenario: Open a completed study task
+- **WHEN** user opens a completed task in the processing workbench
 - **THEN** the renderer shows the resizable video-and-artifact layout
-- **AND** the left workspace exposes an additional `文本纠错` tab dedicated to transcript correction output
+- **AND** the default selected mode is `Study`
+- **AND** the `Study` mode exposes subtitle tracks, overview, highlights, themes, suggested questions, transcript linkage, and study-pack driven reading surfaces when those artifacts are available
+- **AND** the workbench still exposes transcript and stage-oriented detail surfaces for deeper inspection
 - **AND** left and right workspace tab bars use a clear filled selected state instead of relying only on a thin bottom border
 - **AND** the Markdown workspace renders a single notes Markdown surface instead of duplicating equivalent summary content beside it
 - **AND** the Markdown workspace wraps that notes surface inside a dedicated reading panel with a compact darker action header and a continuous reading body so wallpaper imagery stays atmospheric instead of competing with note readability
@@ -419,6 +421,11 @@ Task processing workbench SHALL use a horizontal resizable split layout. For not
 - **AND** in light theme with a custom skin active, transcript cards and correction surfaces keep white foreground text while timestamp chips and quick-action icons remain readable against the glass surface
 - **AND** transcript cards support workflow-specific quick actions such as `加入笔记草稿` for notes tasks and `设为问答问题` for VQA tasks
 - **AND** in light theme with a custom skin active, evidence-timeline seek buttons use the active theme hue family for their resting fill instead of falling back to neutral outline styling
+
+#### Scenario: Open the Knowledge mode for a task
+- **WHEN** user switches to the `Knowledge` mode inside the task workbench
+- **THEN** the renderer shows task-linked knowledge notes, excerpts, and export actions without leaving the current task context
+- **AND** transcript excerpts, QA excerpts, and summary-derived notes remain attributable to their originating task and timestamp context
 
 #### Scenario: Open task detail from history or recent tasks
 - **WHEN** user opens a task and the right-side artifact workspace still needs several seconds to load detail data
@@ -507,7 +514,7 @@ Frontend UI library SHALL provide a reusable virtual-list component under `apps/
 - **WHEN** user submits a question from the VQA workbench
 - **THEN** before retrieval hits or answer tokens arrive, the assistant bubble shows a temporary loading placeholder with business-language progress copy instead of a blank bubble
 - **AND** while the answer stream is active, the composer action switches from `发送` to `停止`
-- **AND** if the task has already completed its persisted `D/vqa-prewarm` preparation, the first question reuses that prepared retrieval corpus (merged transcript evidence and VLM keyframe semantics) instead of rebuilding the same vector index on demand
+- **AND** if the task has already completed its persisted `D/vqa-prewarm` preparation, the first question reuses that prepared transcript-only retrieval corpus instead of rebuilding the same vector index on demand
 - **THEN** the renderer streams incremental answer chunks into the chat surface
 - **AND** while answer chunks are still streaming, the assistant bubble keeps a lightweight plain-text surface instead of re-running full Markdown rendering on every chunk
 - **AND** streamed assistant answers render as Markdown instead of plain paragraph text
@@ -526,10 +533,10 @@ Frontend UI library SHALL provide a reusable virtual-list component under `apps/
 - **AND** persisted per-task VQA trace snapshots keep only a bounded recent cache window while preserving the active or selected trace entry so renderer-side storage does not grow without limit
 - **AND** once the chat reaches fifteen user turns, the sixteenth send action first asks for confirmation and explains that continuing will clear the existing conversation before starting a new one
 
-#### Scenario: Display VQA workflow steps during multimodal migration
+#### Scenario: Display VQA workflow steps on the study-first baseline
 - **WHEN** workbench renders task steps for `vqa`
-- **THEN** the UI shows explicit multimodal stages (`文本向量化`、`视频抽帧`、`画面语义识别`、`多模态融合与就绪`) instead of collapsing directly to a generic `问答就绪`
-- **AND** while backend substage names are still being migrated, the UI accepts legacy substage keys such as `multimodal_prewarm` and maps them into the new step presentation
+- **THEN** the UI shows transcript preparation, QA prewarm, and final delivery as the primary VQA readiness path instead of requiring explicit multimodal stages
+- **AND** while backend substage names are still being migrated, the UI MAY map legacy compatibility keys such as `multimodal_prewarm` into the study-first step presentation without redefining the default path
 
 ### Requirement: Prompt settings SHALL include an experiment surface
 Prompt-template settings SHALL include a `Prompt Lab` surface that compares two templates under the same channel against the same sample title and transcript.
