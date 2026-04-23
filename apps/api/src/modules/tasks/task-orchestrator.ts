@@ -35,6 +35,7 @@ interface ActiveExecution {
   cancelled: boolean
   completion: Promise<void>
   mode: "full" | "rerun-stage-d"
+  pauseAbortPending: boolean
   pauseRequested: boolean
   resumeResolvers: Array<() => void>
   resolveCompletion: () => void
@@ -149,6 +150,7 @@ export class TaskOrchestrator {
     }
 
     execution.pauseRequested = true
+    execution.pauseAbortPending = execution.abortController !== null
     execution.abortController?.abort()
     await this.updateStageMetric({
       taskId,
@@ -229,6 +231,7 @@ export class TaskOrchestrator {
       cancelled: false,
       completion,
       mode,
+      pauseAbortPending: false,
       pauseRequested: false,
       resumeResolvers: [],
       resolveCompletion,
@@ -769,6 +772,13 @@ export class TaskOrchestrator {
 
     const controller = new AbortController()
     execution.abortController = controller
+    let abortedByPause = false
+    controller.signal.addEventListener("abort", () => {
+      abortedByPause = execution.pauseAbortPending
+      if (execution.pauseAbortPending) {
+        execution.pauseAbortPending = false
+      }
+    }, { once: true })
     try {
       const result = await runner(controller.signal)
       if (execution.cancelled) {
@@ -782,7 +792,7 @@ export class TaskOrchestrator {
       if (execution.cancelled) {
         throw new TaskCancelledError()
       }
-      if (controller.signal.aborted && execution.pauseRequested) {
+      if (controller.signal.aborted && (abortedByPause || execution.pauseRequested)) {
         throw new TaskPauseRequestedError()
       }
       if (controller.signal.aborted) {

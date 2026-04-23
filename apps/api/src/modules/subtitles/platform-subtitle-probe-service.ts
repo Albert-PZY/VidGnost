@@ -99,6 +99,23 @@ export class PlatformSubtitleProbeService {
       }
     }
   }
+
+  async readCachedProbe(taskId: string): Promise<ResolvedSubtitleProbe | null> {
+    const cached = await this.taskRepository.readTaskArtifactText(taskId, SUBTITLE_PROBE_ARTIFACT_PATH)
+    if (!cached) {
+      return null
+    }
+
+    try {
+      const payload = normalizeProbePayload(JSON.parse(cached) as SubtitleProbePayload)
+      return {
+        payload,
+        status: resolveProbeStatus(payload),
+      }
+    } catch {
+      return null
+    }
+  }
 }
 
 export function expandSubtitleProbeEntries(

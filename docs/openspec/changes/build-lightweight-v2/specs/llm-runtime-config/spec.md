@@ -78,6 +78,22 @@ Frontend UI settings SHALL persist a normalized `study_default_translation_targe
 - **THEN** existing `/config/llm` and `/config/ui` contracts remain unchanged
 - **AND** the persisted `study_default_translation_target` continues to affect only later Study translation decisions rather than introducing new LLM or Whisper runtime config fields
 
+### Requirement: Settings config surface SHALL expose dedicated Bilibili auth routes without leaking cookies
+Status: `implemented`
+
+The config surface SHALL expose dedicated Bilibili auth routes through `/config/bilibili-auth`、`/config/bilibili-auth/qrcode/start`、`/config/bilibili-auth/qrcode/poll`、and `/config/bilibili-auth/session`. This auth state remains separate from `/config/ui`、`/config/llm`、and model-routing config.
+
+#### Scenario: Read Bilibili auth status from settings
+- **WHEN** frontend requests `/config/bilibili-auth`
+- **THEN** backend returns status, account summary, pending QR metadata, and timestamp fields needed by settings
+- **AND** the response does not include raw cookie values
+
+#### Scenario: Persist Bilibili auth state only on backend local storage
+- **WHEN** backend starts QR login, completes polling, or marks the Bilibili session expired
+- **THEN** backend persists the normalized auth snapshot under local backend storage
+- **AND** raw cookies remain available only to backend services that call Bilibili
+- **AND** frontend never reads or stores those cookie values
+
 ### Requirement: LLM runtime SHALL stay synchronized with the managed `llm-default` entry
 Status: `implemented`
 

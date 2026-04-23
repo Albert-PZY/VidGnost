@@ -286,7 +286,9 @@ export class StudyService {
       parseTranscriptSegments(context.task.transcript_segments_json),
       context.updatedAt,
     )
-    const subtitleBundle = await this.subtitleTrackService.buildTracks(context.task)
+    const subtitleBundle = await this.subtitleTrackService.buildTracks(context.task, {
+      probeMode: "cached",
+    })
     const mergedTracks = mergeTracks(subtitleBundle.tracks, context.persistedTracks)
     const translationDecision = await this.translationDecisionService.resolve({
       preferredTargetLanguage: context.uiSettings.study_default_translation_target,

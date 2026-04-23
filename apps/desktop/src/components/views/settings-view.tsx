@@ -54,16 +54,20 @@ import { cn } from "@/lib/utils"
 import {
   cancelModelDownload,
   createPromptTemplate,
+  deleteBilibiliSession,
   deletePromptTemplate,
   getApiErrorMessage,
+  getBilibiliAuthStatus,
   getLLMConfig,
   getModels,
   getOllamaRuntimeConfig,
   getPromptTemplates,
   getWhisperConfig,
   migrateLocalModels,
+  pollBilibiliQrLogin,
   reloadModels,
   restartOllamaService,
+  startBilibiliQrLogin,
   startModelDownload,
   updateLLMConfig,
   updateModel,
@@ -75,6 +79,9 @@ import {
 import { formatBytes } from "@/lib/format"
 import { getImageLayout } from "@/lib/ui-skin"
 import type {
+  BilibiliAuthQrPollResponse,
+  BilibiliAuthQrStartResponse,
+  BilibiliAuthStatusResponse,
   LLMConfigResponse,
   LocalModelsMigrationResponse,
   ModelDescriptor,
@@ -139,6 +146,7 @@ const themeHuePresets = [
 ] as const
 const DEFAULT_THEME_HUE = themeHuePresets[0].value
 const BACKGROUND_IMAGE_FILE_SIZE_LIMIT = 12 * 1024 * 1024
+const DEFAULT_BILIBILI_POLL_INTERVAL_MS = 2000
 
 const EMPTY_PROMPT_FORM = {
   channel: "correction" as PromptTemplateChannel,
@@ -378,6 +386,27 @@ type PickedSkinImage = {
   sizeBytes?: number
 }
 
+function toBilibiliPendingLogin(response: BilibiliAuthStatusResponse | null): BilibiliAuthQrStartResponse | null {
+  if (
+    !response ||
+    response.status !== "pending" ||
+    !response.qrcode_key ||
+    !response.qrcode_url ||
+    !response.qr_image_data_url
+  ) {
+    return null
+  }
+
+  return {
+    status: "pending",
+    qrcode_key: response.qrcode_key,
+    qrcode_url: response.qrcode_url,
+    qr_image_data_url: response.qr_image_data_url,
+    expires_at: response.expires_at,
+    poll_interval_ms: response.poll_interval_ms || DEFAULT_BILIBILI_POLL_INTERVAL_MS,
+  }
+}
+
 export function SettingsView({
   uiSettings,
   onUiSettingsChange,
@@ -390,6 +419,9 @@ export function SettingsView({
   const [studyDefaultTranslationTarget, setStudyDefaultTranslationTarget] = React.useState(
     uiSettings.study_default_translation_target || "",
   )
+  const [bilibiliAuth, setBilibiliAuth] = React.useState<BilibiliAuthStatusResponse | null>(null)
+  const [bilibiliQrLogin, setBilibiliQrLogin] = React.useState<BilibiliAuthQrStartResponse | null>(null)
+  const [bilibiliPollResult, setBilibiliPollResult] = React.useState<BilibiliAuthQrPollResponse | null>(null)
   const [models, setModels] = React.useState<ModelDescriptor[]>([])
   const [promptBundle, setPromptBundle] = React.useState<PromptTemplateBundleResponse | null>(null)
   const [whisperConfig, setWhisperConfig] = React.useState<WhisperConfigResponse | null>(null)
@@ -413,6 +445,10 @@ export function SettingsView({
   const [isSavingPrompt, setIsSavingPrompt] = React.useState(false)
   const [isSavingModel, setIsSavingModel] = React.useState(false)
   const [isSavingUi, setIsSavingUi] = React.useState(false)
+  const [isRefreshingBilibiliAuth, setIsRefreshingBilibiliAuth] = React.useState(false)
+  const [isStartingBilibiliQrLogin, setIsStartingBilibiliQrLogin] = React.useState(false)
+  const [isPollingBilibiliQrLogin, setIsPollingBilibiliQrLogin] = React.useState(false)
+  const [isDeletingBilibiliSession, setIsDeletingBilibiliSession] = React.useState(false)
   const [isUpdatingWhisper, setIsUpdatingWhisper] = React.useState(false)
   const [isUpdatingOllamaRuntime, setIsUpdatingOllamaRuntime] = React.useState(false)
   const [isRestartingOllamaService, setIsRestartingOllamaService] = React.useState(false)
@@ -428,6 +464,7 @@ export function SettingsView({
   const backgroundFileInputRef = React.useRef<HTMLInputElement | null>(null)
   const backgroundFileResolverRef = React.useRef<((image: PickedSkinImage | null) => void) | null>(null)
   const skinPreviewRef = React.useRef<HTMLDivElement | null>(null)
+  const bilibiliPollTimerRef = React.useRef<number | null>(null)
   const [skinPreviewSize, setSkinPreviewSize] = React.useState({ width: 0, height: 0 })
   const [skinPreviewImageSize, setSkinPreviewImageSize] = React.useState({ width: 0, height: 0 })
   const ollamaService = ollamaConfig?.service ?? null
@@ -451,12 +488,6 @@ export function SettingsView({
       document.documentElement.style.setProperty("--theme-hue", String(uiSettings.theme_hue))
     }
   }, [themeHue, uiSettings.theme_hue])
-
-  React.useEffect(() => {
-    return () => {
-      onUiSettingsPreviewChange(null)
-    }
-  }, [onUiSettingsPreviewChange])
 
   React.useEffect(() => {
     if (activeSection !== "appearance" || !skinPreviewRef.current) {
@@ -549,21 +580,118 @@ export function SettingsView({
     setLocalMigrationTarget((current) => current || response.models_dir)
   }, [])
 
+  const stopBilibiliQrPolling = React.useCallback(() => {
+    if (bilibiliPollTimerRef.current !== null) {
+      window.clearTimeout(bilibiliPollTimerRef.current)
+      bilibiliPollTimerRef.current = null
+    }
+  }, [])
+
+  const loadBilibiliAuthStatus = React.useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false
+    if (!silent) {
+      setIsRefreshingBilibiliAuth(true)
+    }
+    try {
+      const response = await getBilibiliAuthStatus()
+      setBilibiliAuth(response)
+      const pendingLogin = toBilibiliPendingLogin(response)
+      setBilibiliQrLogin(pendingLogin)
+      if (!pendingLogin) {
+        setBilibiliPollResult(null)
+        stopBilibiliQrPolling()
+      }
+      return response
+    } catch (error) {
+      if (!silent) {
+        toast.error(getApiErrorMessage(error, "加载 B站 登录状态失败"))
+      }
+      return null
+    } finally {
+      if (!silent) {
+        setIsRefreshingBilibiliAuth(false)
+      }
+    }
+  }, [stopBilibiliQrPolling])
+
+  const pollBilibiliQrStatus = React.useCallback(async (qrcodeKey: string, silent = false) => {
+    setIsPollingBilibiliQrLogin(true)
+    try {
+      const response = await pollBilibiliQrLogin(qrcodeKey)
+      setBilibiliPollResult(response)
+      if (response.status === "success") {
+        stopBilibiliQrPolling()
+        setBilibiliQrLogin(null)
+        await loadBilibiliAuthStatus({ silent: true })
+        toast.success("B站账号已登录")
+        return response
+      }
+      if (response.status === "expired" || response.status === "failed") {
+        stopBilibiliQrPolling()
+        await loadBilibiliAuthStatus({ silent: true })
+        if (!silent) {
+          toast.error(response.message || "B站 二维码登录失败")
+        }
+      }
+      return response
+    } catch (error) {
+      stopBilibiliQrPolling()
+      if (!silent) {
+        toast.error(getApiErrorMessage(error, "轮询 B站 登录状态失败"))
+      }
+      return null
+    } finally {
+      setIsPollingBilibiliQrLogin(false)
+    }
+  }, [loadBilibiliAuthStatus, stopBilibiliQrPolling])
+
+  React.useEffect(() => {
+    return () => {
+      stopBilibiliQrPolling()
+      onUiSettingsPreviewChange(null)
+    }
+  }, [onUiSettingsPreviewChange, stopBilibiliQrPolling])
+
+  React.useEffect(() => {
+    if (!bilibiliQrLogin?.qrcode_key) {
+      stopBilibiliQrPolling()
+      return
+    }
+    const latestStatus = bilibiliPollResult?.status
+    if (latestStatus === "success" || latestStatus === "expired" || latestStatus === "failed") {
+      stopBilibiliQrPolling()
+      return
+    }
+
+    stopBilibiliQrPolling()
+    const delay = Math.max(1000, bilibiliQrLogin.poll_interval_ms || DEFAULT_BILIBILI_POLL_INTERVAL_MS)
+    bilibiliPollTimerRef.current = window.setTimeout(() => {
+      void pollBilibiliQrStatus(bilibiliQrLogin.qrcode_key, true)
+    }, delay)
+
+    return () => {
+      stopBilibiliQrPolling()
+    }
+  }, [bilibiliPollResult?.status, bilibiliQrLogin, pollBilibiliQrStatus, stopBilibiliQrPolling])
+
   const loadSettings = React.useCallback(async () => {
     setIsLoading(true)
     try {
-      const [modelsResponse, promptResponse, whisperResponse, llmResponse, ollamaResponse] = await Promise.all([
+      const [modelsResponse, promptResponse, whisperResponse, llmResponse, ollamaResponse, bilibiliResponse] = await Promise.all([
         getModels(),
         getPromptTemplates(),
         getWhisperConfig(),
         getLLMConfig(),
         getOllamaRuntimeConfig(),
+        getBilibiliAuthStatus(),
       ])
       setModels(modelsResponse.items)
       setPromptBundle(promptResponse)
       setWhisperConfig(whisperResponse)
       setLlmConfig(llmResponse)
       applyOllamaRuntimeConfig(ollamaResponse)
+      setBilibiliAuth(bilibiliResponse)
+      setBilibiliQrLogin(toBilibiliPendingLogin(bilibiliResponse))
     } catch (error) {
       toast.error(getApiErrorMessage(error, "加载设置数据失败"))
     } finally {
@@ -633,6 +761,7 @@ export function SettingsView({
     { id: "prompts", label: "提示词模板", icon: FileCode },
     { id: "appearance", label: "外观设置", icon: Palette },
     { id: "language", label: "语言设置", icon: Globe },
+    { id: "accounts", label: "平台账号", icon: BookOpen },
   ]
 
   const getStatusBadge = (status: ModelDescriptor["status"]) => {
@@ -1038,6 +1167,48 @@ export function SettingsView({
       study_default_translation_target: normalizedValue || null,
     }, normalizedValue ? "Study 默认翻译目标已保存" : "Study 默认翻译目标已清除")
   }, [studyDefaultTranslationTarget])
+
+  const handleStartBilibiliLogin = async () => {
+    stopBilibiliQrPolling()
+    setIsStartingBilibiliQrLogin(true)
+    try {
+      const response = await startBilibiliQrLogin()
+      setBilibiliQrLogin(response)
+      setBilibiliPollResult(null)
+      setBilibiliAuth((current) => current ? {
+        ...current,
+        status: "pending",
+        expires_at: response.expires_at,
+        last_error: null,
+        qrcode_key: response.qrcode_key,
+        qrcode_url: response.qrcode_url,
+        qr_image_data_url: response.qr_image_data_url,
+        poll_interval_ms: response.poll_interval_ms,
+      } : current)
+      toast.success("B站 登录二维码已生成")
+      await pollBilibiliQrStatus(response.qrcode_key, true)
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "拉起 B站 二维码失败"))
+    } finally {
+      setIsStartingBilibiliQrLogin(false)
+    }
+  }
+
+  const handleDeleteBilibiliAuthSession = async () => {
+    stopBilibiliQrPolling()
+    setIsDeletingBilibiliSession(true)
+    try {
+      const response = await deleteBilibiliSession()
+      setBilibiliAuth(response)
+      setBilibiliQrLogin(null)
+      setBilibiliPollResult(null)
+      toast.success("B站 账号已退出登录")
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "退出 B站 登录失败"))
+    } finally {
+      setIsDeletingBilibiliSession(false)
+    }
+  }
 
   const resolvePickedSkinImage = React.useCallback(async (file: File): Promise<PickedSkinImage | null> => {
     if (!file.type.startsWith("image/")) {
@@ -3054,7 +3225,163 @@ export function SettingsView({
                       </Button>
                     </div>
                   </div>
-                  <Separator />
+                </CardContent>
+              </Card>
+            )}
+
+            {activeSection === "accounts" && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">平台账号</CardTitle>
+                  <CardDescription>
+                    管理第三方平台登录状态与受限资源访问凭据
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-4 rounded-xl border bg-card p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <BookOpen className="h-4 w-4 text-primary" />
+                          <h3 className="text-base font-medium">B站账号</h3>
+                          <Badge
+                            variant={bilibiliAuth?.status === "active" ? "default" : "outline"}
+                            className={cn(
+                              bilibiliAuth?.status === "active"
+                                ? "bg-status-success text-white"
+                                : bilibiliAuth?.status === "pending"
+                                  ? "border-amber-500/60 text-amber-600 dark:text-amber-300"
+                                  : bilibiliAuth?.status === "expired"
+                                    ? "border-destructive/60 text-destructive"
+                                    : undefined,
+                            )}
+                          >
+                            {bilibiliAuth?.status === "active"
+                              ? "已登录"
+                              : bilibiliAuth?.status === "pending"
+                                ? "等待扫码"
+                                : bilibiliAuth?.status === "expired"
+                                  ? "已过期"
+                                  : "未登录"}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          这里只接入登录态状态与二维码元数据，用于后续受限资源访问，不读取也不展示 cookie。
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={isRefreshingBilibiliAuth || isStartingBilibiliQrLogin || isPollingBilibiliQrLogin}
+                          onClick={() => {
+                            void loadBilibiliAuthStatus()
+                          }}
+                        >
+                          <RefreshCw className={cn("mr-1 h-4 w-4", isRefreshingBilibiliAuth && "animate-spin")} />
+                          刷新状态
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={isStartingBilibiliQrLogin || isDeletingBilibiliSession}
+                          onClick={() => {
+                            void handleStartBilibiliLogin()
+                          }}
+                        >
+                          {bilibiliAuth?.status === "active" ? "重新登录" : "二维码登录"}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={isDeletingBilibiliSession || !bilibiliAuth || bilibiliAuth.status === "missing"}
+                          onClick={() => {
+                            void handleDeleteBilibiliAuthSession()
+                          }}
+                        >
+                          退出登录
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <div className="rounded-lg border bg-muted/20 px-3 py-3">
+                        <p className="text-xs text-muted-foreground">当前状态</p>
+                        <p className="mt-1 text-sm font-medium">
+                          {bilibiliPollResult?.message || bilibiliAuth?.last_error || "等待用户操作"}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border bg-muted/20 px-3 py-3">
+                        <p className="text-xs text-muted-foreground">账号 MID</p>
+                        <p className="mt-1 text-sm font-medium">{bilibiliAuth?.account?.mid || bilibiliPollResult?.account?.mid || "-"}</p>
+                      </div>
+                      <div className="rounded-lg border bg-muted/20 px-3 py-3">
+                        <p className="text-xs text-muted-foreground">账号昵称</p>
+                        <p className="mt-1 text-sm font-medium">{bilibiliAuth?.account?.uname || bilibiliPollResult?.account?.uname || "-"}</p>
+                      </div>
+                    </div>
+
+                    {(bilibiliQrLogin || bilibiliAuth?.status === "pending") && (
+                      <div className="grid gap-4 rounded-xl border border-border/70 bg-muted/10 p-4 lg:grid-cols-[12rem_minmax(0,1fr)]">
+                        <div className="rounded-xl border bg-card p-3">
+                          {bilibiliQrLogin?.qr_image_data_url ? (
+                            <img
+                              src={bilibiliQrLogin.qr_image_data_url}
+                              alt="B站 登录二维码"
+                              className="aspect-square w-full rounded-lg object-contain"
+                            />
+                          ) : (
+                            <div className="flex aspect-square items-center justify-center rounded-lg bg-muted text-sm text-muted-foreground">
+                              暂无二维码
+                            </div>
+                          )}
+                        </div>
+                        <div className="space-y-3">
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium">二维码登录</p>
+                            <p className="text-sm text-muted-foreground">
+                              使用 B站 App 扫码确认。二维码 key：{bilibiliQrLogin?.qrcode_key || "等待生成"}。
+                            </p>
+                          </div>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="rounded-lg border bg-card px-3 py-3">
+                              <p className="text-xs text-muted-foreground">轮询状态</p>
+                              <p className="mt-1 text-sm font-medium">{bilibiliPollResult?.status || bilibiliAuth?.status || "pending"}</p>
+                            </div>
+                            <div className="rounded-lg border bg-card px-3 py-3">
+                              <p className="text-xs text-muted-foreground">轮询间隔</p>
+                              <p className="mt-1 text-sm font-medium">
+                                {bilibiliQrLogin?.poll_interval_ms || DEFAULT_BILIBILI_POLL_INTERVAL_MS} ms
+                              </p>
+                            </div>
+                            <div className="rounded-lg border bg-card px-3 py-3 sm:col-span-2">
+                              <p className="text-xs text-muted-foreground">二维码链接</p>
+                              <p className="mt-1 break-all text-sm font-medium">{bilibiliQrLogin?.qrcode_url || "-"}</p>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={!bilibiliQrLogin?.qrcode_key || isPollingBilibiliQrLogin}
+                              onClick={() => {
+                                if (!bilibiliQrLogin?.qrcode_key) {
+                                  return
+                                }
+                                void pollBilibiliQrStatus(bilibiliQrLogin.qrcode_key)
+                              }}
+                            >
+                              <RefreshCw className={cn("mr-1 h-4 w-4", isPollingBilibiliQrLogin && "animate-spin")} />
+                              立即轮询
+                            </Button>
+                            <p className="text-xs text-muted-foreground">
+                              {bilibiliPollResult?.message || "系统会按二维码元数据自动轮询登录状态。"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             )}

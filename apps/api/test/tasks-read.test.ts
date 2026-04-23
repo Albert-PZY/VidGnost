@@ -1,6 +1,6 @@
 import os from "node:os"
 import path from "node:path"
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import type { FastifyInstance } from "fastify"
@@ -118,6 +118,12 @@ describe("task read routes", () => {
       generation_tier: "heuristic",
       highlight_count: expect.any(Number),
     })
+    await expect(
+      readFile(
+        path.join(storageDir, "tasks", "stage-artifacts", "task-2", "D", "study", "subtitle-probe.json"),
+        "utf8",
+      ),
+    ).rejects.toThrow()
   })
 
   it("refreshes task list and detail study previews after note mutations", async () => {

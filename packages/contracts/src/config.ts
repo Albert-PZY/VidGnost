@@ -40,6 +40,50 @@ export type LlmCorrectionMode = z.infer<typeof llmCorrectionModeSchema>
 export const llmLoadProfileSchema = z.enum(["balanced", "memory_first"])
 export type LlmLoadProfile = z.infer<typeof llmLoadProfileSchema>
 
+export const bilibiliAuthStatusSchema = z.enum(["missing", "pending", "active", "expired"])
+export type BilibiliAuthStatus = z.infer<typeof bilibiliAuthStatusSchema>
+
+export const bilibiliQrPollStatusSchema = z.enum(["pending", "scanned", "confirmed", "success", "expired", "failed"])
+export type BilibiliQrPollStatus = z.infer<typeof bilibiliQrPollStatusSchema>
+
+export const bilibiliAccountSchema = z.object({
+  mid: z.string().min(1),
+  uname: z.string().min(1),
+})
+export type BilibiliAccount = z.infer<typeof bilibiliAccountSchema>
+
+export const bilibiliAuthStatusResponseSchema = z.object({
+  status: bilibiliAuthStatusSchema,
+  account: bilibiliAccountSchema.nullable(),
+  expires_at: z.string().nullable(),
+  last_validated_at: z.string().nullable(),
+  last_error: z.string().nullable(),
+  qrcode_key: z.string().min(1).nullable().optional(),
+  qrcode_url: z.string().min(1).nullable().optional(),
+  qr_image_data_url: z.string().min(1).nullable().optional(),
+  poll_interval_ms: z.number().int().min(500).max(10_000).nullable().optional(),
+})
+export type BilibiliAuthStatusResponse = z.infer<typeof bilibiliAuthStatusResponseSchema>
+
+export const bilibiliAuthQrStartResponseSchema = z.object({
+  status: z.literal("pending"),
+  qrcode_key: z.string().min(1),
+  qrcode_url: z.string().min(1),
+  qr_image_data_url: z.string().min(1),
+  expires_at: z.string().nullable(),
+  poll_interval_ms: z.number().int().min(500).max(10_000),
+})
+export type BilibiliAuthQrStartResponse = z.infer<typeof bilibiliAuthQrStartResponseSchema>
+
+export const bilibiliAuthQrPollResponseSchema = z.object({
+  status: bilibiliQrPollStatusSchema,
+  account: bilibiliAccountSchema.nullable(),
+  expires_at: z.string().nullable(),
+  last_error: z.string().nullable(),
+  message: z.string(),
+})
+export type BilibiliAuthQrPollResponse = z.infer<typeof bilibiliAuthQrPollResponseSchema>
+
 export const uiSettingsResponseSchema = z.object({
   language: z.enum(["zh", "en"]),
   font_size: z.number().int().min(12).max(20),

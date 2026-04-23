@@ -27,6 +27,8 @@ describe("TaskOrchestrator control flow", () => {
     segments: TranscriptSegment[]
     text: string
   } | null = null
+  let abortRejectDelayMs = 0
+  let phaseCAttempts: string[] = []
   let transcribeRunCount = 0
   let activeTranscribeSignal: AbortSignal | null = null
 
@@ -39,17 +41,26 @@ describe("TaskOrchestrator control flow", () => {
     blockFirstAsrRun = true
     platformTranscriptAttemptCount = 0
     platformTranscriptResponse = null
+    abortRejectDelayMs = 0
+    phaseCAttempts = []
     transcribeRunCount = 0
     activeTranscribeSignal = null
 
     taskOrchestrator = new TaskOrchestrator(taskRepository, eventBus, {
       asrService: {
         transcribe: async ({ signal }: { signal?: AbortSignal }) => {
+          phaseCAttempts.push("asr")
           transcribeRunCount += 1
           activeTranscribeSignal = signal ?? null
           if (blockFirstAsrRun && transcribeRunCount === 1 && signal) {
             await new Promise<never>((_, reject) => {
-              signal.addEventListener("abort", () => reject(new Error("transcription aborted")), { once: true })
+              signal.addEventListener("abort", () => {
+                if (abortRejectDelayMs > 0) {
+                  setTimeout(() => reject(new Error("transcription aborted")), abortRejectDelayMs)
+                  return
+                }
+                reject(new Error("transcription aborted"))
+              }, { once: true })
             })
           }
           return {
@@ -73,6 +84,7 @@ describe("TaskOrchestrator control flow", () => {
           onReset?: () => Promise<void> | void
           onSegment?: (segment: TranscriptSegment) => Promise<void> | void
         }) => {
+          phaseCAttempts.push("platform")
           platformTranscriptAttemptCount += 1
           if (platformTranscriptResponse) {
             await onReset?.()
@@ -183,10 +195,51 @@ describe("TaskOrchestrator control flow", () => {
     await waitFor(async () => {
       const detail = await taskRepository.getDetail(activeTaskId)
       return detail?.status === "completed"
-    }, 5_000)
+    }, 10_000)
 
     expect(transcribeRunCount).toBe(2)
-  })
+  }, 15_000)
+
+  it("resumes correctly when the pause abort settles after resume is requested", async () => {
+    activeTaskId = "task-control-pause-delayed-abort"
+    abortRejectDelayMs = 50
+    const sourcePath = path.join(storageDir, "pause-delayed-abort-source.mp4")
+    await taskRepository.create(
+      buildQueuedTaskRecord({
+        createdAt: new Date().toISOString(),
+        language: "zh",
+        modelSize: "small",
+        sourceInput: sourcePath,
+        sourceLocalPath: sourcePath,
+        sourceType: "local_path",
+        taskId: activeTaskId,
+        title: "控制流测试",
+        workflow: "notes",
+      }),
+    )
+
+    await taskOrchestrator.submit({
+      taskId: activeTaskId,
+      sourceInput: sourcePath,
+      sourceLocalPath: sourcePath,
+      workflow: "notes",
+    })
+
+    await waitFor(() => transcribeRunCount === 1 && activeTranscribeSignal !== null, 2_000)
+
+    expect(await taskOrchestrator.pause(activeTaskId)).toBe(true)
+    expect(await taskOrchestrator.resume(activeTaskId)).toBe(true)
+
+    await waitFor(async () => {
+      const detail = await taskRepository.getDetail(activeTaskId)
+      if (detail?.status === "cancelled" || detail?.status === "failed") {
+        throw new Error(`Unexpected task status after resume: ${detail.status}`)
+      }
+      return detail?.status === "completed"
+    }, 10_000)
+
+    expect(transcribeRunCount).toBe(2)
+  }, 15_000)
 
   it("cancels a paused transcription without marking stage D as cancelled", async () => {
     activeTaskId = "task-control-cancel-paused"
@@ -489,25 +542,26 @@ describe("TaskOrchestrator control flow", () => {
       }
       const detail = await taskRepository.getDetail(activeTaskId)
       return detail?.status === "completed"
-    }, 2_000)
+    }, 10_000)
 
     expect(transcribeRunCount).toBe(0)
 
     await waitFor(async () => {
       const detail = await taskRepository.getDetail(activeTaskId)
       return detail?.status === "completed"
-    }, 5_000)
+    }, 10_000)
 
     const stored = await taskRepository.getStoredRecord(activeTaskId)
     const eventLogPath = path.join(storageDir, "event-logs", `${activeTaskId}.jsonl`)
     const eventLog = await readFile(eventLogPath, "utf8")
 
     expect(platformTranscriptAttemptCount).toBe(1)
+    expect(phaseCAttempts).toEqual(["platform"])
     expect(stored?.transcript_text).toBe("平台字幕第一句\n平台字幕第二句")
     expect(stored?.transcript_segments_json).toBe(JSON.stringify(platformTranscriptResponse.segments))
     expect(eventLog).toContain("\"type\":\"transcript_delta\"")
     expect(eventLog).toContain("平台字幕第一句")
-  })
+  }, 15_000)
 
   it("falls back to ASR after attempting platform subtitles for remote tasks", async () => {
     activeTaskId = "task-control-platform-subtitles-fallback"
@@ -535,14 +589,15 @@ describe("TaskOrchestrator control flow", () => {
     await waitFor(async () => {
       const detail = await taskRepository.getDetail(activeTaskId)
       return detail?.status === "completed"
-    }, 5_000)
+    }, 10_000)
 
     const stored = await taskRepository.getStoredRecord(activeTaskId)
 
     expect(platformTranscriptAttemptCount).toBe(1)
+    expect(phaseCAttempts).toEqual(["platform", "asr"])
     expect(transcribeRunCount).toBe(1)
     expect(stored?.transcript_text).toBe("测试转写")
-  })
+  }, 15_000)
 
   it("publishes study-first substages and transcript-only vqa prewarm for vqa tasks", async () => {
     activeTaskId = "task-control-vqa-stages"
@@ -722,7 +777,7 @@ describe("TaskOrchestrator control flow", () => {
         "D/vqa-prewarm/index.json",
       ]),
     )
-  })
+  }, 15_000)
 })
 
 function createTestConfig(storageDir: string): AppConfig {

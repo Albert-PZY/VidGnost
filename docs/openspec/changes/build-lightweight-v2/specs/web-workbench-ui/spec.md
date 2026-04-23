@@ -15,7 +15,7 @@ The Electron renderer SHALL present a fixed top title bar, a left navigation sid
 - **AND** recent-task rows include compact workflow and video-duration context when that duration is available
 
 ### Requirement: Settings center SHALL provide frontend-driven configuration sections
-Settings center SHALL provide `模型配置`, `提示词模板`, `外观设置`, and `语言设置` sections backed by persisted backend data.
+Settings center SHALL provide `模型配置`, `提示词模板`, `外观设置`, and `语言设置` sections backed by persisted backend data. The settings surface SHALL also include a dedicated Bilibili account configuration card for auth status, QR login, polling, and logout.
 
 #### Scenario: Open settings center
 - **WHEN** user opens settings from the application shell
@@ -24,6 +24,7 @@ Settings center SHALL provide `模型配置`, `提示词模板`, `外观设置`,
 #### Scenario: Hydrate settings center through HTTP JSON config endpoints
 - **WHEN** renderer mounts the settings center during the frontend-driven backend transition
 - **THEN** it loads `模型配置` data from `/config/models`、`/config/whisper`、`/config/llm`、`/config/ollama`
+- **AND** it loads Bilibili auth data from `/config/bilibili-auth` and the related QR login routes
 - **AND** it loads `提示词模板` data from `/config/prompts`
 - **AND** all settings requests use the shared HTTP JSON API contract rather than an Electron-only transport bridge
 
@@ -36,6 +37,12 @@ Settings center SHALL provide `模型配置`, `提示词模板`, `外观设置`,
 - **WHEN** user creates, edits, deletes, or switches a prompt template in settings
 - **THEN** renderer uses `/config/prompts/templates` and `/config/prompts/selection`
 - **AND** backend returns the refreshed template bundle including channel selection and effective template lists
+
+#### Scenario: Manage Bilibili account state from settings center
+- **WHEN** user opens the dedicated Bilibili account card in settings
+- **THEN** renderer can read auth status, start QR login, poll login state, and logout through `/config/bilibili-auth*`
+- **AND** renderer only reads status, account summary, and QR metadata needed for the current flow
+- **AND** renderer never reads, stores, or displays backend cookie values
 
 ### Requirement: Whisper model configuration SHALL expose GPU readiness controls without implying managed install
 The settings-center Whisper model dialog SHALL expose the current GPU-readiness summary, configured path hints, and a GPU mode toggle while keeping the backend contract aligned with the current runtime contract.

@@ -720,7 +720,9 @@ async function waitForTaskDetail(
   }
 
   throw new Error(
-    `Task ${taskId} did not satisfy ${options.description}. Last status: ${lastDetail?.status ?? "unknown"}`,
+    `Task ${taskId} did not satisfy ${options.description}. Last status: ${lastDetail?.status ?? "unknown"}, ` +
+      `last step: ${lastDetail?.current_step_id ?? "unknown"}, ` +
+      `error: ${lastDetail?.error_message ?? "none"}`,
   )
 }
 

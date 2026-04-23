@@ -2,11 +2,15 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import {
   createTaskStudyExport,
+  deleteBilibiliSession,
   deleteTask,
   downloadTaskArtifactFile,
+  getBilibiliAuthStatus,
   getTaskStudyPack,
   getTaskStudyPreview,
   listKnowledgeNotes,
+  pollBilibiliQrLogin,
+  startBilibiliQrLogin,
   updateUiSettings,
   updateTaskStudyState,
 } from "./api"
@@ -121,6 +125,90 @@ describe("apiFetch request headers", () => {
     expect(init?.body).toBe(JSON.stringify({
       study_default_translation_target: "en",
     }))
+  })
+
+  it("loads bilibili auth status from the config auth route", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "active", account: { mid: "42", uname: "测试用户" } }),
+      headers: new Headers({ "content-type": "application/json" }),
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    await getBilibiliAuthStatus()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toContain("/config/bilibili-auth")
+    expect(init?.method).toBe("GET")
+  })
+
+  it("starts bilibili qr login from the qrcode start route", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        status: "pending",
+        qrcode_key: "test-key",
+        qrcode_url: "https://passport.bilibili.com/test",
+        qr_image_data_url: "data:image/png;base64,test",
+        expires_at: "2026-04-23T10:00:00.000Z",
+        poll_interval_ms: 2000,
+      }),
+      headers: new Headers({ "content-type": "application/json" }),
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    await startBilibiliQrLogin()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toContain("/config/bilibili-auth/qrcode/start")
+    expect(init?.method).toBe("POST")
+    expect(init?.body).toBe(JSON.stringify({}))
+  })
+
+  it("polls bilibili qr login through the qrcode poll route", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        status: "success",
+        account: { mid: "42", uname: "扫码用户" },
+        expires_at: "2026-04-24T10:00:00.000Z",
+        last_error: null,
+        message: "登录成功",
+      }),
+      headers: new Headers({ "content-type": "application/json" }),
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    await pollBilibiliQrLogin("test-qrcode-key")
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toContain("/config/bilibili-auth/qrcode/poll")
+    expect(url).toContain("qrcode_key=test-qrcode-key")
+    expect(init?.method).toBe("GET")
+  })
+
+  it("clears bilibili session from the auth session route without content-type", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ status: "missing", account: null }),
+      headers: new Headers({ "content-type": "application/json" }),
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    await deleteBilibiliSession()
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toContain("/config/bilibili-auth/session")
+    expect(init?.method).toBe("DELETE")
+    expect(new Headers(init?.headers).has("Content-Type")).toBe(false)
   })
 
   it("loads study pack and knowledge notes from the new routes", async () => {

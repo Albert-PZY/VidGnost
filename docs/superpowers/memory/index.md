@@ -12,6 +12,7 @@ related_docs:
   - docs/superpowers/memory/module-cards/study-domain.md
   - docs/superpowers/memory/module-cards/vqa-runtime.md
   - docs/superpowers/memory/contracts/vqa-multimodal-pipeline.md
+  - docs/superpowers/memory/contracts/bilibili-auth-subtitle-fallback.md
 entrypoints:
   - /F:/in-house project/VidGnost/apps/api/src/modules/study/study-service.ts
   - /F:/in-house project/VidGnost/apps/api/src/modules/vqa/vqa-runtime-service.ts
@@ -31,6 +32,7 @@ status: active
 - 模块卡：[study-domain.md](/F:/in-house project/VidGnost/docs/superpowers/memory/module-cards/study-domain.md)
 - 模块卡：[vqa-runtime.md](/F:/in-house project/VidGnost/docs/superpowers/memory/module-cards/vqa-runtime.md)
 - 合同文档：[vqa-multimodal-pipeline.md](/F:/in-house project/VidGnost/docs/superpowers/memory/contracts/vqa-multimodal-pipeline.md)
+- 合同文档：[bilibili-auth-subtitle-fallback.md](/F:/in-house project/VidGnost/docs/superpowers/memory/contracts/bilibili-auth-subtitle-fallback.md)
 - 引导报告：[2026-04-18-vqa-memory-bootstrap-report.md](/F:/in-house project/VidGnost/docs/superpowers/memory/reports/2026-04-18-vqa-memory-bootstrap-report.md)
 - 更新报告：[2026-04-20-study-domain-memory-update-report.md](/F:/in-house project/VidGnost/docs/superpowers/memory/reports/2026-04-20-study-domain-memory-update-report.md)
 

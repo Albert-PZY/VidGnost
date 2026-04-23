@@ -2,11 +2,14 @@ import os from "node:os"
 import path from "node:path"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest"
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 import type { FastifyInstance } from "fastify"
 
 import {
   apiErrorPayloadSchema,
+  bilibiliAuthQrPollResponseSchema,
+  bilibiliAuthQrStartResponseSchema,
+  bilibiliAuthStatusResponseSchema,
   llmConfigResponseSchema,
   modelListResponseSchema,
   ollamaModelsMigrationResponseSchema,
@@ -103,6 +106,196 @@ describe("config routes", () => {
     })
   })
 
+  it("starts, polls and clears bilibili auth without exposing cookies", async () => {
+    const bilibiliStorageDir = await mkdtemp(path.join(os.tmpdir(), "vidgnost-api-bilibili-"))
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input)
+      if (url.includes("/x/passport-login/web/qrcode/generate")) {
+        return createBilibiliJsonResponse({
+          code: 0,
+          data: {
+            qrcode_key: "test-qrcode-key",
+            url: "https://passport.bilibili.com/h5-app/passport/login/scan?test=1",
+          },
+        })
+      }
+      if (url.includes("/x/passport-login/web/qrcode/poll")) {
+        return createBilibiliJsonResponse(
+          {
+            code: 0,
+            data: {
+              code: 0,
+              message: "success",
+            },
+          },
+          {
+            setCookie: [
+              "SESSDATA=sess-123; Path=/; HttpOnly",
+              "bili_jct=csrf-123; Path=/",
+              "DedeUserID=42; Path=/",
+              "DedeUserID__ckMd5=hash-42; Path=/",
+              "sid=sid-42; Path=/",
+              "unrelated_cookie=should-not-persist; Path=/",
+            ],
+          },
+        )
+      }
+      if (url.includes("/x/web-interface/nav")) {
+        return createBilibiliJsonResponse({
+          code: 0,
+          data: {
+            face: "https://i0.hdslb.com/bfs/face/member.png",
+            level_info: {
+              current_level: 6,
+            },
+            mid: 42,
+            uname: "测试用户",
+            vip: {
+              label: {
+                text: "大会员",
+              },
+            },
+          },
+        })
+      }
+      throw new Error(`Unexpected Bilibili URL: ${url}`)
+    })
+    const bilibiliApp = await buildApp(
+      {
+        apiPrefix: "/api",
+        storageDir: bilibiliStorageDir,
+      },
+      {
+        bilibiliFetch: fetchMock,
+      },
+    )
+
+    try {
+      const initialResponse = await bilibiliApp.inject({
+        method: "GET",
+        url: "/api/config/bilibili-auth",
+      })
+      expect(initialResponse.statusCode).toBe(200)
+      expect(bilibiliAuthStatusResponseSchema.parse(initialResponse.json())).toMatchObject({
+        status: "missing",
+        account: null,
+      })
+
+      const startResponse = await bilibiliApp.inject({
+        method: "POST",
+        url: "/api/config/bilibili-auth/qrcode/start",
+      })
+      expect(startResponse.statusCode).toBe(200)
+      expect(bilibiliAuthQrStartResponseSchema.parse(startResponse.json())).toMatchObject({
+        status: "pending",
+        qrcode_key: "test-qrcode-key",
+      })
+
+      const pollResponse = await bilibiliApp.inject({
+        method: "GET",
+        url: "/api/config/bilibili-auth/qrcode/poll?qrcode_key=test-qrcode-key",
+      })
+      expect(pollResponse.statusCode).toBe(200)
+      expect(bilibiliAuthQrPollResponseSchema.parse(pollResponse.json())).toMatchObject({
+        status: "success",
+        account: {
+          mid: "42",
+          uname: "测试用户",
+        },
+      })
+
+      const statusResponse = await bilibiliApp.inject({
+        method: "GET",
+        url: "/api/config/bilibili-auth",
+      })
+      expect(statusResponse.statusCode).toBe(200)
+      const statusPayload = bilibiliAuthStatusResponseSchema.parse(statusResponse.json())
+      expect(statusPayload).toMatchObject({
+        status: "active",
+        account: {
+          mid: "42",
+          uname: "测试用户",
+        },
+      })
+      expect(JSON.stringify(statusPayload)).not.toContain("sess-123")
+      expect(JSON.stringify(statusPayload)).not.toContain("csrf-123")
+      expect(statusPayload).not.toHaveProperty("cookies")
+      expect(statusPayload).not.toHaveProperty("cookie_names")
+      expect(fetchMock).toHaveBeenCalledTimes(3)
+
+      const clearResponse = await bilibiliApp.inject({
+        method: "DELETE",
+        url: "/api/config/bilibili-auth/session",
+      })
+      expect(clearResponse.statusCode).toBe(200)
+      expect(bilibiliAuthStatusResponseSchema.parse(clearResponse.json())).toMatchObject({
+        status: "missing",
+        account: null,
+      })
+    } finally {
+      await bilibiliApp.close()
+      await rm(bilibiliStorageDir, { force: true, recursive: true })
+    }
+  })
+
+  it("returns pending bilibili qr metadata from auth status without exposing cookies", async () => {
+    const bilibiliStorageDir = await mkdtemp(path.join(os.tmpdir(), "vidgnost-api-bilibili-pending-"))
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input)
+      if (url.includes("/x/passport-login/web/qrcode/generate")) {
+        return createBilibiliJsonResponse({
+          code: 0,
+          data: {
+            qrcode_key: "pending-key",
+            url: "https://passport.bilibili.com/h5-app/passport/login/scan?pending=1",
+          },
+        })
+      }
+      throw new Error(`Unexpected Bilibili URL: ${url}`)
+    })
+    const bilibiliApp = await buildApp(
+      {
+        apiPrefix: "/api",
+        storageDir: bilibiliStorageDir,
+      },
+      {
+        bilibiliFetch: fetchMock,
+      },
+    )
+
+    try {
+      const startResponse = await bilibiliApp.inject({
+        method: "POST",
+        url: "/api/config/bilibili-auth/qrcode/start",
+      })
+      expect(startResponse.statusCode).toBe(200)
+      expect(bilibiliAuthQrStartResponseSchema.parse(startResponse.json())).toMatchObject({
+        status: "pending",
+        qrcode_key: "pending-key",
+      })
+
+      const statusResponse = await bilibiliApp.inject({
+        method: "GET",
+        url: "/api/config/bilibili-auth",
+      })
+      expect(statusResponse.statusCode).toBe(200)
+      const statusPayload = bilibiliAuthStatusResponseSchema.parse(statusResponse.json())
+      expect(statusPayload).toMatchObject({
+        status: "pending",
+        account: null,
+        qrcode_key: "pending-key",
+        qrcode_url: "https://passport.bilibili.com/h5-app/passport/login/scan?pending=1",
+        qr_image_data_url: expect.stringContaining("data:image/png;base64,"),
+        poll_interval_ms: 1500,
+      })
+      expect(JSON.stringify(statusPayload)).not.toContain("SESSDATA")
+      expect(statusPayload).not.toHaveProperty("cookies")
+    } finally {
+      await bilibiliApp.close()
+      await rm(bilibiliStorageDir, { force: true, recursive: true })
+    }
+  })
+
   it("serves health and config preflight requests to loopback dev origins", async () => {
     const [healthResponse, llmPreflightResponse] = await Promise.all([
       app.inject({
@@ -175,11 +368,9 @@ describe("config routes", () => {
     await writeFile(path.join(whisperModelPath, "config.json"), "{\"model_type\":\"whisper\"}\n", "utf8")
     await writeFile(path.join(whisperModelPath, "model.bin"), "fake-whisper-model", "utf8")
 
-    const [whisperResponse, ollamaResponse, modelsResponse] = await Promise.all([
-      app.inject({ method: "GET", url: "/api/config/whisper" }),
-      app.inject({ method: "GET", url: "/api/config/ollama" }),
-      app.inject({ method: "GET", url: "/api/config/models" }),
-    ])
+    const whisperResponse = await app.inject({ method: "GET", url: "/api/config/whisper" })
+    const ollamaResponse = await app.inject({ method: "GET", url: "/api/config/ollama" })
+    const modelsResponse = await app.inject({ method: "GET", url: "/api/config/models" })
 
     expect(whisperResponse.statusCode).toBe(200)
     expect(ollamaResponse.statusCode).toBe(200)
@@ -333,3 +524,23 @@ describe("config routes", () => {
     })
   })
 })
+
+function createBilibiliJsonResponse(
+  payload: unknown,
+  init: {
+    setCookie?: string[]
+    status?: number
+  } = {},
+): Response {
+  const status = init.status ?? 200
+  const headers = new Headers()
+  const responseHeaders = headers as Headers & { getSetCookie?: () => string[] }
+  responseHeaders.getSetCookie = () => [...(init.setCookie || [])]
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: responseHeaders,
+    text: async () => JSON.stringify(payload),
+    json: async () => payload,
+  } as Response
+}

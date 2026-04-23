@@ -1,5 +1,8 @@
 import type {
   ApiErrorPayload,
+  BilibiliAuthQrPollResponse,
+  BilibiliAuthQrStartResponse,
+  BilibiliAuthStatusResponse,
   HealthResponse,
   KnowledgeNoteCreateRequest,
   KnowledgeNoteItem,
@@ -467,6 +470,27 @@ export async function downloadTaskArtifact(
 
 export function getModels(): Promise<ModelListResponse> {
   return apiFetch<ModelListResponse>("/config/models", { method: "GET" })
+}
+
+export function getBilibiliAuthStatus(): Promise<BilibiliAuthStatusResponse> {
+  return apiFetch<BilibiliAuthStatusResponse>("/config/bilibili-auth", { method: "GET" })
+}
+
+export function startBilibiliQrLogin(): Promise<BilibiliAuthQrStartResponse> {
+  return apiFetch<BilibiliAuthQrStartResponse>("/config/bilibili-auth/qrcode/start", {
+    method: "POST",
+    body: JSON.stringify({}),
+  })
+}
+
+export function pollBilibiliQrLogin(qrcodeKey: string): Promise<BilibiliAuthQrPollResponse> {
+  return apiFetch<BilibiliAuthQrPollResponse>(`/config/bilibili-auth/qrcode/poll?qrcode_key=${encodeURIComponent(qrcodeKey)}`, {
+    method: "GET",
+  })
+}
+
+export function deleteBilibiliSession(): Promise<BilibiliAuthStatusResponse> {
+  return apiFetch<BilibiliAuthStatusResponse>("/config/bilibili-auth/session", { method: "DELETE" })
 }
 
 export function startModelDownload(modelId: string): Promise<ModelListResponse> {

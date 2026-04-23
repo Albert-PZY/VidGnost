@@ -45,7 +45,7 @@
 
 ### 4.1 设置中心
 
-设置页新增一个独立卡片即可，建议名称：`B 站登录`。
+设置页新增一个独立 settings section，建议 section id 使用 `accounts` 或 `platforms`，其中承载 `B 站登录` 独立卡片。
 
 状态：
 
@@ -67,6 +67,15 @@
 - 最近校验时间
 - 过期提示
 - 可选：昵称 / UID
+- 二维码元数据（二维码图片、`qrcode_key`、`qrcode_url`、`poll_interval_ms`）
+
+前端只消费以下状态字段：
+
+- `status`
+- `account`
+- `expires_at`
+- `last_validated_at`
+- `last_error`
 
 不建议把它塞进 `UISettings` 通用配置；应作为独立配置模块处理。
 
@@ -110,27 +119,29 @@
 
 返回：
 
-- `login_id`
+- `status`: `pending`
 - `qrcode_key`
 - `qrcode_url`
+- `qr_image_data_url`
 - `expires_at`
 - `poll_interval_ms`
 
 ### 5.3 轮询扫码结果
 
-- `GET /api/config/bilibili-auth/qrcode/poll?login_id=...`
+- `GET /api/config/bilibili-auth/qrcode/poll?qrcode_key=...`
 
 返回：
 
 - `status`: `pending | scanned | confirmed | success | expired | failed`
-- `account`
+- `account`: `{ mid, uname } | null`
 - `expires_at`
+- `last_error`
 - `message`
 
 说明：
 
 - 轮询成功后由后端直接持久化 Cookie
-- 前端只拿状态，不拿原始 Cookie
+- 前端只拿状态字段与二维码元数据，不拿原始 Cookie
 
 ### 5.4 退出登录
 
@@ -147,13 +158,11 @@
 
 - `storage/config/bilibili-auth.json`
 
-建议结构：
+建议结构仅供后端本地持久化使用，前端不会看到 `cookies`、`pending_login` 等内部字段：
 
 ```json
 {
-  "provider": "bilibili",
   "status": "active",
-  "cookie_names": ["SESSDATA", "bili_jct", "DedeUserID", "DedeUserID__ckMd5", "sid"],
   "cookies": {
     "SESSDATA": "xxx",
     "bili_jct": "xxx",
@@ -165,7 +174,6 @@
     "mid": "123456",
     "uname": "example"
   },
-  "created_at": "2026-04-23T10:00:00.000Z",
   "updated_at": "2026-04-23T10:00:00.000Z",
   "last_validated_at": "2026-04-23T10:00:00.000Z",
   "expires_at": "2026-05-23T10:00:00.000Z",
@@ -173,7 +181,7 @@
 }
 ```
 
-建议只保留白名单 Cookie，不保存无关项，不做额外加密。
+建议只保留白名单 Cookie，不保存无关项，不做额外加密。前端契约保持为 `status/account/expires_at/last_validated_at/last_error` 与二维码元数据。
 
 ## 7. 安全策略
 

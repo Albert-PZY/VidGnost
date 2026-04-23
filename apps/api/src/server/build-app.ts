@@ -12,6 +12,9 @@ import { OpenAiCompatibleClient } from "../modules/llm/openai-compatible-client.
 import { EventBus } from "../modules/events/event-bus.js"
 import { AsrService } from "../modules/asr/asr-service.js"
 import { PlatformSubtitleTranscriptService } from "../modules/asr/platform-subtitle-transcript-service.js"
+import { BilibiliAuthRepository } from "../modules/bilibili-auth/bilibili-auth-repository.js"
+import { BilibiliLoginService } from "../modules/bilibili-auth/bilibili-login-service.js"
+import { BilibiliSubtitleClient } from "../modules/bilibili-auth/bilibili-subtitle-client.js"
 import { MediaPipelineService } from "../modules/media/media-pipeline-service.js"
 import { VideoFrameService } from "../modules/media/video-frame-service.js"
 import { LocalModelMigrationService } from "../modules/models/local-model-migration-service.js"
@@ -42,7 +45,14 @@ import { registerTaskRoutes } from "../routes/tasks.js"
 import { registerStudyRoutes } from "../routes/study.js"
 import { registerVqaRoutes } from "../routes/vqa.js"
 
-export async function buildApp(inputConfig?: Partial<AppConfig>): Promise<FastifyInstance> {
+interface BuildAppDependencies {
+  bilibiliFetch?: typeof fetch
+}
+
+export async function buildApp(
+  inputConfig?: Partial<AppConfig>,
+  dependencies: BuildAppDependencies = {},
+): Promise<FastifyInstance> {
   const baseConfig = resolveConfig()
   const config: AppConfig = {
     ...baseConfig,
@@ -99,7 +109,16 @@ export async function buildApp(inputConfig?: Partial<AppConfig>): Promise<Fastif
   const openAiCompatibleClient = new OpenAiCompatibleClient()
   const mediaPipelineService = new MediaPipelineService(config)
   const videoFrameService = new VideoFrameService(config)
-  const platformTranscriptService = new PlatformSubtitleTranscriptService(config, taskRepository)
+  const bilibiliAuthRepository = new BilibiliAuthRepository(config)
+  const bilibiliLoginService = new BilibiliLoginService(bilibiliAuthRepository, {
+    fetch: dependencies.bilibiliFetch,
+  })
+  const bilibiliSubtitleClient = new BilibiliSubtitleClient(bilibiliAuthRepository, {
+    fetch: dependencies.bilibiliFetch,
+  })
+  const platformTranscriptService = new PlatformSubtitleTranscriptService(config, taskRepository, {
+    bilibiliSubtitleClient,
+  })
   const asrService = new AsrService(
     config,
     modelCatalogRepository,
@@ -155,6 +174,7 @@ export async function buildApp(inputConfig?: Partial<AppConfig>): Promise<Fastif
   await registerSelfCheckRoutes(app, config.apiPrefix, selfCheckService, eventBus)
   await registerVqaRoutes(app, config.apiPrefix, vqaRuntimeService)
   await registerConfigRoutes(app, config.apiPrefix, {
+    bilibiliLoginService,
     uiSettingsRepository,
     llmConfigRepository,
     promptTemplateRepository,

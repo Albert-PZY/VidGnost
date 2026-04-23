@@ -3,10 +3,15 @@ import type { StoredTaskRecord, TaskRepository } from "../tasks/task-repository.
 import { normalizeSourceType } from "../tasks/task-support.js"
 import {
   PlatformSubtitleProbeService,
+  type ResolvedSubtitleProbe,
   SUBTITLE_PROBE_ARTIFACT_PATH,
   expandSubtitleProbeEntries,
 } from "../subtitles/platform-subtitle-probe-service.js"
 import type { SubtitleTrackBundle } from "./study-workspace-types.js"
+
+interface BuildSubtitleTracksOptions {
+  probeMode?: "cached" | "materialize"
+}
 
 export class SubtitleTrackService {
   private readonly probeService: PlatformSubtitleProbeService
@@ -18,16 +23,17 @@ export class SubtitleTrackService {
     this.probeService = new PlatformSubtitleProbeService(config, taskRepository)
   }
 
-  async buildTracks(task: StoredTaskRecord): Promise<SubtitleTrackBundle> {
+  async buildTracks(task: StoredTaskRecord, options: BuildSubtitleTracksOptions = {}): Promise<SubtitleTrackBundle> {
     const taskId = String(task.id || "")
     const sourceType = normalizeSourceType(task.source_type)
     const language = normalizeLanguage(task.language)
     const now = normalizeTimestamp(task.updated_at || task.created_at)
     const whisperTrackId = "track-whisper-primary"
     const sourceInput = String(task.source_input || "").trim()
+    const probeMode = options.probeMode === "cached" ? "cached" : "materialize"
 
     const tracks = sourceType === "youtube" || sourceType === "bilibili"
-      ? await this.buildRemoteTracks(taskId, sourceInput, sourceType, language, now)
+      ? await this.buildRemoteTracks(taskId, sourceInput, sourceType, language, now, probeMode)
       : buildLocalTracks(taskId, sourceType, language, now)
 
     const whisperTrack = {
@@ -66,9 +72,12 @@ export class SubtitleTrackService {
     sourceType: "youtube" | "bilibili",
     language: string,
     now: string,
+    probeMode: "cached" | "materialize",
   ) {
     const platformLabel = sourceType === "youtube" ? "YouTube" : "Bilibili"
-    const probe = await this.probeService.resolveProbe({ sourceInput, taskId })
+    const probe = probeMode === "cached"
+      ? await this.probeService.readCachedProbe(taskId) ?? buildMissingProbe()
+      : await this.probeService.resolveProbe({ sourceInput, taskId })
     const subtitles = expandSubtitleProbeEntries(probe.payload?.subtitles)
     const automaticCaptions = expandSubtitleProbeEntries(probe.payload?.automatic_captions)
     const sourceEntry =
@@ -108,6 +117,13 @@ export class SubtitleTrackService {
       }))
 
     return [sourceTrack, ...translationTracks]
+  }
+}
+
+function buildMissingProbe(): ResolvedSubtitleProbe {
+  return {
+    payload: null,
+    status: "missing",
   }
 }
 

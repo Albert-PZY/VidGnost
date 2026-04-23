@@ -1,5 +1,11 @@
 import type {
   ApiErrorPayload,
+  BilibiliAccount,
+  BilibiliAuthQrPollResponse,
+  BilibiliAuthQrStartResponse,
+  BilibiliAuthStatus,
+  BilibiliAuthStatusResponse,
+  BilibiliQrPollStatus,
   BackgroundImageFillMode,
   HealthResponse,
   KnowledgeLibraryResponse,
@@ -66,6 +72,12 @@ import type {
 
 export type {
   ApiErrorPayload,
+  BilibiliAccount,
+  BilibiliAuthQrPollResponse,
+  BilibiliAuthQrStartResponse,
+  BilibiliAuthStatus,
+  BilibiliAuthStatusResponse,
+  BilibiliQrPollStatus,
   BackgroundImageFillMode,
   HealthResponse,
   LLMConfigResponse,
