@@ -34,8 +34,8 @@ Status: `implemented`
 The pipeline SHALL keep these phase boundaries:
 - `A`: source ingestion and normalization
 - `B`: audio extraction and preprocessing
-- `C`: ASR transcription and normalization
-- `D`: transcript optimization and fusion delivery
+- `C`: platform subtitle or Bilibili logged-in AI subtitle transcript acquisition plus ASR fallback normalization
+- `D`: study-first transcript shaping、学习工件收口、transcript-only QA 预热与最终交付
 
 #### Scenario: Phase ordering
 - **WHEN** task starts from any valid source
@@ -45,37 +45,73 @@ The pipeline SHALL keep these phase boundaries:
 ### Requirement: Stage D SHALL execute ordered substage chain
 Status: `implemented`
 
-Inside phase `D`, backend SHALL execute `transcript_optimize -> fusion_delivery` in order. For workflow `vqa`, backend SHALL insert multimodal prewarm substages between those two anchors instead of collapsing them into a single opaque completion hop.
+Inside phase `D`, backend SHALL execute `transcript_optimize -> subtitle_resolve -> translation_resolve -> study_pack_generate -> notes_mindmap_generate -> fusion_delivery` in order. For workflow `vqa`, backend SHALL insert `transcript_vectorize -> vqa_prewarm` before `fusion_delivery` while keeping transcript-only QA prewarm on the same study-first chain without making frame extraction, VLM inference, or image-semantic retrieval a default prerequisite.
 
 #### Scenario: Ordered stage-D execution
 - **WHEN** phase `D` starts
-- **THEN** `transcript_optimize` runs before `fusion_delivery`
-- **AND** `fusion_delivery` starts only after transcript optimization completes or is skipped
+- **THEN** `transcript_optimize` runs before `subtitle_resolve`、`translation_resolve`、`study_pack_generate`、and `notes_mindmap_generate`
+- **AND** `fusion_delivery` starts only after those study-first substages have completed or been skipped according to workflow
+
+#### Scenario: Ordered stage-D execution for notes workflow
+- **WHEN** phase `D` runs for a `notes` task
+- **THEN** backend completes subtitle、translation、study-pack、and notes/mindmap substages before `fusion_delivery`
+- **AND** transcript-only QA preparation substages such as `transcript_vectorize` and `vqa_prewarm` are explicitly marked as skipped instead of expanding back into multimodal work
 
 #### Scenario: Ordered stage-D execution for VQA
 - **WHEN** phase `D` runs for a `vqa` task
-- **THEN** backend emits ordered substage transitions for `transcript_vectorize`、`frame_extract`、`frame_semantic`、`multimodal_index_fusion`
+- **THEN** backend emits ordered substage transitions for transcript preparation and transcript-only QA prewarm before `fusion_delivery`
 - **AND** those VQA substages complete before `fusion_delivery`
-- **AND** current migration period MAY still emit the legacy umbrella marker `multimodal_prewarm` together with the granular VQA substages for compatibility
+- **AND** current migration period MAY still expose legacy compatibility markers for older task artifacts without redefining the default study-first chain
 
-### Requirement: VQA tasks SHALL persist multimodal retrieval prewarm artifacts before completion
-Status: `partial`
+### Requirement: VQA tasks SHALL persist transcript-only retrieval prewarm artifacts before completion
+Status: `implemented`
 
 When a task uses workflow `vqa`, phase `D` SHALL prepare the first-question retrieval corpus before the task enters the completed state.
 
-#### Scenario: Complete a VQA task with multimodal retrieval prewarm
+#### Scenario: Complete a VQA task with transcript-only retrieval prewarm
 - **WHEN** a `vqa` task finishes phase `D`
 - **THEN** backend persists a task-local retrieval artifact under `D/vqa-prewarm/index.json`
-- **AND** target chain also persists frame extraction and frame-semantic artifacts such as `D/vqa-prewarm/frames/manifest.json` and `D/vqa-prewarm/frame-semantic/index.json`
-- **AND** if frame extraction only yields fallback placeholder frames or a frame cannot be sent to VLM successfully, backend still writes template frame-semantic evidence and continues the prewarm flow instead of blocking phase `D` on VLM inference
-- **AND** task event stream exposes granular multimodal prewarm substages before `fusion_delivery` marks the final delivery step
-- **AND** current migration period MAY still reuse transcript-only prewarm artifacts when multimodal artifacts are absent
-- **AND** frontend and contracts MUST continue to accept both the new multimodal artifact keys and legacy `multimodal_prewarm` compatibility outputs
+- **AND** the default prepared corpus is built from normalized transcript chunks, transcript citations, and transcript-derived retrieval metadata
+- **AND** task event stream exposes transcript-only QA prewarm progress before `fusion_delivery` marks the final delivery step
+- **AND** compatibility-only multimodal artifacts MAY still appear on legacy tasks without changing the default retrieval contract
+- **AND** frontend and contracts MUST continue to accept compatibility evidence fields from older tasks while preferring transcript timestamp and text citations on the study-first baseline
 
-### Requirement: Phase C SHALL support the current TS-native ASR routes
+### Requirement: Phase C SHALL support online subtitle routing plus the current TS-native ASR routes
 Status: `implemented`
 
-Phase `C` SHALL support a local `faster-whisper` Python worker route and a remote OpenAI-compatible ASR route under the same normalized transcript contract.
+Phase `C` SHALL attempt `yt-dlp` public platform subtitles for supported online `youtube` tasks. For `bilibili`, phase `C` SHALL skip `yt-dlp` public subtitle probing for transcript acquisition and attempt logged-in Bilibili AI subtitles first. If the applicable subtitle path does not yield a usable transcript, phase `C` SHALL fall back to the local `faster-whisper` Python worker route or the remote OpenAI-compatible ASR route under the same normalized transcript contract.
+
+#### Scenario: Use yt-dlp platform subtitles for YouTube
+- **WHEN** phase `C` runs for an online `youtube` task and `yt-dlp` can download and parse a usable platform subtitle track
+- **THEN** backend emits the same `transcript_delta` reset and segment events as the ASR path
+- **AND** backend persists the resulting normalized transcript into `transcript_text`、`transcript_segments_json`、`C/transcript.txt`、and `C/transcript.segments.json`
+- **AND** backend persists the normalized `yt-dlp` subtitle probe payload under `D/study/subtitle-probe.json` so later subtitle-track resolution reuses the same probe result instead of re-running divergent platform discovery
+- **AND** backend does not invoke Whisper for that task
+
+#### Scenario: Fall back after applicable subtitle path is unavailable
+- **WHEN** phase `C` runs for an online `youtube` task but `yt-dlp` cannot resolve or parse a usable platform subtitle track
+- **THEN** backend records the platform-subtitle miss in stage-`C` logs
+- **AND** backend keeps any successfully normalized subtitle probe payload reusable through the same `D/study/subtitle-probe.json` artifact contract for later study-domain track resolution
+- **AND** backend continues on the same phase-`C` execution by falling back to the Whisper-compatible ASR route or remote ASR route instead of failing the task solely because platform subtitles were absent
+
+#### Scenario: Use logged-in Bilibili AI subtitles before ASR
+- **WHEN** phase `C` runs for a `bilibili` task and backend has a usable Bilibili login session
+- **THEN** backend requests the logged-in Bilibili AI subtitle track before invoking ASR
+- **AND** backend does not run `yt-dlp` public subtitle probing for Bilibili transcript acquisition
+- **AND** backend persists the selected-track artifact and normalized subtitle probe artifact with `source=bilibili-auth`
+- **AND** backend emits the same normalized transcript events and transcript artifacts used by the other phase-`C` routes
+
+#### Scenario: Fall back after logged-in Bilibili AI subtitles are unavailable
+- **WHEN** phase `C` runs for a `bilibili` task and logged-in AI subtitles are missing, unusable, or inaccessible
+- **THEN** backend continues on the same phase-`C` execution by falling back to the Whisper-compatible ASR route or remote ASR route
+- **AND** backend does not try `yt-dlp` public subtitle probing as an intermediate Bilibili transcript source
+- **AND** if the login session is expired, backend marks the Bilibili auth state `expired`
+
+#### Scenario: Logged-in Bilibili subtitle path expires during fallback
+- **WHEN** phase `C` attempts logged-in Bilibili AI subtitles and the backend detects that the login session has expired or become invalid
+- **THEN** backend marks the Bilibili auth state `expired`
+- **AND** backend records the expiry in stage-`C` logs
+- **AND** the current task continues to ASR fallback without waiting for re-login or entering `failed` solely because the Bilibili auth session expired
 
 #### Scenario: Run local faster-whisper transcription
 - **WHEN** `whisper-default` uses the local provider
@@ -180,13 +216,13 @@ Tasks created from local files, explicit local paths, or supported downloadable 
 ### Requirement: Task detail SHALL expose stage-D observability
 Status: `implemented`
 
-Task detail response SHALL expose `vm_phase_metrics` entries for `transcript_optimize` and final phase `D` delivery. For VQA tasks, the same observability surface SHALL also expose the granular multimodal prewarm substages.
+Task detail response SHALL expose `vm_phase_metrics` entries for `transcript_optimize` and final phase `D` delivery. For VQA tasks, the same observability surface SHALL also expose transcript-only QA prewarm progress without requiring multimodal stage metrics on the default study-first baseline.
 
 #### Scenario: Query task detail after phase D
 - **WHEN** client requests task detail after phase `D`
 - **THEN** response includes timing and status fields for `transcript_optimize`
 - **AND** the final phase-`D` metric reflects fusion delivery completion state
-- **AND** for `vqa` tasks, response includes timing and status fields for `transcript_vectorize`、`frame_extract`、`frame_semantic`、`multimodal_index_fusion`
+- **AND** for `vqa` tasks, response includes timing and status fields for transcript preparation and transcript-only QA prewarm when those metrics are persisted
 - **AND** once `fusion_delivery` has completed, parent `stage_metrics.D.status` is persisted as `completed` instead of remaining at a stale in-progress status
 
 #### Scenario: Query task detail while pipeline is still running

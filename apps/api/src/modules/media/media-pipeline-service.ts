@@ -230,7 +230,7 @@ async function resolveFfprobeExecutable(configuredPath: string): Promise<string 
   return findCommand([configuredPath, "ffprobe", "ffprobe.exe"])
 }
 
-async function resolveYtDlpExecutable(config: AppConfig, signal?: AbortSignal): Promise<string | null> {
+export async function resolveYtDlpExecutable(config: AppConfig, signal?: AbortSignal): Promise<string | null> {
   const discovered = await findCommand([config.ytdlpExecutable, "yt-dlp", "yt-dlp.exe"])
   if (discovered) {
     return discovered

@@ -2,6 +2,9 @@ import type { FastifyInstance } from "fastify"
 
 import type { AppConfig } from "../core/config.js"
 import { AppError } from "../core/errors.js"
+import { LlmConfigRepository } from "../modules/llm/llm-config-repository.js"
+import { OpenAiCompatibleClient } from "../modules/llm/openai-compatible-client.js"
+import { StudyService } from "../modules/study/study-service.js"
 import { TaskRepository } from "../modules/tasks/task-repository.js"
 import { buildContentDisposition, renderMarkmapHtml } from "../modules/tasks/task-support.js"
 import {
@@ -21,7 +24,7 @@ interface ExportQuery {
 
 export async function registerTaskExportRoutes(
   app: FastifyInstance,
-  _config: AppConfig,
+  config: AppConfig,
   apiPrefix: string,
   taskRepository: TaskRepository,
 ): Promise<void> {
@@ -46,6 +49,26 @@ export async function registerTaskExportRoutes(
     }
 
     const downloadTitle = String(record.title || normalizedTaskId).trim().replace(/\s+/g, " ") || normalizedTaskId
+
+    if (
+      exportKind === "study_pack" ||
+      exportKind === "subtitle_tracks" ||
+      exportKind === "translation_records" ||
+      exportKind === "knowledge_notes"
+    ) {
+      const studyService = new StudyService(config, taskRepository, {
+        llmClient: new OpenAiCompatibleClient(),
+        llmConfigRepository: new LlmConfigRepository(config),
+      })
+      try {
+        const formatted = await studyService.formatTaskExport(normalizedTaskId, exportKind)
+        reply.header("Content-Type", formatted.content_type)
+        reply.header("Content-Disposition", buildContentDisposition(formatted.file_name))
+        return reply.send(formatted.content)
+      } finally {
+        await studyService.close()
+      }
+    }
 
     if (exportKind === "transcript") {
       reply.header("Content-Type", "text/plain; charset=utf-8")

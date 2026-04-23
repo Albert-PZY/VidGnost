@@ -11,11 +11,12 @@ import type {
 export const STAGE_KEYS = ["A", "B", "C", "D"] as const
 export const D_SUBSTAGE_KEYS = [
   "transcript_optimize",
+  "subtitle_resolve",
+  "translation_resolve",
+  "study_pack_generate",
+  "notes_mindmap_generate",
   "transcript_vectorize",
-  "frame_extract",
-  "frame_semantic",
-  "frame_vectorize",
-  "multimodal_index_fusion",
+  "vqa_prewarm",
   "fusion_delivery",
 ] as const
 export const ALLOWED_VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"])
@@ -127,9 +128,9 @@ export function normalizeWorkflow(value: unknown): WorkflowType {
   return String(value || "").trim().toLowerCase() === "vqa" ? "vqa" : "notes"
 }
 
-export function normalizeSourceType(value: unknown): "bilibili" | "local_file" | "local_path" {
+export function normalizeSourceType(value: unknown): "youtube" | "bilibili" | "local_file" | "local_path" {
   const candidate = String(value || "").trim().toLowerCase()
-  if (candidate === "local_file" || candidate === "local_path") {
+  if (candidate === "youtube" || candidate === "local_file" || candidate === "local_path") {
     return candidate
   }
   return "bilibili"

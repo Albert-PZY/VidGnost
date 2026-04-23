@@ -2,12 +2,13 @@ import os from "node:os"
 import path from "node:path"
 import { mkdtemp, readFile, rm } from "node:fs/promises"
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { TranscriptSegment } from "@vidgnost/contracts"
 
 import type { AppConfig } from "../src/core/config.js"
 import { resolveConfig } from "../src/core/config.js"
+import { PlatformSubtitleTranscriptService } from "../src/modules/asr/platform-subtitle-transcript-service.js"
 import { EventBus } from "../src/modules/events/event-bus.js"
 import { TaskOrchestrator } from "../src/modules/tasks/task-orchestrator.js"
 import { TaskRepository } from "../src/modules/tasks/task-repository.js"
@@ -20,6 +21,15 @@ describe("TaskOrchestrator control flow", () => {
   let taskOrchestrator: TaskOrchestrator
   let taskRepository: TaskRepository
   let activeTaskId = ""
+  let blockFirstAsrRun = true
+  let platformTranscriptAttemptCount = 0
+  let platformTranscriptResponse: {
+    language: string
+    segments: TranscriptSegment[]
+    text: string
+  } | null = null
+  let abortRejectDelayMs = 0
+  let phaseCAttempts: string[] = []
   let transcribeRunCount = 0
   let activeTranscribeSignal: AbortSignal | null = null
 
@@ -29,17 +39,29 @@ describe("TaskOrchestrator control flow", () => {
     taskRepository = new TaskRepository(config)
     eventBus = new EventBus(config.eventLogDir)
     activeTaskId = ""
+    blockFirstAsrRun = true
+    platformTranscriptAttemptCount = 0
+    platformTranscriptResponse = null
+    abortRejectDelayMs = 0
+    phaseCAttempts = []
     transcribeRunCount = 0
     activeTranscribeSignal = null
 
     taskOrchestrator = new TaskOrchestrator(taskRepository, eventBus, {
       asrService: {
         transcribe: async ({ signal }: { signal?: AbortSignal }) => {
+          phaseCAttempts.push("asr")
           transcribeRunCount += 1
           activeTranscribeSignal = signal ?? null
-          if (transcribeRunCount === 1 && signal) {
+          if (blockFirstAsrRun && transcribeRunCount === 1 && signal) {
             await new Promise<never>((_, reject) => {
-              signal.addEventListener("abort", () => reject(new Error("transcription aborted")), { once: true })
+              signal.addEventListener("abort", () => {
+                if (abortRejectDelayMs > 0) {
+                  setTimeout(() => reject(new Error("transcription aborted")), abortRejectDelayMs)
+                  return
+                }
+                reject(new Error("transcription aborted"))
+              }, { once: true })
             })
           }
           return {
@@ -53,6 +75,25 @@ describe("TaskOrchestrator control flow", () => {
             ],
             text: "测试转写",
           }
+        },
+      } as never,
+      platformTranscriptService: {
+        transcribeFromPlatformSubtitles: async ({
+          onReset,
+          onSegment,
+        }: {
+          onReset?: () => Promise<void> | void
+          onSegment?: (segment: TranscriptSegment) => Promise<void> | void
+        }) => {
+          phaseCAttempts.push("platform")
+          platformTranscriptAttemptCount += 1
+          if (platformTranscriptResponse) {
+            await onReset?.()
+            for (const segment of platformTranscriptResponse.segments) {
+              await onSegment?.(segment)
+            }
+          }
+          return platformTranscriptResponse
         },
       } as never,
       mediaPipelineService: {
@@ -91,7 +132,7 @@ describe("TaskOrchestrator control flow", () => {
         }),
         isLlmGenerationEnabled: async () => false,
       } as never,
-    })
+    } as never)
   })
 
   afterEach(async () => {
@@ -155,10 +196,51 @@ describe("TaskOrchestrator control flow", () => {
     await waitFor(async () => {
       const detail = await taskRepository.getDetail(activeTaskId)
       return detail?.status === "completed"
-    }, 5_000)
+    }, 10_000)
 
     expect(transcribeRunCount).toBe(2)
-  })
+  }, 15_000)
+
+  it("resumes correctly when the pause abort settles after resume is requested", async () => {
+    activeTaskId = "task-control-pause-delayed-abort"
+    abortRejectDelayMs = 50
+    const sourcePath = path.join(storageDir, "pause-delayed-abort-source.mp4")
+    await taskRepository.create(
+      buildQueuedTaskRecord({
+        createdAt: new Date().toISOString(),
+        language: "zh",
+        modelSize: "small",
+        sourceInput: sourcePath,
+        sourceLocalPath: sourcePath,
+        sourceType: "local_path",
+        taskId: activeTaskId,
+        title: "控制流测试",
+        workflow: "notes",
+      }),
+    )
+
+    await taskOrchestrator.submit({
+      taskId: activeTaskId,
+      sourceInput: sourcePath,
+      sourceLocalPath: sourcePath,
+      workflow: "notes",
+    })
+
+    await waitFor(() => transcribeRunCount === 1 && activeTranscribeSignal !== null, 2_000)
+
+    expect(await taskOrchestrator.pause(activeTaskId)).toBe(true)
+    expect(await taskOrchestrator.resume(activeTaskId)).toBe(true)
+
+    await waitFor(async () => {
+      const detail = await taskRepository.getDetail(activeTaskId)
+      if (detail?.status === "cancelled" || detail?.status === "failed") {
+        throw new Error(`Unexpected task status after resume: ${detail.status}`)
+      }
+      return detail?.status === "completed"
+    }, 10_000)
+
+    expect(transcribeRunCount).toBe(2)
+  }, 15_000)
 
   it("cancels a paused transcription without marking stage D as cancelled", async () => {
     activeTaskId = "task-control-cancel-paused"
@@ -338,11 +420,6 @@ describe("TaskOrchestrator control flow", () => {
       workflow: "notes",
     })
 
-    await waitFor(async () => {
-      const detail = await taskRepository.getDetail(activeTaskId)
-      return detail?.status === "completed"
-    }, 5_000)
-
     const eventLogPath = path.join(storageDir, "event-logs", `${activeTaskId}.jsonl`)
     const transcriptChunkIndexPath = path.join(
       storageDir,
@@ -363,6 +440,25 @@ describe("TaskOrchestrator control flow", () => {
       "chunks",
       "chunk-001.json",
     )
+
+    await waitFor(async () => {
+      const detail = await taskRepository.getDetail(activeTaskId)
+      if (detail?.status !== "completed") {
+        return false
+      }
+
+      const [eventLog, transcriptChunkIndex, transcriptChunkOne] = await Promise.all([
+        readUtf8IfExists(eventLogPath),
+        readUtf8IfExists(transcriptChunkIndexPath),
+        readUtf8IfExists(transcriptChunkOnePath),
+      ])
+
+      return Boolean(
+        eventLog?.includes("\"type\":\"task_complete\"") &&
+        transcriptChunkIndex &&
+        transcriptChunkOne,
+      )
+    }, 10_000)
 
     const eventLog = await readFile(eventLogPath, "utf8")
     const events = eventLog
@@ -409,9 +505,220 @@ describe("TaskOrchestrator control flow", () => {
       { start: 0, end: 1.2, text: "第一段 原始" },
       { start: 30, end: 31.8, text: "第二段 原始" },
     ])
-  })
+  }, 15_000)
 
-  it("publishes granular VQA substages for transcript vectorization, frame extraction, semantics, and fusion", async () => {
+  it("prefers platform subtitles over ASR for remote tasks", async () => {
+    activeTaskId = "task-control-platform-subtitles"
+    blockFirstAsrRun = false
+    platformTranscriptResponse = {
+      language: "zh",
+      segments: [
+        { start: 0, end: 1.2, text: "平台字幕第一句" },
+        { start: 1.2, end: 2.6, text: "平台字幕第二句" },
+      ],
+      text: "平台字幕第一句\n平台字幕第二句",
+    }
+    await taskRepository.create(
+      buildQueuedTaskRecord({
+        createdAt: new Date().toISOString(),
+        language: "zh",
+        modelSize: "small",
+        sourceInput: "https://www.youtube.com/watch?v=platform-subtitles",
+        sourceType: "youtube",
+        taskId: activeTaskId,
+        title: "平台字幕优先测试",
+        workflow: "notes",
+      }),
+    )
+
+    await taskOrchestrator.submit({
+      taskId: activeTaskId,
+      sourceInput: "https://www.youtube.com/watch?v=platform-subtitles",
+      workflow: "notes",
+    })
+
+    await waitFor(async () => {
+      if (transcribeRunCount > 0) {
+        return true
+      }
+      const detail = await taskRepository.getDetail(activeTaskId)
+      return detail?.status === "completed"
+    }, 10_000)
+
+    expect(transcribeRunCount).toBe(0)
+
+    await waitFor(async () => {
+      const detail = await taskRepository.getDetail(activeTaskId)
+      return detail?.status === "completed"
+    }, 10_000)
+
+    const stored = await taskRepository.getStoredRecord(activeTaskId)
+    const eventLogPath = path.join(storageDir, "event-logs", `${activeTaskId}.jsonl`)
+    const eventLog = await readFile(eventLogPath, "utf8")
+
+    expect(platformTranscriptAttemptCount).toBe(1)
+    expect(phaseCAttempts).toEqual(["platform"])
+    expect(stored?.transcript_text).toBe("平台字幕第一句\n平台字幕第二句")
+    expect(stored?.transcript_segments_json).toBe(JSON.stringify(platformTranscriptResponse.segments))
+    expect(eventLog).toContain("\"type\":\"transcript_delta\"")
+    expect(eventLog).toContain("平台字幕第一句")
+  }, 15_000)
+
+  it("falls back to ASR after attempting platform subtitles for remote tasks", async () => {
+    activeTaskId = "task-control-platform-subtitles-fallback"
+    blockFirstAsrRun = false
+    platformTranscriptResponse = null
+    await taskRepository.create(
+      buildQueuedTaskRecord({
+        createdAt: new Date().toISOString(),
+        language: "zh",
+        modelSize: "small",
+        sourceInput: "https://www.bilibili.com/video/BV1fallback",
+        sourceType: "bilibili",
+        taskId: activeTaskId,
+        title: "平台字幕回退测试",
+        workflow: "notes",
+      }),
+    )
+
+    await taskOrchestrator.submit({
+      taskId: activeTaskId,
+      sourceInput: "https://www.bilibili.com/video/BV1fallback",
+      workflow: "notes",
+    })
+
+    await waitFor(async () => {
+      const detail = await taskRepository.getDetail(activeTaskId)
+      return detail?.status === "completed"
+    }, 10_000)
+
+    const stored = await taskRepository.getStoredRecord(activeTaskId)
+
+    expect(platformTranscriptAttemptCount).toBe(1)
+    expect(phaseCAttempts).toEqual(["platform", "asr"])
+    expect(transcribeRunCount).toBe(1)
+    expect(stored?.transcript_text).toBe("测试转写")
+  }, 15_000)
+
+  it("falls back to ASR for bilibili tasks without invoking public subtitle probing", async () => {
+    activeTaskId = "task-control-bilibili-auth-asr-fallback"
+    blockFirstAsrRun = false
+    const sourceInput = "https://www.bilibili.com/video/BV1noPublicProbe"
+    const sourcePath = path.join(storageDir, `${activeTaskId}.mp4`)
+    const resolveProbe = vi.fn(async () => {
+      throw new Error("should not probe bilibili public subtitles")
+    })
+    const fetchSubtitle = vi.fn(async () => {
+      throw new Error("should not download bilibili public subtitles")
+    })
+    const platformTranscriptService = new PlatformSubtitleTranscriptService(config, taskRepository, {
+      bilibiliSubtitleClient: {
+        fetchBestSubtitle: vi.fn(async () => null),
+      },
+      fetch: fetchSubtitle,
+      probeService: {
+        resolveProbe,
+      } as never,
+    })
+
+    taskOrchestrator = new TaskOrchestrator(taskRepository, eventBus, {
+      asrService: {
+        transcribe: async ({ signal }: { signal?: AbortSignal }) => {
+          phaseCAttempts.push("asr")
+          transcribeRunCount += 1
+          activeTranscribeSignal = signal ?? null
+          return {
+            language: "zh",
+            segments: [
+              {
+                start: 0,
+                end: 1,
+                text: "B 站回退 ASR 转写",
+              },
+            ],
+            text: "B 站回退 ASR 转写",
+          }
+        },
+      } as never,
+      mediaPipelineService: {
+        prepareSource: async ({ sourceLocalPath, taskId }: { sourceLocalPath?: string | null; taskId: string }) => ({
+          durationSeconds: 12,
+          fileSizeBytes: 128,
+          mediaPath: sourceLocalPath || path.join(storageDir, `${taskId}.mp4`),
+          sourceLabel: sourceLocalPath || `${taskId}.mp4`,
+          title: "B站回退测试",
+        }),
+        extractAudio: async ({ taskId }: { taskId: string }) => ({
+          audioPath: path.join(storageDir, `${taskId}.wav`),
+          durationSeconds: 12,
+        }),
+      } as never,
+      platformTranscriptService,
+      summaryService: {
+        buildArtifacts: async ({
+          transcriptSegments,
+          transcriptText,
+        }: {
+          transcriptSegments: TranscriptSegment[]
+          transcriptText: string
+        }) => ({
+          artifactManifestJson: JSON.stringify({}),
+          correctedSegments: transcriptSegments,
+          correctedText: transcriptText,
+          correctionFullText: transcriptText,
+          correctionIndexJson: JSON.stringify({ status: "skipped" }),
+          correctionRewriteText: transcriptText,
+          correctionStrictSegmentsJson: JSON.stringify(transcriptSegments),
+          fallbackArtifactChannels: [],
+          fusionPromptMarkdown: "# prompt",
+          mindmapMarkdown: "# mindmap",
+          notesMarkdown: "## notes",
+          summaryMarkdown: "## summary",
+        }),
+        isLlmGenerationEnabled: async () => false,
+      } as never,
+    } as never)
+
+    await taskRepository.create(
+      buildQueuedTaskRecord({
+        createdAt: new Date().toISOString(),
+        language: "zh",
+        modelSize: "small",
+        sourceInput,
+        sourceLocalPath: sourcePath,
+        sourceType: "bilibili",
+        taskId: activeTaskId,
+        title: "B站回退测试",
+        workflow: "notes",
+      }),
+    )
+
+    await taskOrchestrator.submit({
+      taskId: activeTaskId,
+      sourceInput,
+      sourceLocalPath: sourcePath,
+      workflow: "notes",
+    })
+
+    await waitFor(async () => {
+      const detail = await taskRepository.getDetail(activeTaskId)
+      return ["completed", "failed", "cancelled"].includes(String(detail?.status || ""))
+    }, 10_000)
+
+    const detail = await taskRepository.getDetail(activeTaskId)
+    const stored = await taskRepository.getStoredRecord(activeTaskId)
+    const stageLogs = JSON.parse(String(stored?.stage_logs_json || "{}")) as Record<string, string[]>
+
+    expect(detail?.status).toBe("completed")
+    expect(resolveProbe).not.toHaveBeenCalled()
+    expect(fetchSubtitle).not.toHaveBeenCalled()
+    expect(phaseCAttempts).toEqual(["asr"])
+    expect(transcribeRunCount).toBe(1)
+    expect(stored?.transcript_text).toBe("B 站回退 ASR 转写")
+    expect(stageLogs.C?.some((entry) => entry.includes("平台字幕不可用，已回退 ASR 转写链路"))).toBe(true)
+  }, 15_000)
+
+  it("publishes study-first substages and transcript-only vqa prewarm for vqa tasks", async () => {
     activeTaskId = "task-control-vqa-stages"
     const sourcePath = path.join(storageDir, "vqa-source.mp4")
     await taskRepository.create(
@@ -490,35 +797,6 @@ describe("TaskOrchestrator control flow", () => {
         }),
         isLlmGenerationEnabled: async () => false,
       } as never,
-      videoFrameService: {
-        extractFrames: async () => ({
-          manifest: {
-            frames: [
-              {
-                frame_index: 0,
-                path: "frames/frame-0001.jpg",
-                timestamp_seconds: 4,
-              },
-            ],
-          },
-          manifestJson: JSON.stringify({
-            task_id: activeTaskId,
-            frame_count: 1,
-            frames: [
-              {
-                frame_index: 0,
-                path: "frames/frame-0001.jpg",
-                timestamp_seconds: 4,
-              },
-            ],
-          }),
-        }),
-      } as never,
-      vlmRuntimeService: {
-        describeFrame: async () => ({
-          content: "画面里有人在讲解白板内容",
-        }),
-      } as never,
     })
 
     await taskOrchestrator.submit({
@@ -549,158 +827,76 @@ describe("TaskOrchestrator control flow", () => {
       .map((event) => String(event.substage || ""))
 
     expect(substageStarts).toEqual(expect.arrayContaining([
+      "subtitle_resolve",
+      "translation_resolve",
+      "study_pack_generate",
+      "notes_mindmap_generate",
       "transcript_vectorize",
-      "frame_extract",
-      "frame_semantic",
-      "multimodal_index_fusion",
+      "vqa_prewarm",
       "fusion_delivery",
     ]))
     expect(substageCompletions).toEqual(expect.arrayContaining([
+      "subtitle_resolve",
+      "translation_resolve",
+      "study_pack_generate",
+      "notes_mindmap_generate",
       "transcript_vectorize",
+      "vqa_prewarm",
+      "fusion_delivery",
+    ]))
+    expect(substageStarts).not.toEqual(expect.arrayContaining([
       "frame_extract",
       "frame_semantic",
       "multimodal_index_fusion",
-      "fusion_delivery",
     ]))
-  })
+    expect(substageCompletions).not.toEqual(expect.arrayContaining([
+      "frame_extract",
+      "frame_semantic",
+      "multimodal_index_fusion",
+    ]))
 
-  it("skips VLM enrichment for fallback frames and writes template semantic evidence immediately", async () => {
-    activeTaskId = "task-control-vqa-fallback-frame"
-    const sourcePath = path.join(storageDir, "vqa-fallback-frame-source.mp4")
-    let describeFrameCallCount = 0
-
-    await taskRepository.create(
-      buildQueuedTaskRecord({
-        createdAt: new Date().toISOString(),
-        language: "zh",
-        modelSize: "small",
-        sourceInput: sourcePath,
-        sourceLocalPath: sourcePath,
-        sourceType: "local_path",
-        taskId: activeTaskId,
-        title: "VQA 回退帧测试",
-        workflow: "vqa",
-      }),
-    )
-
-    taskOrchestrator = new TaskOrchestrator(taskRepository, eventBus, {
-      asrService: {
-        transcribe: async () => ({
-          language: "zh",
-          segments: [
-            {
-              start: 0,
-              end: 3,
-              text: "回退帧也要能继续构建检索索引",
-            },
-          ],
-          text: "回退帧也要能继续构建检索索引",
-        }),
-      } as never,
-      mediaPipelineService: {
-        prepareSource: async ({ sourceLocalPath, taskId }: { sourceLocalPath?: string | null; taskId: string }) => ({
-          durationSeconds: 32,
-          fileSizeBytes: 128,
-          mediaPath: sourceLocalPath || path.join(storageDir, `${taskId}.mp4`),
-          sourceLabel: sourceLocalPath || `${taskId}.mp4`,
-          title: "VQA 回退帧测试",
-        }),
-        extractAudio: async ({ taskId }: { taskId: string }) => ({
-          audioPath: path.join(storageDir, `${taskId}.wav`),
-          durationSeconds: 32,
-        }),
-      } as never,
-      summaryService: {
-        buildArtifacts: async ({
-          transcriptSegments,
-          transcriptText,
-        }: {
-          transcriptSegments: TranscriptSegment[]
-          transcriptText: string
-        }) => ({
-          artifactManifestJson: JSON.stringify({}),
-          correctedSegments: transcriptSegments,
-          correctedText: transcriptText,
-          correctionFullText: transcriptText,
-          correctionIndexJson: JSON.stringify({ status: "skipped" }),
-          correctionRewriteText: transcriptText,
-          correctionStrictSegmentsJson: JSON.stringify(transcriptSegments),
-          fallbackArtifactChannels: [],
-          fusionPromptMarkdown: "# prompt",
-          mindmapMarkdown: "# mindmap",
-          notesMarkdown: "## notes",
-          summaryMarkdown: "## summary",
-        }),
-        isLlmGenerationEnabled: async () => false,
-      } as never,
-      videoFrameService: {
-        extractFrames: async () => ({
-          manifest: {
-            frames: [
-              {
-                frame_index: 0,
-                is_fallback: true,
-                path: "frames/frame-0001.jpg",
-                timestamp_seconds: 0,
-              },
-            ],
-          },
-          manifestJson: JSON.stringify({
-            task_id: activeTaskId,
-            frame_count: 1,
-            frames: [
-              {
-                frame_index: 0,
-                is_fallback: true,
-                path: "frames/frame-0001.jpg",
-                timestamp_seconds: 0,
-              },
-            ],
-          }),
-        }),
-      } as never,
-      vlmRuntimeService: {
-        describeFrame: async () => {
-          describeFrameCallCount += 1
-          return {
-            content: "这条内容不应该被使用",
-          }
-        },
-      } as never,
-    })
-
-    await taskOrchestrator.submit({
-      taskId: activeTaskId,
-      sourceInput: sourcePath,
-      sourceLocalPath: sourcePath,
-      workflow: "vqa",
-    })
-
-    await waitFor(async () => {
-      const detail = await taskRepository.getDetail(activeTaskId)
-      return detail?.status === "completed"
-    }, 5_000)
-
-    expect(describeFrameCallCount).toBe(0)
-
-    const frameSemanticIndexPath = path.join(
+    const prewarmIndexPath = path.join(
       storageDir,
       "tasks",
       "stage-artifacts",
       activeTaskId,
       "D",
       "vqa-prewarm",
-      "frame-semantic",
       "index.json",
     )
-    const frameSemanticIndex = JSON.parse(await readFile(frameSemanticIndexPath, "utf8")) as {
-      item_count: number
-      items: Array<{ visual_text?: string }>
+    const transcriptOnlyPrewarmPath = path.join(
+      storageDir,
+      "tasks",
+      "stage-artifacts",
+      activeTaskId,
+      "D",
+      "vqa-prewarm",
+      "transcript-only",
+      "index.json",
+    )
+
+    const prewarmIndex = JSON.parse(await readFile(prewarmIndexPath, "utf8")) as {
+      item_count?: number
+      mode?: string
+    }
+    const transcriptOnlyPrewarm = JSON.parse(await readFile(transcriptOnlyPrewarmPath, "utf8")) as {
+      artifact_paths?: string[]
+      mode?: string
+      task_id?: string
     }
 
-    expect(frameSemanticIndex.item_count).toBe(1)
-    expect(frameSemanticIndex.items[0]?.visual_text).toContain("等待视觉语义补全")
-  })
+    expect(prewarmIndex.mode).toBe("transcript-only")
+    expect(prewarmIndex.item_count).toBeGreaterThan(0)
+    expect(transcriptOnlyPrewarm).toMatchObject({
+      mode: "transcript-only",
+      task_id: activeTaskId,
+    })
+    expect(transcriptOnlyPrewarm.artifact_paths).toEqual(
+      expect.arrayContaining([
+        "D/vqa-prewarm/index.json",
+      ]),
+    )
+  }, 15_000)
 })
 
 function createTestConfig(storageDir: string): AppConfig {
@@ -728,4 +924,12 @@ async function waitFor(
     await new Promise((resolve) => setTimeout(resolve, intervalMs))
   }
   throw new Error("Condition was not met in time")
+}
+
+async function readUtf8IfExists(targetPath: string): Promise<string | null> {
+  try {
+    return await readFile(targetPath, "utf8")
+  } catch {
+    return null
+  }
 }

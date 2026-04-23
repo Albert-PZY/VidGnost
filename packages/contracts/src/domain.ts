@@ -6,7 +6,7 @@ export type WorkflowType = z.infer<typeof workflowTypeSchema>
 export const modelSizeSchema = z.enum(["small", "medium"])
 export type ModelSize = z.infer<typeof modelSizeSchema>
 
-export const sourceTypeSchema = z.enum(["bilibili", "local_file", "local_path"])
+export const sourceTypeSchema = z.enum(["youtube", "bilibili", "local_file", "local_path"])
 export type SourceType = z.infer<typeof sourceTypeSchema>
 
 export const taskStatusSchema = z.enum([

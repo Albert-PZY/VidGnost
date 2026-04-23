@@ -1,6 +1,6 @@
 import os from "node:os"
 import path from "node:path"
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import type { FastifyInstance } from "fastify"
@@ -10,6 +10,7 @@ import {
   taskListResponseSchema,
   taskRecentResponseSchema,
   taskStatsResponseSchema,
+  studyPreviewSchema,
 } from "@vidgnost/contracts"
 
 import { buildApp } from "../src/server/build-app.js"
@@ -30,7 +31,7 @@ describe("task read routes", () => {
   afterAll(async () => {
     await app.close()
     if (storageDir) {
-      await rm(storageDir, { force: true, recursive: true })
+      await removeDirectoryWithRetry(storageDir)
     }
   })
 
@@ -64,6 +65,10 @@ describe("task read routes", () => {
       workflow: "notes",
       status: "completed",
     })
+    expect(studyPreviewSchema.parse(listPayload.items[0]?.study_preview)).toMatchObject({
+      readiness: "ready",
+      generation_tier: "heuristic",
+    })
     expect(statsPayload).toMatchObject({
       total: 2,
       notes: 1,
@@ -94,6 +99,128 @@ describe("task read routes", () => {
     expect(payload.summary_markdown).not.toContain("notes-images/missing.png")
     expect(payload.steps).toHaveLength(4)
     expect(payload.current_step_id).toBe("extract")
+    expect(studyPreviewSchema.parse(payload.study_preview)).toMatchObject({
+      readiness: "ready",
+      generation_tier: "heuristic",
+      highlight_count: expect.any(Number),
+    })
+  })
+
+  it("returns study preview for youtube tasks", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/tasks/task-2/study-preview",
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(studyPreviewSchema.parse(response.json())).toMatchObject({
+      readiness: "degraded",
+      generation_tier: "heuristic",
+      highlight_count: expect.any(Number),
+    })
+    await expect(
+      readFile(
+        path.join(storageDir, "tasks", "stage-artifacts", "task-2", "D", "study", "subtitle-probe.json"),
+        "utf8",
+      ),
+    ).rejects.toThrow()
+  })
+
+  it("refreshes task list and detail study previews after note mutations", async () => {
+    const lastOpenedAt = "2026-04-20T08:30:00.000Z"
+
+    const stateResponse = await app.inject({
+      method: "PATCH",
+      url: "/api/tasks/task-1/study-state",
+      payload: {
+        favorite: true,
+        last_opened_at: lastOpenedAt,
+      },
+    })
+    expect(stateResponse.statusCode).toBe(200)
+
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api/knowledge/notes",
+      payload: {
+        excerpt: "任务预览需要立即刷新。",
+        note_markdown: "## 预览刷新\n- 创建后应体现在任务读取接口",
+        source_kind: "manual",
+        tags: ["预览"],
+        task_id: "task-1",
+        title: "任务预览刷新",
+      },
+    })
+    expect(createResponse.statusCode).toBe(200)
+
+    const [listAfterCreateResponse, detailAfterCreateResponse] = await Promise.all([
+      app.inject({
+        method: "GET",
+        url: "/api/tasks?workflow=notes&status=completed&limit=10&offset=0",
+      }),
+      app.inject({
+        method: "GET",
+        url: "/api/tasks/task-1",
+      }),
+    ])
+
+    expect(listAfterCreateResponse.statusCode).toBe(200)
+    expect(detailAfterCreateResponse.statusCode).toBe(200)
+
+    const listAfterCreate = taskListResponseSchema.parse(listAfterCreateResponse.json())
+    const detailAfterCreate = taskDetailResponseSchema.parse(detailAfterCreateResponse.json())
+    const listPreviewAfterCreate = studyPreviewSchema.parse(
+      listAfterCreate.items.find((item) => item.id === "task-1")?.study_preview,
+    )
+    const detailPreviewAfterCreate = studyPreviewSchema.parse(detailAfterCreate.study_preview)
+
+    expect(listPreviewAfterCreate).toMatchObject({
+      note_count: 1,
+      is_favorite: true,
+      last_opened_at: lastOpenedAt,
+    })
+    expect(detailPreviewAfterCreate).toMatchObject({
+      note_count: 1,
+      is_favorite: true,
+      last_opened_at: lastOpenedAt,
+    })
+
+    const created = createResponse.json() as { id?: string }
+    const deleteResponse = await app.inject({
+      method: "DELETE",
+      url: `/api/knowledge/notes/${created.id}`,
+    })
+    expect(deleteResponse.statusCode).toBe(204)
+
+    const [listAfterDeleteResponse, detailAfterDeleteResponse] = await Promise.all([
+      app.inject({
+        method: "GET",
+        url: "/api/tasks?workflow=notes&status=completed&limit=10&offset=0",
+      }),
+      app.inject({
+        method: "GET",
+        url: "/api/tasks/task-1",
+      }),
+    ])
+
+    expect(listAfterDeleteResponse.statusCode).toBe(200)
+    expect(detailAfterDeleteResponse.statusCode).toBe(200)
+
+    const listAfterDelete = taskListResponseSchema.parse(listAfterDeleteResponse.json())
+    const detailAfterDelete = taskDetailResponseSchema.parse(detailAfterDeleteResponse.json())
+
+    expect(
+      studyPreviewSchema.parse(listAfterDelete.items.find((item) => item.id === "task-1")?.study_preview),
+    ).toMatchObject({
+      note_count: 0,
+      is_favorite: true,
+      last_opened_at: lastOpenedAt,
+    })
+    expect(studyPreviewSchema.parse(detailAfterDelete.study_preview)).toMatchObject({
+      note_count: 0,
+      is_favorite: true,
+      last_opened_at: lastOpenedAt,
+    })
   })
 
   it("streams source media, resolves open location and serves task artifacts", async () => {
@@ -196,8 +323,8 @@ async function seedTaskFixtures(storageDir: string): Promise<void> {
 
   const failedRecord = {
     id: "task-2",
-    source_type: "bilibili",
-    source_input: "https://example.com/video",
+    source_type: "youtube",
+    source_input: "https://www.youtube.com/watch?v=fixture-demo",
     workflow: "vqa",
     title: "Fixture VQA Task",
     language: "zh",
@@ -206,6 +333,7 @@ async function seedTaskFixtures(storageDir: string): Promise<void> {
     status: "failed",
     progress: 42,
     error_message: "boom",
+    transcript_text: "partial",
     transcript_segments_json: JSON.stringify([{ start: 0, end: 9.9, text: "partial" }]),
     created_at: "2026-04-15T06:00:00.000Z",
     updated_at: "2026-04-15T06:30:00.000Z",
@@ -213,4 +341,28 @@ async function seedTaskFixtures(storageDir: string): Promise<void> {
 
   await writeFile(path.join(recordsDir, "task-1.json"), `${JSON.stringify(completedRecord)}\n`, "utf8")
   await writeFile(path.join(recordsDir, "task-2.json"), `${JSON.stringify(failedRecord)}\n`, "utf8")
+}
+
+async function removeDirectoryWithRetry(targetPath: string, attempts = 20): Promise<void> {
+  for (let index = 0; index < attempts; index += 1) {
+    try {
+      await rm(targetPath, { recursive: true, force: true })
+      return
+    } catch (error) {
+      if (
+        process.platform === "win32" &&
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "EBUSY" &&
+        index === attempts - 1
+      ) {
+        return
+      }
+      if (index === attempts - 1) {
+        throw error
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+  }
 }

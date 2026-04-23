@@ -1,6 +1,9 @@
 import type { FastifyInstance, FastifyRequest } from "fastify"
 
 import {
+  type BilibiliAuthStatusResponse,
+  type BilibiliAuthQrPollResponse,
+  type BilibiliAuthQrStartResponse,
   llmConfigUpdateRequestSchema,
   localModelsMigrationRequestSchema,
   modelReloadRequestSchema,
@@ -23,6 +26,7 @@ import {
 } from "@vidgnost/contracts"
 
 import { AppError } from "../core/errors.js"
+import type { BilibiliLoginService } from "../modules/bilibili-auth/bilibili-login-service.js"
 import type { LlmConfigRepository } from "../modules/llm/llm-config-repository.js"
 import type { LocalModelMigrationService } from "../modules/models/local-model-migration-service.js"
 import type { ModelCatalogRepository } from "../modules/models/model-catalog-repository.js"
@@ -37,6 +41,7 @@ import {
 import type { WhisperRuntimeStatusService } from "../modules/runtime/whisper-runtime-status-service.js"
 
 interface ConfigRouteDependencies {
+  bilibiliLoginService: BilibiliLoginService
   llmConfigRepository: LlmConfigRepository
   localModelMigrationService: LocalModelMigrationService
   modelCatalogRepository: ModelCatalogRepository
@@ -69,6 +74,31 @@ export async function registerConfigRoutes(
   app.put(`${apiPrefix}/config/llm`, async (request): Promise<LLMConfigResponse> => {
     const body = parseBody(request, llmConfigUpdateRequestSchema, "LLM_CONFIG_UPDATE_INVALID", "Invalid LLM config payload")
     return dependencies.llmConfigRepository.save(body)
+  })
+
+  app.get(`${apiPrefix}/config/bilibili-auth`, async (): Promise<BilibiliAuthStatusResponse> => {
+    return dependencies.bilibiliLoginService.getStatus()
+  })
+
+  app.post(`${apiPrefix}/config/bilibili-auth/qrcode/start`, async (): Promise<BilibiliAuthQrStartResponse> => {
+    return dependencies.bilibiliLoginService.startQrLogin()
+  })
+
+  app.get(`${apiPrefix}/config/bilibili-auth/qrcode/poll`, async (request): Promise<BilibiliAuthQrPollResponse> => {
+    const qrcodeKey = String((request.query as { qrcode_key?: string } | undefined)?.qrcode_key || "").trim()
+    if (!qrcodeKey) {
+      throw AppError.badRequest("Bilibili qrcode key is required", {
+        code: "BILIBILI_AUTH_QRCODE_KEY_REQUIRED",
+      })
+    }
+    return dependencies.bilibiliLoginService.pollQrLogin({
+      qrcode_key: qrcodeKey,
+    })
+  })
+
+  app.delete(`${apiPrefix}/config/bilibili-auth/session`, async (): Promise<BilibiliAuthStatusResponse> => {
+    await dependencies.bilibiliLoginService.logout()
+    return dependencies.bilibiliLoginService.getStatus()
   })
 
   app.get(`${apiPrefix}/config/prompts`, async (): Promise<PromptTemplateBundleResponse> => {

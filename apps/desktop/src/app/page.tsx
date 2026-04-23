@@ -14,6 +14,7 @@ import { BootstrapStatusOverlay, type BootstrapStatus } from "@/components/views
 import {
   DiagnosticsView,
   HistoryView,
+  KnowledgeLibraryView,
   preloadWorkbenchViewModules,
   SettingsView,
   TaskProcessingView,
@@ -40,11 +41,12 @@ import type {
   WorkflowType,
 } from "@/lib/types"
 
-type NavigationId = "new-task" | "history" | "settings" | "diagnostics"
+type NavigationId = "new-task" | "history" | "knowledge" | "settings" | "diagnostics"
 type ViewState =
   | { type: "new-task" }
   | { type: "processing"; taskId: string; workflow: WorkflowType; taskTitle: string }
   | { type: "history" }
+  | { type: "knowledge" }
   | { type: "settings" }
   | { type: "diagnostics" }
 
@@ -52,6 +54,7 @@ const DEFAULT_UI_SETTINGS: UISettingsResponse = {
   language: "zh",
   font_size: 14,
   auto_save: true,
+  study_default_translation_target: null,
   theme_hue: 220,
   background_image: null,
   background_image_opacity: 28,
@@ -110,6 +113,8 @@ const getPageTitle = (viewState: ViewState) => {
       return { title: "任务处理", subtitle: viewState.taskTitle }
     case "history":
       return { title: "历史记录", subtitle: "查看所有分析任务" }
+    case "knowledge":
+      return { title: "知识库", subtitle: "查看跨任务沉淀的知识卡片" }
     case "settings":
       return { title: "设置中心", subtitle: "配置模型和应用" }
     case "diagnostics":
@@ -328,6 +333,10 @@ export default function VideoMindApp() {
         language: patch.language ?? current.language,
         font_size: patch.font_size ?? current.font_size,
         auto_save: patch.auto_save ?? current.auto_save,
+        study_default_translation_target:
+          patch.study_default_translation_target !== undefined
+            ? patch.study_default_translation_target
+            : current.study_default_translation_target,
         theme_hue: patch.theme_hue ?? current.theme_hue,
         background_image:
           patch.background_image !== undefined ? patch.background_image : current.background_image,
@@ -359,6 +368,9 @@ export default function VideoMindApp() {
         break
       case "history":
         setViewState({ type: "history" })
+        break
+      case "knowledge":
+        setViewState({ type: "knowledge" })
         break
       case "settings":
         setViewState({ type: "settings" })
@@ -558,6 +570,7 @@ export default function VideoMindApp() {
                     taskId={viewState.taskId}
                     workflow={viewState.workflow}
                     taskTitle={viewState.taskTitle}
+                    uiSettings={effectiveUiSettings}
                     onBack={handleBackFromProcessing}
                     onTaskChanged={handleTaskChanged}
                     onTaskLoaded={handleTaskLoaded}
@@ -569,6 +582,15 @@ export default function VideoMindApp() {
                   <HistoryView
                     onOpenTask={handleOpenTask}
                     onTasksChanged={handleTaskChanged}
+                  />
+                </React.Suspense>
+              )}
+              {viewState.type === "knowledge" && (
+                <React.Suspense fallback={<ViewLoadingFallback label="正在加载知识库..." />}>
+                  <KnowledgeLibraryView
+                    taskId={null}
+                    workspace={null}
+                    onOpenTask={handleOpenTask}
                   />
                 </React.Suspense>
               )}

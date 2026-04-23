@@ -7,6 +7,7 @@ import {
   History,
   Settings,
   Activity,
+  BookMarked,
   ChevronDown,
   Plus,
   FolderOpen,
@@ -63,6 +64,11 @@ const baseMainNavItems: NavigationItem[] = [
     id: "history",
     title: "历史记录",
     icon: History,
+  },
+  {
+    id: "knowledge",
+    title: "知识库",
+    icon: BookMarked,
   },
 ]
 

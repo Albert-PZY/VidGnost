@@ -58,6 +58,42 @@ Frontend model configuration for `llm-default` SHALL allow users to switch betwe
 - **THEN** dialog shows OpenAI-compatible provider fields and common runtime parameters together
 - **AND** the same dialog keeps `文本纠错模式`、`批大小`、`重叠窗口` controls visible for `llm-default`
 
+### Requirement: UI settings SHALL expose Study translation defaults for LLM-backed translation decisions
+Status: `implemented`
+
+Frontend UI settings SHALL persist a normalized `study_default_translation_target` value so the study-first workbench can decide whether subtitle fallback translation may request the configured LLM runtime.
+
+#### Scenario: Read UI settings for the Study workbench
+- **WHEN** frontend requests `/config/ui`
+- **THEN** backend returns `study_default_translation_target` together with other UI settings
+- **AND** the value is `null` when the user has not configured a default Study translation language
+
+#### Scenario: Save empty or blank Study translation target
+- **WHEN** frontend updates `/config/ui` with an empty or whitespace-only `study_default_translation_target`
+- **THEN** backend normalizes the persisted value to `null`
+- **AND** study-first translation fallback keeps the LLM translation path disabled unless a platform translation track is already available
+
+#### Scenario: Enable source-specific online subtitle acquisition without new runtime fields
+- **WHEN** backend enables `yt-dlp`-first subtitle acquisition for online `youtube` tasks and Bilibili-login-first AI subtitle acquisition for online `bilibili` tasks
+- **THEN** existing `/config/llm` and `/config/ui` contracts remain unchanged
+- **AND** the persisted `study_default_translation_target` continues to affect only later Study translation decisions rather than introducing new LLM or Whisper runtime config fields
+
+### Requirement: Settings config surface SHALL expose dedicated Bilibili auth routes without leaking cookies
+Status: `implemented`
+
+The config surface SHALL expose dedicated Bilibili auth routes through `/config/bilibili-auth`、`/config/bilibili-auth/qrcode/start`、`/config/bilibili-auth/qrcode/poll`、and `/config/bilibili-auth/session`. This auth state remains separate from `/config/ui`、`/config/llm`、and model-routing config.
+
+#### Scenario: Read Bilibili auth status from settings
+- **WHEN** frontend requests `/config/bilibili-auth`
+- **THEN** backend returns status, account summary, pending QR metadata, and timestamp fields needed by settings
+- **AND** the response does not include raw cookie values
+
+#### Scenario: Persist Bilibili auth state only on backend local storage
+- **WHEN** backend starts QR login, completes polling, or marks the Bilibili session expired
+- **THEN** backend persists the normalized auth snapshot under local backend storage
+- **AND** raw cookies remain available only to backend services that call Bilibili
+- **AND** frontend never reads or stores those cookie values
+
 ### Requirement: LLM runtime SHALL stay synchronized with the managed `llm-default` entry
 Status: `implemented`
 
