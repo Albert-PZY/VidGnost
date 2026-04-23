@@ -10,7 +10,7 @@
 
 ## 2. 推荐方案
 
-采用 `后端代理扫码登录 + 本地加密 Cookie 仓库 + B 站专用字幕客户端` 的最小增量方案。
+采用 `后端代理扫码登录 + 本地明文 Cookie 仓库 + B 站专用字幕客户端` 的最小增量方案。
 
 这样做的好处：
 
@@ -154,7 +154,13 @@
   "provider": "bilibili",
   "status": "active",
   "cookie_names": ["SESSDATA", "bili_jct", "DedeUserID", "DedeUserID__ckMd5", "sid"],
-  "cookies_encrypted": "<encrypted>",
+  "cookies": {
+    "SESSDATA": "xxx",
+    "bili_jct": "xxx",
+    "DedeUserID": "xxx",
+    "DedeUserID__ckMd5": "xxx",
+    "sid": "xxx"
+  },
   "account": {
     "mid": "123456",
     "uname": "example"
@@ -167,14 +173,14 @@
 }
 ```
 
-建议只保留白名单 Cookie，不保存无关项。
+建议只保留白名单 Cookie，不保存无关项，不做额外加密。
 
 ## 7. 安全策略
 
 - 原始 Cookie 不返回前端。
 - 原始 Cookie 不写日志、不写事件流、不写任务工件。
-- 本地持久化用加密字段 `cookies_encrypted`。
-- Windows 优先使用用户级 DPAPI；若暂时不接入 DPAPI，至少做 AES-GCM 加密并把密钥放到本机受限位置。
+- 本地仅保存在后端配置文件中，前端只看登录状态。
+- 明文存储即可，但文件应限制在 `storage/config/`，并继续保持 `.gitignore` 排除。
 - `退出登录` 必须删除持久化文件。
 
 ## 8. 字幕链路接入方式
