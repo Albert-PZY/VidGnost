@@ -13,14 +13,19 @@ interface BuildSubtitleTracksOptions {
   probeMode?: "cached" | "materialize"
 }
 
+interface SubtitleTrackServiceDependencies {
+  probeService?: Pick<PlatformSubtitleProbeService, "readCachedProbe" | "resolveProbe">
+}
+
 export class SubtitleTrackService {
-  private readonly probeService: PlatformSubtitleProbeService
+  private readonly probeService: Pick<PlatformSubtitleProbeService, "readCachedProbe" | "resolveProbe">
 
   constructor(
     config: AppConfig,
     private readonly taskRepository: TaskRepository,
+    dependencies: SubtitleTrackServiceDependencies = {},
   ) {
-    this.probeService = new PlatformSubtitleProbeService(config, taskRepository)
+    this.probeService = dependencies.probeService ?? new PlatformSubtitleProbeService(config, taskRepository)
   }
 
   async buildTracks(task: StoredTaskRecord, options: BuildSubtitleTracksOptions = {}): Promise<SubtitleTrackBundle> {
@@ -75,9 +80,12 @@ export class SubtitleTrackService {
     probeMode: "cached" | "materialize",
   ) {
     const platformLabel = sourceType === "youtube" ? "YouTube" : "Bilibili"
-    const probe = probeMode === "cached"
-      ? await this.probeService.readCachedProbe(taskId) ?? buildMissingProbe()
-      : await this.probeService.resolveProbe({ sourceInput, taskId })
+    const probe = await this.resolveProbeForSource({
+      probeMode,
+      sourceInput,
+      sourceType,
+      taskId,
+    })
     const subtitles = expandSubtitleProbeEntries(probe.payload?.subtitles)
     const automaticCaptions = expandSubtitleProbeEntries(probe.payload?.automatic_captions)
     const sourceEntry =
@@ -117,6 +125,21 @@ export class SubtitleTrackService {
       }))
 
     return [sourceTrack, ...translationTracks]
+  }
+
+  private async resolveProbeForSource(input: {
+    probeMode: "cached" | "materialize"
+    sourceInput: string
+    sourceType: "youtube" | "bilibili"
+    taskId: string
+  }): Promise<ResolvedSubtitleProbe> {
+    if (input.probeMode === "cached" || input.sourceType === "bilibili") {
+      return await this.probeService.readCachedProbe(input.taskId) ?? buildMissingProbe()
+    }
+    return this.probeService.resolveProbe({
+      sourceInput: input.sourceInput,
+      taskId: input.taskId,
+    })
   }
 }
 

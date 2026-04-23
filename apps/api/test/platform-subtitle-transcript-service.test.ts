@@ -28,47 +28,7 @@ describe("PlatformSubtitleTranscriptService", () => {
     }
   })
 
-  it("keeps public yt-dlp subtitles as the first choice when a usable track exists", async () => {
-    const bilibiliSubtitleClient = {
-      fetchBestSubtitle: vi.fn(async () => null),
-    }
-    const service = new PlatformSubtitleTranscriptService(config, taskRepository, {
-      bilibiliSubtitleClient,
-      fetch: vi.fn(async () => ({
-        ok: true,
-        text: async () => "WEBVTT\n\n00:00:00.000 --> 00:00:01.200\n公共字幕第一句\n",
-      } satisfies Partial<Response> as Response)),
-      probeService: {
-        resolveProbe: async () => ({
-          payload: {
-            automatic_captions: {},
-            subtitles: {
-              zh: [{ ext: "vtt", name: "中文", url: "https://cdn.example.com/public.vtt" }],
-            },
-          },
-          status: "available" as const,
-        }),
-      } as never,
-    })
-
-    const result = await service.transcribeFromPlatformSubtitles({
-      preferredLanguage: "zh",
-      sourceInput: "https://www.bilibili.com/video/BV1public",
-      sourceType: "bilibili",
-      taskId: "task-public-first",
-    })
-
-    expect(result).toMatchObject({
-      source: "yt-dlp",
-      text: "公共字幕第一句",
-    })
-    expect(bilibiliSubtitleClient.fetchBestSubtitle).not.toHaveBeenCalled()
-    await expect(
-      taskRepository.readTaskArtifactText("task-public-first", "C/platform-subtitles/selected-track.json"),
-    ).resolves.toContain("\"source\": \"yt-dlp\"")
-  })
-
-  it("falls back to bilibili auth subtitles when public subtitle probing misses", async () => {
+  it("uses bilibili auth subtitles first without probing public yt-dlp subtitles", async () => {
     const bilibiliSubtitleClient = {
       fetchBestSubtitle: vi.fn(async () => ({
         language: "zh-cn",
@@ -93,53 +53,106 @@ describe("PlatformSubtitleTranscriptService", () => {
         },
       })),
     }
+    const fetchSubtitle = vi.fn(async () => ({
+      ok: true,
+      text: async () => "WEBVTT\n\n00:00:00.000 --> 00:00:01.200\n公共字幕第一句\n",
+    } satisfies Partial<Response> as Response))
+    const resolveProbe = vi.fn(async () => ({
+      payload: {
+        automatic_captions: {},
+        subtitles: {
+          zh: [{ ext: "vtt", name: "中文", url: "https://cdn.example.com/public.vtt" }],
+        },
+      },
+      status: "available" as const,
+    }))
     const service = new PlatformSubtitleTranscriptService(config, taskRepository, {
       bilibiliSubtitleClient,
+      fetch: fetchSubtitle,
       probeService: {
-        resolveProbe: async () => ({
-          payload: {
-            automatic_captions: {},
-            subtitles: {},
-          },
-          status: "missing" as const,
-        }),
+        resolveProbe,
       } as never,
     })
 
     const result = await service.transcribeFromPlatformSubtitles({
       preferredLanguage: "zh",
-      sourceInput: "https://www.bilibili.com/video/BV1auth",
+      sourceInput: "https://www.bilibili.com/video/BV1public",
       sourceType: "bilibili",
-      taskId: "task-bilibili-auth",
+      taskId: "task-bilibili-auth-first",
     })
 
     expect(result).toMatchObject({
       source: "bilibili-auth",
       text: "AI 字幕第一句\nAI 字幕第二句",
     })
+    expect(bilibiliSubtitleClient.fetchBestSubtitle).toHaveBeenCalledTimes(1)
+    expect(resolveProbe).not.toHaveBeenCalled()
+    expect(fetchSubtitle).not.toHaveBeenCalled()
     await expect(
-      taskRepository.readTaskArtifactText("task-bilibili-auth", "C/platform-subtitles/selected-track.json"),
+      taskRepository.readTaskArtifactText("task-bilibili-auth-first", "C/platform-subtitles/selected-track.json"),
     ).resolves.toContain("\"source\": \"bilibili-auth\"")
-    await expect(
-      taskRepository.readTaskArtifactText("task-bilibili-auth", "D/study/subtitle-probe.json"),
-    ).resolves.toContain("bilibili-auth")
   })
 
-  it("returns null when both public subtitles and bilibili auth subtitles are unavailable", async () => {
+  it("keeps public yt-dlp subtitles as the first choice for youtube when a usable track exists", async () => {
+    const bilibiliSubtitleClient = {
+      fetchBestSubtitle: vi.fn(async () => null),
+    }
+    const resolveProbe = vi.fn(async () => ({
+      payload: {
+        automatic_captions: {},
+        subtitles: {
+          zh: [{ ext: "vtt", name: "中文", url: "https://cdn.example.com/public.vtt" }],
+        },
+      },
+      status: "available" as const,
+    }))
+    const service = new PlatformSubtitleTranscriptService(config, taskRepository, {
+      bilibiliSubtitleClient,
+      fetch: vi.fn(async () => ({
+        ok: true,
+        text: async () => "WEBVTT\n\n00:00:00.000 --> 00:00:01.200\n公共字幕第一句\n",
+      } satisfies Partial<Response> as Response)),
+      probeService: {
+        resolveProbe,
+      } as never,
+    })
+
+    const result = await service.transcribeFromPlatformSubtitles({
+      preferredLanguage: "zh",
+      sourceInput: "https://www.youtube.com/watch?v=public",
+      sourceType: "youtube",
+      taskId: "task-youtube-public-first",
+    })
+
+    expect(result).toMatchObject({
+      source: "yt-dlp",
+      text: "公共字幕第一句",
+    })
+    expect(bilibiliSubtitleClient.fetchBestSubtitle).not.toHaveBeenCalled()
+    expect(resolveProbe).toHaveBeenCalledTimes(1)
+    await expect(
+      taskRepository.readTaskArtifactText("task-youtube-public-first", "C/platform-subtitles/selected-track.json"),
+    ).resolves.toContain("\"source\": \"yt-dlp\"")
+  })
+
+  it("returns null without public probing when bilibili auth subtitles are unavailable", async () => {
     const bilibiliSubtitleClient = {
       fetchBestSubtitle: vi.fn(async () => null),
     }
     const onLog = vi.fn()
+    const resolveProbe = vi.fn(async () => ({
+      payload: {
+        automatic_captions: {},
+        subtitles: {
+          zh: [{ ext: "vtt", name: "中文", url: "https://cdn.example.com/public.vtt" }],
+        },
+      },
+      status: "available" as const,
+    }))
     const service = new PlatformSubtitleTranscriptService(config, taskRepository, {
       bilibiliSubtitleClient,
       probeService: {
-        resolveProbe: async () => ({
-          payload: {
-            automatic_captions: {},
-            subtitles: {},
-          },
-          status: "missing" as const,
-        }),
+        resolveProbe,
       } as never,
     })
 
@@ -152,6 +165,7 @@ describe("PlatformSubtitleTranscriptService", () => {
     })).resolves.toBeNull()
 
     expect(bilibiliSubtitleClient.fetchBestSubtitle).toHaveBeenCalledTimes(1)
+    expect(resolveProbe).not.toHaveBeenCalled()
     expect(onLog).toHaveBeenCalledWith("B 站登录态字幕不可用，已回退 ASR 转写")
   })
 
@@ -162,16 +176,19 @@ describe("PlatformSubtitleTranscriptService", () => {
       }),
     }
     const onLog = vi.fn()
+    const resolveProbe = vi.fn(async () => ({
+      payload: {
+        automatic_captions: {},
+        subtitles: {
+          zh: [{ ext: "vtt", name: "中文", url: "https://cdn.example.com/public.vtt" }],
+        },
+      },
+      status: "available" as const,
+    }))
     const service = new PlatformSubtitleTranscriptService(config, taskRepository, {
       bilibiliSubtitleClient,
       probeService: {
-        resolveProbe: async () => ({
-          payload: {
-            automatic_captions: {},
-            subtitles: {},
-          },
-          status: "missing" as const,
-        }),
+        resolveProbe,
       } as never,
     })
 
@@ -184,6 +201,7 @@ describe("PlatformSubtitleTranscriptService", () => {
     })).resolves.toBeNull()
 
     expect(bilibiliSubtitleClient.fetchBestSubtitle).toHaveBeenCalledTimes(1)
+    expect(resolveProbe).not.toHaveBeenCalled()
     expect(onLog).toHaveBeenCalledWith("B 站登录态 AI 字幕请求失败，已继续回退 ASR 转写: upstream auth failed")
     expect(onLog).toHaveBeenCalledWith("B 站登录态字幕不可用，已回退 ASR 转写")
   })

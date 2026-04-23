@@ -34,7 +34,7 @@ Status: `implemented`
 The pipeline SHALL keep these phase boundaries:
 - `A`: source ingestion and normalization
 - `B`: audio extraction and preprocessing
-- `C`: platform-subtitle-first transcript acquisition plus ASR fallback normalization
+- `C`: platform subtitle or Bilibili logged-in AI subtitle transcript acquisition plus ASR fallback normalization
 - `D`: study-first transcript shaping、学习工件收口、transcript-only QA 预热与最终交付
 
 #### Scenario: Phase ordering
@@ -76,31 +76,36 @@ When a task uses workflow `vqa`, phase `D` SHALL prepare the first-question retr
 - **AND** compatibility-only multimodal artifacts MAY still appear on legacy tasks without changing the default retrieval contract
 - **AND** frontend and contracts MUST continue to accept compatibility evidence fields from older tasks while preferring transcript timestamp and text citations on the study-first baseline
 
-### Requirement: Phase C SHALL support platform-subtitle-first routing plus the current TS-native ASR routes
+### Requirement: Phase C SHALL support online subtitle routing plus the current TS-native ASR routes
 Status: `implemented`
 
-Phase `C` SHALL first attempt `yt-dlp` public platform subtitles for supported online `youtube` and `bilibili` tasks. For `bilibili`, when public subtitles are unavailable or unusable, phase `C` SHALL next attempt logged-in Bilibili AI subtitles. If neither subtitle path yields a usable transcript, phase `C` SHALL fall back to the local `faster-whisper` Python worker route or the remote OpenAI-compatible ASR route under the same normalized transcript contract.
+Phase `C` SHALL attempt `yt-dlp` public platform subtitles for supported online `youtube` tasks. For `bilibili`, phase `C` SHALL skip `yt-dlp` public subtitle probing for transcript acquisition and attempt logged-in Bilibili AI subtitles first. If the applicable subtitle path does not yield a usable transcript, phase `C` SHALL fall back to the local `faster-whisper` Python worker route or the remote OpenAI-compatible ASR route under the same normalized transcript contract.
 
-#### Scenario: Use platform subtitles for a supported online task
-- **WHEN** phase `C` runs for an online `youtube` or `bilibili` task and `yt-dlp` can download and parse a usable platform subtitle track
+#### Scenario: Use yt-dlp platform subtitles for YouTube
+- **WHEN** phase `C` runs for an online `youtube` task and `yt-dlp` can download and parse a usable platform subtitle track
 - **THEN** backend emits the same `transcript_delta` reset and segment events as the ASR path
 - **AND** backend persists the resulting normalized transcript into `transcript_text`、`transcript_segments_json`、`C/transcript.txt`、and `C/transcript.segments.json`
 - **AND** backend persists the normalized `yt-dlp` subtitle probe payload under `D/study/subtitle-probe.json` so later subtitle-track resolution reuses the same probe result instead of re-running divergent platform discovery
-- **AND** backend does not invoke Bilibili login fallback or Whisper for that task
+- **AND** backend does not invoke Whisper for that task
 
-#### Scenario: Fall back after platform subtitles are unavailable
-- **WHEN** phase `C` runs for an online `youtube` or `bilibili` task but `yt-dlp` cannot resolve or parse a usable platform subtitle track
+#### Scenario: Fall back after applicable subtitle path is unavailable
+- **WHEN** phase `C` runs for an online `youtube` task but `yt-dlp` cannot resolve or parse a usable platform subtitle track
 - **THEN** backend records the platform-subtitle miss in stage-`C` logs
 - **AND** backend keeps any successfully normalized subtitle probe payload reusable through the same `D/study/subtitle-probe.json` artifact contract for later study-domain track resolution
-- **AND** for `bilibili`, backend attempts logged-in AI subtitles before ASR fallback
-- **AND** if the login session is expired, backend marks the Bilibili auth state `expired`
-- **AND** if logged-in AI subtitles are also unavailable, backend continues on the same phase-`C` execution by falling back to the Whisper-compatible ASR route or remote ASR route instead of failing the task solely because platform subtitles were absent
+- **AND** backend continues on the same phase-`C` execution by falling back to the Whisper-compatible ASR route or remote ASR route instead of failing the task solely because platform subtitles were absent
 
-#### Scenario: Use logged-in Bilibili AI subtitles after public subtitle miss
-- **WHEN** phase `C` runs for a `bilibili` task, `yt-dlp` public subtitle probing misses, and backend has a usable Bilibili login session
+#### Scenario: Use logged-in Bilibili AI subtitles before ASR
+- **WHEN** phase `C` runs for a `bilibili` task and backend has a usable Bilibili login session
 - **THEN** backend requests the logged-in Bilibili AI subtitle track before invoking ASR
+- **AND** backend does not run `yt-dlp` public subtitle probing for Bilibili transcript acquisition
 - **AND** backend persists the selected-track artifact and normalized subtitle probe artifact with `source=bilibili-auth`
 - **AND** backend emits the same normalized transcript events and transcript artifacts used by the other phase-`C` routes
+
+#### Scenario: Fall back after logged-in Bilibili AI subtitles are unavailable
+- **WHEN** phase `C` runs for a `bilibili` task and logged-in AI subtitles are missing, unusable, or inaccessible
+- **THEN** backend continues on the same phase-`C` execution by falling back to the Whisper-compatible ASR route or remote ASR route
+- **AND** backend does not try `yt-dlp` public subtitle probing as an intermediate Bilibili transcript source
+- **AND** if the login session is expired, backend marks the Bilibili auth state `expired`
 
 #### Scenario: Logged-in Bilibili subtitle path expires during fallback
 - **WHEN** phase `C` attempts logged-in Bilibili AI subtitles and the backend detects that the login session has expired or become invalid

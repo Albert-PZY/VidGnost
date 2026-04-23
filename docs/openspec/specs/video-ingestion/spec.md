@@ -22,21 +22,27 @@ The system SHALL accept both在线视频 and本地视频输入，并在任务记
 - **THEN** server returns a machine-readable validation error
 - **AND** backend does not create the task
 
-### Requirement: Online sources SHALL prioritize subtitle-track discovery before fallback transcription
+### Requirement: Online sources SHALL use source-specific subtitle acquisition before fallback transcription
 Status: `implemented`
 
-For online sources, the backend SHALL use `yt-dlp` public subtitles first before phase `C` falls back to ASR. For `bilibili` sources, when public subtitles are unavailable or unusable, backend SHALL attempt logged-in Bilibili AI subtitles before falling back to Whisper-compatible ASR or the remote ASR route. When a usable subtitle track is resolved from either subtitle path, backend SHALL normalize that track into the same transcript contract and task artifacts consumed by the downstream study-first pipeline.
+For online sources, the backend SHALL use source-specific subtitle acquisition before phase `C` falls back to ASR. `youtube` sources use `yt-dlp` public subtitles first. `bilibili` sources skip `yt-dlp` public subtitle probing for transcript acquisition and attempt logged-in Bilibili AI subtitles first. When a usable subtitle track is resolved from either subtitle path, backend SHALL normalize that track into the same transcript contract and task artifacts consumed by the downstream study-first pipeline.
 
-#### Scenario: Online source exposes usable subtitle tracks
-- **WHEN** backend inspects a supported online video
+#### Scenario: YouTube source exposes usable subtitle tracks
+- **WHEN** backend inspects a supported YouTube video
 - **THEN** it probes available original subtitle tracks and available translated subtitle tracks through `yt-dlp` before transcript normalization begins
 - **AND** it records those subtitle-track candidates as source metadata for later study-domain materialization
 - **AND** if phase `C` can download and parse a usable public platform subtitle track, backend persists `transcript_text` and `transcript_segments_json` from that platform track without invoking Bilibili login fallback or Whisper
 
+#### Scenario: Bilibili source exposes logged-in AI subtitles
+- **WHEN** backend inspects a supported Bilibili video during phase `C`
+- **THEN** it requests logged-in Bilibili AI subtitles before ASR fallback
+- **AND** it does not run `yt-dlp` public subtitle probing as a Bilibili transcript source
+- **AND** if phase `C` can download and parse a usable logged-in AI subtitle track, backend persists `transcript_text` and `transcript_segments_json` from that AI subtitle track without invoking Whisper
+
 #### Scenario: Online source has no usable subtitle track
-- **WHEN** backend cannot resolve or parse a usable platform subtitle track for the online video
+- **WHEN** backend cannot resolve or parse a usable applicable subtitle track for the online video
 - **THEN** task remains on the online-source path
-- **AND** for `bilibili`, phase `C` follows `yt-dlp` public subtitles -> logged-in Bilibili AI subtitles -> ASR fallback
+- **AND** for `bilibili`, phase `C` follows logged-in Bilibili AI subtitles -> ASR fallback without an intermediate `yt-dlp` public subtitle step
 - **AND** if the Bilibili login session is missing, expired, or AI subtitle retrieval fails, backend marks the auth state when applicable and continues to ASR fallback without blocking the task
 - **AND** phase `C` falls back to Whisper-compatible ASR or the remote ASR route while preserving the same normalized transcript artifact contract
 - **AND** downstream transcription MAY fallback to Whisper without making frame extraction, VLM inference, or image-semantic retrieval a prerequisite

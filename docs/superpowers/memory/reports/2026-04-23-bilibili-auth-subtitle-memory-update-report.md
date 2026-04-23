@@ -2,7 +2,7 @@
 
 ## Summary
 
-- Scope: B 站登录态、AI 字幕补充链路与 Study 只读 cached probe 规则
+- Scope: B 站登录态、AI 字幕优先链路与 Study 只读 cached probe 规则
 - Result: done
 - Created docs: 1
 - Updated docs: 1
@@ -23,7 +23,7 @@
 
 - B 站登录态是后端本地运维状态，不属于通用 `UISettings`
 - 前端只消费登录状态和二维码元数据，原始 Cookie 不进入 renderer、日志或任务工件
-- B 站字幕补充顺序固定为 `yt-dlp 公共字幕 -> bilibili 登录态 AI 字幕 -> Whisper/remote ASR`
+- B 站字幕转写顺序固定为 `bilibili 登录态 AI 字幕 -> Whisper/remote ASR`，不再先走 `yt-dlp` 公共字幕
 - `401/403` 即使返回非 JSON，也必须把 B 站登录态标记为 `expired`
 - `study-preview`、`study-pack` 与任务列表预览等只读场景只能走 cached probe，不能在线触发 `yt-dlp`
 

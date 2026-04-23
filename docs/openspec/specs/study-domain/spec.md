@@ -74,7 +74,7 @@ Study-domain contracts SHALL expose subtitle-track candidates and translation de
 - **WHEN** backend builds subtitle-track metadata
 - **THEN** `SubtitleTrack.kind` is one of `source`、`platform_translation`、`whisper`、or `llm_translation`
 - **AND** `SubtitleTrack.availability` is one of `available`、`generated`、`missing`、or `failed`
-- **AND** online `youtube` or `bilibili` tasks probe platform subtitle metadata through `yt-dlp` and reuse that probe result before populating fallback Whisper tracks
+- **AND** online `youtube` tasks may probe platform subtitle metadata through `yt-dlp`, while online `bilibili` tasks may reuse `source=bilibili-auth` subtitle metadata written by phase `C`
 - **AND** when phase `C` can normalize a usable platform subtitle track, study-domain consumes that same task transcript state instead of forcing a second Whisper transcript source
 - **AND** local tasks still expose a `source` track placeholder together with a Whisper track on the study-domain surface
 
@@ -96,7 +96,8 @@ Study-domain contracts SHALL expose subtitle-track candidates and translation de
 #### Scenario: Keep subtitle-track metadata aligned with the main transcript source
 - **WHEN** study-domain materializes subtitle tracks and translation records on the current baseline
 - **THEN** study-pack generation still derives from normalized transcript artifacts produced by the main pipeline
-- **AND** for online `youtube` or `bilibili` tasks, those phase-`C` transcript artifacts MAY originate from `yt-dlp` platform subtitles before Whisper fallback is considered
+- **AND** for online `youtube` tasks, those phase-`C` transcript artifacts MAY originate from `yt-dlp` platform subtitles before Whisper fallback is considered
+- **AND** for online `bilibili` tasks, those phase-`C` transcript artifacts MAY originate from logged-in Bilibili AI subtitles before Whisper fallback is considered
 - **AND** when platform subtitles are unavailable, study-domain continues to consume the fallback Whisper transcript artifacts without changing downstream study contracts
 
 ### Requirement: Study state SHALL capture continue-learning state per task

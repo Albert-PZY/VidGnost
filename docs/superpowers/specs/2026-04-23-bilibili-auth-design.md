@@ -5,7 +5,7 @@
 
 ## Scope
 
-This design adds a Bilibili QR login surface to the existing settings center, persists a task-independent Bilibili cookie session on the backend only, and extends the current platform-subtitle-first transcription path with a logged-in Bilibili AI subtitle fallback before Whisper or remote ASR.
+This design adds a Bilibili QR login surface to the existing settings center, persists a task-independent Bilibili cookie session on the backend only, and routes Bilibili transcription through logged-in Bilibili AI subtitles before Whisper or remote ASR.
 
 The delivery covers:
 
@@ -29,13 +29,13 @@ The auth module remains separate from `UiSettingsRepository`. Bilibili login is 
 
 ### Subtitle Fallback Chain
 
-The current phase-`C` order becomes:
+The phase-`C` order is source-specific:
 
-1. shared `yt-dlp` public platform subtitle probe
-2. logged-in Bilibili AI subtitle resolution when `source_type=bilibili`
-3. existing Whisper / remote ASR fallback
+1. `source_type=youtube`: shared `yt-dlp` public platform subtitle probe
+2. `source_type=bilibili`: logged-in Bilibili AI subtitle resolution, without a public `yt-dlp` subtitle probe
+3. existing Whisper / remote ASR fallback when the applicable subtitle path is unavailable
 
-This preserves the existing public-subtitle behavior while using login state only when public subtitles are insufficient.
+This preserves the existing public-subtitle behavior for non-Bilibili sources while avoiding an extra Bilibili `yt-dlp` subtitle probe that still depends on login-state validation.
 
 ### Desktop Settings
 
@@ -61,8 +61,8 @@ Record fields:
 2. QR login stays backend-driven.
    The backend performs Bilibili HTTP calls and extracts `set-cookie` headers so the renderer never touches session secrets.
 
-3. Bilibili auth is a supplement, not a replacement.
-   `yt-dlp` remains the first probe path. Logged-in subtitle access only runs after public subtitle discovery fails to produce usable results, so the effective order is `yt-dlp public subtitles -> Bilibili logged-in AI subtitles -> Whisper/remote ASR`.
+3. Bilibili auth is the Bilibili transcript subtitle source.
+   Bilibili phase `C` no longer probes public subtitles through `yt-dlp`; the effective order is `Bilibili logged-in AI subtitles -> Whisper/remote ASR`. `yt-dlp` remains available for YouTube public subtitle acquisition.
 
 4. Expired sessions degrade cleanly.
    On auth failure, the backend marks the session `expired` and the subtitle pipeline falls back to the existing ASR path without failing the whole task or blocking the current job.
@@ -74,5 +74,5 @@ The implementation must ship with:
 - config-route tests for Bilibili auth lifecycle
 - repository tests for persistence and expiry updates
 - subtitle-client tests for `bvid` resolution and subtitle selection
-- orchestrator / transcription tests proving `yt-dlp -> bilibili-auth -> Whisper` fallback order
+- orchestrator / transcription tests proving Bilibili uses `bilibili-auth -> Whisper` and does not invoke public `yt-dlp` subtitle probing
 - desktop API/client tests for QR login status and actions

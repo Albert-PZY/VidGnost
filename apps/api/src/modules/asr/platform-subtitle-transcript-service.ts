@@ -84,6 +84,15 @@ export class PlatformSubtitleTranscriptService {
       return null
     }
 
+    if (sourceType === "bilibili") {
+      const bilibiliAuthResult = await this.tryBilibiliAuthSubtitles(input)
+      if (bilibiliAuthResult) {
+        return bilibiliAuthResult
+      }
+      await input.onLog?.("B 站登录态字幕不可用，已回退 ASR 转写")
+      return null
+    }
+
     const probe = await this.probeService.resolveProbe({
       onLog: input.onLog,
       signal: input.signal,
@@ -91,25 +100,12 @@ export class PlatformSubtitleTranscriptService {
       taskId: input.taskId,
     })
     if (!probe.payload) {
-      if (sourceType === "bilibili") {
-        await input.onLog?.("yt-dlp 未返回可复用平台字幕探测结果，尝试 B 站登录态 AI 字幕")
-        return this.tryBilibiliAuthFallback(input)
-      }
       return null
     }
 
     const selectedTrack = selectBestTrack(probe.payload, input.preferredLanguage)
     if (!selectedTrack) {
-      if (sourceType === "bilibili") {
-        await input.onLog?.("yt-dlp 未发现可用平台字幕，尝试 B 站登录态 AI 字幕")
-        const fallbackResult = await this.tryBilibiliAuthFallback(input)
-        if (fallbackResult) {
-          return fallbackResult
-        }
-        await input.onLog?.("B 站登录态字幕不可用，已回退 ASR 转写")
-      } else {
-        await input.onLog?.("yt-dlp 未发现可用平台字幕，已回退 ASR 转写")
-      }
+      await input.onLog?.("yt-dlp 未发现可用平台字幕，已回退 ASR 转写")
       return null
     }
 
@@ -119,15 +115,6 @@ export class PlatformSubtitleTranscriptService {
 
     const rawSubtitle = await this.downloadSubtitle(selectedTrack, input.signal)
     if (!rawSubtitle) {
-      if (sourceType === "bilibili") {
-        await input.onLog?.("yt-dlp 平台字幕下载失败，尝试 B 站登录态 AI 字幕")
-        const fallbackResult = await this.tryBilibiliAuthFallback(input)
-        if (fallbackResult) {
-          return fallbackResult
-        }
-        await input.onLog?.("B 站登录态字幕不可用，已回退 ASR 转写")
-        return null
-      }
       await input.onLog?.("平台字幕下载失败，已回退 ASR 转写")
       return null
     }
@@ -135,15 +122,6 @@ export class PlatformSubtitleTranscriptService {
     const segments = parseSubtitleSegments(selectedTrack.ext, rawSubtitle)
     const text = buildTranscriptText(segments)
     if (!segments.length || !text) {
-      if (sourceType === "bilibili") {
-        await input.onLog?.(`yt-dlp 平台字幕解析失败(ext=${selectedTrack.ext})，尝试 B 站登录态 AI 字幕`)
-        const fallbackResult = await this.tryBilibiliAuthFallback(input)
-        if (fallbackResult) {
-          return fallbackResult
-        }
-        await input.onLog?.("B 站登录态字幕不可用，已回退 ASR 转写")
-        return null
-      }
       await input.onLog?.(`平台字幕解析失败(ext=${selectedTrack.ext})，已回退 ASR 转写`)
       return null
     }
@@ -208,7 +186,7 @@ export class PlatformSubtitleTranscriptService {
     }
   }
 
-  private async tryBilibiliAuthFallback(input: {
+  private async tryBilibiliAuthSubtitles(input: {
     onLog?: (message: string) => Promise<void> | void
     onReset?: () => Promise<void> | void
     onSegment?: (segment: TranscriptSegment) => Promise<void> | void
@@ -221,9 +199,9 @@ export class PlatformSubtitleTranscriptService {
       return null
     }
 
-    let fallback: ResolvedBilibiliSubtitle | null = null
+    let subtitle: ResolvedBilibiliSubtitle | null = null
     try {
-      fallback = await this.bilibiliSubtitleClient.fetchBestSubtitle({
+      subtitle = await this.bilibiliSubtitleClient.fetchBestSubtitle({
         preferredLanguage: input.preferredLanguage,
         signal: input.signal,
         sourceInput: input.sourceInput,
@@ -232,44 +210,44 @@ export class PlatformSubtitleTranscriptService {
       await input.onLog?.(`B 站登录态 AI 字幕请求失败，已继续回退 ASR 转写: ${toErrorMessage(error)}`)
       return null
     }
-    if (!fallback || !fallback.segments.length || !fallback.text) {
+    if (!subtitle || !subtitle.segments.length || !subtitle.text) {
       return null
     }
 
-    await this.persistBilibiliAuthArtifacts(input.taskId, fallback)
+    await this.persistBilibiliAuthArtifacts(input.taskId, subtitle)
 
     await input.onReset?.()
-    for (const segment of fallback.segments) {
+    for (const segment of subtitle.segments) {
       await input.onSegment?.(segment)
     }
 
-    await input.onLog?.(`已通过 B 站登录态 AI 字幕生成转写，共 ${fallback.segments.length} 个片段`)
+    await input.onLog?.(`已通过 B 站登录态 AI 字幕生成转写，共 ${subtitle.segments.length} 个片段`)
 
     return {
-      chunks: [buildSyntheticChunk(fallback.segments)],
-      language: fallback.language,
-      segments: fallback.segments,
+      chunks: [buildSyntheticChunk(subtitle.segments)],
+      language: subtitle.language,
+      segments: subtitle.segments,
       source: "bilibili-auth",
-      text: fallback.text,
-      track_ext: fallback.track.ext,
+      text: subtitle.text,
+      track_ext: subtitle.track.ext,
       track_kind: "automatic",
-      track_language: fallback.track.language,
+      track_language: subtitle.track.language,
     }
   }
 
-  private async persistBilibiliAuthArtifacts(taskId: string, fallback: ResolvedBilibiliSubtitle): Promise<void> {
+  private async persistBilibiliAuthArtifacts(taskId: string, subtitle: ResolvedBilibiliSubtitle): Promise<void> {
     await Promise.all([
-      this.taskRepository.writeTaskArtifactText(taskId, "C/platform-subtitles/bilibili-auth-raw.json", fallback.raw_subtitle_json),
+      this.taskRepository.writeTaskArtifactText(taskId, "C/platform-subtitles/bilibili-auth-raw.json", subtitle.raw_subtitle_json),
       this.taskRepository.writeTaskArtifactText(
         taskId,
         "C/platform-subtitles/selected-track.json",
         JSON.stringify({
-          ext: fallback.track.ext,
+          ext: subtitle.track.ext,
           kind: "automatic",
-          label: fallback.track.label,
-          language: fallback.track.language,
+          label: subtitle.track.label,
+          language: subtitle.track.language,
           source: "bilibili-auth",
-          url: fallback.subtitle_url,
+          url: subtitle.subtitle_url,
         }, null, 2),
       ),
       this.taskRepository.writeTaskArtifactText(
@@ -277,12 +255,12 @@ export class PlatformSubtitleTranscriptService {
         "D/study/subtitle-probe.json",
         JSON.stringify({
           automatic_captions: {
-            [fallback.track.language]: [
+            [subtitle.track.language]: [
               {
-                ext: fallback.track.ext,
-                name: fallback.track.label,
+                ext: subtitle.track.ext,
+                name: subtitle.track.label,
                 source: "bilibili-auth",
-                url: fallback.subtitle_url,
+                url: subtitle.subtitle_url,
               },
             ],
           },

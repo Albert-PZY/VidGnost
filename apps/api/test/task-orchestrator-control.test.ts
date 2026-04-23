@@ -2,12 +2,13 @@ import os from "node:os"
 import path from "node:path"
 import { mkdtemp, readFile, rm } from "node:fs/promises"
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { TranscriptSegment } from "@vidgnost/contracts"
 
 import type { AppConfig } from "../src/core/config.js"
 import { resolveConfig } from "../src/core/config.js"
+import { PlatformSubtitleTranscriptService } from "../src/modules/asr/platform-subtitle-transcript-service.js"
 import { EventBus } from "../src/modules/events/event-bus.js"
 import { TaskOrchestrator } from "../src/modules/tasks/task-orchestrator.js"
 import { TaskRepository } from "../src/modules/tasks/task-repository.js"
@@ -597,6 +598,124 @@ describe("TaskOrchestrator control flow", () => {
     expect(phaseCAttempts).toEqual(["platform", "asr"])
     expect(transcribeRunCount).toBe(1)
     expect(stored?.transcript_text).toBe("测试转写")
+  }, 15_000)
+
+  it("falls back to ASR for bilibili tasks without invoking public subtitle probing", async () => {
+    activeTaskId = "task-control-bilibili-auth-asr-fallback"
+    blockFirstAsrRun = false
+    const sourceInput = "https://www.bilibili.com/video/BV1noPublicProbe"
+    const sourcePath = path.join(storageDir, `${activeTaskId}.mp4`)
+    const resolveProbe = vi.fn(async () => {
+      throw new Error("should not probe bilibili public subtitles")
+    })
+    const fetchSubtitle = vi.fn(async () => {
+      throw new Error("should not download bilibili public subtitles")
+    })
+    const platformTranscriptService = new PlatformSubtitleTranscriptService(config, taskRepository, {
+      bilibiliSubtitleClient: {
+        fetchBestSubtitle: vi.fn(async () => null),
+      },
+      fetch: fetchSubtitle,
+      probeService: {
+        resolveProbe,
+      } as never,
+    })
+
+    taskOrchestrator = new TaskOrchestrator(taskRepository, eventBus, {
+      asrService: {
+        transcribe: async ({ signal }: { signal?: AbortSignal }) => {
+          phaseCAttempts.push("asr")
+          transcribeRunCount += 1
+          activeTranscribeSignal = signal ?? null
+          return {
+            language: "zh",
+            segments: [
+              {
+                start: 0,
+                end: 1,
+                text: "B 站回退 ASR 转写",
+              },
+            ],
+            text: "B 站回退 ASR 转写",
+          }
+        },
+      } as never,
+      mediaPipelineService: {
+        prepareSource: async ({ sourceLocalPath, taskId }: { sourceLocalPath?: string | null; taskId: string }) => ({
+          durationSeconds: 12,
+          fileSizeBytes: 128,
+          mediaPath: sourceLocalPath || path.join(storageDir, `${taskId}.mp4`),
+          sourceLabel: sourceLocalPath || `${taskId}.mp4`,
+          title: "B站回退测试",
+        }),
+        extractAudio: async ({ taskId }: { taskId: string }) => ({
+          audioPath: path.join(storageDir, `${taskId}.wav`),
+          durationSeconds: 12,
+        }),
+      } as never,
+      platformTranscriptService,
+      summaryService: {
+        buildArtifacts: async ({
+          transcriptSegments,
+          transcriptText,
+        }: {
+          transcriptSegments: TranscriptSegment[]
+          transcriptText: string
+        }) => ({
+          artifactManifestJson: JSON.stringify({}),
+          correctedSegments: transcriptSegments,
+          correctedText: transcriptText,
+          correctionFullText: transcriptText,
+          correctionIndexJson: JSON.stringify({ status: "skipped" }),
+          correctionRewriteText: transcriptText,
+          correctionStrictSegmentsJson: JSON.stringify(transcriptSegments),
+          fallbackArtifactChannels: [],
+          fusionPromptMarkdown: "# prompt",
+          mindmapMarkdown: "# mindmap",
+          notesMarkdown: "## notes",
+          summaryMarkdown: "## summary",
+        }),
+        isLlmGenerationEnabled: async () => false,
+      } as never,
+    } as never)
+
+    await taskRepository.create(
+      buildQueuedTaskRecord({
+        createdAt: new Date().toISOString(),
+        language: "zh",
+        modelSize: "small",
+        sourceInput,
+        sourceLocalPath: sourcePath,
+        sourceType: "bilibili",
+        taskId: activeTaskId,
+        title: "B站回退测试",
+        workflow: "notes",
+      }),
+    )
+
+    await taskOrchestrator.submit({
+      taskId: activeTaskId,
+      sourceInput,
+      sourceLocalPath: sourcePath,
+      workflow: "notes",
+    })
+
+    await waitFor(async () => {
+      const detail = await taskRepository.getDetail(activeTaskId)
+      return ["completed", "failed", "cancelled"].includes(String(detail?.status || ""))
+    }, 10_000)
+
+    const detail = await taskRepository.getDetail(activeTaskId)
+    const stored = await taskRepository.getStoredRecord(activeTaskId)
+    const stageLogs = JSON.parse(String(stored?.stage_logs_json || "{}")) as Record<string, string[]>
+
+    expect(detail?.status).toBe("completed")
+    expect(resolveProbe).not.toHaveBeenCalled()
+    expect(fetchSubtitle).not.toHaveBeenCalled()
+    expect(phaseCAttempts).toEqual(["asr"])
+    expect(transcribeRunCount).toBe(1)
+    expect(stored?.transcript_text).toBe("B 站回退 ASR 转写")
+    expect(stageLogs.C?.some((entry) => entry.includes("平台字幕不可用，已回退 ASR 转写链路"))).toBe(true)
   }, 15_000)
 
   it("publishes study-first substages and transcript-only vqa prewarm for vqa tasks", async () => {

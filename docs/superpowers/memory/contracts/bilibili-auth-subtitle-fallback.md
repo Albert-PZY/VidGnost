@@ -1,7 +1,7 @@
 ---
 type: contract
 title: bilibili-auth-subtitle-fallback
-summary: B 站登录态与平台字幕回退链路的稳定合同，覆盖后端本地 Cookie 边界、字幕获取顺序与 Study 只读场景的 cached probe 规则。
+summary: B 站登录态与 AI 字幕回退链路的稳定合同，覆盖后端本地 Cookie 边界、字幕获取顺序与 Study 只读场景的 cached probe 规则。
 tags:
   - contract
   - bilibili
@@ -34,7 +34,7 @@ status: active
 
 ## Scope
 
-适用于 `source_type=bilibili` 的登录态管理、AI 字幕补充链路以及 Study 预览类接口的字幕探测读取规则。
+适用于 `source_type=bilibili` 的登录态管理、AI 字幕优先链路以及 Study 预览类接口的字幕探测读取规则。
 
 ## State And Interface Rules
 
@@ -55,11 +55,10 @@ status: active
 
 ## Fallback Order
 
-- `phase C` 的平台字幕转写顺序固定为：
-  - `yt-dlp` 公共平台字幕
+- `source_type=bilibili` 的 phase `C` 转写顺序固定为：
   - `bilibili` 登录态 AI 字幕
   - `Whisper / remote ASR`
-- B 站登录态只作为公开平台字幕不可用时的补充能力，不替代公共字幕优先策略。
+- B 站转写链路不再先调用 `yt-dlp` 公共字幕 probe/download；`yt-dlp` 公共字幕策略仅保留给非 B 站来源如 YouTube。
 - 登录态 AI 字幕命中后，任务工件至少保留：
   - `C/platform-subtitles/bilibili-auth-raw.json`
   - `C/platform-subtitles/selected-track.json`

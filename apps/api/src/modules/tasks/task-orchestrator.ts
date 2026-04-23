@@ -343,7 +343,7 @@ export class TaskOrchestrator {
       )
       : null
     if (remoteSourceType && !platformTranscription) {
-      await this.appendStageLog(input.taskId, "C", "平台字幕不可用，已回退 Whisper 转写链路")
+      await this.appendStageLog(input.taskId, "C", "平台字幕不可用，已回退 ASR 转写链路")
     }
     const transcription = platformTranscription ?? await this.runControllable(execution, (signal) =>
       this.dependencies.asrService.transcribe({
