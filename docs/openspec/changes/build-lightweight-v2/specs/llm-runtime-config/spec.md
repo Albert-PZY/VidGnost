@@ -73,6 +73,11 @@ Frontend UI settings SHALL persist a normalized `study_default_translation_targe
 - **THEN** backend normalizes the persisted value to `null`
 - **AND** study-first translation fallback keeps the LLM translation path disabled unless a platform translation track is already available
 
+#### Scenario: Preserve legacy Study translation target values across UI updates
+- **WHEN** frontend reads or re-saves `/config/ui` and the persisted `study_default_translation_target` contains a non-empty legacy value outside the current preset list
+- **THEN** backend keeps that normalized value unchanged instead of coercing it into another preset
+- **AND** frontend contracts remain able to surface the current value for migration without silently dropping the saved setting
+
 #### Scenario: Enable source-specific online subtitle acquisition without new runtime fields
 - **WHEN** backend enables `yt-dlp`-first subtitle acquisition for online `youtube` tasks and Bilibili-login-first AI subtitle acquisition for online `bilibili` tasks
 - **THEN** existing `/config/llm` and `/config/ui` contracts remain unchanged

@@ -50,6 +50,11 @@ import { WebGLBlurCanvas } from "@/components/ui/webgl-blur-canvas"
 import { CustomSkinDialog } from "@/components/views/custom-skin-dialog"
 import { PromptLabPanel } from "@/components/views/prompt-lab-panel"
 import { useTheme } from "next-themes"
+import {
+  buildStudyDefaultTranslationTargetOptions,
+  STUDY_DEFAULT_TRANSLATION_TARGET_EMPTY_VALUE,
+  toStudyDefaultTranslationTargetSelectValue,
+} from "@/lib/study-default-translation-target"
 import { cn } from "@/lib/utils"
 import {
   cancelModelDownload,
@@ -468,6 +473,7 @@ export function SettingsView({
   const [skinPreviewSize, setSkinPreviewSize] = React.useState({ width: 0, height: 0 })
   const [skinPreviewImageSize, setSkinPreviewImageSize] = React.useState({ width: 0, height: 0 })
   const ollamaService = ollamaConfig?.service ?? null
+  const studyDefaultTranslationTargetOptions = buildStudyDefaultTranslationTargetOptions(studyDefaultTranslationTarget)
 
   React.useEffect(() => {
     setFontSize([uiSettings.font_size])
@@ -1146,6 +1152,7 @@ export function SettingsView({
       toast.error(getApiErrorMessage(error, "保存界面设置失败"))
       setFontSize([uiSettings.font_size])
       setThemeHue([uiSettings.theme_hue])
+      setStudyDefaultTranslationTarget(uiSettings.study_default_translation_target || "")
       onUiSettingsPreviewChange(null)
     } finally {
       setIsSavingUi(false)
@@ -1161,12 +1168,16 @@ export function SettingsView({
     void handleUiSettingChange({ theme_hue: DEFAULT_THEME_HUE }, "主题色调已重置")
   }
 
-  const handleSaveStudyDefaultTranslationTarget = React.useCallback(() => {
-    const normalizedValue = studyDefaultTranslationTarget.trim()
+  const handleStudyDefaultTranslationTargetChange = (nextValue: string) => {
+    const normalizedValue =
+      nextValue === STUDY_DEFAULT_TRANSLATION_TARGET_EMPTY_VALUE
+        ? ""
+        : nextValue.trim()
+    setStudyDefaultTranslationTarget(normalizedValue)
     void handleUiSettingChange({
       study_default_translation_target: normalizedValue || null,
     }, normalizedValue ? "Study 默认翻译目标已保存" : "Study 默认翻译目标已清除")
-  }, [studyDefaultTranslationTarget])
+  }
 
   const handleStartBilibiliLogin = async () => {
     stopBilibiliQrPolling()
@@ -3194,35 +3205,26 @@ export function SettingsView({
                         当在线视频没有可直接复用的翻译字幕轨时，Study 工作台会优先用这里的目标语言匹配可用翻译结果。
                       </p>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Input
-                        id="study-default-translation-target"
-                        value={studyDefaultTranslationTarget}
-                        onChange={(event) => setStudyDefaultTranslationTarget(event.target.value)}
-                        onBlur={handleSaveStudyDefaultTranslationTarget}
-                        placeholder="例如 en / ja / zh-Hans"
-                        className="w-full max-w-sm"
+                    <div className="space-y-2">
+                      <Select
+                        value={toStudyDefaultTranslationTargetSelectValue(studyDefaultTranslationTarget)}
+                        onValueChange={handleStudyDefaultTranslationTargetChange}
                         disabled={isSavingUi}
-                      />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={isSavingUi}
-                        onClick={handleSaveStudyDefaultTranslationTarget}
                       >
-                        保存
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={isSavingUi || !studyDefaultTranslationTarget.trim()}
-                        onClick={() => {
-                          setStudyDefaultTranslationTarget("")
-                          void handleUiSettingChange({ study_default_translation_target: null }, "Study 默认翻译目标已清除")
-                        }}
-                      >
-                        清除
-                      </Button>
+                        <SelectTrigger id="study-default-translation-target" className="w-full max-w-sm">
+                          <SelectValue placeholder="选择默认翻译目标" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {studyDefaultTranslationTargetOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        选择后会立即保存；如遇到旧的自定义值，会在列表中保留为“当前值”供你迁移。
+                      </p>
                     </div>
                   </div>
                 </CardContent>

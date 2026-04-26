@@ -33,6 +33,12 @@ Settings center SHALL provide `模型配置`, `提示词模板`, `外观设置`,
 - **THEN** renderer saves the patch through `/config/ui`
 - **AND** backend returns the normalized persisted UI settings snapshot used by the renderer shell
 
+#### Scenario: Select Study default translation target from language settings
+- **WHEN** user opens `语言设置` and changes `Study 默认翻译目标`
+- **THEN** renderer shows a preset dropdown with an explicit `不设置` option instead of a free-text input
+- **AND** selecting an option immediately persists `study_default_translation_target` through `/config/ui`
+- **AND** if the persisted value is a legacy non-preset string, renderer still exposes it as a temporary current-value option for migration
+
 #### Scenario: Manage prompt templates from settings center
 - **WHEN** user creates, edits, deletes, or switches a prompt template in settings
 - **THEN** renderer uses `/config/prompts/templates` and `/config/prompts/selection`
