@@ -114,6 +114,24 @@ Status: `implemented`
 - **WHEN** 点击播放条上的章节分段
 - **THEN** 播放器跳到该章节起点
 
+### Requirement: Mind map SHALL offer a graph view and an equivalent outline view
+Status: `implemented`
+
+导图页签 SHALL 同时提供图形与层级两种等价呈现；图形按自然尺寸渲染并由容器滚动，
+缩放模式可在「适应宽度」与「100%」之间切换；层级视图的每个节点可携带时间锚点。
+
+#### Scenario: Graph view
+- **WHEN** 导图产物存在
+- **THEN** 图形视图渲染 Mermaid `mindmap`，初始视口对准根节点，并提供缩放切换
+
+#### Scenario: Outline view
+- **WHEN** 切换到层级视图
+- **THEN** 以缩进列表呈现同一棵树，带 `start` 的节点显示可点击时间码
+
+#### Scenario: Graph rendering fails
+- **WHEN** Mermaid 渲染抛出异常（例如配色格式不被支持）
+- **THEN** 展示失败原因与源码，内容不丢失
+
 ### Requirement: Transcript pane SHALL support in-text search
 Status: `implemented`
 

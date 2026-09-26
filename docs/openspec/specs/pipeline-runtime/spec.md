@@ -128,3 +128,26 @@ Status: `implemented`
 #### Scenario: Delete a running task
 - **WHEN** 删除仍在运行的任务
 - **THEN** 返回 409 与 `TASK_RUNNING`
+
+### Requirement: SSE responses SHALL carry CORS headers for allowed origins
+Status: `implemented`
+
+事件流与问答流直接写原始响应头，因此 SHALL 在 `writeHead` 之前显式补齐
+`Access-Control-Allow-Origin`（仅回显白名单内的来源）与 `Vary: Origin`，
+保证渲染层与 API 不同端口时浏览器不会拦截 `EventSource`。
+
+#### Scenario: Request from an allowed origin
+- **WHEN** 请求头 `Origin` 在白名单内
+- **THEN** 响应包含该来源的 `Access-Control-Allow-Origin` 与 `Vary: Origin`
+
+#### Scenario: Request without an origin header
+- **WHEN** 请求来自同源或非浏览器客户端
+- **THEN** 不写入 CORS 头，响应正常建立
+
+#### Scenario: Request from an unknown origin
+- **WHEN** `Origin` 不在白名单内
+- **THEN** 不写入 CORS 头，也不改变响应体
+
+#### Scenario: Streaming with disallowed origin
+- **WHEN** 浏览器在该来源下发起 `EventSource`
+- **THEN** 由于缺少 CORS 头，请求被浏览器拦截，服务端不产生任务副作用
