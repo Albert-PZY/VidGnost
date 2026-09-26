@@ -1,116 +1,101 @@
 import { existsSync } from "node:fs"
 import path from "node:path"
 
-import { API_VERSION, DEFAULT_API_HOST, DEFAULT_API_PORT, DEFAULT_API_PREFIX, DEFAULT_APP_NAME } from "@vidgnost/shared"
+import { DEFAULT_API_HOST, DEFAULT_API_PORT, DEFAULT_API_PREFIX, DEFAULT_APP_NAME, API_VERSION } from "@vidgnost/shared"
 
 const DEFAULT_ALLOW_ORIGINS = [
-  "http://localhost:3000",
-  "http://127.0.0.1:3000",
   "http://localhost:6221",
   "http://127.0.0.1:6221",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
 ]
-const PATH_RESOLUTION_BASE_DIR = resolvePathBaseDir()
 
 export interface AppConfig {
   appName: string
+  version: string
+  host: string
+  port: number
   apiPrefix: string
   allowOrigins: string[]
-  eventLogDir: string
-  ffmpegExecutable: string
-  ffprobeExecutable: string
-  host: string
-  llmApiKey: string
-  llmBaseUrl: string
-  llmCorrectionBatchSize: number
-  llmCorrectionMode: "off" | "strict" | "rewrite"
-  llmCorrectionOverlap: number
-  llmLocalModelId: string
-  llmModel: string
-  maxUploadMb: number
-  ollamaBaseUrl: string
-  port: number
-  runtimeBinDir: string
+  /** 仓库根目录（`pnpm-workspace.yaml` 所在目录）。 */
+  workspaceRoot: string
   storageDir: string
-  tempDir: string
   uploadDir: string
-  version: string
-  whisperPythonExecutable: string
-  ytdlpExecutable: string
+  tmpDir: string
+  /** 在线模型提供方。 */
+  dashscopeBaseUrl: string
+  dashscopeApiKey: string
+  dashscopeApiKeyEnv: string
+  openrouterBaseUrl: string
+  openrouterApiKey: string
+  openrouterApiKeyEnv: string
+  /** 工具链覆盖路径，留空则走 PATH 探测。 */
+  ffmpegPath: string
+  ffprobePath: string
+  ytdlpPath: string
+  /** 本地 whisper。 */
+  whisperPython: string
+  whisperModelDir: string
+  whisperDevice: "auto" | "cpu" | "cuda"
+  whisperComputeType: string
+  /** 并发与网络。 */
+  maxConcurrentTasks: number
+  /** 单次 ASR 上传分片上限（MB），百炼策略上限 1024。 */
+  asrChunkMb: number
+  requestTimeoutMs: number
 }
 
-export function resolveConfig(): AppConfig {
+export function resolveConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
+  const workspaceRoot = resolveWorkspaceRoot()
+  const storageDir = resolveAppPath(env.VIDGNOST_STORAGE_DIR, ["storage"], workspaceRoot)
+
   return {
-    appName: process.env.VIDGNOST_APP_NAME?.trim() || DEFAULT_APP_NAME,
-    apiPrefix: process.env.VIDGNOST_API_PREFIX?.trim() || DEFAULT_API_PREFIX,
-    allowOrigins: parseOrigins(process.env.VIDGNOST_ALLOW_ORIGINS),
-    eventLogDir: resolveAppPath(process.env.VIDGNOST_EVENT_LOG_DIR, ["storage", "event-logs"]),
-    ffmpegExecutable: String(process.env.VIDGNOST_FFMPEG_BIN || "").trim(),
-    ffprobeExecutable: String(process.env.VIDGNOST_FFPROBE_BIN || "").trim(),
-    host: process.env.VIDGNOST_API_HOST?.trim() || DEFAULT_API_HOST,
-    llmApiKey: process.env.VIDGNOST_LLM_API_KEY?.trim() || "ollama",
-    llmBaseUrl: process.env.VIDGNOST_LLM_BASE_URL?.trim() || "http://127.0.0.1:11434/v1",
-    llmCorrectionBatchSize: parseBoundedInt(process.env.VIDGNOST_LLM_CORRECTION_BATCH_SIZE, 24, 6, 80),
-    llmCorrectionMode: parseCorrectionMode(process.env.VIDGNOST_LLM_CORRECTION_MODE),
-    llmCorrectionOverlap: parseBoundedInt(process.env.VIDGNOST_LLM_CORRECTION_OVERLAP, 3, 0, 20),
-    llmLocalModelId: process.env.VIDGNOST_LLM_LOCAL_MODEL_ID?.trim() || "qwen2.5:3b",
-    llmModel: process.env.VIDGNOST_LLM_MODEL?.trim() || "qwen2.5:3b",
-    maxUploadMb: parseBoundedInt(process.env.VIDGNOST_MAX_UPLOAD_MB, 2048, 1, 10240),
-    ollamaBaseUrl: process.env.VIDGNOST_OLLAMA_BASE_URL?.trim() || "http://127.0.0.1:11434",
-    port: parsePort(process.env.VIDGNOST_API_PORT, DEFAULT_API_PORT),
-    runtimeBinDir: resolveAppPath(process.env.VIDGNOST_RUNTIME_BIN_DIR, ["storage", "runtime-bin"]),
-    storageDir: resolveAppPath(process.env.VIDGNOST_STORAGE_DIR, ["storage"]),
-    tempDir: resolveAppPath(process.env.VIDGNOST_TEMP_DIR, ["storage", "tmp"]),
-    uploadDir: resolveAppPath(process.env.VIDGNOST_UPLOAD_DIR, ["storage", "uploads"]),
-    version: process.env.VIDGNOST_APP_VERSION?.trim() || API_VERSION,
-    whisperPythonExecutable: String(process.env.VIDGNOST_WHISPER_PYTHON || "").trim(),
-    ytdlpExecutable: String(process.env.VIDGNOST_YTDLP_BIN || "").trim(),
+    appName: env.VIDGNOST_APP_NAME?.trim() || DEFAULT_APP_NAME,
+    version: env.VIDGNOST_APP_VERSION?.trim() || API_VERSION,
+    host: env.VIDGNOST_API_HOST?.trim() || DEFAULT_API_HOST,
+    port: parsePort(env.VIDGNOST_API_PORT, DEFAULT_API_PORT),
+    apiPrefix: env.VIDGNOST_API_PREFIX?.trim() || DEFAULT_API_PREFIX,
+    allowOrigins: parseOrigins(env.VIDGNOST_ALLOW_ORIGINS),
+
+    workspaceRoot,
+    storageDir,
+    uploadDir: resolveAppPath(env.VIDGNOST_UPLOAD_DIR, ["storage", "media"], workspaceRoot),
+    tmpDir: resolveAppPath(env.VIDGNOST_TEMP_DIR, ["storage", "tmp"], workspaceRoot),
+
+    dashscopeBaseUrl: env.VIDGNOST_DASHSCOPE_BASE_URL?.trim() || "https://dashscope.aliyuncs.com",
+    dashscopeApiKey: String(env.DASHSCOPE_API_KEY || "").trim(),
+    dashscopeApiKeyEnv: "DASHSCOPE_API_KEY",
+    openrouterBaseUrl: env.VIDGNOST_OPENROUTER_BASE_URL?.trim() || "https://openrouter.ai/api/v1",
+    openrouterApiKey: String(env.OPENROUTER_API_KEY || "").trim(),
+    openrouterApiKeyEnv: "OPENROUTER_API_KEY",
+
+    ffmpegPath: String(env.VIDGNOST_FFMPEG_BIN || "").trim(),
+    ffprobePath: String(env.VIDGNOST_FFPROBE_BIN || "").trim(),
+    ytdlpPath: String(env.VIDGNOST_YTDLP_BIN || "").trim(),
+
+    whisperPython: String(env.VIDGNOST_WHISPER_PYTHON || "").trim(),
+    whisperModelDir: String(env.VIDGNOST_WHISPER_MODEL_DIR || "").trim(),
+    whisperDevice: parseWhisperDevice(env.VIDGNOST_WHISPER_DEVICE),
+    whisperComputeType: String(env.VIDGNOST_WHISPER_COMPUTE_TYPE || "int8").trim(),
+
+    maxConcurrentTasks: parseBoundedInt(env.VIDGNOST_MAX_CONCURRENT_TASKS, 2, 1, 8),
+    asrChunkMb: parseBoundedInt(env.VIDGNOST_ASR_CHUNK_MB, 220, 8, 1024),
+    requestTimeoutMs: parseBoundedInt(env.VIDGNOST_REQUEST_TIMEOUT_MS, 300_000, 10_000, 1_800_000),
   }
 }
 
-function parsePort(rawValue: string | undefined, fallback: number): number {
-  const candidate = Number.parseInt(String(rawValue || "").trim(), 10)
-  if (!Number.isFinite(candidate) || candidate <= 0 || candidate > 65535) {
-    return fallback
-  }
-  return candidate
-}
-
-function parseBoundedInt(rawValue: string | undefined, fallback: number, minimum: number, maximum: number): number {
-  const candidate = Number.parseInt(String(rawValue || "").trim(), 10)
-  if (!Number.isFinite(candidate)) {
-    return fallback
-  }
-  return Math.max(minimum, Math.min(maximum, candidate))
-}
-
-function parseCorrectionMode(rawValue: string | undefined): "off" | "strict" | "rewrite" {
-  const candidate = String(rawValue || "").trim().toLowerCase()
-  if (candidate === "off" || candidate === "rewrite") {
-    return candidate
-  }
-  return "strict"
-}
-
-function parseOrigins(rawValue: string | undefined): string[] {
-  const entries = String(rawValue || "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean)
-  return entries.length > 0 ? entries : [...DEFAULT_ALLOW_ORIGINS]
-}
-
-export function resolveAppPath(rawValue: string | undefined, fallbackSegments: string[] = []): string {
+export function resolveAppPath(rawValue: string | undefined, fallbackSegments: string[], baseDir: string): string {
   const candidate = String(rawValue || "").trim()
   if (!candidate) {
-    return path.resolve(PATH_RESOLUTION_BASE_DIR, ...fallbackSegments)
+    return path.resolve(baseDir, ...fallbackSegments)
   }
-  return path.isAbsolute(candidate) ? path.normalize(candidate) : path.resolve(PATH_RESOLUTION_BASE_DIR, candidate)
+  return path.isAbsolute(candidate) ? path.normalize(candidate) : path.resolve(baseDir, candidate)
 }
 
-function resolvePathBaseDir(startDir = process.cwd()): string {
+export function resolveWorkspaceRoot(startDir = process.cwd()): string {
   let currentDir = path.resolve(startDir)
   while (true) {
-    if (hasWorkspaceMarker(currentDir)) {
+    if (existsSync(path.join(currentDir, "pnpm-workspace.yaml"))) {
       return currentDir
     }
     const parentDir = path.dirname(currentDir)
@@ -121,6 +106,25 @@ function resolvePathBaseDir(startDir = process.cwd()): string {
   }
 }
 
-function hasWorkspaceMarker(targetDir: string): boolean {
-  return ["pnpm-workspace.yaml", ".git"].some((marker) => existsSync(path.join(targetDir, marker)))
+function parsePort(raw: string | undefined, fallback: number): number {
+  const value = Number.parseInt(String(raw || "").trim(), 10)
+  return Number.isFinite(value) && value > 0 && value <= 65535 ? value : fallback
+}
+
+function parseBoundedInt(raw: string | undefined, fallback: number, min: number, max: number): number {
+  const value = Number.parseInt(String(raw || "").trim(), 10)
+  return Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback
+}
+
+function parseOrigins(raw: string | undefined): string[] {
+  const entries = String(raw || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+  return entries.length > 0 ? entries : [...DEFAULT_ALLOW_ORIGINS]
+}
+
+function parseWhisperDevice(raw: string | undefined): "auto" | "cpu" | "cuda" {
+  const value = String(raw || "").trim().toLowerCase()
+  return value === "cpu" || value === "cuda" ? value : "auto"
 }

@@ -1,887 +1,207 @@
 import type {
-  ApiErrorPayload,
-  BilibiliAuthQrPollResponse,
-  BilibiliAuthQrStartResponse,
-  BilibiliAuthStatusResponse,
-  HealthResponse,
-  KnowledgeNoteCreateRequest,
-  KnowledgeNoteItem,
-  KnowledgeNoteListResponse,
-  KnowledgeNoteUpdateRequest,
-  LLMConfigResponse,
-  LocalModelsMigrationResponse,
-  ModelListResponse,
-  OllamaModelsMigrationResponse,
-  OllamaRuntimeConfigResponse,
-  PromptTemplateBundleResponse,
-  RuntimePathsResponse,
-  RuntimeMetricsResponse,
-  SelfCheckReportResponse,
-  SelfCheckStartResponse,
-  SelfCheckStreamEvent,
-  TaskBatchCreateResponse,
-  TaskCreateResponse,
-  TaskSourceCreatePayload,
-  TaskDetailResponse,
+  AppSettings,
+  ArtifactPayload,
+  AskStreamEvent,
+  CreateTaskRequest,
+  ModelCatalogEntry,
+  ModelRole,
+  ModelRoute,
+  ProviderConfig,
+  RuntimeHealth,
+  TaskEvent,
   TaskListResponse,
-  TaskRecentResponse,
-  StudyPackResponse,
-  StudyStateResponse,
-  StudyStateUpdateRequest,
-  TaskExportKind,
-  TaskStatsResponse,
-  TaskStreamEvent,
-  UISettingsResponse,
-  VqaChatStreamEvent,
-  VqaTraceResponse,
-  WhisperConfigResponse,
-  WorkflowType,
-} from "@/lib/types"
-import { getUnsupportedVideoNames, SUPPORTED_VIDEO_LABEL } from "@/lib/video-format"
-import { buildStudyStateUpdatePayload } from "@/lib/study-workbench"
+  TaskRecord,
+} from '@vidgnost/contracts'
 
-const DEFAULT_API_BASE_URL = "http://127.0.0.1:8666/api"
+const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/+$/, '') || 'http://127.0.0.1:8666/api'
 
 export class ApiError extends Error {
-  status: number
-  code: string
-  hint: string
-  retryable: boolean
-  detail: unknown
+  readonly code: string
+  readonly status: number
+  readonly hint?: string
 
-  constructor(status: number, payload: Partial<ApiErrorPayload> & { message?: string }) {
-    super(payload.message || "Request failed")
-    this.name = "ApiError"
-    this.status = status
-    this.code = payload.code || "REQUEST_FAILED"
-    this.hint = payload.hint || ""
-    this.retryable = Boolean(payload.retryable)
-    this.detail = payload.detail
+  constructor(input: { message: string; code: string; status: number; hint?: string }) {
+    super(input.message)
+    this.name = 'ApiError'
+    this.code = input.code
+    this.status = input.status
+    this.hint = input.hint
   }
 }
 
-function getApiBaseUrl(): string {
-  const envValue = import.meta.env.VITE_API_BASE_URL
-  return (envValue || DEFAULT_API_BASE_URL).replace(/\/+$/, "")
-}
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(init.headers || {}),
+    },
+  })
 
-export function buildApiUrl(
-  path: string,
-  searchParams?: Record<string, string | number | boolean | null | undefined>,
-): string {
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`
-  const url = new URL(`${getApiBaseUrl()}${normalizedPath}`)
-
-  if (searchParams) {
-    Object.entries(searchParams).forEach(([key, value]) => {
-      if (value === undefined || value === null || value === "") {
-        return
-      }
-      url.searchParams.set(key, String(value))
-    })
-  }
-
-  return url.toString()
-}
-
-export function buildTaskArtifactFileUrl(taskId: string, relativePath: string): string {
-  return buildApiUrl(`/tasks/${taskId}/artifacts/file`, { path: relativePath })
-}
-
-export function buildTaskSourceMediaUrl(taskId: string): string {
-  return buildApiUrl(`/tasks/${taskId}/source-media`)
-}
-
-async function readErrorPayload(response: Response): Promise<Partial<ApiErrorPayload>> {
-  const contentType = response.headers.get("content-type") || ""
-  if (contentType.includes("application/json")) {
-    try {
-      return (await response.json()) as Partial<ApiErrorPayload>
-    } catch {
-      return { message: response.statusText }
-    }
-  }
-
-  try {
-    const text = await response.text()
-    return { message: text || response.statusText }
-  } catch {
-    return { message: response.statusText }
-  }
-}
-
-async function readJson<T>(response: Response): Promise<T> {
   if (response.status === 204) {
     return undefined as T
   }
-  return (await response.json()) as T
-}
 
-export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const hasBody = init?.body !== undefined && init?.body !== null
-  const response = await fetch(buildApiUrl(path), {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      ...(hasBody && !(init.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
-      ...(init?.headers || {}),
-    },
-  })
+  const text = await response.text()
+  const payload = text ? (JSON.parse(text) as unknown) : {}
 
   if (!response.ok) {
-    throw new ApiError(response.status, await readErrorPayload(response))
-  }
-
-  return readJson<T>(response)
-}
-
-export function getHealth(): Promise<HealthResponse> {
-  return apiFetch<HealthResponse>("/health", { method: "GET" })
-}
-
-export function getApiErrorMessage(error: unknown, fallback = "请求失败"): string {
-  if (error instanceof ApiError) {
-    return error.hint ? `${error.message} ${error.hint}`.trim() : error.message
-  }
-  if (error instanceof Error) {
-    return error.message
-  }
-  return fallback
-}
-
-export async function uploadTaskFiles(input: {
-  files: File[]
-  workflow: WorkflowType
-  language?: string
-  onProgress?: (progress: number) => void
-}): Promise<TaskBatchCreateResponse> {
-  const { files, workflow, language = "zh", onProgress } = input
-  const unsupportedNames = getUnsupportedVideoNames(files)
-
-  if (unsupportedNames.length > 0) {
-    throw new Error(`仅支持上传 ${SUPPORTED_VIDEO_LABEL} 格式的视频文件。`)
-  }
-
-  return new Promise<TaskBatchCreateResponse>((resolve, reject) => {
-    const xhr = new XMLHttpRequest()
-    xhr.open("POST", buildApiUrl("/tasks/upload/batch"))
-    xhr.responseType = "text"
-
-    xhr.upload.onprogress = (event) => {
-      if (!event.lengthComputable || !onProgress) {
-        return
-      }
-      onProgress(Math.round((event.loaded / event.total) * 100))
-    }
-
-    xhr.onerror = () => {
-      reject(new ApiError(0, { message: "网络错误，无法连接后端服务。" }))
-    }
-
-    xhr.onload = () => {
-      let payload: unknown = undefined
-
-      try {
-        payload = xhr.responseText ? JSON.parse(xhr.responseText) : undefined
-      } catch {
-        payload = undefined
-      }
-
-      if (xhr.status >= 200 && xhr.status < 300) {
-        resolve(payload as TaskBatchCreateResponse)
-        return
-      }
-
-      reject(new ApiError(xhr.status, (payload as Partial<ApiErrorPayload>) || { message: xhr.statusText }))
-    }
-
-    const formData = new FormData()
-    files.forEach((file) => {
-      formData.append("files", file)
+    const error = (payload as { error?: { code?: string; message?: string; hint?: string } }).error
+    throw new ApiError({
+      status: response.status,
+      code: error?.code || `HTTP_${response.status}`,
+      message: error?.message || `请求失败：HTTP ${response.status}`,
+      hint: error?.hint,
     })
-    formData.append("workflow", workflow)
-    formData.append("language", language)
-    formData.append("model_size", "small")
-    formData.append("strategy", "single_task_per_file")
+  }
 
-    xhr.send(formData)
-  })
+  return payload as T
 }
 
-export function createTaskFromUrl(payload: TaskSourceCreatePayload & { url: string }): Promise<TaskCreateResponse> {
-  return apiFetch<TaskCreateResponse>("/tasks/url", {
-    method: "POST",
-    body: JSON.stringify({
-      url: payload.url,
-      workflow: payload.workflow,
-      language: payload.language ?? "zh",
-      model_size: payload.model_size ?? "small",
+export const api = {
+  base: API_BASE,
+
+  health: () => request<{ ok: boolean; version: string; storageDir: string }>('/health'),
+  runtimeHealth: () => request<RuntimeHealth>('/health/runtime'),
+  toolchainHealth: () => request<{ checkedAt: string; checks: Array<{ name: string; ok: boolean; detail: string; latencyMs: number }> }>('/health/toolchain'),
+
+  listTasks: (query?: { limit?: number; query?: string; status?: string }) => {
+    const params = new URLSearchParams()
+    if (query?.limit) params.set('limit', String(query.limit))
+    if (query?.query) params.set('query', query.query)
+    if (query?.status) params.set('status', query.status)
+    const suffix = params.toString()
+    return request<TaskListResponse>(`/tasks${suffix ? `?${suffix}` : ''}`)
+  },
+  createTask: (body: CreateTaskRequest) =>
+    request<{ task: TaskRecord }>('/tasks', { method: 'POST', body: JSON.stringify(body) }),
+  getTask: (taskId: string) => request<{ task: TaskRecord }>(`/tasks/${taskId}`),
+  cancelTask: (taskId: string) => request<{ task: TaskRecord }>(`/tasks/${taskId}/cancel`, { method: 'POST' }),
+  rerunTask: (taskId: string, stages?: string[]) =>
+    request<{ task: TaskRecord }>(`/tasks/${taskId}/rerun`, { method: 'POST', body: JSON.stringify({ stages }) }),
+  deleteTask: (taskId: string) => request<void>(`/tasks/${taskId}`, { method: 'DELETE' }),
+  getArtifact: (taskId: string, key: string) => request<ArtifactPayload>(`/tasks/${taskId}/artifacts/${key}`),
+
+  config: () =>
+    request<{
+      settings: AppSettings
+      routes: ModelRoute[]
+      providers: ProviderConfig[]
+    }>('/config'),
+  catalog: () =>
+    request<{
+      models: ModelCatalogEntry[]
+      roles: Array<{ role: ModelRole; label: string; purpose: string; kind: string }>
+      providerLabels: Record<string, string>
+    }>('/config/catalog'),
+  patchSettings: (body: unknown) =>
+    request<{ settings: AppSettings; routes: ModelRoute[] }>('/config/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(body),
     }),
-  })
+  patchProvider: (body: unknown) =>
+    request<{ providers: ProviderConfig[] }>('/config/providers', { method: 'PATCH', body: JSON.stringify(body) }),
+  putRoutes: (routes: ModelRoute[]) =>
+    request<{ routes: ModelRoute[] }>('/config/routes', { method: 'PUT', body: JSON.stringify({ routes }) }),
+  runHealth: () => request<RuntimeHealth>('/config/health', { method: 'POST' }),
+
+  mediaUrl: (taskId: string) => `${API_BASE}/tasks/${taskId}/media`,
+  frameUrl: (taskId: string, frameId: string) => `${API_BASE}/tasks/${taskId}/frames/${frameId}`,
+  exportUrl: (taskId: string, format: string) => `${API_BASE}/tasks/${taskId}/export?format=${format}`,
 }
 
-export function createTaskFromPath(
-  payload: TaskSourceCreatePayload & { local_path: string },
-): Promise<TaskCreateResponse> {
-  return apiFetch<TaskCreateResponse>("/tasks/path", {
-    method: "POST",
-    body: JSON.stringify({
-      local_path: payload.local_path,
-      workflow: payload.workflow,
-      language: payload.language ?? "zh",
-      model_size: payload.model_size ?? "small",
-    }),
-  })
-}
-
-export function streamTaskEvents(taskId: string, onMessage: (event: TaskStreamEvent) => void): EventSource {
-  const source = new EventSource(buildApiUrl(`/tasks/${taskId}/events`))
-  source.onmessage = (message) => {
-    if (!message.data || message.data === "[DONE]") {
-      return
-    }
-    onMessage(JSON.parse(message.data) as TaskStreamEvent)
-  }
-  return source
-}
-
-export function streamSelfCheckEvents(
-  sessionId: string,
-  onMessage: (event: SelfCheckStreamEvent) => void,
-): EventSource {
-  const source = new EventSource(buildApiUrl(`/self-check/${sessionId}/events`))
-  source.onmessage = (message) => {
-    if (!message.data || message.data === "[DONE]") {
-      return
-    }
-    onMessage(JSON.parse(message.data) as SelfCheckStreamEvent)
-  }
-  return source
-}
-
-export async function listTasksWithQuery(params: {
-  q?: string
-  workflow?: WorkflowType | "all"
-  status?: string
-  sort_by?: "date" | "name" | "size"
-  limit?: number
-  offset?: number
-} = {}): Promise<TaskListResponse> {
-  const url = buildApiUrl("/tasks", params)
-  const response = await fetch(url, { headers: { Accept: "application/json" } })
-  if (!response.ok) {
-    throw new ApiError(response.status, await readErrorPayload(response))
-  }
-  return readJson<TaskListResponse>(response)
-}
-
-export function getTaskStats(): Promise<TaskStatsResponse> {
-  return apiFetch<TaskStatsResponse>("/tasks/stats", { method: "GET" })
-}
-
-export function getRecentTasks(limit = 3): Promise<TaskRecentResponse> {
-  const url = buildApiUrl("/tasks/recent", { limit })
-  return fetchJson<TaskRecentResponse>(url)
-}
-
-export function getTaskDetail(taskId: string): Promise<TaskDetailResponse> {
-  return apiFetch<TaskDetailResponse>(`/tasks/${taskId}`, { method: "GET" })
-}
-
-export function getTaskStudyPreview(taskId: string): Promise<TaskDetailResponse["study_preview"]> {
-  return apiFetch<TaskDetailResponse["study_preview"]>(`/tasks/${taskId}/study-preview`, { method: "GET" })
-}
-
-export function getTaskStudyPack(taskId: string): Promise<StudyPackResponse> {
-  return apiFetch<StudyPackResponse>(`/tasks/${taskId}/study-pack`, { method: "GET" })
-}
-
-export function updateTaskStudyState(
+/**
+ * 订阅任务事件流。返回取消订阅函数。
+ * 浏览器 EventSource 无法携带自定义头，因此直接在 URL 上使用 GET。
+ */
+export function subscribeTaskEvents(
   taskId: string,
-  payload: StudyStateUpdateRequest,
-): Promise<StudyStateResponse> {
-  return apiFetch<StudyStateResponse>(`/tasks/${taskId}/study-state`, {
-    method: "PATCH",
-    body: JSON.stringify(buildStudyStateUpdatePayload(payload)),
-  })
-}
-
-export function cancelTask(taskId: string) {
-  return apiFetch(`/tasks/${taskId}/cancel`, { method: "POST", body: JSON.stringify({}) })
-}
-
-export function pauseTask(taskId: string) {
-  return apiFetch(`/tasks/${taskId}/pause`, { method: "POST", body: JSON.stringify({}) })
-}
-
-export function resumeTask(taskId: string) {
-  return apiFetch(`/tasks/${taskId}/resume`, { method: "POST", body: JSON.stringify({}) })
-}
-
-export function rerunTaskStageD(taskId: string) {
-  return apiFetch(`/tasks/${taskId}/rerun-stage-d`, { method: "POST", body: JSON.stringify({}) })
-}
-
-export function updateTaskArtifacts(
-  taskId: string,
-  payload: {
-    summary_markdown?: string | null
-    notes_markdown?: string | null
-    mindmap_markdown?: string | null
-  },
-): Promise<TaskDetailResponse> {
-  return apiFetch<TaskDetailResponse>(`/tasks/${taskId}/artifacts`, {
-    method: "PATCH",
-    body: JSON.stringify(payload),
-  })
-}
-
-export async function deleteTask(taskId: string): Promise<void> {
-  await apiFetch<void>(`/tasks/${taskId}`, { method: "DELETE" })
-}
-
-export async function openTaskLocation(taskId: string): Promise<{ task_id: string; path: string }> {
-  return apiFetch<{ task_id: string; path: string }>(`/tasks/${taskId}/open-location`, { method: "GET" })
-}
-
-export function listKnowledgeNotes(params: {
-  q?: string
-  task_id?: string
-  study_theme_id?: string
-  tag?: string
-  source_kind?: KnowledgeNoteItem["source_kind"] | "all"
-  limit?: number
-  offset?: number
-} = {}): Promise<KnowledgeNoteListResponse> {
-  return fetchJson<KnowledgeNoteListResponse>(buildApiUrl("/knowledge/notes", params))
-}
-
-export function createKnowledgeNote(payload: KnowledgeNoteCreateRequest): Promise<KnowledgeNoteItem> {
-  return apiFetch<KnowledgeNoteItem>("/knowledge/notes", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  })
-}
-
-export function updateKnowledgeNote(
-  noteId: string,
-  payload: KnowledgeNoteUpdateRequest,
-): Promise<KnowledgeNoteItem> {
-  return apiFetch<KnowledgeNoteItem>(`/knowledge/notes/${noteId}`, {
-    method: "PATCH",
-    body: JSON.stringify(payload),
-  })
-}
-
-export async function deleteKnowledgeNote(noteId: string): Promise<void> {
-  await apiFetch<void>(`/knowledge/notes/${noteId}`, { method: "DELETE" })
-}
-
-export function createTaskStudyExport(
-  taskId: string,
-  payload: {
-    export_kind: Extract<TaskExportKind, "study_pack" | "subtitle_tracks" | "translation_records" | "knowledge_notes">
-    format?: string
-  },
-): Promise<{
-  id: string
-  task_id: string
-  export_kind: TaskExportKind
-  format: string
-  file_path: string
-  created_at: string
-}> {
-  return apiFetch(`/tasks/${taskId}/exports`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  })
-}
-
-export async function downloadTaskArtifactFile(
-  taskId: string,
-  relativePath: string,
-  suggestedFileName?: string,
-): Promise<void> {
-  const response = await fetch(buildTaskArtifactFileUrl(taskId, relativePath), {
-    headers: { Accept: "*/*" },
-  })
-
-  if (!response.ok) {
-    throw new ApiError(response.status, await readErrorPayload(response))
+  handlers: { onEvent: (event: TaskEvent) => void; onError?: (error: Event) => void },
+): () => void {
+  const source = new EventSource(`${API_BASE}/tasks/${taskId}/stream`)
+  const types: TaskEvent['type'][] = ['snapshot', 'stage', 'log', 'artifact', 'status', 'done']
+  for (const type of types) {
+    source.addEventListener(type, (raw) => {
+      try {
+        handlers.onEvent(JSON.parse((raw as MessageEvent).data) as TaskEvent)
+      } catch {
+        // 忽略无法解析的事件
+      }
+    })
   }
-
-  const blob = await response.blob()
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement("a")
-  const disposition = response.headers.get("content-disposition") || ""
-  const fileNameMatch = disposition.match(/filename\*=UTF-8''([^;]+)|filename=\"?([^\";]+)\"?/)
-  const fallbackName = suggestedFileName || relativePath.split(/[\\/]/).pop() || "artifact"
-  const fileName = decodeURIComponent(fileNameMatch?.[1] || fileNameMatch?.[2] || fallbackName)
-
-  anchor.href = url
-  anchor.download = fileName
-  document.body.appendChild(anchor)
-  anchor.click()
-  anchor.remove()
-  URL.revokeObjectURL(url)
+  source.onerror = (error) => handlers.onError?.(error)
+  return () => source.close()
 }
 
-export async function downloadTaskArtifact(
-  taskId: string,
-  kind: TaskExportKind,
-  archive: "zip" | "tar" = "zip",
-): Promise<void> {
-  const response = await fetch(buildApiUrl(`/tasks/${taskId}/export/${kind}`, { archive }), {
-    headers: { Accept: "*/*" },
-  })
-
-  if (!response.ok) {
-    throw new ApiError(response.status, await readErrorPayload(response))
+export function subscribeLibraryEvents(handlers: { onEvent: (event: TaskEvent) => void }): () => void {
+  const source = new EventSource(`${API_BASE}/stream`)
+  for (const type of ['status', 'done'] as const) {
+    source.addEventListener(type, (raw) => {
+      try {
+        handlers.onEvent(JSON.parse((raw as MessageEvent).data) as TaskEvent)
+      } catch {
+        // 忽略
+      }
+    })
   }
-
-  const blob = await response.blob()
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement("a")
-  const disposition = response.headers.get("content-disposition") || ""
-  const contentType = response.headers.get("content-type") || ""
-  const fileNameMatch = disposition.match(/filename\*=UTF-8''([^;]+)|filename=\"?([^\";]+)\"?/)
-  const fallbackName = ensureArtifactDownloadFileName({
-    taskId,
-    kind,
-    archive,
-    contentType,
-    fileName: `${taskId}-${kind}`,
-  })
-  const fileName = ensureArtifactDownloadFileName({
-    taskId,
-    kind,
-    archive,
-    contentType,
-    fileName: decodeURIComponent(fileNameMatch?.[1] || fileNameMatch?.[2] || fallbackName),
-  })
-
-  anchor.href = url
-  anchor.download = fileName
-  document.body.appendChild(anchor)
-  anchor.click()
-  anchor.remove()
-  URL.revokeObjectURL(url)
+  return () => source.close()
 }
 
-export function getModels(): Promise<ModelListResponse> {
-  return apiFetch<ModelListResponse>("/config/models", { method: "GET" })
-}
-
-export function getBilibiliAuthStatus(): Promise<BilibiliAuthStatusResponse> {
-  return apiFetch<BilibiliAuthStatusResponse>("/config/bilibili-auth", { method: "GET" })
-}
-
-export function startBilibiliQrLogin(): Promise<BilibiliAuthQrStartResponse> {
-  return apiFetch<BilibiliAuthQrStartResponse>("/config/bilibili-auth/qrcode/start", {
-    method: "POST",
-    body: JSON.stringify({}),
-  })
-}
-
-export function pollBilibiliQrLogin(qrcodeKey: string): Promise<BilibiliAuthQrPollResponse> {
-  return apiFetch<BilibiliAuthQrPollResponse>(`/config/bilibili-auth/qrcode/poll?qrcode_key=${encodeURIComponent(qrcodeKey)}`, {
-    method: "GET",
-  })
-}
-
-export function deleteBilibiliSession(): Promise<BilibiliAuthStatusResponse> {
-  return apiFetch<BilibiliAuthStatusResponse>("/config/bilibili-auth/session", { method: "DELETE" })
-}
-
-export function startModelDownload(modelId: string): Promise<ModelListResponse> {
-  return apiFetch<ModelListResponse>(`/config/models/${modelId}/download`, {
-    method: "POST",
-    body: JSON.stringify({}),
-  })
-}
-
-export function cancelModelDownload(modelId: string): Promise<ModelListResponse> {
-  return apiFetch<ModelListResponse>(`/config/models/${modelId}/download`, {
-    method: "DELETE",
-  })
-}
-
-export function reloadModels(modelId?: string): Promise<ModelListResponse> {
-  return apiFetch<ModelListResponse>("/config/models/reload", {
-    method: "POST",
-    body: JSON.stringify({ model_id: modelId || null }),
-  })
-}
-
-export function updateModel(
-  modelId: string,
-  payload: {
-    provider?: string | null
-    model_id?: string | null
-    path?: string | null
-    status?: string | null
-    load_profile?: string | null
-    quantization?: string | null
-    max_batch_size?: number | null
-    rerank_top_n?: number | null
-    enabled?: boolean | null
-    api_base_url?: string | null
-    api_key?: string | null
-    api_model?: string | null
-    api_timeout_seconds?: number | null
-  },
-): Promise<ModelListResponse> {
-  return apiFetch<ModelListResponse>(`/config/models/${modelId}`, {
-    method: "PATCH",
-    body: JSON.stringify(payload),
-  })
-}
-
-export function getOllamaRuntimeConfig(): Promise<OllamaRuntimeConfigResponse> {
-  return apiFetch<OllamaRuntimeConfigResponse>("/config/ollama", { method: "GET" })
-}
-
-export function updateOllamaRuntimeConfig(payload: {
-  models_dir?: string
-  base_url?: string
-}): Promise<OllamaRuntimeConfigResponse> {
-  return apiFetch<OllamaRuntimeConfigResponse>("/config/ollama", {
-    method: "PUT",
-    body: JSON.stringify(payload),
-  })
-}
-
-export function migrateOllamaModels(target_dir: string): Promise<OllamaModelsMigrationResponse> {
-  return apiFetch<OllamaModelsMigrationResponse>("/config/ollama/migrate-models", {
-    method: "POST",
-    body: JSON.stringify({ target_dir }),
-  })
-}
-
-export function restartOllamaService(): Promise<OllamaRuntimeConfigResponse> {
-  return apiFetch<OllamaRuntimeConfigResponse>("/config/ollama/restart-service", {
-    method: "POST",
-    body: JSON.stringify({}),
-  })
-}
-
-export function migrateLocalModels(
-  target_root: string,
-  confirm_running_tasks = false,
-): Promise<LocalModelsMigrationResponse> {
-  return apiFetch<LocalModelsMigrationResponse>("/config/models/migrate-local", {
-    method: "POST",
-    body: JSON.stringify({ target_root, confirm_running_tasks }),
-  })
-}
-
-export function getPromptTemplates(): Promise<PromptTemplateBundleResponse> {
-  return apiFetch<PromptTemplateBundleResponse>("/config/prompts", { method: "GET" })
-}
-
-export function createPromptTemplate(payload: {
-  channel: string
-  name: string
-  content: string
-}): Promise<PromptTemplateBundleResponse> {
-  return apiFetch<PromptTemplateBundleResponse>("/config/prompts/templates", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  })
-}
-
-export function updatePromptTemplate(
-  templateId: string,
-  payload: { name: string; content: string },
-): Promise<PromptTemplateBundleResponse> {
-  return apiFetch<PromptTemplateBundleResponse>(`/config/prompts/templates/${templateId}`, {
-    method: "PATCH",
-    body: JSON.stringify(payload),
-  })
-}
-
-export function deletePromptTemplate(templateId: string): Promise<PromptTemplateBundleResponse> {
-  return apiFetch<PromptTemplateBundleResponse>(`/config/prompts/templates/${templateId}`, {
-    method: "DELETE",
-  })
-}
-
-export function updatePromptSelection(payload: {
-  correction?: string
-  notes?: string
-  mindmap?: string
-  vqa?: string
-}): Promise<PromptTemplateBundleResponse> {
-  return apiFetch<PromptTemplateBundleResponse>("/config/prompts/selection", {
-    method: "PUT",
-    body: JSON.stringify(payload),
-  })
-}
-
-export function getUiSettings(): Promise<UISettingsResponse> {
-  return apiFetch<UISettingsResponse>("/config/ui", { method: "GET" })
-}
-
-export function updateUiSettings(payload: {
-  language?: "zh" | "en"
-  font_size?: number
-  auto_save?: boolean
-  study_default_translation_target?: string | null
-  theme_hue?: number
-  background_image?: string | null
-  background_image_opacity?: number
-  background_image_blur?: number
-  background_image_scale?: number
-  background_image_focus_x?: number
-  background_image_focus_y?: number
-  background_image_fill_mode?: "cover" | "contain" | "repeat" | "center"
-}): Promise<UISettingsResponse> {
-  return apiFetch<UISettingsResponse>("/config/ui", {
-    method: "PUT",
-    body: JSON.stringify(payload),
-  })
-}
-
-export function getWhisperConfig(): Promise<WhisperConfigResponse> {
-  return apiFetch<WhisperConfigResponse>("/config/whisper", { method: "GET" })
-}
-
-export function getLLMConfig(): Promise<LLMConfigResponse> {
-  return apiFetch<LLMConfigResponse>("/config/llm", { method: "GET" })
-}
-
-export function updateLLMConfig(payload: LLMConfigResponse): Promise<LLMConfigResponse> {
-  return apiFetch<LLMConfigResponse>("/config/llm", {
-    method: "PUT",
-    body: JSON.stringify(payload),
-  })
-}
-
-export function updateWhisperConfig(
-  payload: Omit<WhisperConfigResponse, "warnings" | "rollback_applied" | "runtime_libraries">,
-): Promise<WhisperConfigResponse> {
-  return apiFetch<WhisperConfigResponse>("/config/whisper", {
-    method: "PUT",
-    body: JSON.stringify(payload),
-  })
-}
-
-export function startSelfCheck(): Promise<SelfCheckStartResponse> {
-  return apiFetch<SelfCheckStartResponse>("/self-check/start", {
-    method: "POST",
-    body: JSON.stringify({}),
-  })
-}
-
-export function getSelfCheckReport(sessionId: string): Promise<SelfCheckReportResponse> {
-  return apiFetch<SelfCheckReportResponse>(`/self-check/${sessionId}/report`, { method: "GET" })
-}
-
-export function autoFixSelfCheck(sessionId: string) {
-  return apiFetch(`/self-check/${sessionId}/auto-fix`, {
-    method: "POST",
-    body: JSON.stringify({}),
-  })
-}
-
-export function getRuntimeMetrics(): Promise<RuntimeMetricsResponse> {
-  return apiFetch<RuntimeMetricsResponse>("/runtime/metrics", { method: "GET" })
-}
-
-export function getRuntimePaths(): Promise<RuntimePathsResponse> {
-  return apiFetch<RuntimePathsResponse>("/runtime/paths", { method: "GET" })
-}
-
-export async function streamChatWithTask(
-  payload: {
-    task_id: string
-    question: string
-    top_k?: number
-  },
+/** 提问：服务端流式返回 trace / delta / answer。 */
+export async function askQuestion(
+  taskId: string,
+  body: { question: string; history?: Array<{ role: 'user' | 'assistant'; content: string }>; topK?: number },
   handlers: {
-    onEvent: (event: VqaChatStreamEvent) => void
+    onDelta: (text: string) => void
+    onEvent: (event: AskStreamEvent) => void
     signal?: AbortSignal
   },
 ): Promise<void> {
-  const response = await fetch(buildApiUrl("/chat/stream"), {
-    method: "POST",
+  const response = await fetch(`${API_BASE}/tasks/${taskId}/ask`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
     signal: handlers.signal,
-    headers: {
-      Accept: "text/event-stream",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      task_id: payload.task_id,
-      question: payload.question,
-      ...(typeof payload.top_k === "number" ? { top_k: payload.top_k } : {}),
-      stream: true,
-    }),
   })
 
-  if (!response.ok) {
-    throw new ApiError(response.status, await readErrorPayload(response))
-  }
-
-  if (!response.body) {
-    throw new Error("后端未返回可读取的流式响应。")
+  if (!response.ok || !response.body) {
+    const text = await response.text().catch(() => '')
+    let message = `提问失败：HTTP ${response.status}`
+    try {
+      const parsed = JSON.parse(text) as { error?: { message?: string } }
+      message = parsed.error?.message || message
+    } catch {
+      // 保留默认信息
+    }
+    throw new ApiError({ message, code: `HTTP_${response.status}`, status: response.status })
   }
 
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
-  let buffer = ""
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) {
-        break
+  let buffer = ''
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const blocks = buffer.split('\n\n')
+    buffer = blocks.pop() || ''
+    for (const block of blocks) {
+      const lines = block.split('\n')
+      const eventLine = lines.find((line) => line.startsWith('event:'))
+      const dataLine = lines.find((line) => line.startsWith('data:'))
+      if (!eventLine || !dataLine) continue
+      const type = eventLine.slice(6).trim()
+      if (type === 'close') continue
+      try {
+        const parsed = JSON.parse(dataLine.slice(5).trim()) as AskStreamEvent
+        if (parsed.type === 'delta') {
+          handlers.onDelta(parsed.text)
+        } else {
+          handlers.onEvent(parsed)
+        }
+      } catch {
+        // 忽略无法解析的分片
       }
-      buffer += decoder.decode(value, { stream: true })
-      buffer = drainSseBuffer(buffer, handlers.onEvent)
     }
-    buffer += decoder.decode()
-    drainSseBuffer(buffer, handlers.onEvent)
-  } finally {
-    reader.releaseLock()
   }
-}
-
-export function getChatTrace(traceId: string): Promise<VqaTraceResponse> {
-  return apiFetch<VqaTraceResponse>(`/traces/${traceId}`, { method: "GET" })
-}
-
-export async function getTaskArtifactText(
-  taskId: string,
-  kind: "transcript" | "notes" | "mindmap" | "srt" | "vtt",
-): Promise<string> {
-  const response = await fetch(buildApiUrl(`/tasks/${taskId}/export/${kind}`), {
-    headers: { Accept: "text/plain, text/markdown, text/html" },
-  })
-  if (!response.ok) {
-    throw new ApiError(response.status, await readErrorPayload(response))
-  }
-  return response.text()
-}
-
-export async function getTaskArtifactFileText(
-  taskId: string,
-  relativePath: string,
-): Promise<string> {
-  const response = await fetch(buildTaskArtifactFileUrl(taskId, relativePath), {
-    headers: { Accept: "text/plain, text/markdown, text/html, application/json" },
-  })
-  if (!response.ok) {
-    throw new ApiError(response.status, await readErrorPayload(response))
-  }
-  return response.text()
-}
-
-export async function getTaskArtifactFileJson<T>(
-  taskId: string,
-  relativePath: string,
-): Promise<T> {
-  return fetchJson<T>(buildTaskArtifactFileUrl(taskId, relativePath))
-}
-
-async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url, {
-    headers: { Accept: "application/json" },
-  })
-
-  if (!response.ok) {
-    throw new ApiError(response.status, await readErrorPayload(response))
-  }
-
-  return readJson<T>(response)
-}
-
-function ensureArtifactDownloadFileName(input: {
-  taskId: string
-  kind: TaskExportKind
-  archive: "zip" | "tar"
-  contentType: string
-  fileName: string
-}): string {
-  const trimmed = input.fileName.trim() || `${input.taskId}-${input.kind}`
-  if (/\.[A-Za-z0-9]{2,5}$/.test(trimmed)) {
-    return trimmed
-  }
-  return `${trimmed}${resolveArtifactFileExtension(input.kind, input.archive, input.contentType)}`
-}
-
-function resolveArtifactFileExtension(
-  kind: TaskExportKind,
-  archive: "zip" | "tar",
-  contentType: string,
-): string {
-  const normalizedContentType = contentType.toLowerCase()
-  if (normalizedContentType.includes("application/zip")) {
-    return ".zip"
-  }
-  if (normalizedContentType.includes("application/x-tar")) {
-    return ".tar"
-  }
-  if (normalizedContentType.includes("text/markdown")) {
-    return ".md"
-  }
-  if (normalizedContentType.includes("text/html")) {
-    return ".html"
-  }
-  if (normalizedContentType.includes("text/vtt")) {
-    return ".vtt"
-  }
-
-  switch (kind) {
-    case "transcript":
-      return ".txt"
-    case "notes":
-      return ".md"
-    case "mindmap":
-      return ".html"
-    case "srt":
-      return ".srt"
-    case "vtt":
-      return ".vtt"
-    case "bundle":
-      return archive === "tar" ? ".tar" : ".zip"
-    case "study_pack":
-      return ".md"
-    case "subtitle_tracks":
-      return ".zip"
-    case "translation_records":
-      return ".json"
-    case "knowledge_notes":
-      return ".zip"
-    default:
-      return ""
-  }
-}
-
-function drainSseBuffer(
-  buffer: string,
-  onEvent: (event: VqaChatStreamEvent) => void,
-): string {
-  const chunks = buffer.split(/\r?\n\r?\n/)
-  const pending = chunks.pop() ?? ""
-
-  for (const chunk of chunks) {
-    const payloadLines = chunk
-      .split(/\r?\n/)
-      .filter((line) => line.startsWith("data:"))
-      .map((line) => line.slice(5).trim())
-
-    if (payloadLines.length === 0) {
-      continue
-    }
-
-    const payload = payloadLines.join("\n")
-    if (!payload || payload === "[DONE]") {
-      onEvent({ type: "done" })
-      continue
-    }
-
-    onEvent(JSON.parse(payload) as VqaChatStreamEvent)
-  }
-
-  return pending
 }

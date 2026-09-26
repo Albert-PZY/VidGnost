@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld("vidGnostDesktop", {
   pickImageFile() {
     return ipcRenderer.invoke("dialog:pick-image-file")
   },
+  pickMediaFile() {
+    return ipcRenderer.invoke("dialog:pick-media-file")
+  },
   minimizeWindow() {
     return ipcRenderer.invoke("window:minimize")
   },

@@ -1,30 +1,32 @@
-function sanitizeKeyPrefix(rawValue: string): string {
-  return String(rawValue)
-    .trim()
-    .replace(/[^a-zA-Z0-9_-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase()
+import { createHash, randomUUID } from "node:crypto"
+
+/** 生成短随机 ID。 */
+export function shortId(length = 8): string {
+  return randomUUID().replace(/-/g, "").slice(0, length)
 }
 
-export function generateTimeKey(prefix = "", exists?: (candidate: string) => boolean, now = new Date()): string {
-  const timestamp = [
-    now.getFullYear().toString().padStart(4, "0"),
-    (now.getMonth() + 1).toString().padStart(2, "0"),
-    now.getDate().toString().padStart(2, "0"),
-  ].join("") + `-${now.getHours().toString().padStart(2, "0")}${now.getMinutes().toString().padStart(2, "0")}${now.getSeconds().toString().padStart(2, "0")}`
+/** 生成任务 ID，形如 `vg_20260926_1a2b3c4d`。 */
+export function newTaskId(now = new Date()): string {
+  const stamp = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+  ].join("")
+  return `vg_${stamp}_${shortId()}`
+}
 
-  const normalizedPrefix = sanitizeKeyPrefix(prefix)
-  const base = normalizedPrefix ? `${normalizedPrefix}-${timestamp}` : timestamp
-  if (!exists || !exists(base)) {
-    return base
+export function sha1(...parts: Array<string | number | boolean | null | undefined>): string {
+  const hash = createHash("sha1")
+  for (const part of parts) {
+    hash.update(String(part ?? ""))
+    hash.update("\u0000")
   }
+  return hash.digest("hex")
+}
 
-  for (let suffix = 1; suffix < 1000; suffix += 1) {
-    const candidate = `${base}-${suffix.toString().padStart(2, "0")}`
-    if (!exists(candidate)) {
-      return candidate
-    }
-  }
-
-  throw new Error(`Unable to allocate unique time key for prefix=${normalizedPrefix}`)
+export function fingerprintBuffer(buffer: Buffer, extra = ""): string {
+  const hash = createHash("sha1")
+  hash.update(buffer.subarray(0, Math.min(buffer.length, 1024 * 1024)))
+  hash.update(`|${buffer.length}|${extra}`)
+  return hash.digest("hex").slice(0, 16)
 }

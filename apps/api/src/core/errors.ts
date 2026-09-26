@@ -1,96 +1,65 @@
-import type { FastifyInstance } from "fastify"
-
-import type { ApiErrorPayload } from "@vidgnost/contracts"
+import type { ErrorShape, JsonValue } from "@vidgnost/contracts"
 
 export class AppError extends Error {
   readonly code: string
-  readonly detail: unknown
-  readonly hint: string
-  readonly retryable: boolean
-  readonly statusCode: number
+  readonly status: number
+  readonly detail?: JsonValue
+  readonly hint?: string
 
-  constructor(
-    message: string,
-    options?: {
-      code?: string
-      detail?: unknown
-      hint?: string
-      retryable?: boolean
-      statusCode?: number
-    },
-  ) {
-    super(message)
+  constructor(input: { message: string; code: string; status: number; detail?: JsonValue; hint?: string }) {
+    super(input.message)
     this.name = "AppError"
-    this.code = options?.code || "APP_ERROR"
-    this.detail = options?.detail
-    this.hint = options?.hint || ""
-    this.retryable = Boolean(options?.retryable)
-    this.statusCode = options?.statusCode || 500
+    this.code = input.code
+    this.status = input.status
+    this.detail = input.detail
+    this.hint = input.hint
   }
 
-  static badRequest(
-    message: string,
-    options?: { code?: string; detail?: unknown; hint?: string; retryable?: boolean },
-  ): AppError {
-    return new AppError(message, {
-      ...options,
-      statusCode: 400,
+  static badRequest(message: string, extra: { code?: string; detail?: JsonValue; hint?: string } = {}): AppError {
+    return new AppError({ message, code: extra.code || "BAD_REQUEST", status: 400, detail: extra.detail, hint: extra.hint })
+  }
+
+  static notFound(message: string, extra: { code?: string; detail?: JsonValue } = {}): AppError {
+    return new AppError({ message, code: extra.code || "NOT_FOUND", status: 404, detail: extra.detail })
+  }
+
+  static conflict(message: string, extra: { code?: string; detail?: JsonValue; hint?: string } = {}): AppError {
+    return new AppError({ message, code: extra.code || "CONFLICT", status: 409, detail: extra.detail, hint: extra.hint })
+  }
+
+  static unavailable(message: string, extra: { code?: string; detail?: JsonValue; hint?: string } = {}): AppError {
+    return new AppError({
+      message,
+      code: extra.code || "SERVICE_UNAVAILABLE",
+      status: 503,
+      detail: extra.detail,
+      hint: extra.hint,
     })
   }
 
-  static conflict(
-    message: string,
-    options?: { code?: string; detail?: unknown; hint?: string; retryable?: boolean },
-  ): AppError {
-    return new AppError(message, {
-      ...options,
-      statusCode: 409,
-    })
-  }
-
-  static notFound(
-    message: string,
-    options?: { code?: string; detail?: unknown; hint?: string; retryable?: boolean },
-  ): AppError {
-    return new AppError(message, {
-      ...options,
-      statusCode: 404,
-    })
-  }
-}
-
-export function toErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message
-  }
-  return "Unknown error"
-}
-
-export function toApiErrorPayload(error: AppError): ApiErrorPayload {
-  return {
-    code: error.code,
-    message: error.message,
-    hint: error.hint,
-    retryable: error.retryable,
-    detail: error.detail,
-  }
-}
-
-export function registerErrorHandler(app: FastifyInstance): void {
-  app.setErrorHandler((error, request, reply) => {
-    if (error instanceof AppError) {
-      request.log.warn({ error }, "Handled application error")
-      reply.status(error.statusCode).send(toApiErrorPayload(error))
-      return
+  toShape(): ErrorShape {
+    return {
+      code: this.code,
+      message: this.message,
+      ...(this.detail === undefined ? {} : { detail: this.detail }),
+      ...(this.hint ? { hint: this.hint } : {}),
     }
+  }
+}
 
-    request.log.error({ error }, "Unhandled application error")
-    reply.status(500).send({
-      code: "INTERNAL_SERVER_ERROR",
-      message: "Internal server error",
-      hint: "",
-      retryable: false,
-      detail: undefined,
-    } satisfies ApiErrorPayload)
-  })
+export function toErrorShape(error: unknown): ErrorShape {
+  if (error instanceof AppError) {
+    return error.toShape()
+  }
+  if (error instanceof Error) {
+    return { code: "INTERNAL_ERROR", message: error.message, detail: error.name }
+  }
+  return { code: "INTERNAL_ERROR", message: String(error) }
+}
+
+export function describeError(error: unknown): string {
+  if (error instanceof AppError) {
+    return `${error.code}: ${error.message}`
+  }
+  return error instanceof Error ? error.message : String(error)
 }
