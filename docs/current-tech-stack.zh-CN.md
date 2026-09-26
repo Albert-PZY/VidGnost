@@ -1,166 +1,148 @@
-# VidGnost 当前完整技术栈
+# VidGnost 当前技术栈
 
-更新时间：2026-04-18
+更新时间：2026-09-26
 
 ## 1. 架构边界
 
-- 交付形态：Electron 本地桌面工作台
-- 前端：`React 19 + Vite 6 + Electron 31 + TypeScript 5`
+- 交付形态：Electron 本地桌面应用 + 本地 API 服务
+- 前端：`React 19 + Vite 6 + Electron 31 + Tailwind CSS 4`
 - 后端：`Fastify 5 + TypeScript 5`
-- 契约层：`packages/contracts`
+- 契约层：`packages/contracts`（zod 校验请求体）
 - 共享常量：`packages/shared`
-- 通信方式：HTTP JSON + SSE
-- 运行时持久化：仓库根目录 `storage/`
-- 后端形态：主服务保持 `Fastify + TypeScript`，本地 ASR 通过隔离 Python worker 调用 `faster-whisper`
+- 通信方式：HTTP JSON + SSE（任务事件流、问答流）
+- 运行时数据：仓库根目录 `storage/`
+- 模型接入：在线优先（阿里云百炼 + OpenRouter），本地 `faster-whisper` 作为离线兜底
 
-## 2. 前端技术栈
+## 2. 分层结构
 
-### 2.1 运行与构建
+```text
+apps/api/src
+├─ core/        配置解析、错误模型、文件工具、ID/指纹、文本工具、进程与下载
+├─ providers/   模型目录、角色路由与设置仓库、HTTP 客户端、DashScope、OpenRouter、本地 Whisper、网关、健康自检
+├─ media/       来源解析与探测、音频抽取与分片、关键帧抽取、感知哈希
+├─ asr/         转写编排（在线优先 / 本地兜底）与标准化
+├─ insight/     语义分段、章节切分、摘要、思维导图、知识图谱、校对、翻译、逐帧图注
+├─ retrieval/   切块、BM25、向量索引、上下文前缀、混合检索、时间锚定问答
+├─ pipeline/    阶段定义、任务 runner、任务管理器、事件总线
+├─ store/       任务仓库、工件索引与读取
+├─ routes/      health / catalog / tasks / media / events / ask / config / export
+└─ server/      应用上下文装配与 Fastify 装配
+```
 
-- Node.js
-- pnpm workspace
-- Vite 6
-- React 19
-- TypeScript 5
-- Electron 31
+## 3. 前端技术栈
 
-### 2.2 UI 与交互
+### 3.1 运行与构建
 
-- Tailwind CSS 4
-- Radix UI
-- Lucide React
-- Zustand 5
-- next-themes
-- react-hot-toast
-- react-resizable-panels
-- `@tanstack/react-virtual`
-- `@uiw/react-md-editor`
-- `@uiw/react-markdown-preview`
-- Mermaid（前端预览渲染）
+- Vite 6、React 19、TypeScript 5、Electron 31
+- Tailwind CSS 4（`@theme inline` 设计令牌）+ `tw-animate-css`
 
-## 3. 后端技术栈
+### 3.2 UI 与交互
 
-### 3.1 运行与框架
+- Radix UI 原始组件（dialog / select / switch / tabs / tooltip / scroll-area / slider / dropdown-menu 等）
+- Lucide React 图标
+- Zustand 5（`app-store` 应用状态、`player-store` 播放状态）
+- Mermaid 11（思维导图渲染，懒加载，失败降级为源码）
+- 自研受控 Markdown 渲染（答案排版，不引入完整 Markdown 依赖）
 
-- TypeScript 5
-- Fastify 5
-- `@fastify/cors`
-- `@fastify/multipart`
-- tsx
-- tsup
-- pino
-- Zod
+### 3.3 设计系统
 
-### 3.2 核心后端模块
+- 文件：`apps/desktop/src/app/globals.css`
+- 令牌：表面（`background / card / popover / elevated`）、文本（`foreground / text-muted / text-subtle`）、
+  描边（`border / border-strong`）、动作（`primary / secondary / accent`）、
+  语义（`success / warning / destructive / info`）、时间锚点（`timestamp / timestamp-surface`）
+- 排版：`--font-sans`（Inter + 系统中文字体栈）、`--font-mono`（JetBrains Mono 栈）；
+  字号阶梯 11/12/13/15/20/28，阅读区行高 1.78
+- 动效：`--ease-out-quint`、140/220/360ms 三档时长，并遵守 `prefers-reduced-motion`
+- 桌面壳：`frame: false` + 自定义标题栏 + `-webkit-app-region` 拖拽区
 
-- `apps/api/src/modules/media/`
-- `apps/api/src/modules/asr/`
-- `apps/api/src/modules/summary/`
-- `apps/api/src/modules/tasks/`
-- `apps/api/src/modules/runtime/`
-- `apps/api/src/modules/models/`
-- `apps/api/src/modules/vqa/`
-- `apps/api/src/modules/events/`
+## 4. 后端技术栈
 
-### 3.3 标准单仓目录边界
+- Fastify 5、`@fastify/cors`、pino、zod、tsx、tsup
+- 测试：Vitest（`apps/api/test`、`apps/desktop/src/**/*.test.ts`）
 
-- `apps/api/`：服务端应用
-- `apps/desktop/`：桌面端应用
-- `packages/contracts/`：前后端共享 schema
-- `packages/shared/`：共享常量与通用类型
+## 5. 模型与外部运行时
 
-## 4. AI 与外部运行时
+### 5.1 系统依赖
 
-### 4.1 媒体与系统依赖
+- `ffmpeg` / `ffprobe`：音频抽取、分片、关键帧抽取（场景检测）
+- `yt-dlp`：在线视频下载
+- Python 3.10+ 与 `uv`：仅在启用本地 Whisper 时需要
 
-- `ffmpeg`
-- `ffprobe`
-- `yt-dlp`
+### 5.2 在线能力（阿里云百炼）
 
-### 4.2 ASR
+| 能力 | 模型 | 接入方式 |
+| --- | --- | --- |
+| 对话 | `qwen3.8-flash` / `qwen3.8-27b` / `glm-5.3` / `deepseek-v4-*` / `qwen3.8-max-0902` / `qwen3.8-2.4t-a95b` | OpenAI 兼容 `POST /compatible-mode/v1/chat/completions` |
+| 流式对话 | 同上 | `stream: true`，SSE 分片解析 |
+| 多模态 | `qwen3.8-omni-flash` | `chat/completions` 携带 `image_url` |
+| 向量 | `qwen3.7-text-embedding-flash`（512 维）/ `qwen3.7-text-embedding`（1024 维） | `POST /compatible-mode/v1/embeddings` |
+| 翻译 | `qwen-mt-uni` | `chat/completions` + `input.source_texts` 批量翻译 |
+| 文件转写 | `qwen-audio-3.1-asr-flash-filetrans` | 上传策略 → OSS 直传 → 异步任务 → 结果下载 |
 
-- 本地：`Python 3.10+`、`uv`、`faster-whisper`、`CTranslate2`
-- 远程：OpenAI-compatible ASR API
-- 当前实现边界：
-  - 本地路径要求用户提前准备 `faster-whisper` Python 运行时与 `CTranslate2` 模型目录
-  - 当前 TS 运行时不内置 Whisper 模型自动下载或依赖安装
-  - GPU 运行时优先复用现有 CUDA/cuDNN 动态库路径，例如 Ollama 安装目录下的运行库
-  - 输出统一标准化为 `text + segments`
+实现要点：
 
-### 4.3 LLM / 检索 / 问答
+- 结构化任务默认携带 `enable_thinking: false`；模型拒绝该参数时按模型缓存并重试一次（实测把结构化任务延迟从 6.7s 降到 3.4s）。
+- 文件转写采用「临时上传策略 + `oss://` 引用 + `X-DashScope-OssResourceResolve: enable`」，
+  单个分片上限受策略返回的 `max_file_size_mb` 约束。
+- 推理类模型（`deepseek-v4-pro-0813`）需要较大的 `max_tokens`，否则可能只返回推理内容。
 
-- LLM：Ollama / OpenAI-compatible API
-- Embedding：Ollama / OpenAI-compatible API
-- Rerank：Ollama / OpenAI-compatible API
-- VLM：Ollama / OpenAI-compatible API（`vlm-default`）
-- 当前实现边界：
-  - LLM 自检会真实探测远端 `/models`
-  - VQA 检索链路目标为“文本证据 + 图像证据”统一融合召回与重排
-  - 当前仍处于迁移期：允许读取旧版 `multimodal_prewarm` / transcript-only 产物并做兼容映射
-  - 默认检索链路为向量召回 + rerank，前端与 contracts 已预留 `citation_type` / `image_evidence` 字段
+### 5.3 重排序（OpenRouter）
 
-### 4.4 模型管理边界
+- 模型：`nvidia/llama-nemotron-rerank-vl-1b-v2:free`
+- 接入：`POST {OPENROUTER_BASE_URL}/rerank`，body 为 `{model, query, documents, top_n}`
+- 不可用时自动回退到 RRF 顺序，并在检索 trace 的 `degradation` 字段说明
 
-- `/config/models`、`/config/ollama`、`/config/whisper` 负责配置、状态探测和说明性快照
-- 当前实现边界：
-  - 不接管 Ollama pull
-  - 不自动搬迁 Ollama 现有模型文件
-  - `restart-service` 当前支持在 Windows 上按已配置的 `OLLAMA_MODELS` 与服务地址执行项目内重启
-  - 默认保留 Ollama 本地服务地址 `127.0.0.1:11434`；若该端口被普通进程占用，重启逻辑会尝试清退占用进程后仍在原端口重启
-  - 若 `127.0.0.1:11434` 被 Windows 系统限制或保留，重启逻辑会返回明确绑定失败原因，不再自动切换到其他端口
-  - Ollama 模型就绪状态基于 `/api/tags` 真实探测，而不是伪造的本地目录占位路径
-  - 当 Ollama 服务不可达但配置的 `models_dir` 仍保留有效 manifest/blob 时，模型目录页会回退显示真实安装状态与大小，但不会误报为运行就绪
+### 5.4 本地兜底
 
-## 5. 数据与存储
+- `faster-whisper`（CTranslate2）：通过 `apps/api/python/transcribe_faster_whisper.py` 子进程调用，
+  支持 `--probe` 环境探测与一次性转写；设备与精度由设置页控制
+- 触发条件：未配置百炼密钥、显式选择本地、或在线失败且偏好为 `auto`
 
-- 主目录：`storage/`
-- 关键文件：
-  - `storage/model_config.json`
-  - `storage/config.toml`
-  - `storage/models/catalog.json`
-  - `storage/ollama-runtime.json`
-  - `storage/prompts/templates/*.json`
-  - `storage/prompts/selection.json`
-- 关键目录：
-  - `storage/tasks/records/`
-  - `storage/tasks/analysis-results/`
-  - `storage/tasks/stage-artifacts/`
-  - `storage/event-logs/`
-  - `storage/uploads/`
-  - `storage/tmp/`
+## 6. 数据与存储
 
-## 6. 当前关键能力基线
+```text
+storage/
+├─ config/settings.json             # 处理默认值、角色路由、提供方配置
+├─ media/                           # 下载或导入的原始媒体
+├─ tmp/                             # 中间媒体
+└─ tasks/<taskId>/
+   ├─ task.json                     # 任务记录（来源、选项、阶段、工件、统计）
+   ├─ events.ndjson                 # 事件日志（可回放）
+   ├─ checkpoints/<stage>.json      # 阶段缓存键与摘要
+   ├─ chapter-notes.json            # 章节要点（摘要/导图/图谱/问答/导出共用）
+   ├─ media/audio.wav               # 归一化音频
+   ├─ media/chunks/*.mp3            # 在线 ASR 分片
+   ├─ transcript.json/.srt/.txt
+   ├─ paragraphs.json / outline.json
+   ├─ summary.json / mindmap.json / mindmap.mmd / notes.md
+   ├─ knowledge.json
+   ├─ frames.json + frames/*.jpg
+   ├─ translation.json
+   ├─ index/chunks.json / vectors.bin / bm25.json
+   └─ export/report.md / pack.json
+```
 
-- 任务流水线：`A -> B -> C -> D`
-- 转录纠错：`off / strict / rewrite`
-- 纠错产物：
-  - `D/transcript-optimize/index.json`
-  - `D/transcript-optimize/full.txt`
-  - `D/transcript-optimize/strict-segments.json`
-  - `D/transcript-optimize/rewrite.txt`
-- 摘要回退可解释化：
-  - `D/fusion/manifest.json`
-  - `generated_by`
-  - `fallback_reason`
-- VQA 预热产物：
-  - `D/vqa-prewarm/index.json`
-  - `D/vqa-prewarm/frame-semantic/index.json`（目标态，迁移中）
-  - `D/vqa-prewarm/frames/manifest.json`（目标态，迁移中）
+## 7. 检索链路
 
-## 7. 测试与质量保障
+1. 章节内切块：目标 320 token，回带最多 2 个段落作为重叠前缀
+2. 上下文前缀：每个块 50-80 token 的定位说明 + 3 个问题变体
+3. 索引：embedding 输入为「章节 + 前缀 + 正文」；BM25 同时索引正文、前缀与问题（附加字段权重 0.8）
+4. 分词：拉丁按单词小写化，CJK 只切二元组（避免单字噪声匹配）
+5. 召回：向量 top-40 + BM25 top-40 → RRF(k=60) → rerank 前 30 → top-K=8
+6. 全局意图问题（整体/主题/总结）改走章节摘要 map-reduce
+7. 回答流式生成后，服务端把 `[mm:ss]` 映射到证据区间并生成 `Citation`
+
+## 8. 观测与可解释性
+
+- 任务事件流（SSE）：`snapshot / stage / log / artifact / status / done`
+- 阶段就绪度：按阶段权重加权计算，前端展示为进度条与百分比
+- 检索 trace：`subQueries`、`candidateCounts`、`hits`（含 bm25/vector/rrf/rerank 分数）、`rerankModel`、
+  `embeddingModel`、`latencyMs`、`degradation`
+- 运行时自检：百炼对话、百炼向量、百炼文件转写通道、OpenRouter 模型列表、本地 Whisper 目录，全部为真实调用
+
+## 9. 测试与质量保障
 
 - 类型检查：`pnpm typecheck`
-- 单元测试：`pnpm test`
+- 单元测试：`pnpm --filter @vidgnost/api test`、`pnpm --filter @vidgnost/desktop test`
 - 生产构建：`pnpm build`
 - OpenSpec 校验：`node scripts/check-openspec.mjs`
-- 后端测试框架：Vitest
-
-## 8. 结论
-
-当前项目已经稳定收口为：
-
-- 前端：Electron + React 渲染层
-- 后端：本地 Fastify TS 服务
-- 契约：共享 TypeScript schema
-- 模型运行：本地 CLI 或远程 OpenAI-compatible / Ollama
-- 存储：统一写入根目录 `storage/`

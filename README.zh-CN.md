@@ -1,8 +1,8 @@
 <div align="center">
-  <img src="./apps/desktop/public/icon.png" alt="VidGnost Logo" width="120" />
+  <img src="./apps/desktop/public/icon.png" alt="VidGnost Logo" width="112" />
   <h1>VidGnost</h1>
-  <p><strong>面向 Electron 桌面的本地优先学习工作台</strong></p>
-  <p>围绕在线视频与本地视频双通路、字幕优先转写、学习工件沉淀与 transcript-only QA 构建。</p>
+  <p><strong>视频知识引擎</strong></p>
+  <p>把任意视频或音频变成带时间锚点的、可检索、可问答、可导出的知识资产。</p>
 </div>
 
 <div align="center">
@@ -17,232 +17,160 @@
 ![Fastify](https://img.shields.io/badge/Fastify-5-000000?logo=fastify&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
 ![Electron](https://img.shields.io/badge/Electron-31-47848F?logo=electron&logoColor=white)
-![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white)
 ![pnpm](https://img.shields.io/badge/pnpm-workspace-F69220?logo=pnpm&logoColor=white)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 </div>
 
-## 项目简介
+## 它解决什么问题
 
-VidGnost 是一个以本地运行体验为核心的 Electron 学习工作台。当前仓库采用标准 TS 全栈单仓结构：
+看完一段视频后，你真正需要的是「这段内容讲了什么、在哪一分钟讲的、我还能问它什么」。
+普通的转写工具只给你一坨文字，普通的摘要工具给你一段无法核对的结论。
 
-- `apps/desktop` 负责 React + Electron 渲染与桌面壳层
-- `apps/api` 负责 Fastify API、任务编排、配置中心、事件流、自检与导出
-- `packages/contracts` 负责前后端共享 schema
-- 运行时数据统一写入根目录 `storage/`
-- 业务主服务保持 TS 主线，本地 ASR 通过 `apps/api/python` 下的隔离 Python worker 调用 `faster-whisper`
+VidGnost 的做法是：**先建立一条带时间戳的结构化主线，再让所有产物挂在这条主线上。**
 
-新的 study-first 基线不再把 VidGnost 定义成“重型多模态分析台”，而是强调：
+- 每个结论都带 `[mm:ss]`
+- 每个问答的引用都能跳到原片对应片段并开始播放
+- 章节、摘要、导图、概念图谱共用同一套时间坐标
 
-- 在线视频与本地视频双通路进入同一学习工作台
-- 在线视频优先走平台字幕轨道，本地视频优先走 Whisper 路径
-- 平台无字幕时再回退 Whisper
-- 翻译是可选层，不是默认阻塞链路
-- `study-domain` 是挂在现有任务骨架上的投影视图与持久化域，不是新的 workflow
-- Study Pack、Knowledge 与学习资料库是长期资产层
-- QA 以 transcript-only 检索和引用为主
-- 默认主链路收口到字幕、transcript 与文本学习工件，不再以多模态分析为前提
+## 三条产品原则
 
-## 当前能力状态
+1. **每一句结论都能回到原片**：摘要、原文、导图、概念与问答共用同一个 `seek` 实现，
+   点击时间码即跳转播放。
+2. **在线优先、本地兜底**：默认使用阿里云百炼的对话、视觉、向量、翻译与文件级 ASR；
+   未配置密钥或网络不可用时回退本地 `faster-whisper`。
+3. **产物即结构**：章节是结构单元，检索块绑定章节，索引同时覆盖正文、上下文前缀与问题变体。
 
-| 状态 | 能力 |
-| --- | --- |
-| `implemented` | 本地视频上传、本地绝对路径任务、YouTube / Bilibili 链接任务创建，并统一落到 `youtube` / `bilibili` / `local_file` / `local_path` 来源类型 |
-| `implemented` | 本地 `faster-whisper` Python worker 与兼容 ASR API 转写 |
-| `implemented` | SSE 任务状态流、阶段日志、任务导出、自检与诊断 |
-| `partial` | 学习工作台向 Study-first 结构收口，默认进入 `Study`，并保留 `QA / Flow / Trace / Knowledge` 观察与沉淀能力 |
-| `partial` | 任务列表与详情已返回 `study_preview` 元数据，Study 首屏可用这些元数据兜底；历史页升级为学习资料库样式仍在推进 |
-| `partial` | QA 主链路向 transcript-only 检索收口，兼容旧多模态工件读取 |
-| `planned` | 在线视频平台字幕轨道优先、平台翻译轨道优先，以及完整 study-pack / 字幕轨 / 翻译层联动 |
-| `planned` | 可选 LLM 翻译、Knowledge 视图、学习资料库增强、Study Pack 导出 |
+## 处理管线
 
-## 主路径与边界
+任务按十个阶段顺序执行，每个阶段写检查点，中断后可续跑：
 
-### 1. 输入双通路
-
-- 在线视频：面向 YouTube / Bilibili 等链接任务，目标是保持在线视频播放体验并优先消费平台字幕轨道
-- 本地视频：继续支持上传文件与绝对路径导入，默认进入本地音频提取与 Whisper 路径
-
-### 2. 字幕与转写优先级
-
-- 在线任务优先使用平台原字幕轨道
-- 若平台提供翻译轨道，优先使用平台翻译轨道
-- 若平台没有可用字幕，再回退到 Whisper
-- 本地视频默认使用 Whisper，翻译仅在用户显式配置时触发
-
-### 3. 学习工件与长期沉淀
-
-study-first 基线关注的主工件包括：
-
-- transcript
-- overview
-- highlights
-- themes
-- suggested questions
-- study pack
-- Knowledge / 学习资料库条目
-- transcript-only QA 引用结果
-
-`study-domain` 在实现上负责把这些学习工件、字幕轨、翻译记录、学习状态、知识笔记和导出记录挂到已有 `task_id` 上；它复用现有 `notes / vqa` 任务边界，不额外引入新的任务工作流。
-
-### 4. 明确收口的方向
-
-以下能力不再作为主路径叙述：
-
-- VLM
-- 视频抽帧
-- 图像语义检索
-- 依赖视觉证据的默认 QA 主链路
-
-旧任务与兼容层仍可能暴露历史视觉证据字段，但新的 Study-first 基线不再把这些链路定义成默认前提或继续扩张方向。
-
-兼容层仍可能读取历史多模态工件，但新的学习工作台不以这些能力作为默认前提。
-
-## 核心能力
-
-### 1. 端到端任务流水线
-
-任务处理保持 `A -> B -> C -> D` 四阶段：
-
-1. `A`：来源校验、来源归类与媒体准备
-2. `B`：音频提取与预处理
-3. `C`：字幕 / transcript 解析、Whisper fallback 与标准化
-4. `D`：学习工件生成、导出工件整理与 QA 预热
-
-### 2. 工作台视图
-
-- `Study`：默认学习入口，承接字幕、overview、highlights、themes、questions 与知识摘录
-- `QA`：围绕 transcript-only 检索与引用问答
-- `Flow`：查看任务进度、阶段日志和运行状态
-- `Trace`：查看检索链路、调试信息与兼容工件细节
-
-### 3. 学习资料库
-
-- `History Library`：从历史任务列表升级为学习资料库，承接 continue learning、最近导出、study pack 就绪度与知识条目数量等元数据
-- `Knowledge`：承接 transcript 摘录、问答摘录、summary / highlight 摘录等长期学习资产
-
-### 4. 模型与运行时架构
-
-| 组件 | 当前基线 | 说明 |
+| # | 阶段 | 产出 |
 | --- | --- | --- |
-| Whisper | 本地 `faster-whisper` Python worker / 兼容 ASR API | 本地路径需手动准备 Python 运行时与 `CTranslate2` 模型 |
-| LLM | Ollama 或在线 OpenAI-compatible API | 用于学习工件生成、可选翻译、问答 |
-| Embedding | Ollama 或在线 API | 用于 transcript-only 检索向量化 |
-| Rerank | Ollama 或在线 API | 用于结果重排 |
+| 1 | `ingest` | 媒体落盘、时长与指纹 |
+| 2 | `audio` | 16kHz 单声道音频、ASR 分片 |
+| 3 | `transcribe` | 句级 + 词级时间戳转写、SRT、纯文本 |
+| 4 | `structure` | 语义段落、章节（含要点与时间锚点） |
+| 5 | `insight` | TL;DR、核心结论、行动项、疑问、术语表、标签 |
+| 6 | `mindmap` | 导图树 + Mermaid 源码 |
+| 7 | `knowledge` | 概念与关系的轻量知识图谱 |
+| 8 | `vision` | 关键帧、屏上文字、多模态图注 |
+| 9 | `index` | 上下文前缀、问题变体、向量与 BM25 索引 |
+| 10 | `finalize` | Markdown 报告、JSON 数据包、翻译工件 |
+
+阶段缓存键为 `sha1(阶段 | 来源指纹 | 相关模型路由 | 相关选项)`，
+因此**换模型只会重跑受影响的阶段**。
+
+## 模型接入
+
+流水线只依赖角色，不依赖具体模型名：
+
+| 角色 | 默认模型 | 提供方 |
+| --- | --- | --- |
+| `llm.fast` | `qwen3.8-flash` | 百炼 |
+| `llm.balanced` | `qwen3.8-27b` | 百炼 |
+| `llm.reasoning` | `deepseek-v4-pro-0813` | 百炼 |
+| `llm.quality` | `qwen3.8-max-0902` | 百炼 |
+| `llm.bulk` | `qwen3.8-2.4t-a95b` | 百炼 |
+| `llm.fallback` | `deepseek-v4-flash-0731` | 百炼 |
+| `vision.primary` | `qwen3.8-omni-flash` | 百炼 |
+| `asr.online` | `qwen-audio-3.1-asr-flash-filetrans` | 百炼 |
+| `asr.local` | `faster-whisper` | 本地 |
+| `embedding` | `qwen3.7-text-embedding-flash` | 百炼 |
+| `rerank` | `nvidia/llama-nemotron-rerank-vl-1b-v2:free` | OpenRouter |
+| `translate` | `qwen-mt-uni` | 百炼 |
+
+密钥从环境变量读取，设置页也可以填写内联密钥，界面只显示脱敏尾码：
+
+```bash
+DASHSCOPE_API_KEY=sk-xxxxxxxx      # 阿里云百炼
+OPENROUTER_API_KEY=sk-or-v1-xxxx   # OpenRouter（重排序）
+```
+
+## 检索与问答
+
+1. 以章节为边界切块（目标 320 token / 80 token 重叠）。
+2. 为每块生成 50-80 token 的上下文前缀与 3 个问题变体（解决指代丢失与口语化提问）。
+3. 向量 top-40 与 BM25 top-40 并行召回，RRF（k=60）融合。
+4. OpenRouter 重排前 30 条，取 top-K（默认 8）。
+5. 「整体讲了什么」这类全局问题走章节摘要 map-reduce，而不是片段 top-k。
+6. 回答流式生成，服务端把 `[mm:ss]` 校验并映射成结构化引用。
+
+## 快速开始
+
+环境要求：Node.js 18+、`pnpm`、`ffmpeg`/`ffprobe` 在 PATH 中；需要下载在线视频时还需要 `yt-dlp`。
+使用本地 Whisper 需要 Python 3.10+ 与 `uv`。
+
+```bash
+pnpm install
+
+# 终端一：后端
+pnpm --filter @vidgnost/api dev
+
+# 终端二：桌面渲染层（浏览器调试）
+pnpm --filter @vidgnost/desktop dev --host 127.0.0.1 --port 6221
+
+# 或者直接启动 Electron 桌面窗口
+pnpm --filter @vidgnost/desktop desktop:dev
+```
+
+默认地址：
+
+- 后端 API：`http://127.0.0.1:8666/api`
+- 渲染层调试：`http://127.0.0.1:6221`
+
+## 工作台
+
+- **资产库**：所有已处理视频的唯一入口，展示就绪度、标签与规模，支持搜索与删除。
+- **工作台**：章节轨 / 内容舞台 / Copilot 三栏，底部常驻播放条；
+  笔记、原文、导图、概念、画面五个页签；处理中显示实时阶段看板。
+- **模型**：提供方密钥状态、角色路由切换与运行时自检（真实网络调用）。
+- **设置**：默认处理参数、本地 Whisper 配置与工具链探测。
+
+界面设计为暗色优先的石墨画布 + 极光微光，发丝描边、8pt 栅格、等宽时间码，
+全局 `Ctrl/⌘ + K` 命令面板。
 
 ## 仓库结构
 
 ```text
 VidGnost/
 ├─ apps/
-│  ├─ api/                       # Fastify + TypeScript 后端
-│  │  ├─ python/                 # faster-whisper 隔离 Python worker
-│  │  ├─ src/                    # 后端源码
-│  │  └─ test/                   # 后端测试
-│  └─ desktop/                   # Electron 桌面应用
-│     ├─ electron/               # 主进程 / preload / splash
-│     ├─ public/                 # 静态资源
-│     └─ src/                    # 渲染层源码
-│        ├─ app/                 # 应用装配与全局样式
-│        ├─ components/          # UI 与业务组件
-│        ├─ hooks/               # 渲染层 hooks
-│        ├─ lib/                 # 客户端服务与工具
-│        ├─ stores/              # Zustand 运行时 store
-│        └─ workers/             # 渲染层 worker
+│  ├─ api/                    # Fastify + TypeScript 后端
+│  │  ├─ python/              # faster-whisper 隔离 Python worker
+│  │  ├─ src/core/            # 配置、错误、文件、文本、进程
+│  │  ├─ src/providers/       # 模型目录、角色路由、提供方客户端、健康自检
+│  │  ├─ src/media/           # 来源解析、音频抽取、关键帧与感知哈希
+│  │  ├─ src/asr/             # 在线/本地转写编排与标准化
+│  │  ├─ src/insight/         # 分段、章节、摘要、导图、知识图谱、校对、翻译
+│  │  ├─ src/retrieval/       # 切块、BM25、向量索引、混合检索、问答
+│  │  ├─ src/pipeline/        # 阶段引擎、任务管理器、事件总线
+│  │  ├─ src/store/           # 任务与工件仓库
+│  │  ├─ src/routes/          # HTTP 与 SSE 路由
+│  │  └─ test/                # Vitest 单元测试
+│  └─ desktop/                # Electron + React 桌面端
+│     ├─ electron/            # 主进程、preload、启动闪屏
+│     └─ src/                 # 渲染层：shell / library / studio / config
 ├─ packages/
-│  ├─ contracts/                 # 前后端共享 schema
-│  └─ shared/                    # 共享常量
-├─ docs/
-├─ scripts/
-├─ storage/                      # 运行时数据目录（默认本地生成）
-├─ start-all.ps1
-├─ start-all.sh
-├─ README.md
-└─ README.zh-CN.md
+│  ├─ contracts/              # 前后端共享领域契约（zod 校验请求体）
+│  └─ shared/                 # 共享常量
+├─ docs/openspec/             # 变更提案、设计与能力规格
+├─ storage/                   # 运行时数据（任务、工件、索引、配置）
+└─ scripts/                   # 校验与运维脚本
 ```
 
-## 环境要求
-
-- Node.js `18+`
-- 已启用 Corepack
-- `pnpm`
-- 若启用本地 Whisper：
-  - Python `3.10` - `3.13`
-  - `uv`（用于 `apps/api/python` 隔离依赖）
-- 系统中可直接调用：
-  - `ffmpeg`
-  - `ffprobe`
-  - `yt-dlp`
-- 至少具备一种模型接入方式：
-  - 本地 Ollama
-  - 或在线 OpenAI-compatible API
-
-## 快速开始
-
-### 方式一：一键启动
-
-Windows PowerShell：
-
-```powershell
-cd F:\in-house project\VidGnost
-powershell -ExecutionPolicy Bypass -File .\start-all.ps1
-```
-
-Linux / macOS / WSL：
+## 校验
 
 ```bash
-cd /path/to/VidGnost
-./start-all.sh
-```
-
-### 方式二：手动启动开发环境
-
-安装依赖：
-
-```bash
-pnpm install
-```
-
-启动后端：
-
-```bash
-pnpm --filter @vidgnost/api dev
-```
-
-启动前端 Web 调试模式：
-
-```bash
-pnpm --filter @vidgnost/desktop dev --host 127.0.0.1 --port 6221
-```
-
-启动 Electron 桌面开发模式：
-
-```bash
-pnpm --filter @vidgnost/desktop desktop:dev
-```
-
-默认本地地址：
-
-- 后端 API：`http://127.0.0.1:8666/api`
-- 前端 Vite：`http://127.0.0.1:6221`
-
-## 常用校验命令
-
-```bash
-pnpm typecheck
-pnpm test
-pnpm build
-node scripts/check-openspec.mjs
+pnpm typecheck                                        # 三个包的类型检查
+pnpm --filter @vidgnost/api test                      # 后端单元测试
+pnpm --filter @vidgnost/desktop test                  # 前端单元测试
+node scripts/check-openspec.mjs                       # OpenSpec 规范校验
 ```
 
 ## 相关文档
 
-- [English README](./README.md)
 - [OpenSpec 索引](./docs/openspec/README.md)
 - [当前技术栈](./docs/current-tech-stack.zh-CN.md)
-- [学习工作台改造方案](./docs/vidgnost-study-workbench-refactor-plan.zh-CN.md)
-- [学习工作台差距分析](./docs/vidgnost-study-workbench-gap-analysis.zh-CN.md)
 - [Git 提交规范](./docs/git-commit-convention.md)
 
 ## License
