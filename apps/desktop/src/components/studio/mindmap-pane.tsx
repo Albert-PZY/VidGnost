@@ -8,10 +8,12 @@ import { formatTimecode } from '@/lib/format'
 import { MermaidBlock } from '@/components/studio/mermaid-block'
 import { EmptyState } from '@/components/studio/notes-pane'
 import { usePlayerStore } from '@/stores/player-store'
+import { useThemeStore } from '@/stores/theme-store'
 
 /** 导图视图：图形化导图 + 可访问的层级列表两种等价呈现。 */
 export function MindMapPane({ mindmap }: { mindmap: MindMapDoc | null }) {
   const [mode, setMode] = useState<'graph' | 'outline'>('graph')
+  const theme = useThemeStore((state) => state.resolved)
 
   if (!mindmap) {
     return <EmptyState message="思维导图还没生成完成。" />
@@ -42,7 +44,7 @@ export function MindMapPane({ mindmap }: { mindmap: MindMapDoc | null }) {
       <div className="min-h-0 flex-1 overflow-auto px-6 pb-8">
         {mode === 'graph' ? (
           <div className="rounded-xl border border-border/60 bg-card/40 p-4">
-            <MermaidBlock source={mindmap.mermaid} />
+            <MermaidBlock source={mindmap.mermaid} theme={theme} />
           </div>
         ) : (
           <div className="mx-auto max-w-[760px]">

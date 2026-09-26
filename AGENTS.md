@@ -80,6 +80,7 @@
 - OpenSpec 校验：`scripts/check-openspec.mjs`（包裹：`.sh` / `.ps1`）
 - 规格同步守卫：`scripts/check-spec-sync.mjs`
 - 暂存区密钥扫描：`scripts/sanitize-staged-secrets.mjs`
+- 主题对比度校验：`scripts/check-theme-contrast.mjs`（浅色 / 深色两套令牌的语义配色必须全部达标）
 
 ## 11) 维护规则
 
@@ -89,5 +90,6 @@
 - 当 `tasks.md` 把某项标记为完成时，同一交付里必须包含对应的实现或测试证据。
 - 合并重大文档或规格变更前运行：
   - `node scripts/check-openspec.mjs`
+  - `node scripts/check-theme-contrast.mjs`
   - `bash scripts/check-openspec.sh`
   - `powershell -ExecutionPolicy Bypass -File .\scripts\check-openspec.ps1`

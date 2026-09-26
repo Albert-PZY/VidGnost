@@ -6,63 +6,69 @@
 /*
  * VidGnost 设计系统 v3 —— 「石墨 + 极光」
  *
- * 原则：
- * 1. 暗色优先。画布接近纯黑但保留一丝冷调，避免纯黑造成的边缘溢出。
- * 2. 层次只靠 3 档表面 + 1 种发丝描边，不用重阴影堆叠。
- * 3. 强调色只用于动作与时间锚点：主色靛蓝（动作），琥珀（时间码/引用）。
- * 4. 排版阶梯固定为 11/12/13/15/20/28，阅读区行高 1.75。
+ * 同一套语义令牌在两种模式下各有一份取值：
+ * - `:root` 是浅色（冷纸：略偏冷的近白画布 + 纯白卡片）；
+ * - `.dark` 是深色（石墨：近黑画布 + 抬起的卡片）。
+ *
+ * 约定：
+ * 1. 组件只消费语义令牌，不直接写颜色值；
+ * 2. 层次靠 3 档表面 + 1 档发丝描边，不靠重阴影堆叠；
+ * 3. 强调色只用于动作与时间锚点：主色靛蓝（动作），琥珀（时间码 / 引用）；
+ * 4. 对比度由 `node scripts/check-theme-contrast.mjs` 校验，两种模式都必须达标。
  */
 
 :root {
   --radius: 0.625rem;
 
-  /* 表面 */
-  --background: oklch(0.145 0.006 275);
-  --foreground: oklch(0.945 0.004 275);
-  --card: oklch(0.178 0.007 275);
-  --card-foreground: oklch(0.945 0.004 275);
-  --popover: oklch(0.196 0.008 275);
-  --popover-foreground: oklch(0.945 0.004 275);
-  --elevated: oklch(0.208 0.008 275);
+  color-scheme: light;
+
+  /* 表面 —— 冷纸 */
+  --background: oklch(0.985 0.003 275);
+  --foreground: oklch(0.235 0.015 275);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.235 0.015 275);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.235 0.015 275);
+  --elevated: oklch(0.968 0.005 275);
 
   /* 文本 */
-  --text-strong: oklch(0.975 0.003 275);
-  --text-muted: oklch(0.68 0.012 275);
-  --text-subtle: oklch(0.55 0.012 275);
+  --text-strong: oklch(0.17 0.016 275);
+  --text-muted: oklch(0.42 0.014 275);
+  --text-subtle: oklch(0.47 0.013 275);
 
   /* 描边 */
-  --border: oklch(0.28 0.01 275);
-  --border-strong: oklch(0.36 0.014 275);
-  --input: oklch(0.24 0.01 275);
+  --border: oklch(0.9 0.006 275);
+  --border-strong: oklch(0.82 0.009 275);
+  --input: oklch(0.93 0.005 275);
 
   /* 动作 */
-  --primary: oklch(0.68 0.16 285);
-  --primary-foreground: oklch(0.145 0.006 275);
-  --secondary: oklch(0.235 0.009 275);
-  --secondary-foreground: oklch(0.92 0.005 275);
-  --muted: oklch(0.225 0.009 275);
-  --muted-foreground: oklch(0.66 0.012 275);
-  --accent: oklch(0.26 0.014 280);
-  --accent-foreground: oklch(0.95 0.004 275);
-  --ring: oklch(0.7 0.15 285);
+  --primary: oklch(0.49 0.19 285);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.945 0.005 275);
+  --secondary-foreground: oklch(0.26 0.015 275);
+  --muted: oklch(0.955 0.004 275);
+  --muted-foreground: oklch(0.45 0.014 275);
+  --accent: oklch(0.93 0.014 280);
+  --accent-foreground: oklch(0.28 0.02 285);
+  --ring: oklch(0.55 0.19 285);
 
   /* 语义状态 */
-  --destructive: oklch(0.62 0.19 22);
-  --destructive-foreground: oklch(0.98 0.005 275);
-  --success: oklch(0.74 0.15 158);
-  --warning: oklch(0.8 0.14 78);
-  --info: oklch(0.72 0.12 240);
+  --destructive: oklch(0.47 0.19 25);
+  --destructive-foreground: oklch(0.99 0 0);
+  --success: oklch(0.5 0.13 155);
+  --warning: oklch(0.46 0.11 70);
+  --info: oklch(0.5 0.14 250);
 
-  /* 时间锚点专用色（引用 chip / 时间码） */
-  --timestamp: oklch(0.82 0.13 78);
-  --timestamp-surface: oklch(0.28 0.05 78);
+  /* 时间锚点（引用 chip / 时间码） */
+  --timestamp: oklch(0.42 0.11 70);
+  --timestamp-surface: oklch(0.92 0.05 85);
 
   /* 图表 */
-  --chart-1: oklch(0.68 0.16 285);
-  --chart-2: oklch(0.74 0.15 158);
-  --chart-3: oklch(0.82 0.13 78);
-  --chart-4: oklch(0.72 0.12 240);
-  --chart-5: oklch(0.7 0.16 330);
+  --chart-1: oklch(0.49 0.19 285);
+  --chart-2: oklch(0.5 0.13 155);
+  --chart-3: oklch(0.55 0.12 70);
+  --chart-4: oklch(0.5 0.14 250);
+  --chart-5: oklch(0.52 0.17 330);
 
   /* 排版 */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI',
@@ -75,10 +81,77 @@
   --duration-base: 220ms;
   --duration-slow: 360ms;
 
-  /* 极光背景 */
+  /* 极光背景 —— 浅色下压低到几乎只是一层空气感 */
+  --aurora-1: oklch(0.62 0.16 285 / 0.1);
+  --aurora-2: oklch(0.66 0.14 232 / 0.08);
+  --aurora-3: oklch(0.7 0.13 320 / 0.06);
+
+  /* 发丝描边与噪点 */
+  --hairline: color-mix(in oklab, var(--foreground) 10%, transparent);
+  /* 遮罩：必须真正隔离前景内容，因此两种模式都用压低明度的浮层 */
+  --scrim: oklch(0.22 0.012 275 / 0.38);
+  --noise-opacity: 0.05;
+}
+
+.dark {
+  color-scheme: dark;
+
+  /* 表面 —— 石墨 */
+  --background: oklch(0.145 0.006 275);
+  --foreground: oklch(0.945 0.004 275);
+  --card: oklch(0.178 0.007 275);
+  --card-foreground: oklch(0.945 0.004 275);
+  --popover: oklch(0.196 0.008 275);
+  --popover-foreground: oklch(0.945 0.004 275);
+  --elevated: oklch(0.208 0.008 275);
+
+  /* 文本 */
+  --text-strong: oklch(0.975 0.003 275);
+  --text-muted: oklch(0.72 0.012 275);
+  --text-subtle: oklch(0.655 0.012 275);
+
+  /* 描边 */
+  --border: oklch(0.28 0.01 275);
+  --border-strong: oklch(0.36 0.014 275);
+  --input: oklch(0.24 0.01 275);
+
+  /* 动作 */
+  --primary: oklch(0.68 0.16 285);
+  --primary-foreground: oklch(0.145 0.006 275);
+  --secondary: oklch(0.235 0.009 275);
+  --secondary-foreground: oklch(0.92 0.005 275);
+  --muted: oklch(0.225 0.009 275);
+  --muted-foreground: oklch(0.7 0.012 275);
+  --accent: oklch(0.26 0.014 280);
+  --accent-foreground: oklch(0.95 0.004 275);
+  --ring: oklch(0.7 0.15 285);
+
+  /* 语义状态 */
+  --destructive: oklch(0.62 0.19 22);
+  --destructive-foreground: oklch(0.145 0.006 275);
+  --success: oklch(0.74 0.15 158);
+  --warning: oklch(0.8 0.14 78);
+  --info: oklch(0.72 0.12 240);
+
+  /* 时间锚点 */
+  --timestamp: oklch(0.82 0.13 78);
+  --timestamp-surface: oklch(0.28 0.05 78);
+
+  /* 图表 */
+  --chart-1: oklch(0.68 0.16 285);
+  --chart-2: oklch(0.74 0.15 158);
+  --chart-3: oklch(0.82 0.13 78);
+  --chart-4: oklch(0.72 0.12 240);
+  --chart-5: oklch(0.7 0.16 330);
+
+  /* 极光背景 —— 深色下是主要氛围来源 */
   --aurora-1: oklch(0.58 0.18 285 / 0.22);
   --aurora-2: oklch(0.62 0.16 232 / 0.16);
   --aurora-3: oklch(0.66 0.14 320 / 0.12);
+
+  --hairline: color-mix(in oklab, var(--foreground) 7%, transparent);
+  --scrim: oklch(0.1 0.006 275 / 0.62);
+  --noise-opacity: 0.035;
 }
 
 @theme inline {
@@ -104,6 +177,7 @@
   --color-info: var(--info);
   --color-timestamp: var(--timestamp);
   --color-timestamp-surface: var(--timestamp-surface);
+  --color-scrim: var(--scrim);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
   --color-input: var(--input);
@@ -144,12 +218,11 @@
     line-height: 1.55;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    color-scheme: dark;
     overflow: hidden;
   }
 
   ::selection {
-    background: color-mix(in oklab, var(--primary) 34%, transparent);
+    background: color-mix(in oklab, var(--primary) 26%, transparent);
   }
 
   :focus-visible {
@@ -166,13 +239,13 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: color-mix(in oklab, var(--foreground) 14%, transparent);
+    background: color-mix(in oklab, var(--foreground) 18%, transparent);
     border: 3px solid transparent;
     border-radius: 999px;
     background-clip: content-box;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in oklab, var(--foreground) 24%, transparent);
+    background: color-mix(in oklab, var(--foreground) 30%, transparent);
     background-clip: content-box;
   }
 }
@@ -197,25 +270,25 @@
 
   .surface {
     background: color-mix(in oklab, var(--card) 88%, transparent);
-    border: 1px solid color-mix(in oklab, var(--foreground) 8%, transparent);
+    border: 1px solid var(--hairline);
   }
 
   .surface-quiet {
     background: color-mix(in oklab, var(--background) 70%, transparent);
-    border: 1px solid color-mix(in oklab, var(--foreground) 6%, transparent);
+    border: 1px solid var(--hairline);
   }
 
   .hairline-b {
-    border-bottom: 1px solid color-mix(in oklab, var(--foreground) 7%, transparent);
+    border-bottom: 1px solid var(--hairline);
   }
   .hairline-t {
-    border-top: 1px solid color-mix(in oklab, var(--foreground) 7%, transparent);
+    border-top: 1px solid var(--hairline);
   }
   .hairline-r {
-    border-right: 1px solid color-mix(in oklab, var(--foreground) 7%, transparent);
+    border-right: 1px solid var(--hairline);
   }
   .hairline-l {
-    border-left: 1px solid color-mix(in oklab, var(--foreground) 7%, transparent);
+    border-left: 1px solid var(--hairline);
   }
 
   /* ---------------------------------------------------------- 极光背景 */
@@ -236,7 +309,7 @@
     inset: 0;
     pointer-events: none;
     z-index: 0;
-    opacity: 0.035;
+    opacity: var(--noise-opacity);
     background-image: radial-gradient(currentColor 0.5px, transparent 0.5px);
     background-size: 3px 3px;
     color: var(--foreground);
@@ -248,7 +321,7 @@
     font-size: 14px;
     line-height: 1.78;
     letter-spacing: 0.002em;
-    color: color-mix(in oklab, var(--foreground) 92%, transparent);
+    color: color-mix(in oklab, var(--foreground) 94%, transparent);
   }
 
   .timecode {
