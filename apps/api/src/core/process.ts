@@ -123,38 +123,6 @@ export async function runCommand(input: {
   })
 }
 
-export async function downloadFile(input: {
-  url: string
-  targetPath: string
-  makeExecutable?: boolean
-  signal?: AbortSignal
-}): Promise<string> {
-  await ensureDirectory(path.dirname(input.targetPath))
-
-  const response = await fetch(input.url, {
-    method: "GET",
-    signal: input.signal,
-  })
-  if (!response.ok || !response.body) {
-    throw new Error(`Failed to download runtime binary from ${input.url}`)
-  }
-
-  const tempPath = `${input.targetPath}.${process.pid}.${Date.now()}.tmp`
-  const output = createWriteStream(tempPath)
-  try {
-    await pipeline(response.body, output)
-    if (input.makeExecutable && process.platform !== "win32") {
-      await chmod(tempPath, 0o755)
-    }
-    await rm(input.targetPath, { force: true }).catch(() => undefined)
-    await rename(tempPath, input.targetPath)
-    return input.targetPath
-  } catch (error) {
-    await rm(tempPath, { force: true }).catch(() => undefined)
-    throw error
-  }
-}
-
 async function resolveCommandFromPath(candidate: string): Promise<string | null> {
   const tool = process.platform === "win32" ? "where.exe" : "which"
   try {

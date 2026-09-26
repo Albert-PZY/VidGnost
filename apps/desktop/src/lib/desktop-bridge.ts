@@ -1,5 +1,4 @@
-import type { ReactNode } from 'react'
-
+/** Electron 主进程通过 preload 暴露到渲染层的桥接能力。 */
 export interface DesktopBridge {
   closeWindow: () => Promise<void>
   minimizeWindow: () => Promise<void>
@@ -13,10 +12,10 @@ export interface DesktopBridge {
 
 declare global {
   interface Window {
+    /** 仅在 Electron 中注入；浏览器调试模式下为 undefined。 */
     vidGnostDesktop?: DesktopBridge
   }
 }
 
-export function DesktopProvider({ children }: { children: ReactNode }) {
-  return <>{children}</>
-}
+export const desktopBridge: DesktopBridge | undefined =
+  typeof window === "undefined" ? undefined : window.vidGnostDesktop
