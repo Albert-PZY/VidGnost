@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { useAppStore } from '@/stores/app-store'
+import { useThemeStore, type ThemeMode } from '@/stores/theme-store'
 
 type Toolchain = Awaited<ReturnType<typeof api.toolchainHealth>>
 
@@ -16,6 +17,8 @@ export function SettingsView() {
   const settings = useAppStore((state) => state.settings)
   const loadConfig = useAppStore((state) => state.loadConfig)
   const saveSettings = useAppStore((state) => state.saveSettings)
+  const themeMode = useThemeStore((state) => state.mode)
+  const setThemeMode = useThemeStore((state) => state.setMode)
   const [toolchain, setToolchain] = useState<Toolchain | null>(null)
   const [probing, setProbing] = useState(false)
 
@@ -73,6 +76,40 @@ export function SettingsView() {
           ))}
         </section>
       ) : null}
+
+      <section className="mt-6 max-w-[640px] space-y-3">
+        <span className="label-eyebrow">外观</span>
+        <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-card/40 px-3 py-2.5">
+          <div>
+            <p className="text-[12px] text-foreground">主题</p>
+            <p className="mt-0.5 text-[10px] text-text-subtle">
+              两种主题的语义令牌都经过对比度校验；跟随系统会随系统深浅色自动切换。
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-0.5 rounded-md border border-border/70 p-0.5">
+            {(
+              [
+                { mode: 'light' as const, label: '浅色' },
+                { mode: 'dark' as const, label: '深色' },
+                { mode: 'system' as const, label: '跟随系统' },
+              ] satisfies Array<{ mode: ThemeMode; label: string }>
+            ).map((item) => (
+              <button
+                key={item.mode}
+                type="button"
+                aria-pressed={themeMode === item.mode}
+                onClick={() => setThemeMode(item.mode)}
+                className={cn(
+                  'rounded px-2.5 py-1 text-[11px] transition-colors',
+                  themeMode === item.mode ? 'bg-secondary text-foreground' : 'text-text-muted hover:text-foreground',
+                )}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
 
       <section className="mt-6 max-w-[640px] space-y-5">
         <span className="label-eyebrow">默认处理参数</span>

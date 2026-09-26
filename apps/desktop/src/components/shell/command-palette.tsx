@@ -93,7 +93,7 @@ export function CommandPalette({
           onClose()
         }
       }}
-      style={{ background: 'color-mix(in oklab, var(--background) 62%, transparent)', backdropFilter: 'blur(6px)' }}
+      style={{ background: 'var(--scrim)', backdropFilter: 'blur(6px)' }}
     >
       <div
         role="dialog"

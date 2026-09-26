@@ -145,6 +145,53 @@ Status: `implemented`
 - **WHEN** 关键字无命中
 - **THEN** 显示明确的空态文案而不是空白区域
 
+### Requirement: Application SHALL support light and dark themes with token parity
+Status: `implemented`
+
+同一套语义令牌 SHALL 提供浅色与深色两组取值（`globals.css` 的 `:root` 与 `.dark`），
+组件只消费语义令牌；主题可选 `浅色 / 深色 / 跟随系统`，选择持久化在 `localStorage`。
+
+#### Scenario: First paint
+- **WHEN** 页面开始加载
+- **THEN** 内联脚本在首屏绘制前根据存储值与系统偏好设置 `html` 的 `dark` 类与 `data-theme`，不出现主题闪烁
+
+#### Scenario: Quick toggle
+- **WHEN** 点击标题栏的主题按钮
+- **THEN** 在浅色与深色之间切换，并把显式模式写入存储
+
+#### Scenario: Follow the system
+- **WHEN** 模式为「跟随系统」且系统主题改变
+- **THEN** 界面跟随切换，且不覆盖存储中的 `system` 取值
+
+#### Scenario: Explicit mode wins
+- **WHEN** 已选择显式浅色或深色
+- **THEN** 系统主题变化不改变界面
+
+#### Scenario: Contrast gate
+- **WHEN** 运行 `node scripts/check-theme-contrast.mjs`
+- **THEN** 两种模式下所有文本与关键控件配对的对比度都达标（正文 4.5:1、图标类 3:1），否则退出码非零
+
+#### Scenario: Chrome stays neutral
+- **WHEN** 两种模式渲染标题栏与导航轨
+- **THEN** 这两处使用不透明画布底色，环境光晕透不过来，图标颜色不被背景染色
+
+### Requirement: Graphics SHALL follow the active theme
+Status: `implemented`
+
+内联图形（思维导图）SHALL 使用与当前主题一致的配色，且不得依赖设计令牌不支持的色彩格式。
+
+#### Scenario: Mermaid colour format
+- **WHEN** 渲染 Mermaid 图形
+- **THEN** 传入十六进制配色；使用 `oklch()` 会被解析器拒绝并导致渲染失败
+
+#### Scenario: Section tints
+- **WHEN** Mermaid 的 `mindmap` 忽略 `cScale*` 并生成自带色阶
+- **THEN** 渲染后按主题重写图形内部的 section 填充、描边与文字色，节点保持低饱和且文字对比度达标
+
+#### Scenario: Theme switch while a graph is visible
+- **WHEN** 在导图页签下切换主题
+- **THEN** 图形用新主题重新渲染
+
 ### Requirement: Notifications and states SHALL not use colour alone
 Status: `implemented`
 

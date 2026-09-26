@@ -47,13 +47,21 @@ apps/api/src
 ### 3.3 设计系统
 
 - 文件：`apps/desktop/src/app/globals.css`
+- 主题：`:root` 为浅色（冷纸：微冷近白画布 + 纯白卡片），`.dark` 为深色（石墨：近黑画布 + 抬起的卡片）；
+  组件只消费语义令牌，不写死颜色值
 - 令牌：表面（`background / card / popover / elevated`）、文本（`foreground / text-muted / text-subtle`）、
-  描边（`border / border-strong`）、动作（`primary / secondary / accent`）、
-  语义（`success / warning / destructive / info`）、时间锚点（`timestamp / timestamp-surface`）
+  描边（`border / border-strong / input / hairline`）、动作（`primary / secondary / accent`）、
+  语义（`success / warning / destructive / info`）、时间锚点（`timestamp / timestamp-surface`）、
+  浮层（`scrim`）、噪点强度（`noise-opacity`）
+- 主题控制：`stores/theme-store.ts`（`light / dark / system`，持久化于 `localStorage`）；
+  `index.html` 内联脚本在首屏绘制前应用主题，避免闪烁
 - 排版：`--font-sans`（Inter + 系统中文字体栈）、`--font-mono`（JetBrains Mono 栈）；
   字号阶梯 11/12/13/15/20/28，阅读区行高 1.78
 - 动效：`--ease-out-quint`、140/220/360ms 三档时长，并遵守 `prefers-reduced-motion`
-- 桌面壳：`frame: false` + 自定义标题栏 + `-webkit-app-region` 拖拽区
+- 图形：Mermaid 使用与主题对齐的十六进制配色（其解析器不支持 `oklch()`），
+  `mindmap` 的 section 色阶在渲染后按主题重写
+- 桌面壳：`frame: false` + 自定义标题栏 + `-webkit-app-region` 拖拽区；标题栏与导航轨使用不透明画布底色
+- 对比度校验：`node scripts/check-theme-contrast.mjs`（两种模式下 42 组配对，正文 4.5:1、图标 3:1）
 
 ## 4. 后端技术栈
 

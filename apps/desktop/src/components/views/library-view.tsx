@@ -110,7 +110,7 @@ export function LibraryView() {
       {pendingDelete ? (
         <div
           className="fixed inset-0 z-50 grid place-items-center"
-          style={{ background: 'color-mix(in oklab, var(--background) 66%, transparent)', backdropFilter: 'blur(4px)' }}
+          style={{ background: 'var(--scrim)', backdropFilter: 'blur(4px)' }}
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) setPendingDelete(null)
           }}

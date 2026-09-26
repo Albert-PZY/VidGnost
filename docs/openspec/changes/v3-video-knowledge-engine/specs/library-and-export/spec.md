@@ -93,3 +93,21 @@ Status: `implemented`
 #### Scenario: Remove task
 - **WHEN** 任务被删除
 - **THEN** 整个任务目录被递归移除，不影响其他任务与全局设置
+
+### Requirement: Library surfaces SHALL follow the active theme
+Status: `implemented`
+
+资产库卡片、标签、就绪度进度条与删除确认浮层 SHALL 只使用语义令牌，
+在浅色与深色主题下都保持可读，浮层 SHALL 使用统一的遮罩令牌而不是各自叠加半透明背景。
+
+#### Scenario: Card in both themes
+- **WHEN** 在两种主题下渲染标题目录
+- **THEN** 卡片标题、摘要、标签与元信息分别使用 `text-strong / text-muted / secondary / text-subtle` 令牌，对比度达标
+
+#### Scenario: Readiness bar
+- **WHEN** 任务就绪度介于 0 与 1 之间
+- **THEN** 进度条使用 `primary` 填充、`secondary` 作轨道；失败状态改用 `destructive`
+
+#### Scenario: Delete confirmation overlay
+- **WHEN** 触发删除确认
+- **THEN** 浮层使用共享的 `--scrim` 令牌与 `bg-scrim`，两种主题下都能有效隔离底层内容
