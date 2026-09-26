@@ -32,13 +32,25 @@ Status: `implemented`
 - **WHEN** 章节的 `startParagraphId` 不在该窗口的段落集合中
 - **THEN** 该章节被丢弃，不影响其余章节
 
+#### Scenario: Model returns a bare array instead of an object
+- **WHEN** 模型对 `json_object` 请求直接返回 `[{...}]`，或换用 `items` / `outline` 作为键名
+- **THEN** 解析层接受这三种形状，章节结果不被静默丢弃
+
+#### Scenario: A window produces no usable chapter
+- **WHEN** 某个窗口没有任何可用章节
+- **THEN** 记录一条包含窗口序号与响应片段的 warn 日志，便于区分「结构不对」与「编号不存在」
+
 #### Scenario: Overlapping windows produce duplicates
 - **WHEN** 相邻窗口对同一段落起始位置给出章节
 - **THEN** 只保留要点更完整的一条
 
+#### Scenario: Chapters are far coarser than the target
+- **WHEN** 章节数低于目标的一半
+- **THEN** 先升级到 `llm.quality` 按显式反馈重切一次；仍不足时按段落边界把最长章节确定性一分为二，新标题取自该半段已有要点
+
 #### Scenario: Model unavailable
-- **WHEN** 所有窗口的模型调用都失败
-- **THEN** 系统按固定段落数切出兜底章节，并把 `generatedBy` 标记为 `fallback-timeout-chunks`
+- **WHEN** 所有窗口的模型调用都失败且重试仍无结果
+- **THEN** 系统按固定段落数切出兜底章节，并把 `generatedBy` 标记为 `fallback-paragraph-chunks`
 
 ### Requirement: System SHALL generate chapter-level notes with time anchors
 Status: `implemented`

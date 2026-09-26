@@ -1,7 +1,7 @@
 import type { Chapter, OutlineDoc, TranscriptParagraph } from "@vidgnost/contracts"
 
 import { logger } from "../core/logger.js"
-import { clamp01, extractJson, formatTimecode } from "../core/text.js"
+import { clamp01, extractJson, formatTimecode, snippet } from "../core/text.js"
 import type { ModelGateway } from "../providers/gateway.js"
 import { renderParagraphsForPrompt, windowParagraphs } from "./segmenter.js"
 
@@ -18,11 +18,24 @@ const OUTLINE_SYSTEM_PROMPT = [
   "6. 只输出 JSON，不要任何解释文字。",
 ].join("\n")
 
-interface RawChapter {
+export interface RawChapter {
   bullets?: unknown
   gist?: unknown
   startParagraphId?: unknown
   title?: unknown
+}
+
+/** 模型既可能返回 `{chapters:[...]}`，也可能直接返回数组，甚至换个键名。 */
+export type OutlinePayload = { chapters?: RawChapter[]; items?: RawChapter[]; outline?: RawChapter[] } | RawChapter[]
+
+export function chapterArrayOf(payload: OutlinePayload | null): RawChapter[] {
+  if (!payload) {
+    return []
+  }
+  if (Array.isArray(payload)) {
+    return payload
+  }
+  return payload.chapters || payload.items || payload.outline || []
 }
 
 export class OutlineService {
@@ -68,24 +81,152 @@ export class OutlineService {
           signal: input.signal,
           maxTokens: 5000,
         })
-        const parsed = extractJson<{ chapters?: RawChapter[] }>(result.text)
-        for (const raw of parsed?.chapters || []) {
+        const parsed = extractJson<OutlinePayload>(result.text)
+        let accepted = 0
+        for (const raw of chapterArrayOf(parsed)) {
           const draft = normalizeChapter(raw, window)
           if (draft) {
             chapterDrafts.push(draft)
+            accepted += 1
           }
+        }
+        if (accepted === 0) {
+          // 保留原始响应片段，便于区分「模型返回结构不对」与「返回了不存在的段落编号」。
+          log.warn(
+            { window: index, windowSize: window.length, head: result.text.slice(0, 300) },
+            "outline window produced no usable chapter",
+          )
         }
       } catch (error) {
         log.warn({ error: String(error), window: index }, "outline window failed")
       }
     }
 
-    const merged = mergeChapterDrafts(chapterDrafts, input.paragraphs)
+    const minimum = Math.max(2, Math.floor(targetChapters / 2))
+    let merged = mergeChapterDrafts(chapterDrafts, input.paragraphs)
+    let source = "llm.balanced"
+
+    // 完全没有可用章节时，换更强的模型再试一次；仍失败才退化为确定性切分。
     if (merged.length === 0) {
-      return fallbackOutline(input.paragraphs)
+      merged = await this.retryWithStricterGranularity(input, windows, targetChapters, 0)
+      source = "llm.quality"
+      if (merged.length === 0) {
+        log.warn({ paragraphs: input.paragraphs.length, target: targetChapters }, "outline fell back to paragraph chunks")
+        return fallbackOutline(input.paragraphs)
+      }
     }
-    return { chapters: merged, generatedBy: "llm.balanced", createdAt: new Date().toISOString() }
+
+    // 章节数明显低于目标时先升级模型重试一次；仍不足则按段落边界确定性拆分。
+    if (merged.length < minimum) {
+      const retried = await this.retryWithStricterGranularity(input, windows, targetChapters, merged.length)
+      const upgraded = retried.length > merged.length
+      const best = upgraded ? retried : merged
+      if (upgraded) {
+        source = "llm.quality"
+      }
+      const split = splitOverlongChapters(best, input.paragraphs, targetChapters)
+      return {
+        chapters: split.length > best.length ? split : best,
+        generatedBy: split.length > best.length ? `${source}+granularity-split` : `${source}+granularity-retry`,
+        createdAt: new Date().toISOString(),
+      }
+    }
+
+    return { chapters: merged, generatedBy: source, createdAt: new Date().toISOString() }
   }
+
+  /** 用「上一版切得太粗」的显式反馈，换更强的模型再切一次。 */
+  private async retryWithStricterGranularity(
+    input: { durationSeconds: number; paragraphs: TranscriptParagraph[]; signal?: AbortSignal; title: string },
+    windows: TranscriptParagraph[][],
+    targetChapters: number,
+    produced: number,
+  ): Promise<Chapter[]> {
+    const drafts: Array<{ bullets: string[]; gist: string; startParagraphId: string; title: string }> = []
+    for (const [index, window] of windows.entries()) {
+      try {
+        const result = await this.gateway.chat("llm.quality", {
+          systemPrompt: OUTLINE_SYSTEM_PROMPT,
+          userPrompt: [
+            `视频标题：${input.title}`,
+            `上一次只切出了 ${produced} 个章节，粒度太粗，观众无法按章节跳转。`,
+            `视频总时长 ${formatTimecode(input.durationSeconds)}，这次必须切出约 ${targetChapters} 个章节。`,
+            `这是第 ${index + 1}/${windows.length} 段转写。`,
+            "",
+            "转写段落：",
+            renderParagraphsForPrompt(window),
+            "",
+            "请输出 JSON：",
+            '{"chapters":[{"startParagraphId":"p0003","title":"章节标题","gist":"一句话概括","bullets":["要点1","要点2"]}]}',
+          ].join("\n"),
+          responseFormat: { type: "json_object" },
+          signal: input.signal,
+          maxTokens: 5000,
+        })
+        const parsed = extractJson<OutlinePayload>(result.text)
+        for (const raw of chapterArrayOf(parsed)) {
+          const draft = normalizeChapter(raw, window)
+          if (draft) {
+            drafts.push(draft)
+          }
+        }
+      } catch (error) {
+        log.warn({ error: String(error), window: index }, "outline retry window failed")
+      }
+    }
+    return mergeChapterDrafts(drafts, input.paragraphs)
+  }
+}
+
+/**
+ * 确定性拆分：模型始终给出过粗的章节时，把段落最多的章节按段落边界一分为二。
+ * 新章节标题取自该半段对应要点，保证信息来自模型已有产出而不是凭空生成。
+ */
+function splitOverlongChapters(chapters: Chapter[], paragraphs: TranscriptParagraph[], targetChapters: number): Chapter[] {
+  let result = [...chapters]
+  const paragraphIndex = new Map(paragraphs.map((paragraph, index) => [paragraph.id, index]))
+  let guard = 0
+
+  while (result.length < targetChapters && guard < targetChapters * 2) {
+    guard += 1
+    // 选择段落数最多、且仍有拆分空间的章节
+    const candidate = result
+      .filter((chapter) => chapter.paragraphIds.length >= 4)
+      .sort((a, b) => b.paragraphIds.length - a.paragraphIds.length)[0]
+    if (!candidate) {
+      break
+    }
+
+    const half = Math.floor(candidate.paragraphIds.length / 2)
+    const headIds = candidate.paragraphIds.slice(0, half)
+    const tailIds = candidate.paragraphIds.slice(half)
+    const headPoints = candidate.bullets.slice(0, Math.ceil(candidate.bullets.length / 2))
+    const tailPoints = candidate.bullets.slice(Math.ceil(candidate.bullets.length / 2))
+
+    const spanOf = (ids: string[]) => {
+      const indices = ids.map((id) => paragraphIndex.get(id) ?? 0)
+      const start = paragraphs[Math.min(...indices)]?.start ?? candidate.start
+      const end = paragraphs[Math.max(...indices)]?.end ?? candidate.end
+      return { start, end }
+    }
+
+    const head = { ...candidate, ...spanOf(headIds), paragraphIds: headIds, bullets: headPoints.length > 0 ? headPoints : candidate.bullets.slice(0, 2) }
+    const tail = {
+      ...candidate,
+      id: `${candidate.id}b`,
+      ...spanOf(tailIds),
+      paragraphIds: tailIds,
+      title: tailPoints[0] ? snippet(tailPoints[0], 18) : `${candidate.title}（续）`,
+      gist: tailPoints[0] ? snippet(tailPoints[0], 45) : candidate.gist,
+      bullets: tailPoints.length > 0 ? tailPoints : candidate.bullets.slice(-2),
+    }
+
+    result = result.flatMap((chapter) => (chapter.id === candidate.id ? [head, tail] : [chapter]))
+  }
+
+  return result
+    .sort((a, b) => a.start - b.start)
+    .map((chapter, index) => ({ ...chapter, id: `ch${String(index + 1).padStart(2, "0")}`, index }))
 }
 
 function normalizeChapter(
@@ -174,7 +315,7 @@ function fallbackOutline(paragraphs: TranscriptParagraph[]): OutlineDoc {
       bullets: slice.slice(0, 3).map((paragraph) => paragraph.text.slice(0, 60)),
     })
   }
-  return { chapters, generatedBy: "fallback-timeout-chunks", createdAt: new Date().toISOString() }
+  return { chapters, generatedBy: "fallback-paragraph-chunks", createdAt: new Date().toISOString() }
 }
 
 export function chapterAt(chapters: Chapter[], time: number): Chapter | null {
