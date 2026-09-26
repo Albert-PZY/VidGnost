@@ -2,93 +2,62 @@
 
 本目录用于管理本项目的 OpenSpec 规范文档与流程资产。
 
-## 1. 新手入口
+## 1. 当前变更
 
-- 小白完整教程（推荐先读）：
-  - `docs/OpenSpec-beginner-guide.zh-CN.md`
+- Change root：`docs/openspec/changes/v3-video-knowledge-engine/`
+- Manifest：`docs/openspec/changes/v3-video-knowledge-engine/.openspec.yaml`
+- Proposal：`docs/openspec/changes/v3-video-knowledge-engine/proposal.md`
+- Design：`docs/openspec/changes/v3-video-knowledge-engine/design.md`
+- Tasks：`docs/openspec/changes/v3-video-knowledge-engine/tasks.md`
+- 能力规格：
+  - `specs/video-ingestion/spec.md`
+  - `specs/transcription-pipeline/spec.md`
+  - `specs/insight-generation/spec.md`
+  - `specs/visual-enrichment/spec.md`
+  - `specs/knowledge-retrieval/spec.md`
+  - `specs/model-routing/spec.md`
+  - `specs/pipeline-runtime/spec.md`
+  - `specs/library-and-export/spec.md`
+  - `specs/desktop-studio-ui/spec.md`
 
-## 2. 当前变更
+本次变更取代 `build-lightweight-v2`，是当前产品与技术基线。
 
-- Active change root:
-  - `docs/openspec/changes/build-lightweight-v2/`
-- Manifest:
-  - `docs/openspec/changes/build-lightweight-v2/.openspec.yaml`
-- Proposal:
-  - `docs/openspec/changes/build-lightweight-v2/proposal.md`
-- Design:
-  - `docs/openspec/changes/build-lightweight-v2/design.md`
-- Tasks:
-  - `docs/openspec/changes/build-lightweight-v2/tasks.md`
-- Active capability specs:
-  - `docs/openspec/changes/build-lightweight-v2/specs/video-ingestion/spec.md`
-  - `docs/openspec/changes/build-lightweight-v2/specs/transcription-pipeline/spec.md`
-  - `docs/openspec/changes/build-lightweight-v2/specs/sse-runtime-stream/spec.md`
-  - `docs/openspec/changes/build-lightweight-v2/specs/llm-runtime-config/spec.md`
-  - `docs/openspec/changes/build-lightweight-v2/specs/llm-summary-mindmap/spec.md`
-  - `docs/openspec/changes/build-lightweight-v2/specs/history-and-export/spec.md`
-  - `docs/openspec/changes/build-lightweight-v2/specs/web-workbench-ui/spec.md`
-  - `docs/openspec/changes/build-lightweight-v2/specs/study-domain/spec.md`
+## 2. 基线规格（Base Specs）
 
-## 3. 基线规格（Base Specs）
+稳定后的能力要求沉淀在 `docs/openspec/specs/`，与当前变更的能力目录一一对应：
 
-稳定后的能力要求沉淀在这里：
+- `video-ingestion`：来源接入、媒体探测与回放通道
+- `transcription-pipeline`：在线文件级 ASR 优先 + 本地兜底 + 转写标准化
+- `insight-generation`：语义分段、章节、摘要、导图、知识图谱、校对与翻译
+- `visual-enrichment`：关键帧抽取、去重与多模态图注
+- `knowledge-retrieval`：切块、混合检索、重排、时间锚定问答
+- `model-routing`：提供方配置、角色路由、密钥与自检
+- `pipeline-runtime`：阶段引擎、检查点续跑、事件流
+- `library-and-export`：资产库索引与导出
+- `desktop-studio-ui`：桌面工作台界面与交互契约
 
-- `docs/openspec/specs/`
-- 当前基线能力包括：
-  - `video-ingestion`
-  - `transcription-pipeline`
-  - `sse-runtime-stream`
-  - `llm-runtime-config`
-  - `llm-summary-mindmap`
-  - `history-and-export`
-  - `web-workbench-ui`
-  - `study-domain`
+## 3. 归档区
 
-## 4. 归档区
+已完成的旧 change 归档在 `docs/openspec/changes/archive/`：
 
-已完成并归档的 change 放这里：
+- `build-lightweight-v2-archived/`：study-first 学习工作台基线（已被 v3 取代）
 
-- `docs/openspec/changes/archive/`
-- 归档规则见：
-  - `docs/openspec/changes/archive/README.md`
+归档规则见 `docs/openspec/changes/archive/README.md`。
 
-## 5. 模板区
+## 4. 模板区
 
-新建 change 时优先从模板复制：
+新建 change 时从 `docs/openspec/templates/change-template/` 复制。
 
-- `docs/openspec/templates/change-template/`
+## 5. 状态词汇
 
-## 6. 自动检查脚本
+能力状态只允许使用三个词，并在规格中用 `Status: ``...`` ` 标注：
 
-用于检查 OpenSpec 目录结构与基础内容质量：
+- `planned`：已设计但尚无代码
+- `partial`：代码存在但未覆盖全部场景
+- `implemented`：代码、测试、规格与验证证据齐备
 
-- Linux/WSL:
-  - `bash scripts/check-openspec.sh`
-- Windows PowerShell:
-  - `powershell -ExecutionPolicy Bypass -File scripts/check-openspec.ps1`
-- 直接运行 Node:
-  - `node scripts/check-openspec.mjs`
+## 6. 校验
 
-提交与远程校验守卫：
-
-- Git pre-commit hook:
-  - `scripts/check-spec-sync.mjs`
-- GitHub Actions workflow:
-  - `.github/workflows/spec-sync.yml`
-
-## 7. 同步约束
-
-1. 只要项目代码发生变更，就必须同步审查受影响的 OpenSpec 文档。
-2. Spec 文档的信息密度必须和当前实现保持同级别对齐，不能只保留概述而遗漏真实接口、状态、参数、约束、错误处理或关键 UI 行为。
-3. 如果本次代码变更不需要改动 spec 文本，也必须确认现有 spec 已经完整覆盖最新实现细节。
-4. OpenSpec 中出现实现状态时，统一使用三种术语：
-   - `planned`：仅作为目标能力或扩展位，当前不能按已交付验收
-   - `partial`：当前有收缩版实现，但不能按原完整设计验收
-   - `implemented`：代码、测试、OpenSpec 与验证命令已经对齐
-
-## 8. 推荐流程
-
-1. 中大型功能先写或先改 spec，再动代码。
-2. 代码实现完成后，同步更新受影响的 base spec、active change spec、README 和相关运维文档。
-3. 只有在代码、测试、OpenSpec、README、验证命令都对齐后，任务项才能从 `planned/partial` 进入 `implemented`。
-4. 修改 `tasks.md` 时，必须让勾选状态与真实交付深度一致，不能用“先打勾、后补实现”的方式管理完成度。
+```bash
+node scripts/check-openspec.mjs
+```

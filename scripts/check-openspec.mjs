@@ -16,58 +16,92 @@ const CONTRADICTORY_COMPLETED_TASK_PATTERNS = [
   /runtime warning/i,
   /delta, warning/i,
   /Ollama pull/i,
+  /platform subtitle/i,
+  /bilibili login/i,
+  /cookie/i,
 ];
 
 const CAPABILITY_EVIDENCE = {
   "video-ingestion": {
     implementation: [
-      "apps/api/src/routes/task-mutations.ts",
-      "apps/api/src/routes/task-route-support.ts",
-      "apps/desktop/src/components/views/new-task-view.tsx",
+      "apps/api/src/media/media-service.ts",
+      "apps/api/src/routes/tasks.ts",
+      "apps/api/src/routes/media.ts",
+      "apps/desktop/src/components/library/new-task-dialog.tsx",
     ],
-    tests: ["apps/api/test/tasks-write.test.ts"],
+    tests: ["apps/api/test/media.test.ts"],
   },
   "transcription-pipeline": {
     implementation: [
-      "apps/api/src/modules/asr/asr-service.ts",
-      "apps/api/src/modules/tasks/task-orchestrator.ts",
+      "apps/api/src/asr/transcription-service.ts",
+      "apps/api/src/providers/dashscope.ts",
+      "apps/api/src/providers/local-whisper.ts",
     ],
-    tests: ["apps/api/test/asr-service.test.ts", "apps/api/test/tasks-write.test.ts"],
+    tests: ["apps/api/test/transcription-service.test.ts"],
   },
-  "llm-runtime-config": {
+  "insight-generation": {
     implementation: [
+      "apps/api/src/insight/segmenter.ts",
+      "apps/api/src/insight/outline-service.ts",
+      "apps/api/src/insight/summary-service.ts",
+      "apps/api/src/insight/mindmap-service.ts",
+      "apps/api/src/insight/knowledge-service.ts",
+    ],
+    tests: ["apps/api/test/segmenter.test.ts"],
+  },
+  "visual-enrichment": {
+    implementation: [
+      "apps/api/src/media/frame-service.ts",
+      "apps/api/src/media/perceptual-hash.ts",
+      "apps/api/src/insight/enrich-service.ts",
+    ],
+    tests: ["apps/api/test/media.test.ts"],
+  },
+  "knowledge-retrieval": {
+    implementation: [
+      "apps/api/src/retrieval/chunking.ts",
+      "apps/api/src/retrieval/bm25.ts",
+      "apps/api/src/retrieval/index-service.ts",
+      "apps/api/src/retrieval/contextualizer.ts",
+      "apps/api/src/retrieval/qa-service.ts",
+    ],
+    tests: ["apps/api/test/retrieval.test.ts", "apps/api/test/bm25.test.ts", "apps/api/test/chunking.test.ts"],
+  },
+  "model-routing": {
+    implementation: [
+      "apps/api/src/providers/gateway.ts",
+      "apps/api/src/providers/settings-store.ts",
+      "apps/api/src/providers/catalog.ts",
+      "apps/api/src/providers/health.ts",
       "apps/api/src/routes/config.ts",
-      "apps/api/src/modules/models/ollama-service-manager.ts",
-      "apps/api/src/modules/runtime/self-check-service.ts",
     ],
-    tests: ["apps/api/test/config.test.ts", "apps/api/test/self-check.test.ts"],
+    tests: ["apps/api/test/providers.test.ts"],
   },
-  "llm-summary-mindmap": {
-    implementation: ["apps/api/src/modules/summary/summary-service.ts"],
-    tests: ["apps/api/test/summary-service.test.ts"],
-  },
-  "sse-runtime-stream": {
+  "pipeline-runtime": {
     implementation: [
-      "apps/api/src/modules/events/event-bus.ts",
-      "apps/api/src/routes/task-events.ts",
-      "apps/api/src/routes/vqa.ts",
+      "apps/api/src/pipeline/task-runner.ts",
+      "apps/api/src/pipeline/task-manager.ts",
+      "apps/api/src/pipeline/event-bus.ts",
+      "apps/api/src/routes/events.ts",
     ],
-    tests: [],
+    tests: ["apps/api/test/pipeline.test.ts"],
   },
-  "history-and-export": {
+  "library-and-export": {
     implementation: [
-      "apps/api/src/routes/task-exports.ts",
-      "apps/desktop/src/components/views/history-view.tsx",
-      "apps/desktop/src/components/views/task-processing-workbench.tsx",
+      "apps/api/src/store/task-store.ts",
+      "apps/api/src/routes/export.ts",
+      "apps/desktop/src/components/views/library-view.tsx",
     ],
-    tests: ["apps/api/test/tasks-write.test.ts"],
+    tests: ["apps/api/test/task-store.test.ts"],
   },
-  "web-workbench-ui": {
+  "desktop-studio-ui": {
     implementation: [
-      "apps/desktop/src/components/views/settings-view.tsx",
-      "apps/desktop/src/components/views/task-processing-workbench.tsx",
+      "apps/desktop/src/components/views/studio-view.tsx",
+      "apps/desktop/src/components/views/library-view.tsx",
+      "apps/desktop/src/components/shell/command-palette.tsx",
+      "apps/desktop/src/stores/player-store.ts",
     ],
-    tests: ["apps/api/test/frontend-format.test.ts"],
+    tests: ["apps/desktop/src/lib/format.test.ts"],
   },
 };
 

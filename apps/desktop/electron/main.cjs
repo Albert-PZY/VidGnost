@@ -462,6 +462,31 @@ ipcMain.handle("dialog:pick-image-file", async (event) => {
   }
 })
 
+ipcMain.handle("dialog:pick-media-file", async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  const { canceled, filePaths } = await dialog.showOpenDialog(win || undefined, {
+    title: "选择视频或音频文件",
+    properties: ["openFile"],
+    filters: [
+      {
+        name: "视频 / 音频",
+        extensions: ["mp4", "mov", "mkv", "webm", "m4v", "avi", "flv", "mp3", "m4a", "wav", "aac", "flac", "ogg"],
+      },
+      { name: "全部文件", extensions: ["*"] },
+    ],
+  })
+
+  if (canceled || filePaths.length === 0) {
+    return { canceled: true }
+  }
+
+  return {
+    canceled: false,
+    path: filePaths[0],
+    fileName: path.basename(filePaths[0]),
+  }
+})
+
 ipcMain.handle("dialog:pick-directory", async (event, title) => {
   const win = BrowserWindow.fromWebContents(event.sender)
   const { canceled, filePaths } = await dialog.showOpenDialog(win || undefined, {

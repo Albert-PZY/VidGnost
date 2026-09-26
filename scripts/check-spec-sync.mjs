@@ -25,70 +25,84 @@ const REPO_ROOT = path.resolve(__dirname, "..");
 
 const CAPABILITY_RULES = [
   {
-    capability: "transcription-pipeline",
-    codePrefixes: [
-      "apps/api/src/modules/asr/",
-      "apps/api/src/modules/tasks/task-orchestrator.ts",
-      "apps/api/test/asr-service.test.ts",
-      "apps/api/test/tasks-write.test.ts",
-    ],
-  },
-  {
-    capability: "llm-runtime-config",
-    codePrefixes: [
-      "apps/api/src/modules/llm/",
-      "apps/api/src/modules/runtime/",
-      "apps/api/src/modules/models/",
-      "apps/api/src/routes/config.ts",
-      "apps/api/src/server/build-app.ts",
-      "apps/api/test/config.test.ts",
-      "apps/api/test/self-check.test.ts",
-      "apps/api/test/ollama-service-manager.test.ts",
-      "packages/contracts/src/config.ts",
-      "packages/contracts/src/self-check.ts",
-      "apps/desktop/src/components/views/settings-view.tsx",
-    ],
-  },
-  {
     capability: "video-ingestion",
     codePrefixes: [
-      "apps/api/src/routes/task-mutations.ts",
-      "apps/api/src/routes/task-route-support.ts",
-      "apps/desktop/src/components/views/new-task-view.tsx",
-      "apps/desktop/src/lib/video-format.ts",
+      "apps/api/src/media/media-service.ts",
+      "apps/api/src/routes/tasks.ts",
+      "apps/api/src/routes/media.ts",
+      "apps/desktop/src/components/library/new-task-dialog.tsx",
     ],
   },
   {
-    capability: "llm-summary-mindmap",
+    capability: "transcription-pipeline",
     codePrefixes: [
-      "apps/api/src/modules/summary/",
-      "apps/api/test/summary-service.test.ts",
+      "apps/api/src/asr/",
+      "apps/api/src/providers/local-whisper.ts",
+      "apps/api/python/",
+      "apps/api/test/transcription-service.test.ts",
     ],
   },
   {
-    capability: "sse-runtime-stream",
+    capability: "insight-generation",
     codePrefixes: [
-      "apps/api/src/modules/events/",
-      "apps/api/src/routes/task-events.ts",
-      "apps/api/src/routes/vqa.ts",
+      "apps/api/src/insight/",
+      "apps/api/test/segmenter.test.ts",
     ],
   },
   {
-    capability: "web-workbench-ui",
+    capability: "visual-enrichment",
     codePrefixes: [
+      "apps/api/src/media/frame-service.ts",
+      "apps/api/src/media/perceptual-hash.ts",
+    ],
+  },
+  {
+    capability: "knowledge-retrieval",
+    codePrefixes: [
+      "apps/api/src/retrieval/",
+      "apps/api/test/retrieval.test.ts",
+      "apps/api/test/bm25.test.ts",
+      "apps/api/test/chunking.test.ts",
+    ],
+  },
+  {
+    capability: "model-routing",
+    codePrefixes: [
+      "apps/api/src/providers/",
+      "apps/api/src/routes/config.ts",
+      "apps/api/test/providers.test.ts",
+      "packages/contracts/src/providers.ts",
+    ],
+  },
+  {
+    capability: "pipeline-runtime",
+    codePrefixes: [
+      "apps/api/src/pipeline/",
+      "apps/api/src/routes/events.ts",
+      "apps/api/test/pipeline.test.ts",
+      "packages/contracts/src/pipeline.ts",
+    ],
+  },
+  {
+    capability: "library-and-export",
+    codePrefixes: [
+      "apps/api/src/store/",
+      "apps/api/src/routes/export.ts",
+      "apps/api/test/task-store.test.ts",
+      "apps/desktop/src/components/views/library-view.tsx",
+      "apps/desktop/src/components/library/task-card.tsx",
+    ],
+  },
+  {
+    capability: "desktop-studio-ui",
+    codePrefixes: [
+      "apps/desktop/src/components/shell/",
+      "apps/desktop/src/components/studio/",
       "apps/desktop/src/components/views/",
-      "apps/desktop/src/components/ui/",
-      "apps/desktop/src/lib/",
-      "apps/api/test/frontend-format.test.ts",
-      "apps/api/src/modules/vqa/",
-    ],
-  },
-  {
-    capability: "history-and-export",
-    codePrefixes: [
-      "apps/api/src/routes/task-exports.ts",
-      "apps/desktop/src/components/views/history-view.tsx",
-      "apps/desktop/src/components/views/task-processing-workbench.tsx",
+      "apps/desktop/src/stores/",
+      "apps/desktop/src/app/",
+      "apps/desktop/src/lib/api.ts",
+      "apps/desktop/src/lib/format.ts",
     ],
   },
 ];

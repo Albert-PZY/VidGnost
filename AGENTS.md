@@ -1,93 +1,93 @@
-# AGENTS Internal Doc Index
+# AGENTS 内部文档索引
 
-Scope: this file is an internal navigation index for coding agents and maintainers.
+适用范围：本文件是面向编码助手与维护者的导航索引，不是产品说明。
 
-## 1) Global Collaboration Rules
-- Response language: Simplified Chinese
-- Workspace package manager: use `pnpm` (do not use `npm`)
-- Generated file encoding: UTF-8 without BOM
-- Runtime stack baseline: `apps/desktop + apps/api + packages/*`
-- GitHub operations: prefer using `gh` CLI commands when possible
-- Documentation style: write all project docs as current baseline statements and keep them aligned with implementation
-- Spec sync rule: whenever project code changes, automatically review the impacted OpenSpec docs and sync their information density to the implementation in the same delivery. New or changed interfaces, states, parameters, constraints, error handling, and UI behavior must be reflected in spec updates; if no spec text changes are needed, explicitly verify that the existing spec already matches the latest code detail.
-- Spec status vocabulary: when capability status must be called out, only use `planned`, `partial`, or `implemented`; do not describe a capability as finished unless code, tests, OpenSpec, and verification evidence are aligned.
-- Key module mapping rule: changes under `apps/api/src/modules/asr|summary|runtime|models|vqa`, `apps/api/src/routes/config.ts`, `apps/api/src/routes/task-events.ts`, `apps/api/src/routes/vqa.ts`, `apps/desktop/src/components/views/`, or `packages/contracts/src/` must trigger a review of the corresponding OpenSpec capability directories before completion.
-- After completing a requirement change, automatically determine whether a commit is needed; if needed, commit and push following `docs/git-commit-convention.md` without additional confirmation
+## 1) 全局协作约定
 
-## 2) Core Product Docs
-- Project overview (EN): `README.md`
-- Project overview (ZH): `README.zh-CN.md`
-- TS fullstack refactor checklist: `docs/vidgnost-ts-fullstack-refactor-checklist.zh-CN.md`
-- Frontend-driven backend checklist: `docs/frontend-driven-backend-execution-checklist.zh-CN.md`
-- Current technical stack: `docs/current-tech-stack.zh-CN.md`
-- Frontend design prompt: `docs/vidgnost-system-design-prompt.md`
+- 回复语言：简体中文
+- 包管理器：使用 `pnpm`（不要使用 `npm`）
+- 生成文件编码：UTF-8 无 BOM
+- 运行时基线：`apps/desktop + apps/api + packages/*`
+- GitHub 操作：优先使用 `gh` CLI
+- 文档风格：一律写成「当前基线」陈述，并与实现保持同步
+- 规格同步规则：代码变更必须同时检查受影响的 OpenSpec 文档；
+  新增或变更的接口、状态、参数、约束、错误处理与 UI 行为都要在同一交付里反映到规格中；
+  若确认规格无需改动，必须明确说明「现有规格已覆盖最新实现」。
+- 规格状态词汇：只使用 `planned`、`partial`、`implemented`；
+  只有代码、测试、规格与验证证据齐备时才允许写 `implemented`。
+- 关键模块映射规则：改动以下路径时必须复核对应的 OpenSpec 能力目录：
+  `apps/api/src/media/**`、`apps/api/src/asr/**`、`apps/api/src/insight/**`、
+  `apps/api/src/retrieval/**`、`apps/api/src/pipeline/**`、`apps/api/src/providers/**`、
+  `apps/api/src/store/**`、`apps/api/src/routes/**`、`apps/desktop/src/components/**`、
+  `apps/desktop/src/stores/**`、`packages/contracts/src/**`。
+- 完成需求变更后，自动判断是否需要提交；需要时按 `docs/git-commit-convention.md` 提交并推送，无需再次确认。
 
-## 3) Git Workflow Doc
-- Commit convention guide (Conventional Commits aligned): `docs/git-commit-convention.md`
-- Delivery branch: use the user-designated working branch for the current requirement and do not auto-merge into `master` unless the user explicitly requests it.
+## 2) 核心产品文档
 
-## 4) OpenSpec Entry
-- OpenSpec index: `docs/openspec/README.md`
-- OpenSpec base specs index: `docs/openspec/specs/README.md`
+- 项目简介（EN）：`README.md`
+- 项目简介（ZH）：`README.zh-CN.md`
+- 当前技术栈：`docs/current-tech-stack.zh-CN.md`
 
-## 5) OpenSpec Active Change
-- Active change root: `docs/openspec/changes/build-lightweight-v2/`
-- Change manifest: `docs/openspec/changes/build-lightweight-v2/.openspec.yaml`
-- Proposal: `docs/openspec/changes/build-lightweight-v2/proposal.md`
-- Design: `docs/openspec/changes/build-lightweight-v2/design.md`
-- Tasks: `docs/openspec/changes/build-lightweight-v2/tasks.md`
+## 3) Git 工作流
 
-## 6) OpenSpec Requirement Files (Active Change)
-- Video ingestion: `docs/openspec/changes/build-lightweight-v2/specs/video-ingestion/spec.md`
-- Transcription pipeline: `docs/openspec/changes/build-lightweight-v2/specs/transcription-pipeline/spec.md`
-- SSE runtime stream: `docs/openspec/changes/build-lightweight-v2/specs/sse-runtime-stream/spec.md`
-- LLM runtime config: `docs/openspec/changes/build-lightweight-v2/specs/llm-runtime-config/spec.md`
-- LLM summary + mindmap: `docs/openspec/changes/build-lightweight-v2/specs/llm-summary-mindmap/spec.md`
-- History and export: `docs/openspec/changes/build-lightweight-v2/specs/history-and-export/spec.md`
-- Web workbench UI: `docs/openspec/changes/build-lightweight-v2/specs/web-workbench-ui/spec.md`
+- 提交规范：`docs/git-commit-convention.md`
+- 交付分支：使用当前需求指定的工作分支，未获明确要求不要自动合并到 `master`。
 
-## 7) OpenSpec Base Specs
-- Video ingestion: `docs/openspec/specs/video-ingestion/spec.md`
-- Transcription pipeline: `docs/openspec/specs/transcription-pipeline/spec.md`
-- SSE runtime stream: `docs/openspec/specs/sse-runtime-stream/spec.md`
-- LLM runtime config: `docs/openspec/specs/llm-runtime-config/spec.md`
-- LLM summary + mindmap: `docs/openspec/specs/llm-summary-mindmap/spec.md`
-- History and export: `docs/openspec/specs/history-and-export/spec.md`
-- Web workbench UI: `docs/openspec/specs/web-workbench-ui/spec.md`
+## 4) OpenSpec 入口
 
-## 8) OpenSpec Templates and Archive
-- Change template root: `docs/openspec/templates/change-template/`
-- Template manifest: `docs/openspec/templates/change-template/.openspec.yaml`
-- Template proposal: `docs/openspec/templates/change-template/proposal.md`
-- Template design: `docs/openspec/templates/change-template/design.md`
-- Template tasks: `docs/openspec/templates/change-template/tasks.md`
-- Template spec sample: `docs/openspec/templates/change-template/specs/example-capability/spec.md`
-- Archived changes root: `docs/openspec/changes/archive/`
-- Archive guide: `docs/openspec/changes/archive/README.md`
+- OpenSpec 索引：`docs/openspec/README.md`
+- 基线规格根目录：`docs/openspec/specs/`
 
-## 9) Startup Scripts
-- Root one-click startup (Windows): `start-all.ps1`
-- Root one-click startup (Linux/macOS/WSL): `start-all.sh`
-- Script wrappers:
-  - `scripts/bootstrap-and-run.ps1`
-  - `scripts/bootstrap-and-run.sh`
-- Workspace cleanup:
-  - `scripts/clean-workspace.ps1`
-  - `scripts/clean-workspace.sh`
+## 5) OpenSpec 当前变更
 
-## 10) OpenSpec Checker Scripts
-- Node checker: `scripts/check-openspec.mjs`
-- Shell wrapper: `scripts/check-openspec.sh`
-- PowerShell wrapper: `scripts/check-openspec.ps1`
-- Spec sync guard: `scripts/check-spec-sync.mjs`
-- Staged secret guard: `scripts/sanitize-staged-secrets.mjs`
+- 变更根目录：`docs/openspec/changes/v3-video-knowledge-engine/`
+- 清单：`docs/openspec/changes/v3-video-knowledge-engine/.openspec.yaml`
+- 提案：`docs/openspec/changes/v3-video-knowledge-engine/proposal.md`
+- 设计：`docs/openspec/changes/v3-video-knowledge-engine/design.md`
+- 任务：`docs/openspec/changes/v3-video-knowledge-engine/tasks.md`
 
-## 11) Maintenance Rules
-- Keep `AGENTS.md` as an index file (navigation + global constraints).
-- Keep active change specs and baseline specs aligned for stable capability contracts.
-- Treat code change and spec densification as a single maintenance action; do not leave updated code behind coarser or stale specs.
-- When `docs/openspec/changes/build-lightweight-v2/tasks.md` changes a task to completed, make sure the same delivery also contains the matching implementation or test evidence.
-- Before merging major doc/spec changes, run:
+## 6) OpenSpec 能力规格（当前变更）
+
+- 来源接入：`docs/openspec/changes/v3-video-knowledge-engine/specs/video-ingestion/spec.md`
+- 转写管线：`docs/openspec/changes/v3-video-knowledge-engine/specs/transcription-pipeline/spec.md`
+- 洞察生成：`docs/openspec/changes/v3-video-knowledge-engine/specs/insight-generation/spec.md`
+- 视觉增强：`docs/openspec/changes/v3-video-knowledge-engine/specs/visual-enrichment/spec.md`
+- 知识检索：`docs/openspec/changes/v3-video-knowledge-engine/specs/knowledge-retrieval/spec.md`
+- 模型路由：`docs/openspec/changes/v3-video-knowledge-engine/specs/model-routing/spec.md`
+- 管线运行时：`docs/openspec/changes/v3-video-knowledge-engine/specs/pipeline-runtime/spec.md`
+- 资产与导出：`docs/openspec/changes/v3-video-knowledge-engine/specs/library-and-export/spec.md`
+- 桌面工作台 UI：`docs/openspec/changes/v3-video-knowledge-engine/specs/desktop-studio-ui/spec.md`
+
+## 7) OpenSpec 基线规格
+
+与第 6 节能力目录一一对应，路径为 `docs/openspec/specs/<capability>/spec.md`。
+
+## 8) OpenSpec 模板与归档
+
+- 变更模板：`docs/openspec/templates/change-template/`
+- 归档目录：`docs/openspec/changes/archive/`
+- 归档说明：`docs/openspec/changes/archive/README.md`
+
+## 9) 启动脚本
+
+- 根目录一键启动（Windows）：`start-all.ps1`
+- 根目录一键启动（Linux/macOS/WSL）：`start-all.sh`
+- 包裹脚本：`scripts/bootstrap-and-run.ps1`、`scripts/bootstrap-and-run.sh`
+- 工作区清理：`scripts/clean-workspace.ps1`、`scripts/clean-workspace.sh`
+
+## 10) 校验脚本
+
+- OpenSpec 校验：`scripts/check-openspec.mjs`（包裹：`.sh` / `.ps1`）
+- 规格同步守卫：`scripts/check-spec-sync.mjs`
+- 暂存区密钥扫描：`scripts/sanitize-staged-secrets.mjs`
+
+## 11) 维护规则
+
+- 保持 `AGENTS.md` 作为索引文件（导航 + 全局约束）。
+- 当前变更规格与基线规格必须保持同步，稳定能力以基线规格为准。
+- 代码变更与规格加密是同一次维护动作；不要让代码领先于规格。
+- 当 `tasks.md` 把某项标记为完成时，同一交付里必须包含对应的实现或测试证据。
+- 合并重大文档或规格变更前运行：
   - `node scripts/check-openspec.mjs`
   - `bash scripts/check-openspec.sh`
   - `powershell -ExecutionPolicy Bypass -File .\scripts\check-openspec.ps1`

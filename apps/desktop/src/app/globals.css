@@ -3,116 +3,92 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* VidGnost - 本地优先视频知识整理软件 */
-/* 设计风格：深色科技感、专业工具、高效信息密度 */
+/*
+ * VidGnost 设计系统 v3 —— 「石墨 + 极光」
+ *
+ * 原则：
+ * 1. 暗色优先。画布接近纯黑但保留一丝冷调，避免纯黑造成的边缘溢出。
+ * 2. 层次只靠 3 档表面 + 1 种发丝描边，不用重阴影堆叠。
+ * 3. 强调色只用于动作与时间锚点：主色靛蓝（动作），琥珀（时间码/引用）。
+ * 4. 排版阶梯固定为 11/12/13/15/20/28，阅读区行高 1.75。
+ */
 
 :root {
-  --theme-hue: 220;
-  /* 亮色主题 - 简洁专业 */
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.45 0.12 var(--theme-hue));
-  --primary-foreground: oklch(0.985 0.006 var(--theme-hue));
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.965 0 0);
-  --muted-foreground: oklch(0.5 0 0);
-  --accent: oklch(0.92 0.03 var(--theme-hue));
-  --accent-foreground: oklch(0.25 0.08 var(--theme-hue));
-  --destructive: oklch(0.55 0.22 25);
-  --destructive-foreground: oklch(0.985 0.006 var(--theme-hue));
-  --border: oklch(0.9 0 0);
-  --input: oklch(0.9 0 0);
-  --ring: oklch(0.55 0.12 var(--theme-hue));
-  /* 图表颜色 */
-  --chart-1: oklch(0.55 0.15 var(--theme-hue));
-  --chart-2: oklch(0.6 0.15 calc(var(--theme-hue) - 45));
-  --chart-3: oklch(0.55 0.12 calc(var(--theme-hue) + 60));
-  --chart-4: oklch(0.65 0.18 calc(var(--theme-hue) - 140));
-  --chart-5: oklch(0.6 0.2 calc(var(--theme-hue) - 190));
-  --radius: 0.5rem;
-  /* 侧边栏 */
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.45 0.12 var(--theme-hue));
-  --sidebar-primary-foreground: oklch(0.985 0.006 var(--theme-hue));
-  --sidebar-accent: oklch(0.94 0.02 var(--theme-hue));
-  --sidebar-accent-foreground: oklch(0.25 0.08 var(--theme-hue));
-  --sidebar-border: oklch(0.92 0 0);
-  --sidebar-ring: oklch(0.55 0.12 var(--theme-hue));
-  /* 自定义变量：流程状态颜色 */
-  --status-pending: oklch(0.70 0 0);
-  --status-processing: oklch(0.65 0.18 250);
-  --status-success: oklch(0.60 0.18 145);
-  --status-error: oklch(0.55 0.22 25);
-  --titlebar: oklch(0.985 0 0);
-  --titlebar-border: oklch(0.9 0 0);
-  --app-background-opacity: 0;
-  --app-background-blur: 0px;
-  --skeleton-base: color-mix(in oklch, var(--muted) 82%, var(--background) 18%);
-  --skeleton-highlight: color-mix(in oklch, white 84%, var(--muted) 16%);
-}
+  --radius: 0.625rem;
 
-.dark {
-  /* 深色主题 - 科技专业感 */
-  --background: oklch(0.108 0 0);
-  --foreground: oklch(0.93 0 0);
-  --card: oklch(0.132 0 0);
-  --card-foreground: oklch(0.93 0 0);
-  --popover: oklch(0.132 0 0);
-  --popover-foreground: oklch(0.93 0 0);
-  --primary: oklch(0.7 0.14 calc(var(--theme-hue) - 20));
-  --primary-foreground: oklch(0.108 0 0);
-  --secondary: oklch(0.18 0 0);
-  --secondary-foreground: oklch(0.93 0 0);
-  --muted: oklch(0.18 0 0);
-  --muted-foreground: oklch(0.65 0 0);
-  --accent: oklch(0.22 0.012 calc(var(--theme-hue) - 6));
-  --accent-foreground: oklch(0.85 0.1 calc(var(--theme-hue) - 20));
-  --destructive: oklch(0.50 0.20 25);
-  --destructive-foreground: oklch(0.93 0 0);
-  --border: oklch(0.24 0 0);
-  --input: oklch(0.18 0 0);
-  --ring: oklch(0.6 0.14 calc(var(--theme-hue) - 20));
-  /* 图表颜色 */
-  --chart-1: oklch(0.65 0.18 calc(var(--theme-hue) - 20));
-  --chart-2: oklch(0.6 0.16 calc(var(--theme-hue) - 45));
-  --chart-3: oklch(0.6 0.15 calc(var(--theme-hue) + 60));
-  --chart-4: oklch(0.7 0.18 calc(var(--theme-hue) - 140));
-  --chart-5: oklch(0.65 0.2 calc(var(--theme-hue) - 190));
-  /* 侧边栏 */
-  --sidebar: oklch(0.096 0 0);
-  --sidebar-foreground: oklch(0.93 0 0);
-  --sidebar-primary: oklch(0.7 0.14 calc(var(--theme-hue) - 20));
-  --sidebar-primary-foreground: oklch(0.108 0 0);
-  --sidebar-accent: oklch(0.16 0.008 calc(var(--theme-hue) - 6));
-  --sidebar-accent-foreground: oklch(0.85 0.1 calc(var(--theme-hue) - 20));
-  --sidebar-border: oklch(0.2 0 0);
-  --sidebar-ring: oklch(0.6 0.14 calc(var(--theme-hue) - 20));
-  /* 自定义变量：流程状态颜色 */
-  --status-pending: oklch(0.55 0 0);
-  --status-processing: oklch(0.70 0.18 250);
-  --status-success: oklch(0.70 0.18 145);
-  --status-error: oklch(0.60 0.22 25);
-  --titlebar: oklch(0.12 0 0);
-  --titlebar-border: oklch(0.22 0 0);
-  --skeleton-base: color-mix(in oklch, var(--muted) 90%, black 10%);
-  --skeleton-highlight: color-mix(in oklch, white 28%, var(--muted) 72%);
+  /* 表面 */
+  --background: oklch(0.145 0.006 275);
+  --foreground: oklch(0.945 0.004 275);
+  --card: oklch(0.178 0.007 275);
+  --card-foreground: oklch(0.945 0.004 275);
+  --popover: oklch(0.196 0.008 275);
+  --popover-foreground: oklch(0.945 0.004 275);
+  --elevated: oklch(0.208 0.008 275);
+
+  /* 文本 */
+  --text-strong: oklch(0.975 0.003 275);
+  --text-muted: oklch(0.68 0.012 275);
+  --text-subtle: oklch(0.55 0.012 275);
+
+  /* 描边 */
+  --border: oklch(0.28 0.01 275);
+  --border-strong: oklch(0.36 0.014 275);
+  --input: oklch(0.24 0.01 275);
+
+  /* 动作 */
+  --primary: oklch(0.68 0.16 285);
+  --primary-foreground: oklch(0.145 0.006 275);
+  --secondary: oklch(0.235 0.009 275);
+  --secondary-foreground: oklch(0.92 0.005 275);
+  --muted: oklch(0.225 0.009 275);
+  --muted-foreground: oklch(0.66 0.012 275);
+  --accent: oklch(0.26 0.014 280);
+  --accent-foreground: oklch(0.95 0.004 275);
+  --ring: oklch(0.7 0.15 285);
+
+  /* 语义状态 */
+  --destructive: oklch(0.62 0.19 22);
+  --destructive-foreground: oklch(0.98 0.005 275);
+  --success: oklch(0.74 0.15 158);
+  --warning: oklch(0.8 0.14 78);
+  --info: oklch(0.72 0.12 240);
+
+  /* 时间锚点专用色（引用 chip / 时间码） */
+  --timestamp: oklch(0.82 0.13 78);
+  --timestamp-surface: oklch(0.28 0.05 78);
+
+  /* 图表 */
+  --chart-1: oklch(0.68 0.16 285);
+  --chart-2: oklch(0.74 0.15 158);
+  --chart-3: oklch(0.82 0.13 78);
+  --chart-4: oklch(0.72 0.12 240);
+  --chart-5: oklch(0.7 0.16 330);
+
+  /* 排版 */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI',
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Mono', 'Roboto Mono', Consolas, monospace;
+
+  /* 动效 */
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 140ms;
+  --duration-base: 220ms;
+  --duration-slow: 360ms;
+
+  /* 极光背景 */
+  --aurora-1: oklch(0.58 0.18 285 / 0.22);
+  --aurora-2: oklch(0.62 0.16 232 / 0.16);
+  --aurora-3: oklch(0.66 0.14 320 / 0.12);
 }
 
 @theme inline {
-  --font-sans: 'Geist', 'Geist Fallback', system-ui, sans-serif;
-  --font-mono: 'Geist Mono', 'Geist Mono Fallback', ui-monospace, monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
+  --color-elevated: var(--elevated);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
@@ -123,2294 +99,242 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --color-timestamp: var(--timestamp);
+  --color-timestamp-surface: var(--timestamp-surface);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-text-strong: var(--text-strong);
+  --color-text-muted: var(--text-muted);
+  --color-text-subtle: var(--text-subtle);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
-  /* 状态颜色 */
-  --color-status-pending: var(--status-pending);
-  --color-status-processing: var(--status-processing);
-  --color-status-success: var(--status-success);
-  --color-status-error: var(--status-error);
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    border-color: var(--border);
   }
-  body {
-    @apply bg-background text-foreground;
-    min-height: 100vh;
-    overflow: hidden;
-    position: relative;
-    isolation: isolate;
-  }
+
+  html,
+  body,
   #root {
-    min-height: 100vh;
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    color-scheme: dark;
     overflow: hidden;
   }
-  /* 自定义滚动条 */
+
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 34%, transparent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 1px;
+    border-radius: 4px;
+  }
+
   ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 10px;
+    height: 10px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: var(--muted-foreground);
-    border-radius: 4px;
-    opacity: 0.5;
+    background: color-mix(in oklab, var(--foreground) 14%, transparent);
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: content-box;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--foreground);
-    opacity: 0.7;
+    background: color-mix(in oklab, var(--foreground) 24%, transparent);
+    background-clip: content-box;
   }
-  /* 视频播放器容器 */
-  .video-container {
-    @apply relative rounded-lg overflow-hidden bg-black;
+}
+
+@layer utilities {
+  /* ---------------------------------------------------------------- 布局 */
+
+  .app-shell {
+    display: grid;
+    grid-template-rows: 44px minmax(0, 1fr);
+    height: 100%;
   }
-  /* 流程步骤指示器 */
-  .step-indicator {
-    @apply flex items-center gap-2;
+
+  .drag-region {
+    -webkit-app-region: drag;
   }
-  .step-indicator::before {
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+
+  /* ------------------------------------------------------------ 表面层级 */
+
+  .surface {
+    background: color-mix(in oklab, var(--card) 88%, transparent);
+    border: 1px solid color-mix(in oklab, var(--foreground) 8%, transparent);
+  }
+
+  .surface-quiet {
+    background: color-mix(in oklab, var(--background) 70%, transparent);
+    border: 1px solid color-mix(in oklab, var(--foreground) 6%, transparent);
+  }
+
+  .hairline-b {
+    border-bottom: 1px solid color-mix(in oklab, var(--foreground) 7%, transparent);
+  }
+  .hairline-t {
+    border-top: 1px solid color-mix(in oklab, var(--foreground) 7%, transparent);
+  }
+  .hairline-r {
+    border-right: 1px solid color-mix(in oklab, var(--foreground) 7%, transparent);
+  }
+  .hairline-l {
+    border-left: 1px solid color-mix(in oklab, var(--foreground) 7%, transparent);
+  }
+
+  /* ---------------------------------------------------------- 极光背景 */
+
+  .aurora-layer {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+      radial-gradient(58rem 32rem at 12% -8%, var(--aurora-1), transparent 62%),
+      radial-gradient(46rem 26rem at 96% 4%, var(--aurora-2), transparent 58%),
+      radial-gradient(52rem 30rem at 46% 112%, var(--aurora-3), transparent 62%);
+  }
+
+  .noise-layer {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.035;
+    background-image: radial-gradient(currentColor 0.5px, transparent 0.5px);
+    background-size: 3px 3px;
+    color: var(--foreground);
+  }
+
+  /* -------------------------------------------------------------- 排版 */
+
+  .reading {
+    font-size: 14px;
+    line-height: 1.78;
+    letter-spacing: 0.002em;
+    color: color-mix(in oklab, var(--foreground) 92%, transparent);
+  }
+
+  .timecode {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+  }
+
+  .metric-value {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  .label-eyebrow {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-subtle);
+  }
+
+  /* --------------------------------------------------------------- 动效 */
+
+  .reveal {
+    animation: reveal var(--duration-slow) var(--ease-out-quint) both;
+  }
+
+  @keyframes reveal {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .pulse-dot {
+    animation: pulse-dot 1.8s ease-in-out infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%,
+    100% {
+      opacity: 0.45;
+      transform: scale(0.9);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  .stream-caret::after {
     content: '';
-    @apply w-2 h-2 rounded-full;
-  }
-  .step-indicator.pending::before {
-    background: var(--status-pending);
-  }
-  .step-indicator.processing::before {
-    background: var(--status-processing);
-    animation: pulse 1.5s infinite;
-  }
-  .step-indicator.success::before {
-    background: var(--status-success);
-  }
-  .step-indicator.error::before {
-    background: var(--status-error);
-  }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-  }
-}
-
-body[data-app-background-active="true"] [data-slot="sidebar-wrapper"] {
-  background: transparent;
-}
-
-body[data-app-background-active="true"] {
-  --card: color-mix(in oklch, var(--background) 24%, transparent);
-  --popover: color-mix(in oklch, var(--background) 28%, transparent);
-  --sidebar: color-mix(in oklch, var(--background) 18%, transparent);
-  --sidebar-accent: color-mix(in oklch, var(--background) 12%, transparent);
-  --titlebar: color-mix(in oklch, var(--background) 20%, transparent);
-  --input: color-mix(in oklch, var(--background) 14%, transparent);
-  --wallpaper-glass-surface: color-mix(in oklch, var(--background) 24%, transparent);
-  --wallpaper-glass-surface-strong: color-mix(in oklch, var(--background) 32%, transparent);
-  --wallpaper-glass-border: color-mix(in oklch, white 14%, var(--border) 86%);
-  --wallpaper-shell-text: color-mix(in oklch, white 96%, var(--foreground) 4%);
-  --wallpaper-shell-text-muted: color-mix(in oklch, white 72%, var(--muted-foreground) 28%);
-  --wallpaper-shell-shadow: 0 1px 10px rgba(0, 0, 0, 0.35);
-}
-
-html:not(.dark) body[data-app-background-active="true"] {
-  --wallpaper-glass-border: transparent;
-  --wallpaper-shell-text: color-mix(in oklch, white 98%, var(--foreground) 2%);
-  --wallpaper-shell-text-muted: color-mix(in oklch, white 84%, var(--muted-foreground) 16%);
-  --wallpaper-glass-edge: 0 16px 40px rgba(6, 10, 18, 0.14);
-  --wallpaper-glass-edge-strong: 0 20px 52px rgba(6, 10, 18, 0.18);
-  --wallpaper-tint-fill-soft: color-mix(in oklch, var(--primary) 24%, transparent);
-  --wallpaper-tint-fill: color-mix(in oklch, var(--primary) 34%, transparent);
-  --wallpaper-tint-fill-strong: color-mix(in oklch, var(--primary) 46%, transparent);
-  --wallpaper-reading-panel-fill: linear-gradient(
-    180deg,
-    oklch(0.48 0.034 calc(var(--theme-hue) - 8) / 0.8) 0%,
-    oklch(0.54 0.028 calc(var(--theme-hue) + 2) / 0.72) 100%
-  );
-  --wallpaper-reading-header-fill: linear-gradient(
-    180deg,
-    oklch(0.42 0.036 calc(var(--theme-hue) - 10) / 0.84) 0%,
-    oklch(0.47 0.03 calc(var(--theme-hue) - 2) / 0.78) 100%
-  );
-  --wallpaper-reading-panel-border: color-mix(in oklch, white 12%, transparent);
-  --wallpaper-reading-panel-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 22px 56px rgba(6, 10, 18, 0.18);
-}
-
-body[data-app-background-active="true"] [data-slot="card"] {
-  background: var(--wallpaper-glass-surface);
-  border-color: var(--wallpaper-glass-border);
-  backdrop-filter: blur(20px) saturate(1.16);
-  box-shadow: 0 18px 48px rgba(6, 10, 18, 0.14);
-  text-shadow: none;
-}
-
-html:not(.dark) body[data-app-background-active="true"] [data-slot="card"] {
-  color: var(--wallpaper-shell-text);
-  border-color: transparent;
-  box-shadow: var(--wallpaper-glass-edge);
-}
-
-body[data-app-background-active="true"] [data-slot="dialog-content"]:not(.bg-transparent),
-body[data-app-background-active="true"] [data-slot="alert-dialog-content"],
-body[data-app-background-active="true"] [data-slot="sheet-content"],
-body[data-app-background-active="true"] [data-slot="drawer-content"],
-body[data-app-background-active="true"] [data-slot="popover-content"],
-body[data-app-background-active="true"] [data-slot="dropdown-menu-content"],
-body[data-app-background-active="true"] [data-slot="dropdown-menu-sub-content"],
-body[data-app-background-active="true"] [data-slot="context-menu-content"],
-body[data-app-background-active="true"] [data-slot="context-menu-sub-content"],
-body[data-app-background-active="true"] [data-slot="hover-card-content"],
-body[data-app-background-active="true"] [data-slot="menubar-content"],
-body[data-app-background-active="true"] [data-slot="menubar-sub-content"],
-body[data-app-background-active="true"] [data-slot="select-content"],
-body[data-app-background-active="true"] [data-slot="navigation-menu-content"],
-body[data-app-background-active="true"] .custom-skin-dialog-surface {
-  background: var(--wallpaper-glass-surface-strong);
-  border-color: var(--wallpaper-glass-border);
-  backdrop-filter: blur(24px) saturate(1.2);
-  box-shadow: 0 24px 72px rgba(5, 9, 18, 0.22);
-  text-shadow: none;
-}
-
-html:not(.dark) body[data-app-background-active="true"] [data-slot="dialog-content"]:not(.bg-transparent),
-html:not(.dark) body[data-app-background-active="true"] [data-slot="alert-dialog-content"],
-html:not(.dark) body[data-app-background-active="true"] [data-slot="sheet-content"],
-html:not(.dark) body[data-app-background-active="true"] [data-slot="drawer-content"],
-html:not(.dark) body[data-app-background-active="true"] [data-slot="popover-content"],
-html:not(.dark) body[data-app-background-active="true"] [data-slot="dropdown-menu-content"],
-html:not(.dark) body[data-app-background-active="true"] [data-slot="dropdown-menu-sub-content"],
-html:not(.dark) body[data-app-background-active="true"] [data-slot="context-menu-content"],
-html:not(.dark) body[data-app-background-active="true"] [data-slot="context-menu-sub-content"],
-html:not(.dark) body[data-app-background-active="true"] [data-slot="hover-card-content"],
-html:not(.dark) body[data-app-background-active="true"] [data-slot="menubar-content"],
-html:not(.dark) body[data-app-background-active="true"] [data-slot="menubar-sub-content"],
-html:not(.dark) body[data-app-background-active="true"] [data-slot="select-content"],
-html:not(.dark) body[data-app-background-active="true"] [data-slot="navigation-menu-content"],
-html:not(.dark) body[data-app-background-active="true"] .custom-skin-dialog-surface {
-  background: linear-gradient(180deg, rgba(72, 78, 96, 0.96) 0%, rgba(56, 61, 77, 0.94) 100%);
-  border-color: transparent;
-  box-shadow: var(--wallpaper-glass-edge-strong);
-}
-
-html:not(.dark) body[data-app-background-active="true"] .confirm-dialog-content {
-  background: linear-gradient(180deg, rgba(112, 124, 142, 0.92) 0%, rgba(93, 103, 119, 0.9) 100%) !important;
-  border-color: transparent !important;
-  color: white !important;
-  backdrop-filter: blur(30px) saturate(1.16);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 28px 72px rgba(6, 10, 18, 0.22) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .confirm-dialog-content :is(
-    .confirm-dialog-title,
-    .confirm-dialog-description,
-    .confirm-dialog-cancel,
-    .confirm-dialog-action
-  ) {
-  color: white !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .confirm-dialog-content .confirm-dialog-description {
-  color: rgba(255, 255, 255, 0.84) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .confirm-dialog-content .confirm-dialog-cancel {
-  border-color: rgba(255, 255, 255, 0.14) !important;
-  background: rgba(255, 255, 255, 0.08) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .confirm-dialog-content .confirm-dialog-cancel:hover,
-html:not(.dark) body[data-app-background-active="true"] .confirm-dialog-content .confirm-dialog-cancel:focus-visible {
-  background: rgba(255, 255, 255, 0.14) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) {
-  background: linear-gradient(180deg, rgba(72, 78, 96, 0.96) 0%, rgba(56, 61, 77, 0.94) 100%) !important;
-  border-color: transparent !important;
-  color: var(--wallpaper-shell-text) !important;
-  backdrop-filter: blur(28px) saturate(1.18);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    0 26px 72px rgba(6, 10, 18, 0.22) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog-header, .model-config-dialog-footer, .prompt-config-dialog-header, .prompt-config-dialog-footer) {
-  background: color-mix(in oklch, white 4%, transparent) !important;
-  border-color: transparent !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog-panel, .prompt-config-dialog-panel) {
-  border-color: transparent !important;
-  background: color-mix(in oklch, white 6%, transparent) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 12px 28px rgba(6, 10, 18, 0.1);
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) :is(.rounded-xl.border, .rounded-lg.border, .border-dashed) {
-  border-color: transparent !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) :is(.bg-muted\/30, .bg-muted\/35, .bg-background\/80) {
-  background: color-mix(in oklch, white 5%, transparent) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .model-config-dialog :is(h1, h2, h3, h4, h5, h6, p, span, small, strong, label, li, dt, dd, div) {
-  color: inherit;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog :is(.prompt-config-dialog-header, .prompt-config-dialog-footer, .prompt-config-dialog-panel) :is(h1, h2, h3, h4, h5, h6, p, span, small, strong, label, li, dt, dd, div) {
-  color: inherit;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) .text-muted-foreground,
-html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) [data-slot="dialog-description"] {
-  color: var(--wallpaper-shell-text-muted) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) :is([data-slot="input"], [data-slot="textarea"], [data-slot="select-trigger"]) {
-  background: color-mix(in oklch, white 7%, transparent) !important;
-  border-color: transparent !important;
-  color: var(--wallpaper-shell-text) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 8px 18px rgba(6, 10, 18, 0.08);
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) :is([data-slot="input"], [data-slot="textarea"])::placeholder {
-  color: var(--wallpaper-shell-text-muted) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) [data-slot="button"],
-html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) [data-slot="badge"] {
-  border-color: transparent !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) [data-slot="button"][class*="border"] {
-  background: color-mix(in oklch, white 6%, transparent) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 8px 18px rgba(6, 10, 18, 0.08);
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) [data-slot="button"][class*="border"]:hover,
-html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) [data-slot="button"][class*="border"]:focus-visible {
-  background: var(--wallpaper-tint-fill-soft) !important;
-  color: var(--primary-foreground) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(.model-config-dialog, .prompt-config-dialog) [data-slot="badge"] {
-  background: color-mix(in oklch, white 5%, transparent) !important;
-  color: var(--wallpaper-shell-text) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-}
-
-html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell .w-md-editor-toolbar ul > li > button {
-  color: var(--wallpaper-shell-text-muted) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell .w-md-editor-toolbar ul > li > button:hover,
-html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell .w-md-editor-toolbar ul > li > button:focus,
-html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell .w-md-editor-toolbar ul > li.active > button {
-  color: white !important;
-  background: color-mix(in oklch, white 8%, transparent) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(.model-config-select-content, .prompt-config-select-content) {
-  background: linear-gradient(180deg, rgba(72, 78, 96, 0.96) 0%, rgba(56, 61, 77, 0.94) 100%) !important;
-  border-color: transparent !important;
-  color: var(--wallpaper-shell-text) !important;
-  backdrop-filter: blur(28px) saturate(1.16);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 18px 40px rgba(6, 10, 18, 0.16) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(.model-config-select-content, .prompt-config-select-content) [data-slot="select-item"] {
-  color: var(--wallpaper-shell-text) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(.model-config-select-content, .prompt-config-select-content) [data-slot="select-item"][data-state="checked"]:not(:hover):not([data-highlighted]) {
-  background: color-mix(in oklch, white 7%, transparent) !important;
-  color: var(--wallpaper-shell-text) !important;
-  font-weight: 600;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(.model-config-select-content, .prompt-config-select-content) [data-slot="select-item"]:is(:hover, [data-highlighted], :focus-visible) {
-  background: var(--wallpaper-tint-fill-soft) !important;
-  color: var(--primary-foreground) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(
-    [data-slot="select-trigger"],
-    [data-slot="select-trigger"] [data-slot="select-value"],
-    [data-slot="select-content"],
-    [data-slot="select-item"],
-    [data-slot="select-label"],
-    [data-slot="select-scroll-up-button"],
-    [data-slot="select-scroll-down-button"],
-    [data-slot="dropdown-menu-content"],
-    [data-slot="dropdown-menu-sub-content"],
-    [data-slot="dropdown-menu-item"],
-    [data-slot="dropdown-menu-sub-trigger"],
-    [data-slot="dropdown-menu-label"],
-    [data-slot="dropdown-menu-shortcut"]
-  ) {
-  color: var(--wallpaper-shell-text) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(
-    [data-slot="select-trigger"],
-    [data-slot="select-item"],
-    [data-slot="dropdown-menu-item"],
-    [data-slot="dropdown-menu-sub-trigger"]
-  ) svg:not([class*="text-"]) {
-  color: currentColor !important;
-}
-
-body[data-app-background-active="true"] [data-slot="input"],
-body[data-app-background-active="true"] [data-slot="textarea"],
-body[data-app-background-active="true"] [data-slot="select-trigger"],
-body[data-app-background-active="true"] [data-slot="sidebar-input"],
-body[data-app-background-active="true"] [data-slot="sidebar-inner"] [data-slot="button"],
-body[data-app-background-active="true"] [data-slot="tooltip-content"] {
-  background: color-mix(in oklch, var(--background) 14%, transparent);
-  border-color: color-mix(in oklch, white 12%, var(--border) 88%);
-  backdrop-filter: blur(14px) saturate(1.06);
-}
-
-body[data-app-background-active="true"] [data-slot="sidebar"] {
-  background: color-mix(in oklch, var(--sidebar) 88%, transparent);
-  border-color: var(--wallpaper-glass-border);
-  backdrop-filter: blur(22px) saturate(1.16);
-}
-
-html.dark body[data-app-background-active="true"] [data-slot="tooltip-content"] {
-  background: color-mix(in oklch, white 92%, var(--background) 8%) !important;
-  color: oklch(0.22 0.01 var(--theme-hue)) !important;
-  border-color: transparent !important;
-  text-shadow: none !important;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.24);
-}
-
-html.dark body[data-app-background-active="true"] .tooltip-arrow {
-  background: color-mix(in oklch, white 92%, var(--background) 8%) !important;
-  fill: color-mix(in oklch, white 92%, var(--background) 8%) !important;
-}
-
-body[data-app-background-active="true"] [data-slot="sidebar-inner"] {
-  background: color-mix(in oklch, var(--sidebar) 92%, transparent);
-  border-color: var(--wallpaper-glass-border);
-  backdrop-filter: blur(22px) saturate(1.16);
-  color: var(--wallpaper-shell-text);
-  text-shadow: var(--wallpaper-shell-shadow);
-}
-
-body[data-app-background-active="true"] [data-slot="sidebar-inset"] {
-  background: transparent;
-  backdrop-filter: none;
-}
-
-body[data-app-background-active="true"] [data-slot="sidebar-inset"] > main {
-  color: var(--wallpaper-shell-text);
-  text-shadow: var(--wallpaper-shell-shadow);
-}
-
-body[data-app-background-active="true"] .app-header-shell {
-  background: color-mix(in oklch, var(--titlebar) 92%, transparent);
-  color: var(--wallpaper-shell-text);
-  text-shadow: var(--wallpaper-shell-shadow);
-  backdrop-filter: blur(22px) saturate(1.14);
-}
-
-body[data-app-background-active="true"] .app-header-shell .text-muted-foreground,
-body[data-app-background-active="true"] [data-slot="sidebar-inner"] .text-muted-foreground,
-body[data-app-background-active="true"] [data-slot="sidebar-inset"] > main .text-muted-foreground {
-  color: var(--wallpaper-shell-text-muted) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(
-    [data-slot="sidebar-container"],
-    [data-slot="sidebar"],
-    [data-slot="sidebar-inner"],
-    [data-slot="sidebar-inner"] [data-slot="dropdown-menu-trigger"],
-    [data-slot="input"],
-    [data-slot="textarea"],
-    [data-slot="select-trigger"],
-    [data-slot="sidebar-input"],
-    [data-slot="sidebar-inner"] [data-slot="button"],
-    [data-slot="tooltip-content"],
-    .app-header-shell
-  ) {
-  border-color: transparent;
-}
-
-html:not(.dark) body[data-app-background-active="true"] [data-slot="sidebar-container"] {
-  box-shadow: none;
-}
-
-html:not(.dark) body[data-app-background-active="true"] [data-slot="badge"].bg-secondary,
-html:not(.dark) body[data-app-background-active="true"] [data-slot="badge"].bg-muted,
-html:not(.dark) body[data-app-background-active="true"] [data-slot="badge"].bg-background,
-html:not(.dark) body[data-app-background-active="true"] [data-slot="badge"].bg-accent {
-  background: var(--wallpaper-tint-fill-soft) !important;
-  color: var(--primary-foreground) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(
-    [data-slot="sidebar-menu-button"],
-    [data-slot="sidebar-inner"] [data-slot="button"],
-    [data-slot="sidebar-inner"] [data-slot="dropdown-menu-trigger"],
-    .app-header-shell [data-slot="button"],
-    [data-slot="dropdown-menu-item"],
-    [data-slot="dropdown-menu-sub-trigger"],
-    [data-slot="select-item"],
-    [data-slot="badge"].bg-secondary,
-    [data-slot="badge"].bg-muted,
-    [data-slot="badge"].bg-background,
-    [data-slot="badge"].bg-accent
-  ):is(:hover, :focus-visible, [data-active="true"], [data-state="open"], [data-highlighted]) {
-  background: var(--wallpaper-tint-fill) !important;
-  color: var(--primary-foreground) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(
-    [data-slot="sidebar-menu-button"][data-active="true"],
-    [data-slot="dropdown-menu-item"].bg-accent,
-    [data-slot="select-item"][data-state="checked"]
-  ) {
-  background: var(--wallpaper-tint-fill-strong) !important;
-  color: var(--primary-foreground) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(
-    [data-slot="dropdown-menu-trigger"][class*="bg-background"],
-    [data-slot="dropdown-menu-trigger"][class*="bg-muted"],
-    [data-slot="dropdown-menu-trigger"][class*="bg-secondary"],
-    [data-slot="dropdown-menu-trigger"][class*="bg-accent"],
-    [data-slot="badge"][class*="bg-background/"],
-    [data-slot="badge"][class*="bg-muted/"],
-    [data-slot="badge"][class*="bg-secondary"],
-    [data-slot="badge"][class*="bg-accent"],
-    [data-slot="select-trigger"][class*="bg-background/"],
-    [data-slot="select-trigger"][class*="bg-muted/"],
-    [data-slot="select-trigger"][class*="bg-secondary"],
-    [data-slot="select-trigger"][class*="bg-accent"],
-    [data-slot="input"][class*="bg-background/"],
-    [data-slot="input"][class*="bg-muted/"],
-    [data-slot="textarea"][class*="bg-background/"],
-    [data-slot="textarea"][class*="bg-muted/"],
-    [data-slot="sidebar-menu-button"] .bg-muted
-  ) {
-  background: var(--wallpaper-tint-fill-soft) !important;
-  color: var(--primary-foreground) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(
-    [data-slot="button"][class*="hover:bg-background"],
-    [data-slot="button"][class*="hover:bg-muted"],
-    [data-slot="button"][class*="hover:bg-secondary"],
-    [data-slot="button"][class*="hover:bg-accent"],
-    [data-slot="dropdown-menu-trigger"][class*="hover:bg-background"],
-    [data-slot="dropdown-menu-trigger"][class*="hover:bg-muted"],
-    [data-slot="dropdown-menu-trigger"][class*="hover:bg-secondary"],
-    [data-slot="dropdown-menu-trigger"][class*="hover:bg-accent"],
-    [data-slot="badge"][class*="hover:bg-background"],
-    [data-slot="badge"][class*="hover:bg-muted"],
-    [data-slot="badge"][class*="hover:bg-secondary"],
-    [data-slot="badge"][class*="hover:bg-accent"],
-    [data-slot="sidebar-menu-button"][class*="hover:bg-muted"],
-    [data-slot="sidebar-menu-button"][class*="hover:bg-accent"]
-  ):hover {
-  background: var(--wallpaper-tint-fill) !important;
-  color: var(--primary-foreground) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .workflow-step-chip,
-html:not(.dark) body[data-app-background-active="true"] .upload-dropzone-icon-shell {
-  background: var(--wallpaper-tint-fill-soft) !important;
-  color: var(--primary-foreground) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .workflow-step-card {
-  border-color: transparent !important;
-  background: color-mix(in oklch, var(--primary) 12%, transparent) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 8px 18px rgba(6, 10, 18, 0.06);
-}
-
-html:not(.dark) body[data-app-background-active="true"] .value-expectation-row {
-  background: transparent !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .value-expectation-row:is(:hover, :focus-within) {
-  background: color-mix(in oklch, var(--primary) 8%, transparent) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .new-task-source-tabs {
-  background: color-mix(in oklch, var(--primary) 24%, transparent) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 10px 24px rgba(6, 10, 18, 0.08);
-}
-
-html:not(.dark) body[data-app-background-active="true"] .new-task-source-trigger {
-  color: white !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .new-task-source-trigger:is(:hover, :focus-visible, [data-state="active"]) {
-  background: color-mix(in oklch, var(--primary) 58%, white 6%) !important;
-  color: white !important;
-  box-shadow: none !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .new-task-source-panel {
-  border-color: transparent !important;
-  background: color-mix(in oklch, var(--primary) 16%, transparent) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 12px 28px rgba(6, 10, 18, 0.08);
-}
-
-html:not(.dark) body[data-app-background-active="true"] .new-task-source-panel :is(.text-muted-foreground, .text-primary) {
-  color: white !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .new-task-source-dropzone:hover,
-html:not(.dark) body[data-app-background-active="true"] .new-task-source-dropzone:focus-within {
-  background: color-mix(in oklch, var(--primary) 22%, transparent) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .upload-dropzone-icon-shell svg {
-  color: var(--primary-foreground) !important;
-  opacity: 0.92;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .selected-video-file-item {
-  border-color: transparent !important;
-  background: color-mix(in oklch, var(--primary) 14%, transparent) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 8px 20px rgba(6, 10, 18, 0.08);
-}
-
-html:not(.dark) body[data-app-background-active="true"] .selected-video-file-icon-shell {
-  background: var(--wallpaper-tint-fill-soft) !important;
-  color: var(--primary-foreground) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .selected-video-file-icon-shell .selected-video-file-icon {
-  color: var(--primary-foreground) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .selected-video-file-meta {
-  color: color-mix(in oklch, white 84%, transparent) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .selected-video-file-meta svg {
-  color: inherit !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .settings-models-panel {
-  border-color: transparent !important;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in oklch, white 7%, transparent) 0%,
-      transparent 18%
-    ),
-    color-mix(in oklch, var(--background) 10%, transparent);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 10px 28px rgba(6, 10, 18, 0.08);
-}
-
-html:not(.dark) body[data-app-background-active="true"] .settings-models-divider {
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    color-mix(in oklch, var(--primary) 18%, transparent) 18%,
-    color-mix(in oklch, var(--primary) 12%, transparent) 50%,
-    color-mix(in oklch, var(--primary) 18%, transparent) 82%,
-    transparent 100%
-  ) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .settings-models-shell [data-slot="button"][class*="border"] {
-  border-color: transparent !important;
-  background: color-mix(in oklch, var(--background) 8%, transparent);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 8px 20px rgba(6, 10, 18, 0.08);
-}
-
-html:not(.dark) body[data-app-background-active="true"] .settings-models-shell [data-slot="button"][class*="border"]:hover,
-html:not(.dark) body[data-app-background-active="true"] .settings-models-shell [data-slot="button"][class*="border"]:focus-visible {
-  background: var(--wallpaper-tint-fill-soft);
-  color: var(--primary-foreground);
-}
-
-html:not(.dark) body[data-app-background-active="true"] .settings-appearance-shell [data-slot="button"] {
-  border-color: transparent !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .settings-appearance-shell .appearance-action-button[class*="border"] {
-  background: color-mix(in oklch, var(--background) 8%, transparent) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 8px 18px rgba(6, 10, 18, 0.08);
-}
-
-html:not(.dark) body[data-app-background-active="true"] .settings-appearance-shell .appearance-action-button[class*="border"]:hover,
-html:not(.dark) body[data-app-background-active="true"] .settings-appearance-shell .appearance-action-button[class*="border"]:focus-visible {
-  background: var(--wallpaper-tint-fill-soft) !important;
-  color: var(--primary-foreground) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .settings-appearance-shell .appearance-theme-chip {
-  border-color: transparent !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 10px 22px rgba(6, 10, 18, 0.08);
-}
-
-html:not(.dark) body[data-app-background-active="true"] .settings-appearance-shell .appearance-theme-chip[data-active="false"] {
-  background: color-mix(in oklch, var(--background) 10%, transparent) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .settings-appearance-shell .appearance-theme-chip[data-active="false"]:hover,
-html:not(.dark) body[data-app-background-active="true"] .settings-appearance-shell .appearance-theme-chip[data-active="false"]:focus-visible {
-  background: var(--wallpaper-tint-fill-soft) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .settings-appearance-shell .appearance-theme-chip[data-active="true"] {
-  background: var(--wallpaper-tint-fill-soft) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .settings-section-tab[data-active="false"] {
-  background: transparent !important;
-  color: var(--wallpaper-shell-text) !important;
-  text-shadow: var(--wallpaper-shell-shadow);
-}
-
-html:not(.dark) body[data-app-background-active="true"] .settings-section-tab[data-active="false"]:hover,
-html:not(.dark) body[data-app-background-active="true"] .settings-section-tab[data-active="false"]:focus-visible {
-  background: var(--wallpaper-tint-fill-soft) !important;
-  color: var(--primary-foreground) !important;
-  text-shadow: none;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .settings-section-tab[data-active="true"] {
-  background: var(--wallpaper-tint-fill-strong) !important;
-  color: var(--primary-foreground) !important;
-  text-shadow: none;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .prompt-template-preview-shell {
-  background: color-mix(in oklch, var(--primary) 12%, transparent) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-}
-
-html:not(.dark) body[data-app-background-active="true"] .prompt-template-preview-shell pre {
-  color: var(--wallpaper-shell-text-muted) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .prompt-template-card,
-html:not(.dark) body[data-app-background-active="true"] .prompt-template-empty {
-  border-color: transparent !important;
-  background: color-mix(in oklch, var(--background) 10%, transparent);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 12px 28px rgba(6, 10, 18, 0.08);
-}
-
-html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell {
-  border-color: transparent !important;
-  background: color-mix(in oklch, white 10%, transparent) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
-    0 10px 24px rgba(6, 10, 18, 0.08);
-}
-
-html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell .w-md-editor-toolbar {
-  background: color-mix(in oklch, white 8%, transparent) !important;
-  border-bottom-color: transparent !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell {
-  --prompt-editor-pane-fill: linear-gradient(180deg, rgba(10, 14, 22, 0.76) 0%, rgba(13, 18, 27, 0.7) 100%);
-  --prompt-editor-preview-fill: linear-gradient(180deg, rgba(12, 17, 25, 0.82) 0%, rgba(15, 21, 31, 0.76) 100%);
-  --prompt-editor-scrollbar-thumb: color-mix(in oklch, var(--primary) 72%, transparent);
-  --prompt-editor-scrollbar-thumb-hover: color-mix(in oklch, var(--primary) 84%, white 8%);
-  --prompt-editor-scrollbar-track: color-mix(in oklch, black 12%, transparent);
-}
-
-html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell .w-md-editor-input {
-  background: var(--prompt-editor-pane-fill) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell .w-md-editor-preview {
-  background: var(--prompt-editor-preview-fill) !important;
-  border-left-color: color-mix(in oklch, white 10%, transparent) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell .w-md-editor-text-input {
-  color: var(--wallpaper-shell-text) !important;
-  caret-color: var(--wallpaper-shell-text) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell :is(
-    .w-md-editor-text-pre,
-    .w-md-editor-text-pre > code,
-    .w-md-editor-text-pre > code *,
-    .w-md-editor-text-pre .token
-  ) {
-  color: var(--wallpaper-shell-text) !important;
-  -webkit-text-fill-color: var(--wallpaper-shell-text) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell :is(.wmde-markdown, .wmde-markdown-var) {
-  background: transparent !important;
-  color: var(--wallpaper-shell-text) !important;
-  --color-fg-default: var(--wallpaper-shell-text) !important;
-  --color-fg-muted: var(--wallpaper-shell-text-muted) !important;
-  --color-canvas-default: transparent !important;
-  --color-canvas-subtle: color-mix(in oklch, white 6%, transparent) !important;
-  --color-border-default: color-mix(in oklch, white 10%, transparent) !important;
-  --color-border-muted: color-mix(in oklch, white 8%, transparent) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell .wmde-markdown :is(h1, h2, h3, h4, h5, h6, p, li, blockquote, td, th, strong, em, code, a) {
-  color: inherit !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell .wmde-markdown :is(pre, code) {
-  background: color-mix(in oklch, black 18%, transparent) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell :is(.w-md-editor-text-pre, .w-md-editor-text-input, .w-md-editor-preview)::-webkit-scrollbar-thumb {
-  background: var(--prompt-editor-scrollbar-thumb) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .prompt-config-dialog .prompt-markdown-editor-shell :is(.w-md-editor-text-pre, .w-md-editor-text-input, .w-md-editor-preview)::-webkit-scrollbar-thumb:hover {
-  background: var(--prompt-editor-scrollbar-thumb-hover) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .history-stat-icon-shell {
-  background: var(--wallpaper-tint-fill-soft) !important;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-}
-
-html:not(.dark) body[data-app-background-active="true"] .history-stat-icon-shell svg {
-  color: white !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .history-pagination-button,
-html:not(.dark) body[data-app-background-active="true"] .history-pagination-button:is(:hover, :focus, :focus-visible, :active, :disabled) {
-  color: white !important;
-  border-color: transparent !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .history-pagination-button:is(:hover, :focus, :focus-visible, :active) {
-  background: color-mix(in oklch, var(--primary) 34%, transparent) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .history-pagination-button:disabled {
-  background: color-mix(in oklch, white 5%, transparent) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .history-pagination-button svg {
-  color: white !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(
-    .history-open-button,
-    .task-workbench-primary-action,
-    .notes-workbench-primary-action
-  ) {
-  background: var(--wallpaper-tint-fill-strong) !important;
-  color: white !important;
-  border-color: transparent !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 10px 22px rgba(6, 10, 18, 0.12);
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(
-    .history-open-button,
-    .task-workbench-primary-action,
-    .notes-workbench-primary-action
-  ):is(:hover, :focus, :focus-visible, :active) {
-  background: color-mix(in oklch, var(--primary) 56%, transparent) !important;
-  color: white !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(
-    .history-open-button,
-    .task-workbench-primary-action,
-    .notes-workbench-primary-action
-  ):disabled {
-  background: color-mix(in oklch, var(--primary) 24%, transparent) !important;
-  color: rgba(255, 255, 255, 0.74) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(
-    .history-open-button,
-    .task-workbench-primary-action,
-    .notes-workbench-primary-action,
-    .history-selection-toolbar [data-slot="button"]
-  ) svg {
-  color: inherit !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .history-selection-toolbar {
-  color: var(--wallpaper-shell-text) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .history-selection-toolbar .text-muted-foreground {
-  color: var(--wallpaper-shell-text-muted) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .history-selection-toolbar [data-slot="button"][class*="border"] {
-  background: color-mix(in oklch, white 8%, transparent) !important;
-  color: var(--wallpaper-shell-text) !important;
-  border-color: transparent !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .history-selection-toolbar [data-slot="button"][class*="border"]:is(:hover, :focus, :focus-visible, :active) {
-  background: var(--wallpaper-tint-fill-soft) !important;
-  color: white !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .history-selection-toggle {
-  color: var(--wallpaper-shell-text-muted) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .history-selection-toggle[aria-pressed="true"] {
-  background: var(--wallpaper-tint-fill-soft) !important;
-  color: white !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .diagnostics-check-icon-shell {
-  background: var(--wallpaper-tint-fill) !important;
-  border-color: transparent !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 8px 18px rgba(6, 10, 18, 0.08);
-}
-
-html:not(.dark) body[data-app-background-active="true"] .diagnostics-check-icon-shell svg {
-  color: white !important;
-  opacity: 0.96;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .diagnostics-autofix-button,
-html:not(.dark) body[data-app-background-active="true"] .diagnostics-autofix-button:is(:hover, :focus, :focus-visible, :active, :disabled) {
-  color: white !important;
-  border-color: transparent !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .diagnostics-autofix-button:is(:hover, :focus, :focus-visible, :active) {
-  background: color-mix(in oklch, var(--primary) 34%, transparent) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .diagnostics-autofix-button:disabled {
-  background: color-mix(in oklch, white 5%, transparent) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .diagnostics-autofix-button svg {
-  color: white !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .settings-model-icon-shell svg {
-  color: white !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .app-header-control:not(:hover):not(:focus-visible):not([data-active="true"]) {
-  background: transparent !important;
-  color: var(--wallpaper-shell-text) !important;
-  box-shadow: none !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .app-header-menu,
-html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-menu {
-  background: linear-gradient(180deg, rgba(72, 78, 96, 0.96) 0%, rgba(56, 61, 77, 0.94) 100%) !important;
-  border-color: transparent !important;
-  color: var(--wallpaper-shell-text) !important;
-  backdrop-filter: blur(28px) saturate(1.16);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 18px 40px rgba(6, 10, 18, 0.16) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .app-header-menu-item {
-  color: var(--wallpaper-shell-text) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .app-header-menu-item svg {
-  color: white !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .app-header-menu-item[data-selected="true"]:not(:hover):not([data-highlighted]):not(:focus-visible) {
-  background: color-mix(in oklch, white 7%, transparent) !important;
-  color: var(--wallpaper-shell-text) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .app-header-menu-item:is(:hover, :focus, [data-highlighted], :focus-visible) {
-  background: color-mix(in oklch, white 10%, transparent) !important;
-  color: white !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-trigger {
-  border-color: transparent !important;
-  background: linear-gradient(180deg, rgba(72, 78, 96, 0.82) 0%, rgba(56, 61, 77, 0.8) 100%) !important;
-  color: var(--wallpaper-shell-text) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 10px 24px rgba(6, 10, 18, 0.12);
-}
-
-html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-trigger:not(:hover):not(:focus-visible):not([data-state="open"]) {
-  color: var(--wallpaper-shell-text) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-trigger:is(:hover, :focus-visible, [data-state="open"]) {
-  background:
-    linear-gradient(180deg, rgba(86, 94, 114, 0.9) 0%, rgba(66, 72, 89, 0.88) 100%) !important;
-  color: white !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option {
-  color: white !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option svg {
-  color: white !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option .text-muted-foreground {
-  color: color-mix(in oklch, white 84%, transparent) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option:not([data-selected="true"]):not([data-highlighted]):not(:hover) {
-  background: transparent !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option[data-selected="true"]:not(:hover):not([data-highlighted]) {
-  background: color-mix(in oklch, white 7%, transparent) !important;
-  color: white !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option:is([data-highlighted], :hover, :focus, :focus-visible) {
-  background: color-mix(in oklch, white 10%, transparent) !important;
-  color: white !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .sidebar-workflow-option:is([data-highlighted], :hover, :focus, :focus-visible) .text-muted-foreground {
-  color: color-mix(in oklch, white 84%, transparent) !important;
-}
-
-html.dark body[data-app-background-active="true"] .sidebar-workflow-option {
-  color: var(--wallpaper-shell-text) !important;
-}
-
-html.dark body[data-app-background-active="true"] .sidebar-workflow-option .text-muted-foreground {
-  color: var(--wallpaper-shell-text-muted) !important;
-}
-
-html.dark body[data-app-background-active="true"] .sidebar-workflow-option[data-selected="true"] {
-  background: color-mix(in oklch, var(--primary) 34%, transparent) !important;
-  border-color: color-mix(in oklch, white 10%, transparent) !important;
-  color: white !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 12px 28px rgba(0, 0, 0, 0.2);
-}
-
-html.dark body[data-app-background-active="true"] .sidebar-workflow-option[data-selected="true"] .text-muted-foreground {
-  color: rgba(255, 255, 255, 0.82) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] [data-slot="sidebar-inner"] :is(
-    [data-slot="sidebar-group-label"],
-    [data-slot="sidebar-menu-button"],
-    [data-slot="sidebar-menu-button"] span,
-    [data-slot="sidebar-menu-button"] svg,
-    [data-slot="sidebar-header"] h1,
-    [data-slot="sidebar-header"] p,
-    [data-slot="sidebar-footer"] span
-  ) {
-  color: var(--wallpaper-shell-text) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] [data-slot="card"] :is(
-    h1,
-    h2,
-    h3,
-    h4,
-    h5,
-    h6,
-    p,
-    span,
-    small,
-    strong,
-    label,
-    li,
-    dt,
-    dd,
-    div
-  ) {
-  color: inherit;
-}
-
-html:not(.dark) body[data-app-background-active="true"] [data-slot="card"] .text-muted-foreground,
-html:not(.dark) body[data-app-background-active="true"] [data-slot="card"] .text-foreground {
-  color: var(--wallpaper-shell-text) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .notes-workbench-pane {
-  color: var(--wallpaper-shell-text);
-}
-
-html:not(.dark) body[data-app-background-active="true"] .notes-workbench-pane .workbench-detail-tabs [data-slot="tabs-trigger"] {
-  color: var(--wallpaper-shell-text-muted) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .notes-workbench-pane .workbench-detail-tabs [data-slot="tabs-trigger"]:is(
-    [data-state="active"],
-    :hover,
-    :focus,
-    :focus-visible
-  ) {
-  color: white !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .notes-workbench-pane :is(
-    .notes-workbench-actions,
-    .notes-workbench-viewer,
-    .artifact-markdown-viewer-shell,
-    .artifact-markdown-viewer,
-    .artifact-markdown-viewer :is(h1, h2, h3, h4, p, li, blockquote, code, pre, td, th, a, strong, em),
-    .mermaid-preview-label,
-    .mermaid-preview-fallback,
-    .workbench-pane-state
-  ) {
-  color: var(--wallpaper-shell-text) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .notes-workbench-pane :is(
-    .artifact-markdown-viewer pre,
-    .artifact-markdown-viewer code,
-    .artifact-markdown-viewer th,
-    .artifact-markdown-viewer blockquote,
-    .mermaid-preview-shell
-  ) {
-  border-color: transparent !important;
-  background: color-mix(in oklch, black 18%, transparent) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(.transcript-segment-card, .transcript-correction-surface) {
-  color: var(--wallpaper-shell-text) !important;
-  border-color: transparent !important;
-  background: color-mix(in oklch, white 8%, transparent) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 12px 28px rgba(6, 10, 18, 0.1);
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(.transcript-segment-card, .transcript-correction-surface) :is(
-    p,
-    span,
-    div,
-    strong,
-    small,
-    svg,
-    button
-  ) {
-  color: inherit !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] :is(.transcript-segment-card, .transcript-correction-surface) .text-muted-foreground {
-  color: var(--wallpaper-shell-text-muted) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .transcript-segment-timestamp {
-  background: var(--wallpaper-tint-fill) !important;
-  border-color: transparent !important;
-  color: white !important;
-  box-shadow: none;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .transcript-segment-icon-button {
-  color: var(--wallpaper-shell-text) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .transcript-segment-icon-button:is(:hover, :focus-visible) {
-  background: var(--wallpaper-tint-fill-soft) !important;
-  color: white !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .task-processing-workbench-shell .workbench-tab-trigger {
-  color: var(--wallpaper-shell-text-muted) !important;
-  border-color: transparent !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .task-processing-workbench-shell .workbench-tab-trigger:is(
-    :hover,
-    :focus,
-    :focus-visible
-  ) {
-  color: white !important;
-  background: color-mix(in oklch, white 8%, transparent) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .task-processing-workbench-shell .workbench-tab-trigger[data-state="active"] {
-  color: white !important;
-  background: var(--wallpaper-tint-fill-strong) !important;
-  border-color: transparent !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 10px 24px rgba(6, 10, 18, 0.12) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .recent-task-button {
-  color: var(--wallpaper-shell-text) !important;
-  border-color: transparent !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .recent-task-button .recent-task-meta {
-  color: var(--wallpaper-shell-text-muted) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .recent-task-button[data-active="true"] {
-  background: var(--wallpaper-tint-fill-strong) !important;
-  color: white !important;
-  border-color: transparent !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 12px 26px rgba(6, 10, 18, 0.14) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .recent-task-button[data-active="true"] .recent-task-meta {
-  color: rgba(255, 255, 255, 0.82) !important;
-}
-
-html:not(.dark) body[data-app-background-active="true"] .evidence-timeline-seek-button {
-  background: var(--wallpaper-tint-fill-strong) !important;
-  color: white !important;
-  border-color: transparent !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 10px 22px rgba(6, 10, 18, 0.12);
-}
-
-html:not(.dark) body[data-app-background-active="true"] .evidence-timeline-seek-button:is(:hover, :focus, :focus-visible, :active) {
-  background: color-mix(in oklch, var(--primary) 56%, transparent) !important;
-  color: white !important;
-}
-
-body[data-app-background-active="true"] [data-slot="card"] *,
-body[data-app-background-active="true"] [data-slot="dialog-content"] *,
-body[data-app-background-active="true"] [data-slot="alert-dialog-content"] *,
-body[data-app-background-active="true"] [data-slot="popover-content"] *,
-body[data-app-background-active="true"] [data-slot="dropdown-menu-content"] *,
-body[data-app-background-active="true"] [data-slot="select-content"] *,
-body[data-app-background-active="true"] .custom-skin-dialog-surface * {
-  text-shadow: none;
-}
-
-@keyframes download-progress-flow {
-  0% {
-    transform: translateX(-140%);
-  }
-  100% {
-    transform: translateX(220%);
-  }
-}
-
-@keyframes app-skeleton-shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
-}
-
-.app-skeleton {
-  position: relative;
-  overflow: hidden;
-  background: var(--skeleton-base);
-  isolation: isolate;
-}
-
-.app-skeleton::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    color-mix(in oklch, var(--skeleton-highlight) 14%, transparent) 18%,
-    color-mix(in oklch, var(--skeleton-highlight) 44%, transparent) 34%,
-    color-mix(in oklch, var(--skeleton-highlight) 100%, transparent) 50%,
-    color-mix(in oklch, var(--skeleton-highlight) 44%, transparent) 66%,
-    color-mix(in oklch, var(--skeleton-highlight) 14%, transparent) 82%,
-    transparent 100%
-  );
-  transform: translateX(-100%);
-  animation: app-skeleton-shimmer 0.95s linear infinite;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .app-skeleton::after {
-    animation: none;
-  }
-}
-
-.download-progress-indicator {
-  position: relative;
-  overflow: hidden;
-}
-
-.themed-thin-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklch, var(--primary) 56%, transparent) transparent;
-}
-
-.themed-thin-scrollbar::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-}
-
-.themed-thin-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.themed-thin-scrollbar::-webkit-scrollbar-thumb {
-  background: color-mix(in oklch, var(--primary) 52%, transparent);
-  border-radius: 999px;
-}
-
-.themed-thin-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in oklch, var(--primary) 68%, var(--foreground) 8%);
-}
-
-.workbench-collection-item {
-  content-visibility: auto;
-  contain: layout paint style;
-  contain-intrinsic-size: 220px;
-}
-
-.task-processing-workbench-shell {
-  --task-workbench-surface-fill: color-mix(in oklch, var(--background) 95%, var(--muted) 5%);
-  --task-workbench-surface-fill-soft: color-mix(in oklch, var(--background) 97%, var(--muted) 3%);
-  --task-workbench-surface-border: color-mix(in oklch, var(--border) 76%, var(--foreground) 6%);
-  --task-workbench-surface-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
-  --task-workbench-panel-fill: linear-gradient(
-    180deg,
-    color-mix(in oklch, var(--background) 97%, var(--muted) 3%) 0%,
-    color-mix(in oklch, var(--background) 92%, var(--muted) 8%) 100%
-  );
-  --task-workbench-panel-header-fill: color-mix(in oklch, var(--muted) 72%, var(--background) 28%);
-}
-
-body[data-app-background-active="true"] .task-processing-workbench-shell {
-  --task-workbench-surface-fill: color-mix(in oklch, var(--background) 32%, transparent);
-  --task-workbench-surface-fill-soft: color-mix(in oklch, var(--background) 24%, transparent);
-  --task-workbench-surface-border: color-mix(in oklch, white 8%, transparent);
-  --task-workbench-surface-shadow: 0 14px 32px rgba(6, 10, 18, 0.12);
-  --task-workbench-panel-fill: linear-gradient(
-    180deg,
-    color-mix(in oklch, var(--background) 34%, transparent) 0%,
-    color-mix(in oklch, var(--background) 24%, transparent) 100%
-  );
-  --task-workbench-panel-header-fill: color-mix(in oklch, var(--background) 42%, transparent);
-}
-
-.task-processing-workbench-shell :is(
-    .workbench-pane-state,
-    .workbench-pane-section,
-    .workbench-collection-item,
-    .vqa-chat-bubble
-  ) {
-  border-color: var(--task-workbench-surface-border);
-  box-shadow: var(--task-workbench-surface-shadow);
-  backdrop-filter: none !important;
-}
-
-.task-processing-workbench-shell :is(.workbench-pane-state, .workbench-pane-section, .workbench-collection-item) {
-  background: var(--task-workbench-surface-fill);
-}
-
-.task-processing-workbench-shell .vqa-chat-message[data-role="assistant"] .vqa-chat-bubble {
-  background: var(--task-workbench-surface-fill-soft);
-}
-
-.task-processing-workbench-shell .notes-workbench-reading-panel {
-  background: var(--task-workbench-panel-fill);
-  border-color: var(--task-workbench-surface-border);
-  box-shadow: var(--task-workbench-surface-shadow);
-  backdrop-filter: none !important;
-}
-
-.task-processing-workbench-shell .notes-workbench-reading-header {
-  background: var(--task-workbench-panel-header-fill);
-  border-bottom-color: var(--task-workbench-surface-border);
-  backdrop-filter: none !important;
-}
-
-.task-processing-workbench-shell[data-layout-interacting="true"] {
-  --task-workbench-surface-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
-}
-
-.task-processing-workbench-shell[data-layout-interacting="true"] :is(
-    .workbench-pane-state,
-    .workbench-pane-section,
-    .workbench-collection-item,
-    .artifact-markdown-viewer-shell,
-    .vqa-chat-bubble,
-    .mermaid-preview-shell,
-    .workbench-pane-frame
-  ) {
-  transition: none !important;
-  animation: none !important;
-}
-
-.task-processing-workbench-shell[data-layout-interacting="true"] :is(.mermaid-preview-shell, .artifact-markdown-viewer img) {
-  visibility: hidden;
-}
-
-.workbench-tab-list {
-  gap: 0.35rem;
-  min-height: auto;
-  padding: 0.45rem 0.75rem 0.5rem;
-}
-
-.workbench-tab-trigger {
-  min-height: 2.35rem;
-  border: 1px solid transparent;
-  border-radius: calc(var(--radius) + 0.15rem);
-  padding: 0.45rem 0.9rem;
-  color: var(--muted-foreground);
-  background: transparent;
-  transition:
-    color 180ms ease,
-    background-color 180ms ease,
-    border-color 180ms ease,
-    box-shadow 180ms ease;
-}
-
-.workbench-tab-trigger:is(:hover, :focus, :focus-visible) {
-  color: var(--foreground);
-  background: color-mix(in oklch, var(--accent) 72%, transparent);
-}
-
-.workbench-tab-trigger[data-state="active"] {
-  color: var(--foreground);
-  background: color-mix(in oklch, var(--accent) 88%, transparent);
-  border-color: color-mix(in oklch, var(--primary) 20%, transparent);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 10px 22px rgba(15, 23, 42, 0.08);
-}
-
-.recent-task-button {
-  min-height: 3rem;
-  border: 1px solid transparent;
-  border-radius: calc(var(--radius) + 0.1rem);
-  transition:
-    background-color 180ms ease,
-    border-color 180ms ease,
-    box-shadow 180ms ease,
-    color 180ms ease;
-}
-
-.recent-task-meta {
-  transition: color 180ms ease;
-}
-
-.recent-task-button[data-active="true"] {
-  background: color-mix(in oklch, var(--accent) 86%, transparent);
-  border-color: color-mix(in oklch, var(--primary) 18%, transparent);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    0 10px 22px rgba(15, 23, 42, 0.08);
-}
-
-.recent-task-button[data-active="true"] .recent-task-meta {
-  color: color-mix(in oklch, var(--foreground) 74%, var(--primary) 26%);
-}
-
-.sidebar-workflow-option[data-selected="true"] {
-  border-radius: calc(var(--radius) + 0.15rem);
-  border: 1px solid color-mix(in oklch, var(--primary) 18%, transparent);
-  background: color-mix(in oklch, var(--accent) 84%, transparent);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 10px 22px rgba(15, 23, 42, 0.08);
-}
-
-.sidebar-workflow-option[data-selected="true"] .text-muted-foreground {
-  color: color-mix(in oklch, var(--foreground) 72%, var(--primary) 28%);
-}
-
-.workbench-detail-loading-shell {
-  min-width: 0;
-}
-
-.workbench-detail-loading-card {
-  overflow: hidden;
-}
-
-.workbench-loading-line,
-.workbench-loading-pill,
-.workbench-loading-block {
-  position: relative;
-  overflow: hidden;
-  background: var(--skeleton-base);
-}
-
-.workbench-loading-line::after,
-.workbench-loading-pill::after,
-.workbench-loading-block::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  transform: translateX(-100%);
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    var(--skeleton-highlight) 48%,
-    transparent 100%
-  );
-  animation: workbench-loading-shimmer 1.2s ease-in-out infinite;
-}
-
-@keyframes workbench-loading-shimmer {
-  100% {
-    transform: translateX(100%);
-  }
-}
-
-.dialog-ultra-thin-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklch, var(--primary) 50%, transparent) transparent;
-}
-
-.dialog-ultra-thin-scrollbar::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-
-.dialog-ultra-thin-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.dialog-ultra-thin-scrollbar::-webkit-scrollbar-thumb {
-  background: color-mix(in oklch, var(--primary) 48%, transparent);
-  border-radius: 999px;
-}
-
-.dialog-ultra-thin-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in oklch, var(--primary) 62%, var(--foreground) 8%);
-}
-
-.prompt-markdown-editor-shell {
-  border: 1px solid color-mix(in oklch, var(--border) 82%, var(--foreground) 6%);
-  border-radius: calc(var(--radius) + 0.125rem);
-  background: color-mix(in oklch, var(--background) 88%, var(--muted) 12%);
-  overflow: hidden;
-  --color-canvas-default: color-mix(in oklch, var(--background) 96%, transparent);
-  --color-canvas-subtle: color-mix(in oklch, var(--muted) 82%, transparent);
-  --color-fg-default: var(--foreground);
-  --color-fg-muted: var(--muted-foreground);
-  --color-neutral-muted: color-mix(in oklch, var(--muted) 76%, transparent);
-  --color-border-default: color-mix(in oklch, var(--border) 82%, var(--foreground) 6%);
-  --color-accent-fg: var(--primary);
-  --color-accent-emphasis: var(--primary);
-  --color-accent-subtle: color-mix(in oklch, var(--accent) 80%, transparent);
-  --prompt-editor-pane-fill: transparent;
-  --prompt-editor-preview-fill: transparent;
-  --prompt-editor-scrollbar-size: 5px;
-  --prompt-editor-scrollbar-track: transparent;
-  --prompt-editor-scrollbar-thumb: color-mix(in oklch, var(--primary) 52%, transparent);
-  --prompt-editor-scrollbar-thumb-hover: color-mix(in oklch, var(--primary) 68%, var(--foreground) 8%);
-}
-
-.dark .prompt-markdown-editor-shell {
-  background: color-mix(in oklch, var(--background) 90%, var(--muted) 10%);
-}
-
-.prompt-markdown-editor-shell .w-md-editor {
-  background: transparent;
-  color: var(--foreground);
-  border: 0;
-  box-shadow: none;
-  font-family: var(--font-mono);
-}
-
-.prompt-markdown-editor-shell .w-md-editor-toolbar {
-  background: color-mix(in oklch, var(--muted) 78%, transparent);
-  border-bottom: 1px solid color-mix(in oklch, var(--border) 82%, var(--foreground) 6%);
-  padding: 0.4rem 0.5rem;
-}
-
-.prompt-markdown-editor-shell .w-md-editor-toolbar ul > li > button {
-  color: var(--muted-foreground);
-  border-radius: calc(var(--radius) - 2px);
-}
-
-.prompt-markdown-editor-shell .w-md-editor-toolbar ul > li > button:hover,
-.prompt-markdown-editor-shell .w-md-editor-toolbar ul > li > button:focus,
-.prompt-markdown-editor-shell .w-md-editor-toolbar ul > li.active > button {
-  color: var(--foreground);
-  background: color-mix(in oklch, var(--accent) 82%, transparent);
-}
-
-.prompt-markdown-editor-shell .w-md-editor-content,
-.prompt-markdown-editor-shell .w-md-editor-area,
-.prompt-markdown-editor-shell .w-md-editor-input,
-.prompt-markdown-editor-shell .w-md-editor-preview,
-.prompt-markdown-editor-shell .w-md-editor-text {
-  background: transparent;
-}
-
-.prompt-markdown-editor-shell .w-md-editor-text {
-  padding: 1rem 1rem 1.5rem;
-  font-family: var(--font-mono);
-  font-size: 0.95rem !important;
-  line-height: 1.72 !important;
-}
-
-.prompt-markdown-editor-shell .w-md-editor-text-pre,
-.prompt-markdown-editor-shell .w-md-editor-text-input {
-  font-family: var(--font-mono) !important;
-  font-size: 0.95rem !important;
-  line-height: 1.72 !important;
-  scrollbar-width: thin;
-  scrollbar-color: var(--prompt-editor-scrollbar-thumb) var(--prompt-editor-scrollbar-track);
-}
-
-.prompt-markdown-editor-shell .w-md-editor-text-input {
-  color: var(--foreground);
-  caret-color: var(--foreground);
-  padding: inherit;
-}
-
-.prompt-markdown-editor-shell .w-md-editor-input {
-  background: var(--prompt-editor-pane-fill);
-}
-
-.prompt-markdown-editor-shell .w-md-editor-text-pre {
-  line-height: inherit;
-  padding: inherit;
-}
-
-.prompt-markdown-editor-shell .w-md-editor-preview {
-  background: var(--prompt-editor-preview-fill);
-  border-left: 1px solid color-mix(in oklch, var(--border) 82%, var(--foreground) 6%);
-  padding: 1rem 1rem 1.5rem !important;
-  font-family: var(--font-sans);
-  scrollbar-width: thin;
-  scrollbar-color: var(--prompt-editor-scrollbar-thumb) var(--prompt-editor-scrollbar-track);
-}
-
-.prompt-markdown-editor-shell .w-md-editor-text-pre > code {
-  font-family: var(--font-mono) !important;
-  font-size: 0.95rem !important;
-  line-height: 1.72 !important;
-}
-
-.prompt-markdown-editor-shell .wmde-markdown {
-  font-family: var(--font-sans);
-  font-size: 0.94rem;
-  line-height: 1.75;
-}
-
-.prompt-markdown-editor-shell :is(.wmde-markdown, .wmde-markdown-var) {
-  background: transparent !important;
-  color: var(--color-fg-default) !important;
-}
-
-.prompt-markdown-editor-shell .w-md-editor-text-pre::-webkit-scrollbar,
-.prompt-markdown-editor-shell .w-md-editor-text-input::-webkit-scrollbar,
-.prompt-markdown-editor-shell .w-md-editor-preview::-webkit-scrollbar {
-  width: var(--prompt-editor-scrollbar-size);
-  height: var(--prompt-editor-scrollbar-size);
-}
-
-.prompt-markdown-editor-shell .w-md-editor-text-pre::-webkit-scrollbar-track,
-.prompt-markdown-editor-shell .w-md-editor-text-input::-webkit-scrollbar-track,
-.prompt-markdown-editor-shell .w-md-editor-preview::-webkit-scrollbar-track {
-  background: var(--prompt-editor-scrollbar-track);
-}
-
-.prompt-markdown-editor-shell .w-md-editor-text-pre::-webkit-scrollbar-thumb,
-.prompt-markdown-editor-shell .w-md-editor-text-input::-webkit-scrollbar-thumb,
-.prompt-markdown-editor-shell .w-md-editor-preview::-webkit-scrollbar-thumb {
-  background: var(--prompt-editor-scrollbar-thumb);
-  border-radius: 999px;
-}
-
-.prompt-markdown-editor-shell .w-md-editor-text-pre::-webkit-scrollbar-thumb:hover,
-.prompt-markdown-editor-shell .w-md-editor-text-input::-webkit-scrollbar-thumb:hover,
-.prompt-markdown-editor-shell .w-md-editor-preview::-webkit-scrollbar-thumb:hover {
-  background: var(--prompt-editor-scrollbar-thumb-hover);
-}
-
-.artifact-markdown-viewer-shell {
-  border: 1px solid color-mix(in oklch, var(--border) 78%, var(--foreground) 6%);
-  border-radius: calc(var(--radius) + 0.125rem);
-  background: color-mix(in oklch, var(--background) 94%, var(--muted) 6%);
-  overflow: hidden;
-  min-width: 0;
-  container-type: inline-size;
-}
-
-.notes-markdown-viewer-shell {
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  overflow: visible;
-}
-
-.notes-workbench-reading-panel {
-  min-width: 0;
-  min-height: 100%;
-  border: 1px solid color-mix(in oklch, var(--border) 78%, var(--foreground) 6%);
-  border-radius: calc(var(--radius) + 0.45rem);
-  background: linear-gradient(
-    180deg,
-    color-mix(in oklch, var(--background) 97%, var(--muted) 3%) 0%,
-    color-mix(in oklch, var(--background) 92%, var(--muted) 8%) 100%
-  );
-  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.08);
-}
-
-.notes-workbench-reading-header {
-  background: color-mix(in oklch, var(--muted) 72%, var(--background) 28%);
-  border-bottom: 1px solid color-mix(in oklch, var(--border) 76%, transparent);
-}
-
-.notes-workbench-reading-header .notes-workbench-actions {
-  padding: 0.9rem 1rem;
-}
-
-.notes-workbench-reading-body {
-  min-height: 0;
-  padding: 0.45rem 0.55rem 0.85rem;
-}
-
-.notes-workbench-reading-body .notes-workbench-viewer {
-  min-height: 100%;
-}
-
-.notes-workbench-viewer .artifact-markdown-viewer {
-  padding: 1rem 1.05rem 1.25rem !important;
-}
-
-body[data-app-background-active="true"] .notes-workbench-reading-panel {
-  background: linear-gradient(180deg, rgba(10, 14, 20, 0.62) 0%, rgba(12, 17, 23, 0.76) 100%);
-  border-color: color-mix(in oklch, white 10%, transparent);
-  backdrop-filter: blur(24px) saturate(1.14);
-  box-shadow: 0 28px 60px rgba(5, 9, 18, 0.24);
-}
-
-body[data-app-background-active="true"] .notes-workbench-reading-header {
-  background: linear-gradient(180deg, rgba(8, 12, 17, 0.74) 0%, rgba(10, 14, 19, 0.64) 100%);
-  border-bottom-color: color-mix(in oklch, white 10%, transparent);
-  backdrop-filter: blur(18px) saturate(1.08);
-}
-
-html:not(.dark) body[data-app-background-active="true"] .notes-workbench-reading-panel {
-  background: var(--wallpaper-reading-panel-fill);
-  border-color: var(--wallpaper-reading-panel-border);
-  box-shadow: var(--wallpaper-reading-panel-shadow);
-}
-
-html:not(.dark) body[data-app-background-active="true"] .notes-workbench-reading-header {
-  background: var(--wallpaper-reading-header-fill);
-  border-bottom-color: color-mix(in oklch, white 10%, transparent);
-}
-
-.notes-markdown-viewer-shell .artifact-markdown-viewer {
-  padding: 0 !important;
-}
-
-.artifact-markdown-viewer {
-  max-width: none !important;
-  min-width: 0;
-  margin: 0 !important;
-  padding: 1.1rem 1.2rem 1.35rem !important;
-  background: transparent !important;
-  color: var(--foreground) !important;
-  font-family: var(--font-sans);
-  font-size: 0.95rem;
-  line-height: 1.78;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  --color-canvas-default: transparent !important;
-  --color-canvas-subtle: color-mix(in oklch, var(--muted) 78%, transparent) !important;
-  --color-border-default: color-mix(in oklch, var(--border) 80%, var(--foreground) 6%) !important;
-  --color-border-muted: color-mix(in oklch, var(--border) 72%, transparent) !important;
-  --color-fg-default: var(--foreground) !important;
-  --color-fg-muted: var(--muted-foreground) !important;
-  --color-accent-fg: var(--primary) !important;
-}
-
-.artifact-markdown-viewer :is(h1, h2, h3, h4) {
-  color: var(--foreground) !important;
-  letter-spacing: -0.02em;
-}
-
-.artifact-markdown-viewer h1 {
-  margin-top: 0 !important;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid color-mix(in oklch, var(--border) 82%, transparent);
-  font-size: 1.45rem;
-}
-
-.artifact-markdown-viewer h2 {
-  margin-top: 1.8rem !important;
-  padding-bottom: 0.35rem;
-  border-bottom: 1px solid color-mix(in oklch, var(--border) 72%, transparent);
-  font-size: 1.16rem;
-}
-
-.artifact-markdown-viewer h3 {
-  margin-top: 1.45rem !important;
-  font-size: 1.02rem;
-}
-
-.artifact-markdown-viewer :is(p, li, blockquote, code, strong, em, td, th, a) {
-  color: inherit !important;
-}
-
-.artifact-markdown-viewer p,
-.artifact-markdown-viewer ul,
-.artifact-markdown-viewer ol,
-.artifact-markdown-viewer blockquote,
-.artifact-markdown-viewer pre,
-.artifact-markdown-viewer table {
-  margin-top: 0.85rem !important;
-  margin-bottom: 0 !important;
-}
-
-.artifact-markdown-viewer ul,
-.artifact-markdown-viewer ol {
-  padding-left: 1.35rem !important;
-}
-
-.artifact-markdown-viewer li + li {
-  margin-top: 0.35rem;
-}
-
-.artifact-markdown-viewer blockquote {
-  border-left: 3px solid color-mix(in oklch, var(--primary) 42%, transparent) !important;
-  background: color-mix(in oklch, var(--accent) 34%, transparent) !important;
-  border-radius: 0 calc(var(--radius) + 0.1rem) calc(var(--radius) + 0.1rem) 0;
-  padding: 0.85rem 1rem !important;
-  color: var(--muted-foreground) !important;
-}
-
-.artifact-markdown-viewer :is(pre, code) {
-  font-family: var(--font-mono) !important;
-}
-
-.artifact-markdown-viewer pre {
-  overflow-x: auto;
-  padding: 0.95rem 1rem !important;
-  border: 1px solid color-mix(in oklch, var(--border) 76%, transparent);
-  border-radius: calc(var(--radius) + 0.125rem);
-  background: color-mix(in oklch, var(--muted) 72%, transparent) !important;
-}
-
-.artifact-markdown-viewer code {
-  border-radius: calc(var(--radius) - 2px);
-  background: color-mix(in oklch, var(--muted) 68%, transparent) !important;
-}
-
-.artifact-markdown-viewer a {
-  color: color-mix(in oklch, var(--primary) 86%, var(--foreground) 14%) !important;
-  text-decoration: none;
-  border-bottom: 1px dashed color-mix(in oklch, var(--primary) 42%, transparent);
-}
-
-.artifact-markdown-viewer a:hover {
-  color: var(--primary) !important;
-  border-bottom-style: solid;
-}
-
-.artifact-markdown-viewer img {
-  display: block;
-  max-width: 100%;
-  margin-top: 1rem;
-  border: 1px solid color-mix(in oklch, var(--border) 72%, transparent);
-  border-radius: calc(var(--radius) + 0.125rem);
-  overflow: hidden;
-}
-
-.artifact-markdown-viewer table {
-  display: block;
-  overflow-x: auto;
-  border-spacing: 0;
-}
-
-.artifact-markdown-viewer th,
-.artifact-markdown-viewer td {
-  border: 1px solid color-mix(in oklch, var(--border) 72%, transparent) !important;
-  padding: 0.65rem 0.8rem !important;
-  vertical-align: top;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.artifact-markdown-viewer th {
-  background: color-mix(in oklch, var(--muted) 72%, transparent) !important;
-}
-
-.artifact-markdown-viewer,
-.artifact-markdown-viewer pre,
-.artifact-markdown-viewer table {
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklch, var(--primary) 54%, transparent) transparent;
-}
-
-.artifact-markdown-viewer::-webkit-scrollbar,
-.artifact-markdown-viewer pre::-webkit-scrollbar,
-.artifact-markdown-viewer table::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-}
-
-.artifact-markdown-viewer::-webkit-scrollbar-track,
-.artifact-markdown-viewer pre::-webkit-scrollbar-track,
-.artifact-markdown-viewer table::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.artifact-markdown-viewer::-webkit-scrollbar-thumb,
-.artifact-markdown-viewer pre::-webkit-scrollbar-thumb,
-.artifact-markdown-viewer table::-webkit-scrollbar-thumb {
-  background: color-mix(in oklch, var(--primary) 52%, transparent);
-  border-radius: 999px;
-}
-
-.artifact-markdown-viewer::-webkit-scrollbar-thumb:hover,
-.artifact-markdown-viewer pre::-webkit-scrollbar-thumb:hover,
-.artifact-markdown-viewer table::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in oklch, var(--primary) 68%, var(--foreground) 8%);
-}
-
-.mermaid-preview-shell {
-  margin-top: 0.95rem;
-  overflow: auto;
-  border: 1px solid color-mix(in oklch, var(--border) 76%, transparent);
-  border-radius: calc(var(--radius) + 0.125rem);
-  background: color-mix(in oklch, var(--background) 96%, var(--muted) 4%);
-}
-
-.mermaid-preview-surface {
-  display: flex;
-  min-width: fit-content;
-  justify-content: center;
-  padding: 1rem;
-}
-
-.mermaid-preview-surface svg {
-  display: block;
-  max-width: 100%;
-  height: auto;
-}
-
-.mermaid-preview-surface :is(text, span, tspan) {
-  font-family: "Geist", "Geist Fallback", system-ui, sans-serif !important;
-}
-
-.mermaid-preview-label {
-  padding: 0.7rem 1rem 0;
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--muted-foreground);
-}
-
-.mermaid-preview-fallback {
-  margin: 0;
-  padding: 0.9rem 1rem 0.35rem;
-  white-space: pre-wrap;
-  color: var(--foreground);
-}
-
-.mermaid-preview-error-text {
-  margin: 0;
-  padding: 0 1rem 1rem;
-  font-size: 0.8rem;
-  color: var(--destructive);
-}
-
-.mermaid-preview-shell-loading {
-  min-height: 8rem;
-}
-
-.transcript-segment-card {
-  backdrop-filter: none;
-}
-
-.transcript-segment-timestamp {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-.transcript-segment-icon-button:hover,
-.transcript-segment-icon-button:focus-visible {
-  background: color-mix(in oklch, var(--accent) 72%, transparent);
-  color: var(--foreground);
-}
-
-.transcript-correction-surface {
-  min-height: 100%;
-}
-
-.workbench-detail-pane {
-  container-type: inline-size;
-}
-
-@container (max-width: 40rem) {
-  .workbench-detail-pane [data-slot="tabs-list"] {
-    min-height: 2.5rem;
-    height: auto;
+    display: inline-block;
+    width: 6px;
+    height: 14px;
+    margin-left: 2px;
+    vertical-align: -2px;
+    background: var(--primary);
+    animation: caret 1s steps(2, start) infinite;
   }
 
-  .workbench-detail-pane [data-slot="tabs-trigger"] {
-    min-width: 0;
-    min-height: 2.4rem;
-    padding-inline: 0.55rem;
-    padding-block: 0.45rem;
-    font-size: 0.875rem;
-    white-space: normal;
-    line-height: 1.2;
-    text-align: center;
+  @keyframes caret {
+    0%,
+    50% {
+      opacity: 1;
+    }
+    50.01%,
+    100% {
+      opacity: 0;
+    }
   }
 
-  .notes-workbench-actions {
-    flex-wrap: wrap;
-    justify-content: stretch;
+  @media (prefers-reduced-motion: reduce) {
+    .reveal,
+    .pulse-dot,
+    .stream-caret::after {
+      animation: none !important;
+    }
+    * {
+      transition-duration: 1ms !important;
+    }
   }
-
-  .notes-workbench-actions > * {
-    flex: 1 1 10rem;
-    min-width: 0;
-  }
-
-  .notes-workbench-reading-header .notes-workbench-actions {
-    padding: 0.8rem 0.85rem;
-  }
-
-  .notes-workbench-reading-body {
-    padding: 0.35rem 0.45rem 0.7rem;
-  }
-
-  .notes-workbench-section {
-    padding: 0.9rem;
-  }
-
-  .workbench-pane-padded {
-    padding: 0.9rem;
-  }
-
-  .workbench-pane-state,
-  .workbench-pane-frame,
-  .workbench-pane-section {
-    border-radius: calc(var(--radius) + 0.05rem);
-  }
-
-  .vqa-chat-composer-row {
-    flex-wrap: wrap;
-  }
-
-  .vqa-chat-composer-row > * {
-    min-width: 0;
-  }
-
-  .vqa-chat-message {
-    gap: 0.65rem;
-  }
-
-  .vqa-chat-bubble {
-    max-width: 100%;
-    padding: 0.85rem;
-  }
-
-  .vqa-citation-layout,
-  .vqa-trace-summary-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .vqa-workbench-pane .workbench-collection-item {
-    padding: 0.85rem;
-  }
-}
-
-@container (max-width: 32rem) {
-  .workbench-detail-pane [data-slot="tabs-trigger"] {
-    padding-inline: 0.4rem;
-    font-size: 0.8125rem;
-  }
-
-  .notes-workbench-section {
-    padding: 0.8rem;
-    border-radius: calc(var(--radius) + 0.05rem);
-  }
-
-  .notes-workbench-reading-header .notes-workbench-actions {
-    padding: 0.72rem 0.75rem;
-  }
-
-  .notes-workbench-reading-body {
-    padding: 0.3rem 0.4rem 0.6rem;
-  }
-
-  .workbench-pane-padded {
-    padding: 0.75rem;
-  }
-
-  .workbench-pane-state,
-  .workbench-pane-section {
-    padding: 0.85rem;
-  }
-
-  .vqa-chat-composer-row > * {
-    flex: 1 1 100%;
-  }
-
-  .vqa-chat-composer-row > :last-child {
-    flex-basis: auto;
-  }
-
-  .vqa-chat-message[data-role="assistant"] {
-    align-items: flex-start;
-  }
-
-  .vqa-chat-message[data-role="assistant"] > :first-child {
-    margin-top: 0.1rem;
-  }
-
-  .vqa-chat-bubble {
-    padding: 0.8rem;
-  }
-}
-
-@container (max-width: 34rem) {
-  .artifact-markdown-viewer {
-    padding: 0.9rem 0.95rem 1.05rem !important;
-    font-size: 0.9rem;
-    line-height: 1.7;
-  }
-
-  .artifact-markdown-viewer h1 {
-    font-size: 1.18rem;
-    padding-bottom: 0.4rem;
-  }
-
-  .artifact-markdown-viewer h2 {
-    margin-top: 1.35rem !important;
-    font-size: 1.02rem;
-  }
-
-  .artifact-markdown-viewer h3 {
-    margin-top: 1.1rem !important;
-    font-size: 0.94rem;
-  }
-
-  .artifact-markdown-viewer blockquote,
-  .artifact-markdown-viewer pre {
-    padding: 0.75rem 0.8rem !important;
-  }
-
-  .artifact-markdown-viewer table {
-    display: table;
-    width: 100%;
-    max-width: 100%;
-    table-layout: fixed;
-  }
-
-  .artifact-markdown-viewer th,
-  .artifact-markdown-viewer td {
-    padding: 0.55rem 0.6rem !important;
-    font-size: 0.84rem;
-  }
-
-  .workbench-pane-frame {
-    min-height: 24rem;
-  }
-}
-
-@container (max-width: 26rem) {
-  .artifact-markdown-viewer {
-    padding: 0.8rem 0.8rem 0.95rem !important;
-    font-size: 0.86rem;
-    line-height: 1.64;
-  }
-
-  .artifact-markdown-viewer h1 {
-    font-size: 1.06rem;
-  }
-
-  .artifact-markdown-viewer h2 {
-    font-size: 0.95rem;
-  }
-
-  .artifact-markdown-viewer th,
-  .artifact-markdown-viewer td {
-    padding: 0.45rem 0.5rem !important;
-    font-size: 0.78rem;
-  }
-
-  .vqa-chat-message {
-    gap: 0.5rem;
-  }
-
-  .vqa-chat-bubble {
-    padding: 0.72rem;
-    border-radius: calc(var(--radius) + 0.05rem);
-  }
-
-  .vqa-workbench-pane .workbench-collection-item {
-    padding: 0.72rem;
-  }
-}
-
-.app-toast-shell {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
-  gap: 0.75rem;
-  min-width: min(calc(100vw - 1.5rem), 27rem);
-  max-width: min(calc(100vw - 1.5rem), 27rem);
-  border: 1px solid color-mix(in oklch, var(--border) 82%, var(--foreground) 8%);
-  border-radius: calc(var(--radius) + 0.375rem);
-  background: color-mix(in oklch, var(--card) 94%, var(--accent) 6%);
-  box-shadow:
-    0 18px 40px rgba(15, 23, 42, 0.14),
-    0 0 0 1px rgba(255, 255, 255, 0.22);
-  padding: 0.875rem 1rem;
-}
-
-.dark .app-toast-shell {
-  border-color: color-mix(in oklch, var(--border) 86%, var(--foreground) 6%);
-  background: color-mix(in oklch, var(--card) 96%, black 4%);
-  box-shadow:
-    0 18px 40px rgba(0, 0, 0, 0.42),
-    0 0 0 1px rgba(255, 255, 255, 0.05);
-}
-
-.app-toast-shell[data-tone="success"] {
-  border-color: color-mix(in oklch, var(--status-success) 32%, var(--border) 68%);
-}
-
-.app-toast-shell[data-tone="error"] {
-  border-color: color-mix(in oklch, var(--status-error) 34%, var(--border) 66%);
-}
-
-.app-toast-shell[data-tone="loading"] {
-  border-color: color-mix(in oklch, var(--status-processing) 30%, var(--border) 70%);
-}
-
-.app-toast-icon-shell {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  border-radius: calc(var(--radius) + 0.125rem);
-  border: 1px solid color-mix(in oklch, var(--border) 82%, transparent);
-  background: color-mix(in oklch, var(--accent) 80%, transparent);
-  margin-top: 0.05rem;
-}
-
-.app-toast-icon-shell[data-tone="success"] {
-  border-color: color-mix(in oklch, var(--status-success) 24%, transparent);
-  background: color-mix(in oklch, var(--status-success) 10%, transparent);
-}
-
-.app-toast-icon-shell[data-tone="error"] {
-  border-color: color-mix(in oklch, var(--status-error) 24%, transparent);
-  background: color-mix(in oklch, var(--status-error) 10%, transparent);
-}
-
-.app-toast-icon-shell[data-tone="loading"] {
-  border-color: color-mix(in oklch, var(--status-processing) 24%, transparent);
-  background: color-mix(in oklch, var(--status-processing) 10%, transparent);
-}
-
-.app-toast-copy {
-  min-width: 0;
-  padding-top: 0.05rem;
-}
-
-.app-toast-message {
-  color: var(--foreground);
-  font-size: 0.95rem;
-  font-weight: 600;
-  line-height: 1.45;
-  letter-spacing: 0.01em;
-  word-break: break-word;
-}
-
-.download-progress-indicator::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.08) 28%,
-    rgba(255, 255, 255, 0.5) 50%,
-    rgba(255, 255, 255, 0.08) 72%,
-    transparent 100%
-  );
-  animation: download-progress-flow 1.2s linear infinite;
-  pointer-events: none;
-}
-
-.dark .download-progress-indicator::after {
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.1) 28%,
-    rgba(255, 255, 255, 0.58) 50%,
-    rgba(255, 255, 255, 0.1) 72%,
-    transparent 100%
-  );
 }
