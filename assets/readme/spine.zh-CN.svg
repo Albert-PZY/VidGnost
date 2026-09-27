@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300"
+     role="img" aria-labelledby="spineTitle spineDesc">
+  <title id="spineTitle">所有产物挂在同一条时间码主线上</title>
+  <desc id="spineDesc">一条横向时间轴，标出四个来自真实任务的锚点；章节、摘要、导图、概念与带引用的问答共用这一套时间坐标。</desc>
+
+  <defs>
+    <radialGradient id="auroraA" cx="0.12" cy="0.05" r="0.75">
+      <stop offset="0" stop-color="#9087f6" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#9087f6" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="auroraB" cx="0.95" cy="0.95" r="0.7">
+      <stop offset="0" stop-color="#55aee8" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#55aee8" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="300" rx="24" fill="#090a0d"/>
+  <rect width="1200" height="300" rx="24" fill="url(#auroraA)"/>
+  <rect width="1200" height="300" rx="24" fill="url(#auroraB)"/>
+  <rect x="0.5" y="0.5" width="1199" height="299" rx="24" fill="none" stroke="#27292e"/>
+
+  <g id="heading" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', sans-serif">
+    <text x="64" y="66" font-size="19" letter-spacing="2.2" fill="#84868e"
+          font-family="ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace">ONE TIMESTAMPED SPINE</text>
+    <text x="64" y="110" font-size="31" font-weight="600" fill="#f6f7f9">所有产物挂在同一条时间码主线上</text>
+  </g>
+
+  <g id="spine">
+    <line x1="80" y1="184" x2="1120" y2="184" stroke="#27292e" stroke-width="2"/>
+    <line x1="80" y1="184" x2="1040" y2="184" stroke="#f2b95a" stroke-width="2" opacity="0.35"/>
+
+    <g font-family="ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace"
+       font-size="22" fill="#f2b95a" text-anchor="middle">
+      <text x="200" y="158">00:00</text>
+      <text x="480" y="158">01:10</text>
+      <text x="760" y="158">03:14</text>
+      <text x="1040" y="158">06:36</text>
+    </g>
+
+    <g fill="#f2b95a">
+      <circle cx="200" cy="184" r="6"/>
+      <circle cx="480" cy="184" r="6"/>
+      <circle cx="760" cy="184" r="6"/>
+      <circle cx="1040" cy="184" r="6"/>
+    </g>
+
+    <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', sans-serif"
+       font-size="22" fill="#f6f7f9" text-anchor="middle">
+      <text x="200" y="228">章节</text>
+      <text x="480" y="228">摘要</text>
+      <text x="760" y="228">导图</text>
+      <text x="1040" y="228">带引用的问答</text>
+    </g>
+  </g>
+
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', sans-serif"
+     font-size="19" fill="#84868e">
+    <text x="64" y="272">点任意 [mm:ss] 都能跳回原片。锚点取自真实任务：7 分 26 秒的视频，9 章、10 个概念。</text>
+  </g>
+</svg>

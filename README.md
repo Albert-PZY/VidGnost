@@ -1,50 +1,80 @@
 <div align="center">
-  <img src="./apps/desktop/public/icon.png" alt="VidGnost Logo" width="112" />
+  <img src="./apps/desktop/public/icon.png" alt="VidGnost" width="88" />
+
   <h1>VidGnost</h1>
-  <p><strong>A video knowledge engine</strong></p>
-  <p>Turn any video or audio file into timestamp-anchored, searchable, answerable and exportable knowledge.</p>
+
+  <p><strong>A video knowledge engine.</strong><br />
+  Turn a video or audio file into one timestamped spine — chapters, summary, mind map, concepts and
+  cited answers all hang off it, and every <code>[mm:ss]</code> jumps back to the source.</p>
+
+  <p><a href="./README.md">English</a> | <a href="./README.zh-CN.md">中文</a></p>
+
+  <p>
+    <img src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white" alt="TypeScript 5" />
+    <img src="https://img.shields.io/badge/Fastify-5-000000?logo=fastify&logoColor=white" alt="Fastify 5" />
+    <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white" alt="React 19" />
+    <img src="https://img.shields.io/badge/Electron-31-47848F?logo=electron&logoColor=white" alt="Electron 31" />
+    <img src="https://img.shields.io/badge/pnpm-workspace-F69220?logo=pnpm&logoColor=white" alt="pnpm workspace" />
+    <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License" /></a>
+  </p>
 </div>
 
-<div align="center">
+## What you get
 
-[English](./README.md) | [中文](./README.zh-CN.md)
+<p align="center">
+  <img src="./assets/readme/studio.jpg" width="100%"
+       alt="VidGnost studio: chapter rail with timecodes on the left, a chapter summary with clickable timecode chips in the middle, Copilot on the right, persistent player bar at the bottom" />
+</p>
 
-</div>
+<p align="center"><sub>A real run from this repository — a 7:26 video that produced 9 chapters and 10 concepts.
+The left rail is the chapter list; every conclusion in the middle carries a timecode you can click;
+Copilot answers cite the clips they came from.</sub></p>
 
-<div align="center">
+## Why it is different
 
-![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
-![Fastify](https://img.shields.io/badge/Fastify-5-000000?logo=fastify&logoColor=white)
-![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
-![Electron](https://img.shields.io/badge/Electron-31-47848F?logo=electron&logoColor=white)
-![pnpm](https://img.shields.io/badge/pnpm-workspace-F69220?logo=pnpm&logoColor=white)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+Plain transcription hands you a wall of text. Plain summarisation hands you claims you cannot check.
+VidGnost builds the **timestamped structure first**, then attaches every artefact to it — so nothing is
+a dead end.
 
-</div>
+<p align="center">
+  <img src="./assets/readme/spine.svg" width="100%"
+       alt="A timeline with four timecode anchors; chapters, summary, mind map and cited answers all sit on it" />
+</p>
 
-## The problem
+1. **Every claim points back to the source.** Summary highlights, transcript lines, mind map nodes,
+   concepts and answers share one `seek` implementation: clicking a timecode jumps the player.
+2. **Online first, local fallback.** Alibaba Cloud Model Studio (DashScope) powers chat, vision,
+   embeddings, translation and file-level ASR by default; missing credentials or network failures fall
+   back to local `faster-whisper`.
+3. **Artefacts are structure.** Chapters are the structural unit, retrieval chunks are bound to
+   chapters, and the index covers raw text, contextual prefixes and generated question variants.
 
-After watching a video you need three things: what it said, at which minute it said it, and what else you can ask about it.
-Plain transcription gives you a wall of text; plain summarisation gives you claims you cannot verify.
+## Get started
 
-VidGnost builds a **timestamped structural spine first**, then attaches every artefact to that spine.
+Requirements: Node.js 18+, `pnpm`, and `ffmpeg`/`ffprobe` on `PATH`.
+Downloading online videos additionally needs `yt-dlp`; local Whisper needs Python 3.10+ and `uv`.
 
-- every conclusion carries an `[mm:ss]` anchor
-- every answer cites clips you can click to jump to and play
-- chapters, summary, mind map and concept graph all share one time coordinate system
+```bash
+pnpm install
 
-## Three product principles
+# terminal 1 — backend
+pnpm dev:backend
 
-1. **Every claim points back to the source.** Summary highlights, transcript lines, mind map nodes, concepts and
-   answers all use one shared `seek` implementation — clicking a timecode jumps the player.
-2. **Online first, local fallback.** Alibaba Cloud Model Studio (DashScope) powers chat, vision, embeddings,
-   translation and file-level ASR by default; unconfigured credentials or network failures fall back to local `faster-whisper`.
-3. **Artefacts are structure.** Chapters are structural units, retrieval chunks are bound to chapters, and the index
-   covers raw text, contextual prefixes and generated question variants.
+# terminal 2 — the Electron desktop window
+pnpm dev:desktop
+```
 
-## Pipeline
+The renderer alone (no Electron shell) is also available for browser debugging:
 
-Ten ordered stages, each writing a checkpoint so an interrupted run can resume:
+```bash
+pnpm dev:frontend        # http://127.0.0.1:6221
+```
+
+Then drop a local file onto the library or paste a link.
+
+## How it works
+
+Ten ordered stages, each writing a checkpoint, so an interrupted run resumes instead of restarting:
 
 | # | Stage | Output |
 | --- | --- | --- |
@@ -60,9 +90,21 @@ Ten ordered stages, each writing a checkpoint so an interrupted run can resume:
 | 10 | `finalize` | Markdown report, JSON pack, translation artefacts |
 
 The stage cache key is `sha1(stage | source fingerprint | relevant model routes | relevant options)`,
-so **switching a model only re-runs the affected stages**.
+so **switching a model only re-runs the stages it affects**.
 
-## Model routing
+### Retrieval and Q&A
+
+1. Chunking respects chapter boundaries (target 320 tokens, 80-token overlap).
+2. Each chunk gets a 50–80 token contextual prefix and three question variants — this fixes pronoun
+   drop-out and colloquial phrasing.
+3. Vector top-40 and BM25 top-40 recall in parallel, fused with RRF (k=60).
+4. OpenRouter reranks the top 30; the best K (default 8) become evidence.
+5. Global questions ("what is this about overall?") route to chapter-summary map-reduce instead of
+   fragment top-k.
+6. Answers stream token by token; the server validates `[mm:ss]` anchors and maps them onto structured
+   citations.
+
+## Models and credentials
 
 The pipeline depends on roles, never on concrete model names:
 
@@ -81,60 +123,38 @@ The pipeline depends on roles, never on concrete model names:
 | `rerank` | `nvidia/llama-nemotron-rerank-vl-1b-v2:free` | OpenRouter |
 | `translate` | `qwen-mt-uni` | DashScope |
 
-Credentials come from environment variables, and the settings page accepts inline overrides.
-The UI only ever shows a masked tail:
+Credentials come from environment variables; the Models workspace also accepts inline overrides and
+only ever shows a masked tail:
 
 ```bash
 DASHSCOPE_API_KEY=sk-xxxxxxxx      # Alibaba Cloud Model Studio
 OPENROUTER_API_KEY=sk-or-v1-xxxx   # OpenRouter (rerank)
 ```
 
-## Retrieval and Q&A
-
-1. Chunking respects chapter boundaries (target 320 tokens, 80-token overlap).
-2. Each chunk gets a 50–80 token contextual prefix and three question variants — this fixes pronoun drop-out and
-   colloquial phrasing.
-3. Vector top-40 and BM25 top-40 recall in parallel, fused with RRF (k=60).
-4. OpenRouter reranks the top 30; the best K (default 8) become evidence.
-5. Global questions ("what is this about overall?") route to chapter-summary map-reduce instead of fragment top-k.
-6. Answers stream token by token; the server validates `[mm:ss]` anchors and maps them onto structured citations.
-
-## Getting started
-
-Requirements: Node.js 18+, `pnpm`, and `ffmpeg`/`ffprobe` on PATH.
-Downloading online videos additionally needs `yt-dlp`; local Whisper needs Python 3.10+ and `uv`.
-
-```bash
-pnpm install
-
-# terminal 1 — backend
-pnpm --filter @vidgnost/api dev
-
-# terminal 2 — renderer in the browser
-pnpm --filter @vidgnost/desktop dev --host 127.0.0.1 --port 6221
-
-# or launch the Electron desktop window directly
-pnpm --filter @vidgnost/desktop desktop:dev
-```
-
-Defaults:
-
-- API: `http://127.0.0.1:8666/api`
-- Renderer: `http://127.0.0.1:6221`
-
 ## Workbench
 
-- **Library** — the single entry point for every processed video: readiness, tags, scale, search and delete.
-- **Studio** — chapter rail / content stage / Copilot, with a persistent player bar at the bottom. Five tabs
-  (notes, transcript, mind map, concepts, frames) plus a live stage board while processing.
-- **Models** — two scopes (online / local) subdivided by provider and capability (chat, multimodal, speech to
-  text, embedding, translation, rerank) down to individual models. Credentials and base URLs live in the
-  provider block, roles are assigned on the model cards, and self-check results attach to their provider.
-- **Settings** — default processing options, storage directory and toolchain probing (local Whisper options
-  live under Models → Local).
+Four workspaces, one shared time coordinate system.
 
-The interface is dark-first: graphite canvas with aurora tint, hairline borders, an 8pt grid,
-monospaced timecodes and a global `Ctrl/⌘ + K` command palette.
+<p align="center">
+  <img src="./assets/readme/library.jpg" width="100%"
+       alt="Library: every processed video as a card with readiness, tags, duration and scale" />
+</p>
+
+- **Library** — the single entry point: readiness, tags, scale, search and delete.
+- **Studio** — chapter rail / content stage / Copilot, with a persistent player bar. Five tabs (notes,
+  transcript, mind map, concepts, frames) plus a live stage board while processing.
+- **Models** — two scopes (online / local) subdivided by provider and capability down to individual
+  models; credentials and base URLs live in the provider block, roles are assigned on the model cards.
+- **Settings** — default processing options, storage directory and toolchain probing.
+
+<p align="center">
+  <img src="./assets/readme/models.jpg" width="100%"
+       alt="Models workspace: online and local scopes, provider blocks with credential state, models grouped by capability with role assignment" />
+</p>
+
+The interface is dark-first: graphite canvas with an aurora wash, hairline borders, an 8pt grid,
+monospaced timecodes, a global `Ctrl/⌘ + K` command palette, and a light theme verified to the same
+contrast bar (`node scripts/check-theme-contrast.mjs`).
 
 ## Repository layout
 
@@ -147,7 +167,7 @@ VidGnost/
 │  │  ├─ src/providers/       # model catalogue, role routing, provider clients, health checks
 │  │  ├─ src/media/           # source resolution, audio extraction, key frames, perceptual hashing
 │  │  ├─ src/asr/             # online/local transcription orchestration and normalisation
-│  │  ├─ src/insight/         # segmentation, chapters, summary, mind map, knowledge graph, proofreading, translation
+│  │  ├─ src/insight/         # segmentation, chapters, summary, mind map, knowledge graph, translation
 │  │  ├─ src/retrieval/       # chunking, BM25, vector index, hybrid search, Q&A
 │  │  ├─ src/pipeline/        # stage engine, task manager, event bus
 │  │  ├─ src/store/           # task and artefact repositories
@@ -155,10 +175,11 @@ VidGnost/
 │  │  └─ test/                # Vitest unit tests
 │  └─ desktop/                # Electron + React desktop app
 │     ├─ electron/            # main process, preload, splash
-│     └─ src/                 # renderer: shell / library / studio / config
+│     └─ src/                 # renderer: shell / library / studio / views
 ├─ packages/
 │  ├─ contracts/              # shared domain contracts (zod-validated request bodies)
 │  └─ shared/                 # shared constants
+├─ assets/readme/             # README visuals (diagram + screenshots)
 ├─ docs/openspec/             # proposals, design and capability specs
 ├─ storage/                   # runtime data (tasks, artefacts, indexes, config)
 └─ scripts/                   # validation and operations scripts
@@ -167,17 +188,19 @@ VidGnost/
 ## Verification
 
 ```bash
-pnpm typecheck                                        # typecheck all three packages
-pnpm --filter @vidgnost/api test                      # backend unit tests
-pnpm --filter @vidgnost/desktop test                  # renderer unit tests
-node scripts/check-openspec.mjs                       # OpenSpec validation
+pnpm build                                            # build every workspace
+pnpm -r typecheck                                     # typecheck all packages
+pnpm -r test                                          # 40 renderer + 125 backend unit tests
+node scripts/check-openspec.mjs                       # spec structure
+node scripts/check-theme-contrast.mjs                 # 42 colour pairs, light and dark
+node scripts/check-spec-sync.mjs                      # code changes keep specs in sync
 ```
 
 ## Documentation
 
-- [OpenSpec index](./docs/openspec/README.md)
+- [OpenSpec index](./docs/openspec/README.md) — proposals, design and the nine capability specs
 - [Current tech stack (zh-CN)](./docs/current-tech-stack.zh-CN.md)
-- [Commit convention](./docs/git-commit-convention.md)
+- [Commit and release convention](./docs/git-commit-convention.md)
 
 ## License
 
