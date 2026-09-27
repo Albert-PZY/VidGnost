@@ -86,7 +86,7 @@ Status: `implemented`
 Status: `implemented`
 
 `GET /api/config/catalog` SHALL 返回可用模型（含 `kind`、`tags`、`free`、推荐角色）
-与角色元信息，供前端渲染路由选择。
+与角色元信息，供前端按「域 → 提供方 → 能力」分组渲染模型卡片并分配角色。
 
 #### Scenario: Catalogue request
 - **WHEN** 前端请求 catalog

@@ -72,7 +72,7 @@ apps/desktop (Electron + React 19 + Vite)
   ├─ shell      自定义标题栏 / 侧边轨 / 命令面板
   ├─ library    资产库（卡片、搜索、就绪度）
   ├─ studio     工作台：播放器 + 时间轴 + 章节轨 / transcript / 摘要 / 导图 / 知识 / Copilot
-  └─ providers  模型与密钥
+  └─ providers  模型：在线 / 本地两域 → 提供方 → 能力 → 模型
         │  HTTP + SSE
 apps/api (Fastify 5 + TypeScript)
   ├─ core       配置 / 错误 / 文件 / 进程 / 文本 / 事件

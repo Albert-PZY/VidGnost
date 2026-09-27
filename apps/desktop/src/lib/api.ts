@@ -4,6 +4,7 @@ import type {
   AskStreamEvent,
   CreateTaskRequest,
   ModelCatalogEntry,
+  ModelKind,
   ModelRole,
   ModelRoute,
   ProviderConfig,
@@ -91,7 +92,7 @@ export const api = {
   catalog: () =>
     request<{
       models: ModelCatalogEntry[]
-      roles: Array<{ role: ModelRole; label: string; purpose: string; kind: string }>
+      roles: Array<{ role: ModelRole; label: string; purpose: string; kind: ModelKind }>
       providerLabels: Record<string, string>
     }>('/config/catalog'),
   patchSettings: (body: unknown) =>

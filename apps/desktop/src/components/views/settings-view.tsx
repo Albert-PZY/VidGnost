@@ -20,6 +20,7 @@ export function SettingsView() {
   const themeMode = useThemeStore((state) => state.mode)
   const setThemeMode = useThemeStore((state) => state.setMode)
   const [toolchain, setToolchain] = useState<Toolchain | null>(null)
+  const [storageDir, setStorageDir] = useState<string | null>(null)
   const [probing, setProbing] = useState(false)
 
   useEffect(() => {
@@ -28,10 +29,32 @@ export function SettingsView() {
     }
   }, [loadConfig, settings])
 
+  // 存储目录来自健康接口，进页面即可显示；工具链与模型连通性仍按需探测。
+  useEffect(() => {
+    let cancelled = false
+    void api
+      .health()
+      .then((health) => {
+        if (!cancelled) {
+          setStorageDir(health.storageDir)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setStorageDir('读取失败')
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const probe = async () => {
     setProbing(true)
     try {
-      setToolchain(await api.toolchainHealth())
+      const [toolchainResult, health] = await Promise.all([api.toolchainHealth(), api.health()])
+      setToolchain(toolchainResult)
+      setStorageDir(health.storageDir)
     } finally {
       setProbing(false)
     }
@@ -192,72 +215,17 @@ export function SettingsView() {
         </div>
       </section>
 
-      <section className="mt-8 max-w-[640px] space-y-5">
-        <div>
-          <span className="label-eyebrow">本地 Whisper（离线兜底）</span>
-          <p className="mt-1.5 text-[11px] text-text-muted">
-            仅在线转写不可用时使用。需要先准备 Python 环境与 CTranslate2 模型目录。
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Python 可执行文件" hint="留空则从 PATH 查找">
-            <Input
-              defaultValue={settings.whisper.pythonExecutable}
-              onBlur={(event) => {
-                if (event.target.value !== settings.whisper.pythonExecutable) {
-                  void saveSettings({ settings: { whisper: { pythonExecutable: event.target.value } } })
-                }
-              }}
-              className="h-8 text-[12px]"
-            />
-          </Field>
-          <Field label="模型目录" hint="CTranslate2 格式模型所在目录">
-            <Input
-              defaultValue={settings.whisper.modelDir}
-              onBlur={(event) => {
-                if (event.target.value !== settings.whisper.modelDir) {
-                  void saveSettings({ settings: { whisper: { modelDir: event.target.value } } })
-                }
-              }}
-              className="h-8 text-[12px]"
-            />
-          </Field>
-          <Field label="推理设备">
-            <select
-              value={settings.whisper.device}
-              onChange={(event) => void saveSettings({ settings: { whisper: { device: event.target.value } } })}
-              className="h-8 w-full rounded-md border border-border/70 bg-background/60 px-2 text-[12px] text-foreground outline-none"
-            >
-              <option value="auto">自动</option>
-              <option value="cpu">CPU</option>
-              <option value="cuda">CUDA</option>
-            </select>
-          </Field>
-          <Field label="计算精度">
-            <select
-              value={settings.whisper.computeType}
-              onChange={(event) => void saveSettings({ settings: { whisper: { computeType: event.target.value } } })}
-              className="h-8 w-full rounded-md border border-border/70 bg-background/60 px-2 text-[12px] text-foreground outline-none"
-            >
-              {['int8', 'int8_float16', 'float16', 'float32'].map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-      </section>
-
       <section className="mt-8 max-w-[640px]">
         <span className="label-eyebrow">存储</span>
         <div className="mt-2 grid grid-cols-2 gap-3">
-          <InfoRow label="存储目录" value={settings.whisper.modelDir ? 'storage/' : 'storage/'} />
+          <InfoRow label="存储目录" value={storageDir ?? '读取中…'} />
           <InfoRow label="任务隔离" value="每个任务一个目录，含检查点" />
           <InfoRow label="阶段缓存" value="按输入指纹 + 模型路由计算" />
           <InfoRow label="保留中间媒体" value={settings.keepIntermediateMedia ? '开启' : '关闭'} />
         </div>
+        <p className="mt-3 text-[11px] text-text-muted">
+          本地转写引擎的模型目录、设备与精度在「模型 → 本地模型」中配置。
+        </p>
       </section>
     </div>
   )

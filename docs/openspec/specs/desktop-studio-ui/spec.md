@@ -192,6 +192,66 @@ Status: `implemented`
 - **WHEN** 在导图页签下切换主题
 - **THEN** 图形用新主题重新渲染
 
+### Requirement: Model workspace SHALL group models by scope, provider and capability
+Status: `implemented`
+
+「模型」工作区 SHALL 先按 **在线模型 / 本地模型** 分成两组，组内按提供方分块，
+块内再按能力（对话 / 多模态 / 语音转文字 / 向量化 / 翻译 / 重排序）细分到具体模型。
+
+#### Scenario: Two top-level scopes
+- **WHEN** 打开模型工作区
+- **THEN** 依次渲染「在线模型」与「本地模型」两组，各自显示模型数量与用途说明
+
+#### Scenario: Credentials live with the provider
+- **WHEN** 渲染在线提供方
+- **THEN** 块头部显示凭据状态（脱敏尾码或「缺少密钥」）、来源环境变量名、启用开关与模型数量，块内可编辑 Base URL、替换密钥
+
+#### Scenario: Local runtime has no credential
+- **WHEN** 渲染本地模型
+- **THEN** 显示「无需密钥」，并把模型标识、CTranslate2 模型目录、推理设备、计算精度与 Python 可执行文件就地呈现
+
+#### Scenario: Capability subdivision
+- **WHEN** 某提供方拥有多种能力的模型
+- **THEN** 先出现带固定色点的能力小标题，再列出该能力下的模型
+
+#### Scenario: Provider without registered models
+- **WHEN** 提供方已配置但模型目录为空
+- **THEN** 该块仍可见（凭据可维护），并说明「未登记可用模型，暂时无法被角色引用」
+
+#### Scenario: Self-check results attach to their provider
+- **WHEN** 运行过运行时自检
+- **THEN** 每个提供方的检查项显示在该提供方块内，而不是单独一张表
+
+### Requirement: Role assignment SHALL be expressed on the model card
+Status: `implemented`
+
+角色 SHALL 在模型卡片上分配：卡片展示该模型当前承担的角色 chip，并提供「＋ 分配角色」选择器，
+只列出该模型能力与提供方都支持、且尚未由本模型承担的角色。
+
+#### Scenario: Model serving a role
+- **WHEN** 某模型承担了角色
+- **THEN** 卡片显示对应角色名的 chip（例如「均衡模型」）
+
+#### Scenario: Model serving nothing
+- **WHEN** 某模型未承担任何角色
+- **THEN** 卡片显示「未承担任何角色」，不显示空 chip
+
+#### Scenario: Incompatible roles are hidden
+- **WHEN** 模型能力为对话
+- **THEN** 选择器只列出 `llm.*` 角色，不出现向量化、重排或本地转写
+
+#### Scenario: Local runtime options
+- **WHEN** 模型来自本地运行时
+- **THEN** 选择器只提供「本地转写」这一个角色
+
+#### Scenario: Moving a role
+- **WHEN** 把已由其他模型承担的角色分配给当前模型
+- **THEN** 该角色转移到当前模型，原卡片上的 chip 消失，并出现一条「角色 → 模型」的切换提示
+
+#### Scenario: No assignable roles left
+- **WHEN** 模型已承担它可承担的全部角色
+- **THEN** 不渲染选择器，避免出现必然失败的操作
+
 ### Requirement: Notifications and states SHALL not use colour alone
 Status: `implemented`
 

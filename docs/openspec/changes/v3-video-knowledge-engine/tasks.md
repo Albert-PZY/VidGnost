@@ -40,20 +40,23 @@
       Copilot 面板、常驻播放条（章节分段可点击）
 - [x] 处理中：常驻状态条 + 完整阶段看板（进度、阶段日志、取消）
 - [x] 时间锚点：全局唯一的 `seek` 实现，摘要、原文、导图、引用、章节、播放条共用一个坐标系
-- [x] 模型页：提供方密钥状态（脱敏）、角色路由切换、运行时自检结果
-- [x] 设置页：默认处理参数、本地 Whisper 配置、工具链探测
+- [x] 模型页：「在线模型 / 本地模型」两域 → 提供方 → 能力（对话/多模态/语音转文字/向量化/翻译/重排序）→ 模型；
+      提供方块内维护密钥（脱敏）与 Base URL 并就地承载运行时自检结果，角色在模型卡片上分配
+- [x] 设置页：默认处理参数、工具链探测、存储目录（本地 Whisper 配置迁至模型页的本地模型块）
 - [x] 删除旧视图：`study-view`、`knowledge-view`、`history-view`、`diagnostics-view`、`settings-view`、
       `task-processing-workbench`、`custom-skin-dialog`、`app-background-layer`、`webgl-blur-canvas`、`sidebar`
 
 ## 5. 验证
 
 - [x] 单元测试：文本工具（时间码/分词/JSON 抽取/预算切分）、语义分段、章节窗口、BM25、切块、RRF、引用校验
+- [x] 单元测试：模型分组与角色分配（`model-groups`：两域分组、提供方分块、能力细分、角色互斥与路由顺序）
 - [x] `pnpm typecheck`（contracts / api / desktop 全绿）
-- [x] `pnpm --filter @vidgnost/api test`（49 项全绿）
+- [x] `pnpm --filter @vidgnost/api test`（125 项全绿）、`pnpm --filter @vidgnost/desktop test`（38 项全绿）
 - [x] 端到端验证：以真实视频跑通 `ingest → audio → transcribe → structure → insight → mindmap → knowledge → vision → index → finalize`
 - [x] 续跑验证：进程中断后重启，已完成阶段命中缓存、未完成阶段继续执行
 - [x] 检索验证：rerank 命中分数与噪声分数差异显著（0.40 vs 0.005），引用可映射回具体时间区间
-- [x] 界面验证：1440×900 下检查资产库、工作台、模型页、设置页的布局与状态
+- [x] 界面验证：桌面窗口下检查资产库、工作台、模型页、设置页的布局与状态；模型页另经浏览器实测两域顺序、
+      提供方分块、能力细分与运行时自检结果的就地呈现
 
 ## 6. 文档
 
