@@ -132,7 +132,7 @@ OPENROUTER_API_KEY=sk-or-v1-xxxx   # OpenRouter（重排序）
 
 <p align="center">
   <img src="./assets/readme/library.jpg" width="100%"
-       alt="资产库：每个处理过的视频是一张卡片，带就绪度、标签、时长与规模" />
+       alt="资产库：左侧是主导航，顶部是搜索与新建任务，下面是任务卡片，卡片带状态、标签、时长与规模" />
 </p>
 
 - **资产库**：所有已处理视频的唯一入口，展示就绪度、标签与规模，支持搜索与删除。
