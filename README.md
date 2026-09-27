@@ -106,7 +106,10 @@ so **changing a model only re-runs the stages it affects**.
 
 ## Models and credentials
 
-The pipeline depends on roles, never on concrete model names:
+The pipeline depends on roles, never on concrete model names. The 15 built-in models work out of the box,
+and you can attach your own channels by protocol (OpenAI-compatible, Anthropic Messages, Google Gemini,
+native DashScope, OpenRouter, local runtime). A registered model is treated like any built-in one: it joins
+the catalogue, can take a role, and participates in the stage cache key.
 
 | Role | Default model | Provider |
 | --- | --- | --- |
@@ -143,13 +146,14 @@ Four workspaces sharing one time coordinate system.
 - **Library** — the single entry point: readiness, tags, scale, search and delete.
 - **Studio** — chapter rail, content stage and Copilot, with a persistent player bar. Five tabs (notes,
   transcript, mind map, concepts, frames) plus a live stage board while processing.
-- **Models** — two scopes (online / local) subdivided by provider and capability down to individual
-  models; credentials and base URLs live in the provider block, roles are assigned on the model cards.
+- **Models** — organised by model category first (chat, vision, embedding, rerank, transcription,
+  translation), then by protocol, then by the channels you connected; a channel holds its own base URL and
+  credential, and roles are assigned on the model cards.
 - **Settings** — default processing options, storage directory and toolchain probing.
 
 <p align="center">
   <img src="./assets/readme/models.jpg" width="100%"
-       alt="Models workspace: online and local scopes, provider blocks with credential state, models grouped by capability with role assignment" />
+       alt="Models workspace: models grouped by category first, then by protocol, then by the channels attached to that protocol" />
 </p>
 
 The interface is dark-first: a graphite canvas with an aurora wash, hairline borders, an 8pt grid,
@@ -190,7 +194,7 @@ VidGnost/
 ```bash
 pnpm build                                            # build every workspace
 pnpm -r typecheck                                     # typecheck all packages
-pnpm -r test                                          # 40 renderer + 125 backend unit tests
+pnpm -r test                                          # 36 renderer + 135 backend unit tests
 node scripts/check-openspec.mjs                       # spec structure
 node scripts/check-theme-contrast.mjs                 # 42 colour pairs, light and dark
 node scripts/check-spec-sync.mjs                      # code changes keep specs in sync
