@@ -1,53 +1,80 @@
 <div align="center">
-  <img src="./apps/desktop/public/icon.png" alt="VidGnost Logo" width="112" />
+  <img src="./apps/desktop/public/icon.png" alt="VidGnost" width="88" />
+
   <h1>VidGnost</h1>
-  <p><strong>视频知识引擎</strong></p>
-  <p>把任意视频或音频变成带时间锚点的、可检索、可问答、可导出的知识资产。</p>
+
+  <p><strong>视频知识引擎。</strong><br />
+  把任意视频或音频压成一条带时间码的主线——章节、摘要、导图、概念与带引用的问答都挂在上面，
+  每一个 <code>[mm:ss]</code> 都能点回原片。</p>
+
+  <p><a href="./README.md">English</a> | <a href="./README.zh-CN.md">中文</a></p>
+
+  <p>
+    <img src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white" alt="TypeScript 5" />
+    <img src="https://img.shields.io/badge/Fastify-5-000000?logo=fastify&logoColor=white" alt="Fastify 5" />
+    <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white" alt="React 19" />
+    <img src="https://img.shields.io/badge/Electron-31-47848F?logo=electron&logoColor=white" alt="Electron 31" />
+    <img src="https://img.shields.io/badge/pnpm-workspace-F69220?logo=pnpm&logoColor=white" alt="pnpm workspace" />
+    <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License" /></a>
+  </p>
 </div>
 
-<div align="center">
+## 用起来是什么样
 
-[English](./README.md) | [中文](./README.zh-CN.md)
+<p align="center">
+  <img src="./assets/readme/studio.jpg" width="100%"
+       alt="VidGnost 工作台：左侧是带时间码的章节轨，中间是带可点时间码的章节摘要，右侧是 Copilot，底部是常驻播放条" />
+</p>
 
-</div>
+<p align="center"><sub>本仓库的真实运行结果——一段 7 分 26 秒的视频，产出 9 章、10 个概念。
+左栏是章节列表；中间的每条结论都带可点击的时间码；Copilot 的回答会给出引用来自哪个片段。</sub></p>
 
-<div align="center">
+## 它和转写工具差在哪
 
-![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
-![Fastify](https://img.shields.io/badge/Fastify-5-000000?logo=fastify&logoColor=white)
-![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
-![Electron](https://img.shields.io/badge/Electron-31-47848F?logo=electron&logoColor=white)
-![pnpm](https://img.shields.io/badge/pnpm-workspace-F69220?logo=pnpm&logoColor=white)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+普通转写给你一坨文字，普通摘要给你一段无法核对的结论。VidGnost 的做法是**先建立带时间戳的结构，
+再让所有产物挂上去**，因此没有一条结论是死的。
 
-</div>
+<p align="center">
+  <img src="./assets/readme/spine.zh-CN.svg" width="100%"
+       alt="一条时间轴与四个时间码锚点；章节、摘要、导图与带引用的问答都挂在同一条主线上" />
+</p>
 
-## 它解决什么问题
-
-看完一段视频后，你真正需要的是「这段内容讲了什么、在哪一分钟讲的、我还能问它什么」。
-普通的转写工具只给你一坨文字，普通的摘要工具给你一段无法核对的结论。
-
-VidGnost 的做法是：**先建立一条带时间戳的结构化主线，再让所有产物挂在这条主线上。**
-
-- 每个结论都带 `[mm:ss]`
-- 每个问答的引用都能跳到原片对应片段并开始播放
-- 章节、摘要、导图、概念图谱共用同一套时间坐标
-
-## 三条产品原则
-
-1. **每一句结论都能回到原片**：摘要、原文、导图、概念与问答共用同一个 `seek` 实现，
+1. **每一句结论都能回到原片。** 摘要要点、原文行、导图节点、概念与问答共用同一个 `seek` 实现，
    点击时间码即跳转播放。
-2. **在线优先、本地兜底**：默认使用阿里云百炼的对话、视觉、向量、翻译与文件级 ASR；
-   未配置密钥或网络不可用时回退本地 `faster-whisper`。
-3. **产物即结构**：章节是结构单元，检索块绑定章节，索引同时覆盖正文、上下文前缀与问题变体。
+2. **在线优先、本地兜底。** 默认使用阿里云百炼的对话、视觉、向量、翻译与文件级 ASR；
+   密钥缺失或网络不可用时回退本地 `faster-whisper`。
+3. **产物即结构。** 章节是结构单元，检索块绑定章节，索引同时覆盖正文、上下文前缀与问题变体。
+
+## 快速开始
+
+环境要求：Node.js 18+、`pnpm`、`ffmpeg`/`ffprobe` 在 `PATH` 中。
+需要下载在线视频时还要 `yt-dlp`；使用本地 Whisper 需要 Python 3.10+ 与 `uv`。
+
+```bash
+pnpm install
+
+# 终端一：后端
+pnpm dev:backend
+
+# 终端二：Electron 桌面窗口
+pnpm dev:desktop
+```
+
+只想调渲染层（不起 Electron 外壳）时：
+
+```bash
+pnpm dev:frontend        # http://127.0.0.1:6221
+```
+
+然后把本地文件拖进资产库，或粘贴一个链接。
 
 ## 处理管线
 
-任务按十个阶段顺序执行，每个阶段写检查点，中断后可续跑：
+十个阶段顺序执行，每个阶段写检查点，中断后是从断点续跑而不是从头再来：
 
 | # | 阶段 | 产出 |
 | --- | --- | --- |
-| 1 | `ingest` | 媒体落盘、时长与指纹 |
+| 1 | `ingest` | 媒体落盘、时长与内容指纹 |
 | 2 | `audio` | 16kHz 单声道音频、ASR 分片 |
 | 3 | `transcribe` | 句级 + 词级时间戳转写、SRT、纯文本 |
 | 4 | `structure` | 语义段落、章节（含要点与时间锚点） |
@@ -58,10 +85,18 @@ VidGnost 的做法是：**先建立一条带时间戳的结构化主线，再让
 | 9 | `index` | 上下文前缀、问题变体、向量与 BM25 索引 |
 | 10 | `finalize` | Markdown 报告、JSON 数据包、翻译工件 |
 
-阶段缓存键为 `sha1(阶段 | 来源指纹 | 相关模型路由 | 相关选项)`，
-因此**换模型只会重跑受影响的阶段**。
+阶段缓存键为 `sha1(阶段 | 来源指纹 | 相关模型路由 | 相关选项)`，因此**换模型只会重跑受影响的阶段**。
 
-## 模型接入
+### 检索与问答
+
+1. 以章节为边界切块（目标 320 token / 80 token 重叠）。
+2. 为每块生成 50-80 token 的上下文前缀与 3 个问题变体（解决指代丢失与口语化提问）。
+3. 向量 top-40 与 BM25 top-40 并行召回，RRF（k=60）融合。
+4. OpenRouter 重排前 30 条，取 top-K（默认 8）作为证据。
+5. 「整体讲了什么」这类全局问题走章节摘要 map-reduce，而不是片段 top-k。
+6. 回答流式生成，服务端把 `[mm:ss]` 校验并映射成结构化引用。
+
+## 模型与密钥
 
 流水线只依赖角色，不依赖具体模型名：
 
@@ -80,56 +115,36 @@ VidGnost 的做法是：**先建立一条带时间戳的结构化主线，再让
 | `rerank` | `nvidia/llama-nemotron-rerank-vl-1b-v2:free` | OpenRouter |
 | `translate` | `qwen-mt-uni` | 百炼 |
 
-密钥从环境变量读取，设置页也可以填写内联密钥，界面只显示脱敏尾码：
+密钥从环境变量读取；「模型」工作区也支持就地填写内联密钥，界面只显示脱敏尾码：
 
 ```bash
 DASHSCOPE_API_KEY=sk-xxxxxxxx      # 阿里云百炼
 OPENROUTER_API_KEY=sk-or-v1-xxxx   # OpenRouter（重排序）
 ```
 
-## 检索与问答
-
-1. 以章节为边界切块（目标 320 token / 80 token 重叠）。
-2. 为每块生成 50-80 token 的上下文前缀与 3 个问题变体（解决指代丢失与口语化提问）。
-3. 向量 top-40 与 BM25 top-40 并行召回，RRF（k=60）融合。
-4. OpenRouter 重排前 30 条，取 top-K（默认 8）。
-5. 「整体讲了什么」这类全局问题走章节摘要 map-reduce，而不是片段 top-k。
-6. 回答流式生成，服务端把 `[mm:ss]` 校验并映射成结构化引用。
-
-## 快速开始
-
-环境要求：Node.js 18+、`pnpm`、`ffmpeg`/`ffprobe` 在 PATH 中；需要下载在线视频时还需要 `yt-dlp`。
-使用本地 Whisper 需要 Python 3.10+ 与 `uv`。
-
-```bash
-pnpm install
-
-# 终端一：后端
-pnpm --filter @vidgnost/api dev
-
-# 终端二：桌面渲染层（浏览器调试）
-pnpm --filter @vidgnost/desktop dev --host 127.0.0.1 --port 6221
-
-# 或者直接启动 Electron 桌面窗口
-pnpm --filter @vidgnost/desktop desktop:dev
-```
-
-默认地址：
-
-- 后端 API：`http://127.0.0.1:8666/api`
-- 渲染层调试：`http://127.0.0.1:6221`
-
 ## 工作台
 
-- **资产库**：所有已处理视频的唯一入口，展示就绪度、标签与规模，支持搜索与删除。
-- **工作台**：章节轨 / 内容舞台 / Copilot 三栏，底部常驻播放条；
-  笔记、原文、导图、概念、画面五个页签；处理中显示实时阶段看板。
-- **模型**：先分「在线模型 / 本地模型」两域，域内按提供方与能力（对话、多模态、语音转文字、向量化、翻译、重排序）
-  细分到具体模型；密钥与 Base URL 在提供方块内维护，角色直接分配在模型卡片上，运行时自检结果就地展示。
-- **设置**：默认处理参数、存储目录与工具链探测（本地 Whisper 选项位于「模型 → 本地模型」）。
+四个工作区，共用一套时间坐标。
 
-界面设计为暗色优先的石墨画布 + 极光微光，发丝描边、8pt 栅格、等宽时间码，
-全局 `Ctrl/⌘ + K` 命令面板。
+<p align="center">
+  <img src="./assets/readme/library.jpg" width="100%"
+       alt="资产库：每个处理过的视频是一张卡片，带就绪度、标签、时长与规模" />
+</p>
+
+- **资产库**：所有已处理视频的唯一入口，展示就绪度、标签与规模，支持搜索与删除。
+- **工作台**：章节轨 / 内容舞台 / Copilot 三栏，底部常驻播放条；笔记、原文、导图、概念、画面
+  五个页签；处理中显示实时阶段看板。
+- **模型**：先分「在线模型 / 本地模型」两域，域内按提供方与能力细分到具体模型；
+  密钥与 Base URL 在提供方块内维护，角色直接分配在模型卡片上。
+- **设置**：默认处理参数、存储目录与工具链探测。
+
+<p align="center">
+  <img src="./assets/readme/models.jpg" width="100%"
+       alt="模型工作区：在线与本地两域、带凭据状态的提供方块、按能力细分并可就地分配角色的模型卡片" />
+</p>
+
+界面暗色优先：石墨画布 + 极光微光、发丝描边、8pt 栅格、等宽时间码、全局 `Ctrl/⌘ + K` 命令面板；
+浅色主题与暗色走同一套语义令牌，并用 `node scripts/check-theme-contrast.mjs` 校验到同一对比度标准。
 
 ## 仓库结构
 
@@ -142,7 +157,7 @@ VidGnost/
 │  │  ├─ src/providers/       # 模型目录、角色路由、提供方客户端、健康自检
 │  │  ├─ src/media/           # 来源解析、音频抽取、关键帧与感知哈希
 │  │  ├─ src/asr/             # 在线/本地转写编排与标准化
-│  │  ├─ src/insight/         # 分段、章节、摘要、导图、知识图谱、校对、翻译
+│  │  ├─ src/insight/         # 分段、章节、摘要、导图、知识图谱、翻译
 │  │  ├─ src/retrieval/       # 切块、BM25、向量索引、混合检索、问答
 │  │  ├─ src/pipeline/        # 阶段引擎、任务管理器、事件总线
 │  │  ├─ src/store/           # 任务与工件仓库
@@ -150,10 +165,11 @@ VidGnost/
 │  │  └─ test/                # Vitest 单元测试
 │  └─ desktop/                # Electron + React 桌面端
 │     ├─ electron/            # 主进程、preload、启动闪屏
-│     └─ src/                 # 渲染层：shell / library / studio / config
+│     └─ src/                 # 渲染层：shell / library / studio / views
 ├─ packages/
 │  ├─ contracts/              # 前后端共享领域契约（zod 校验请求体）
 │  └─ shared/                 # 共享常量
+├─ assets/readme/             # README 视觉资产（机制图与界面截图）
 ├─ docs/openspec/             # 变更提案、设计与能力规格
 ├─ storage/                   # 运行时数据（任务、工件、索引、配置）
 └─ scripts/                   # 校验与运维脚本
@@ -162,17 +178,19 @@ VidGnost/
 ## 校验
 
 ```bash
-pnpm typecheck                                        # 三个包的类型检查
-pnpm --filter @vidgnost/api test                      # 后端单元测试
-pnpm --filter @vidgnost/desktop test                  # 前端单元测试
-node scripts/check-openspec.mjs                       # OpenSpec 规范校验
+pnpm build                                            # 构建全部工作区
+pnpm -r typecheck                                     # 全包类型检查
+pnpm -r test                                          # 渲染层 40 项 + 后端 125 项单测
+node scripts/check-openspec.mjs                       # 规格结构校验
+node scripts/check-theme-contrast.mjs                 # 浅色/深色 42 组配色对比度
+node scripts/check-spec-sync.mjs                      # 代码变更是否同步了规格
 ```
 
 ## 相关文档
 
-- [OpenSpec 索引](./docs/openspec/README.md)
+- [OpenSpec 索引](./docs/openspec/README.md) —— 提案、设计与九份能力规格
 - [当前技术栈](./docs/current-tech-stack.zh-CN.md)
-- [Git 提交规范](./docs/git-commit-convention.md)
+- [提交与发版规范](./docs/git-commit-convention.md)
 
 ## License
 

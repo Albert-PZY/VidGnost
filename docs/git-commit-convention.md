@@ -79,7 +79,7 @@ area 用英文（对齐目录），描述用中文——`area` 让 `git log --on
 | `main` | `apps/desktop/electron`：窗口、托盘、对话框、启动画面 |
 | `contracts` | `packages/contracts`：领域契约 |
 | `shared` | `packages/shared`：跨端共享工具 |
-| `docs` | `docs/`、`README.md`、`README.zh-CN.md`、`AGENTS.md` |
+| `docs` | `docs/`、`README.md`、`README.zh-CN.md`、`AGENTS.md`、`assets/readme/` |
 | `openspec` | `docs/openspec/`：提案、设计、任务与能力规格 |
 | `test` | `apps/api/test`、同目录 `*.test.ts` 与测试素材脚本 |
 | `tool` | `scripts/`、`.githooks/` 与工程配置 |
