@@ -8,6 +8,10 @@ import type {
   ModelRole,
   ModelRoute,
   ProviderConfig,
+  ProviderCreateRequest,
+  ProviderModelUpsertRequest,
+  ProviderPatchRequest,
+  ProviderProtocolInfo,
   RuntimeHealth,
   TaskEvent,
   TaskListResponse,
@@ -93,15 +97,31 @@ export const api = {
     request<{
       models: ModelCatalogEntry[]
       roles: Array<{ role: ModelRole; label: string; purpose: string; kind: ModelKind }>
-      providerLabels: Record<string, string>
+      protocols: ProviderProtocolInfo[]
     }>('/config/catalog'),
   patchSettings: (body: unknown) =>
     request<{ settings: AppSettings; routes: ModelRoute[] }>('/config/settings', {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
-  patchProvider: (body: unknown) =>
+  patchProvider: (body: ProviderPatchRequest) =>
     request<{ providers: ProviderConfig[] }>('/config/providers', { method: 'PATCH', body: JSON.stringify(body) }),
+  createProvider: (body: ProviderCreateRequest) =>
+    request<{ providers: ProviderConfig[] }>('/config/providers', { method: 'POST', body: JSON.stringify(body) }),
+  deleteProvider: (providerId: string) =>
+    request<{ providers: ProviderConfig[] }>(`/config/providers/${encodeURIComponent(providerId)}`, {
+      method: 'DELETE',
+    }),
+  putProviderModel: (providerId: string, modelId: string, body: ProviderModelUpsertRequest) =>
+    request<{ providers: ProviderConfig[] }>(
+      `/config/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}`,
+      { method: 'PUT', body: JSON.stringify(body) },
+    ),
+  deleteProviderModel: (providerId: string, modelId: string) =>
+    request<{ providers: ProviderConfig[] }>(
+      `/config/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}`,
+      { method: 'DELETE' },
+    ),
   putRoutes: (routes: ModelRoute[]) =>
     request<{ routes: ModelRoute[] }>('/config/routes', { method: 'PUT', body: JSON.stringify({ routes }) }),
   runHealth: () => request<RuntimeHealth>('/config/health', { method: 'POST' }),

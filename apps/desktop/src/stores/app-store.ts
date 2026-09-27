@@ -13,6 +13,10 @@ import type {
   OutlineDoc,
   ParagraphDoc,
   ProviderConfig,
+  ProviderCreateRequest,
+  ProviderModelUpsertRequest,
+  ProviderPatchRequest,
+  ProviderProtocolInfo,
   SummaryDoc,
   TaskEvent,
   TaskRecord,
@@ -87,12 +91,18 @@ interface AppState {
   routes: ModelRoute[]
   providers: ProviderConfig[]
   models: ModelCatalogEntry[]
+  /** 协议能力表，界面据此决定某个类别下可以接入哪些协议。 */
+  protocols: ProviderProtocolInfo[]
   roleMeta: Array<{ role: ModelRole; label: string; purpose: string; kind: ModelKind }>
   configLoading: boolean
   loadConfig: () => Promise<void>
   saveSettings: (patch: unknown) => Promise<void>
   saveRoutes: (routes: ModelRoute[]) => Promise<void>
-  saveProvider: (patch: { id: string; apiKey?: string | null; baseUrl?: string; enabled?: boolean }) => Promise<void>
+  saveProvider: (patch: ProviderPatchRequest) => Promise<void>
+  addProvider: (input: ProviderCreateRequest) => Promise<void>
+  removeProvider: (providerId: string) => Promise<void>
+  saveProviderModel: (providerId: string, modelId: string, input: ProviderModelUpsertRequest) => Promise<void>
+  removeProviderModel: (providerId: string, modelId: string) => Promise<void>
 }
 
 let taskUnsubscribe: (() => void) | null = null
@@ -274,6 +284,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   routes: [],
   providers: [],
   models: [],
+  protocols: [],
   roleMeta: [],
   configLoading: false,
   loadConfig: async () => {
@@ -285,6 +296,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         routes: config.routes,
         providers: config.providers,
         models: catalog.models,
+        protocols: catalog.protocols,
         roleMeta: catalog.roles,
         configLoading: false,
       })
@@ -303,8 +315,35 @@ export const useAppStore = create<AppState>((set, get) => ({
   saveProvider: async (patch) => {
     const result = await api.patchProvider(patch)
     set({ providers: result.providers })
+    await syncCatalogue(set)
+  },
+  addProvider: async (input) => {
+    const result = await api.createProvider(input)
+    set({ providers: result.providers })
+    await syncCatalogue(set)
+  },
+  removeProvider: async (providerId) => {
+    const result = await api.deleteProvider(providerId)
+    set({ providers: result.providers })
+    await syncCatalogue(set)
+  },
+  saveProviderModel: async (providerId, modelId, input) => {
+    const result = await api.putProviderModel(providerId, modelId, input)
+    set({ providers: result.providers })
+    await syncCatalogue(set)
+  },
+  removeProviderModel: async (providerId, modelId) => {
+    const result = await api.deleteProviderModel(providerId, modelId)
+    set({ providers: result.providers })
+    await syncCatalogue(set)
   },
 }))
+
+/** 渠道或模型改动后目录会变：自定义模型属于目录的一部分，必须一起刷新。 */
+async function syncCatalogue(set: (partial: Partial<AppState>) => void): Promise<void> {
+  const catalog = await api.catalog()
+  set({ models: catalog.models, protocols: catalog.protocols, roleMeta: catalog.roles })
+}
 
 function applyEvent(
   event: TaskEvent,

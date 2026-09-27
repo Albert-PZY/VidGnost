@@ -193,35 +193,33 @@ Status: `implemented`
 - **WHEN** 在导图页签下切换主题
 - **THEN** 图形用新主题重新渲染
 
-### Requirement: Model workspace SHALL group models by scope, provider and capability
+### Requirement: Model workspace SHALL organise models by category, then protocol, then channel
 Status: `implemented`
 
-「模型」工作区 SHALL 先按 **在线模型 / 本地模型** 分成两组，组内按提供方分块，
-块内再按能力（对话 / 多模态 / 语音转文字 / 向量化 / 翻译 / 重排序）细分到具体模型。
+「模型」工作区 SHALL 先按模型类别分组（对话 / 多模态 / 向量化 / 重排序 / 语音转文字 / 翻译），
+每个类别下再按协议列出已接入的渠道，渠道下列出该类别下的模型。
+协议 SHALL 只出现在它支持的能力类别下，能力范围由目录接口的协议能力表决定。
 
-#### Scenario: Two top-level scopes
+#### Scenario: Categories come first
 - **WHEN** 打开模型工作区
-- **THEN** 依次渲染「在线模型」与「本地模型」两组，各自显示模型数量与用途说明
+- **THEN** 依次渲染六个类别，每个类别显示模型数量与一句话用途说明
 
-#### Scenario: Credentials live with the provider
-- **WHEN** 渲染在线提供方
-- **THEN** 块头部显示凭据状态（脱敏尾码或「缺少密钥」）、来源环境变量名、启用开关与模型数量，块内可编辑 Base URL、替换密钥
+#### Scenario: Credentials live with the channel
+- **WHEN** 渲染某个渠道
+- **THEN** 渠道头部显示凭据状态（脱敏尾码或「缺少密钥」）、Base URL、该类别下的模型数量、启用开关、
+  「＋ 模型」与「设置」；Base URL 与密钥只在「设置」弹窗里编辑
 
 #### Scenario: Local runtime has no credential
-- **WHEN** 渲染本地模型
-- **THEN** 显示「无需密钥」，并把模型标识、CTranslate2 模型目录、推理设备、计算精度与 Python 可执行文件就地呈现
+- **WHEN** 渲染本地运行时渠道
+- **THEN** 显示「无需密钥」，转写参数收进「转写参数」弹窗，一次提交
 
-#### Scenario: Capability subdivision
-- **WHEN** 某提供方拥有多种能力的模型
-- **THEN** 先出现带固定色点的能力小标题，再列出该能力下的模型
+#### Scenario: Protocol filtered by capability
+- **WHEN** 某协议不支持某个类别
+- **THEN** 该协议不出现在这个类别下（例如 Anthropic 不出现在向量化与重排序类别下）
 
-#### Scenario: Provider without registered models
-- **WHEN** 提供方已配置但模型目录为空
-- **THEN** 该块仍可见（凭据可维护），并说明「未登记可用模型，暂时无法被角色引用」
-
-#### Scenario: Self-check results attach to their provider
+#### Scenario: Self-check results attach to their channel
 - **WHEN** 运行过运行时自检
-- **THEN** 每个提供方的检查项显示在该提供方块内，而不是单独一张表
+- **THEN** 每个渠道的检查项显示在该渠道块内，且同一渠道只显示一次，而不是单独一张表
 
 ### Requirement: Role assignment SHALL be expressed on the model card
 Status: `implemented`
@@ -266,3 +264,77 @@ Status: `implemented`
 #### Scenario: Reduced motion
 - **WHEN** 系统开启减少动效
 - **THEN** 入场动画、脉冲与流式光标动画被关闭
+
+### Requirement: Model workspace SHALL allow registering channels and models
+Status: `implemented`
+
+「模型」工作区 SHALL 提供两个按需打开的入口：接入渠道（名称、协议、Base URL、密钥）与
+在渠道下接入模型（模型 ID、显示名、上下文长度，向量化模型再填向量维度）。
+能力类型 SHALL 由所在类别带入，不再让用户重选；模型 ID 在编辑时 SHALL 只读。
+提交失败 SHALL 保留已填内容并在弹窗内说明原因。
+
+#### Scenario: Add a channel
+- **WHEN** 在某个协议分组下点击「接入渠道」并填写名称
+- **THEN** 协议已带入为点击位置对应的协议，Base URL 预填该协议默认值，提交后渠道出现在该类别下
+
+#### Scenario: Add a model
+- **WHEN** 在渠道下点击「＋ 模型」并填写模型 ID
+- **THEN** 模型登记在渠道下，并立即出现在目录与角色分配候选里
+
+#### Scenario: Embedding dimension
+- **WHEN** 在向量化类别下接入模型
+- **THEN** 表单出现向量维度字段；其他类别下不出现该字段
+
+### Requirement: Collection SHALL stay read-only until the user edits
+Status: `implemented`
+
+渠道块与模型卡片默认 SHALL 只展示状态：协议分组、渠道名称、凭据状态、Base URL 与模型数量；
+Base URL 与密钥等表单控件 SHALL 只在用户打开「设置」后出现。
+本地运行时的转写参数 SHALL 收进独立弹窗，一次提交，不再逐字段保存。
+
+#### Scenario: Reading the list
+- **WHEN** 用户只是浏览模型页
+- **THEN** 页面上没有输入框，只有状态与按需打开的入口
+
+#### Scenario: Editing a channel
+- **WHEN** 点击渠道的「设置」
+- **THEN** 打开弹窗，可改名、改协议、改 Base URL、替换或清除密钥、启用停用
+
+#### Scenario: Local runtime parameters
+- **WHEN** 点击本地渠道的「转写参数」
+- **THEN** 打开一个包含五项参数的弹窗，保存时一次提交
+
+### Requirement: Custom models SHALL be marked and behave like built-in models
+Status: `implemented`
+
+自定义模型卡片 SHALL 带「自定义」标记，并额外提供「编辑」与「移除」入口；
+内置模型不显示这两个入口。自定义模型其余行为与内置模型一致：显示能力与承担的角色、
+提供「分配角色」选择器、参与角色唯一性约束。
+当模型仍被角色引用时，移除入口 SHALL 禁用并说明被哪些角色占用。
+
+#### Scenario: Recognise a custom model
+- **WHEN** 浏览模型卡片
+- **THEN** 自定义模型带有「自定义」标记，内置模型没有
+
+#### Scenario: Assign a role to a custom model
+- **WHEN** 把某个角色分配给自定义模型
+- **THEN** 该角色转移到该模型，原承担者的卡片上不再显示该角色
+
+#### Scenario: Blocked removal
+- **WHEN** 该模型仍承担某个角色
+- **THEN** 移除入口禁用，并说明占用它的角色名称
+
+### Requirement: Provider blocks SHALL expose protocol and lifecycle actions
+Status: `implemented`
+
+渠道块头部 SHALL 显示协议所在的分组、凭据状态与 Base URL；SHALL 提供启用开关、
+「＋ 模型」与「设置」三个动作。自定义渠道的移除入口 SHALL 位于设置弹窗内并只确认一次；
+被角色引用时 SHALL 拒绝并说明占用的角色。
+
+#### Scenario: Delete a custom provider
+- **WHEN** 该渠道未被任何角色引用，在设置弹窗中确认移除
+- **THEN** 渠道与其模型一并从界面移除
+
+#### Scenario: Blocked deletion
+- **WHEN** 该渠道仍承担某个角色
+- **THEN** 移除被拒绝，弹窗内说明占用它的角色，渠道保持不变
