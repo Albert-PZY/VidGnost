@@ -34,7 +34,7 @@ export function TitleBar({
   }, [bridge])
 
   return (
-    <header className="drag-region relative z-20 flex h-11 items-center gap-3 pl-3 pr-0 hairline-b bg-background">
+    <header className="drag-region relative z-20 flex h-11 items-center gap-3 pl-3 pr-0 hairline-b bg-background/70 backdrop-blur-xl">
       <div className="flex items-center gap-2.5">
         <img
           src="/icon.svg"

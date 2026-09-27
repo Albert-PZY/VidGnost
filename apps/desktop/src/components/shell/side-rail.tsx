@@ -23,7 +23,7 @@ export function SideRail({
   return (
     <nav
       aria-label="主导航"
-      className="flex w-[52px] flex-col items-center gap-1 py-3 hairline-r bg-background"
+      className="flex w-[52px] flex-col items-center gap-1 py-3 hairline-r bg-background/60"
     >
       {ITEMS.map((item) => {
         const disabled = item.id === 'studio' && !hasTask

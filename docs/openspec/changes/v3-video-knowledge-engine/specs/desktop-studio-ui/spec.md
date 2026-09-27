@@ -171,9 +171,10 @@ Status: `implemented`
 - **WHEN** 运行 `node scripts/check-theme-contrast.mjs`
 - **THEN** 两种模式下所有文本与关键控件配对的对比度都达标（正文 4.5:1、图标类 3:1），否则退出码非零
 
-#### Scenario: Chrome stays neutral
+#### Scenario: Chrome keeps the ambient tint
 - **WHEN** 两种模式渲染标题栏与导航轨
-- **THEN** 这两处使用不透明画布底色，环境光晕透不过来，图标颜色不被背景染色
+- **THEN** 这两处使用带透明度的画布底色（标题栏另加背景模糊），环境光晕能透出来；
+  图标与文字的对比度仍由语义令牌保证，不因透出的背景而失守
 
 ### Requirement: Graphics SHALL follow the active theme
 Status: `implemented`

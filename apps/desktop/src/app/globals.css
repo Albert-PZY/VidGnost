@@ -107,8 +107,9 @@
 
   /* 文本 */
   --text-strong: oklch(0.975 0.003 275);
-  --text-muted: oklch(0.72 0.012 275);
-  --text-subtle: oklch(0.655 0.012 275);
+  --text-muted: oklch(0.68 0.012 275);
+  /* 0.62 是「弱化文本 / 画布·卡片·次级按钮」三处仍满足 4.5:1 的最暗值（最严一处 4.58） */
+  --text-subtle: oklch(0.62 0.012 275);
 
   /* 描边 */
   --border: oklch(0.28 0.01 275);
@@ -121,7 +122,7 @@
   --secondary: oklch(0.235 0.009 275);
   --secondary-foreground: oklch(0.92 0.005 275);
   --muted: oklch(0.225 0.009 275);
-  --muted-foreground: oklch(0.7 0.012 275);
+  --muted-foreground: oklch(0.66 0.012 275);
   --accent: oklch(0.26 0.014 280);
   --accent-foreground: oklch(0.95 0.004 275);
   --ring: oklch(0.7 0.15 285);
