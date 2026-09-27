@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { rewriteSectionColors } from './mermaid-block'
-import { resolveTheme, readStoredMode } from '@/stores/theme-store'
+import { resolveTheme, readStoredMode } from '@/stores/appearance-store'
 
 /** 取自 Mermaid v11 真实输出的片段，用于固定「只重写 section 配色」的契约。 */
 const SAMPLE_CSS = [

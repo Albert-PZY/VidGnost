@@ -40,8 +40,8 @@ export function LibraryView() {
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex items-center gap-4 px-6 pb-3.5 pt-5">
         <div>
-          <h1 className="text-[20px] font-semibold tracking-tight text-text-strong">资产库</h1>
-          <p className="mt-0.5 text-[11px] text-text-muted">
+          <h1 className="text-page font-semibold tracking-tight text-text-strong">资产库</h1>
+          <p className="mt-0.5 text-meta text-text-muted">
             {empty ? '还没有处理过的视频' : `共 ${library.length} 个任务 · 点击卡片进入工作台`}
           </p>
         </div>
@@ -54,10 +54,10 @@ export function LibraryView() {
               onChange={(event) => setQuery(event.target.value)}
               placeholder="搜索标题或任务 ID"
               aria-label="搜索任务"
-              className="h-8 w-[240px] pl-8 text-[12px]"
+              className="h-8 w-[15rem] pl-8 text-note"
             />
           </div>
-          <Button size="sm" className="h-8 gap-1.5 text-[12px]" onClick={() => setDialogOpen(true)}>
+          <Button size="sm" className="h-8 gap-1.5 text-note" onClick={() => setDialogOpen(true)}>
             <Plus className="size-3.5" /> 新建任务
           </Button>
         </div>
@@ -65,14 +65,14 @@ export function LibraryView() {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-8">
         {loading && library.length === 0 ? (
-          <div className="flex h-40 items-center justify-center gap-2 text-[12px] text-text-muted">
+          <div className="flex h-40 items-center justify-center gap-2 text-note text-text-muted">
             <Loader2 className="size-4 animate-spin" /> 正在读取资产库…
           </div>
         ) : empty && query ? (
           <div className="flex h-48 flex-col items-center justify-center gap-2 text-center">
             <Search className="size-6 text-text-subtle" />
-            <p className="text-[13px] text-text-muted">没有匹配「{query}」的任务</p>
-            <Button variant="ghost" size="sm" className="h-7 text-[11px]" onClick={() => setQuery('')}>
+            <p className="text-body text-text-muted">没有匹配「{query}」的任务</p>
+            <Button variant="ghost" size="sm" className="h-7 text-meta" onClick={() => setQuery('')}>
               清除搜索条件
             </Button>
           </div>
@@ -82,12 +82,12 @@ export function LibraryView() {
               <Inbox className="size-5" strokeWidth={1.6} />
             </span>
             <div>
-              <p className="text-[14px] font-medium text-text-strong">把一个视频变成可检索的知识</p>
-              <p className="mt-1 text-[12px] text-text-muted">
+              <p className="text-lead font-medium text-text-strong">把一个视频变成可检索的知识</p>
+              <p className="mt-1 text-note text-text-muted">
                 拖入本地文件或粘贴链接，VidGnost 会产出章节、摘要、思维导图、知识图谱与可追问的索引。
               </p>
             </div>
-            <Button size="sm" className="mt-1 gap-1.5 text-[12px]" onClick={() => setDialogOpen(true)}>
+            <Button size="sm" className="mt-1 gap-1.5 text-note" onClick={() => setDialogOpen(true)}>
               <Plus className="size-3.5" /> 新建任务
             </Button>
           </div>
@@ -116,18 +116,18 @@ export function LibraryView() {
           }}
         >
           <div className="reveal w-[min(400px,92vw)] rounded-xl border border-border-strong bg-popover p-5">
-            <h2 className="text-[14px] font-semibold text-text-strong">删除这个任务？</h2>
-            <p className="mt-1.5 text-[12px] leading-relaxed text-text-muted">
+            <h2 className="text-lead font-semibold text-text-strong">删除这个任务？</h2>
+            <p className="mt-1.5 text-note leading-relaxed text-text-muted">
               转写、章节、摘要、索引与导出产物都会被一并删除，无法恢复。
             </p>
             <div className="mt-4 flex justify-end gap-2">
-              <Button variant="ghost" size="sm" className="h-8 text-[12px]" onClick={() => setPendingDelete(null)}>
+              <Button variant="ghost" size="sm" className="h-8 text-note" onClick={() => setPendingDelete(null)}>
                 取消
               </Button>
               <Button
                 variant="destructive"
                 size="sm"
-                className="h-8 text-[12px]"
+                className="h-8 text-note"
                 onClick={async () => {
                   const target = pendingDelete
                   setPendingDelete(null)

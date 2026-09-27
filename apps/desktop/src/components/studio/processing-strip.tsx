@@ -33,11 +33,11 @@ export function ProcessingStrip({
     >
       <Icon className={cn('size-3.5 shrink-0', tone, !failed && task.status !== 'succeeded' && 'animate-spin')} />
 
-      <span className={cn('shrink-0 text-[11px]', tone)}>
+      <span className={cn('shrink-0 text-meta', tone)}>
         {failed ? '处理中断' : task.status === 'succeeded' ? '处理完成' : task.status === 'queued' ? '排队中' : '正在处理'}
       </span>
 
-      <span className="min-w-0 flex-1 truncate text-[11px] text-text-muted">
+      <span className="min-w-0 flex-1 truncate text-meta text-text-muted">
         {failed
           ? `${failed.label}：${failed.error?.message || '未知错误'}`
           : running
@@ -54,7 +54,7 @@ export function ProcessingStrip({
             style={{ width: `${Math.max(2, readiness)}%` }}
           />
         </span>
-        <span className="metric-value text-[10px] text-text-subtle">{readiness}%</span>
+        <span className="metric-value text-micro text-text-subtle">{readiness}%</span>
         <ChevronRight className={cn('size-3.5 text-text-subtle transition-transform', expanded && 'rotate-90')} />
       </span>
     </button>

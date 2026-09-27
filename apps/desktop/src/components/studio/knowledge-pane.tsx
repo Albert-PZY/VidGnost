@@ -56,19 +56,19 @@ export function KnowledgePane({ graph }: { graph: KnowledgeGraphDoc | null }) {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-8">
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_18.75rem]">
           <ul className="space-y-2">
             {groups.map((node) => (
               <li key={node.id} className="flex items-start gap-3 rounded-lg border border-border/50 bg-card/40 px-3 py-2.5">
-                <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-md bg-secondary text-[10px] text-text-muted">
+                <span className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-md bg-secondary text-micro text-text-muted">
                   {TYPE_LABELS[node.type].slice(0, 1)}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline gap-2">
-                    <span className="truncate text-[13px] font-medium text-text-strong">{node.label}</span>
+                    <span className="truncate text-body font-medium text-text-strong">{node.label}</span>
                     <TimeAnchor seconds={node.start} />
                   </div>
-                  <p className="mt-0.5 text-[11px] text-text-subtle">
+                  <p className="mt-0.5 text-meta text-text-subtle">
                     {TYPE_LABELS[node.type]}
                     <span className="mx-1.5">·</span>
                     提及 {node.mention} 次
@@ -95,9 +95,9 @@ export function KnowledgePane({ graph }: { graph: KnowledgeGraphDoc | null }) {
               <span className="label-eyebrow">概念关系</span>
               <ul className="mt-3 space-y-2">
                 {graph.edges.slice(0, 40).map((edge) => (
-                  <li key={edge.id} className="text-[12px] leading-relaxed text-text-muted">
+                  <li key={edge.id} className="text-note leading-relaxed text-text-muted">
                     <span className="text-foreground/90">{labelOf.get(edge.source) || edge.source}</span>
-                    <span className="mx-1.5 rounded bg-secondary px-1.5 py-px text-[10px] text-text-muted">
+                    <span className="mx-1.5 rounded bg-secondary px-1.5 py-px text-micro text-text-muted">
                       {edge.relation}
                     </span>
                     <span className="text-foreground/90">{labelOf.get(edge.target) || edge.target}</span>
@@ -118,7 +118,7 @@ function TypeChip({ active, label, onClick }: { active: boolean; label: string; 
       type="button"
       onClick={onClick}
       className={cn(
-        'rounded-full px-2.5 py-1 text-[11px] transition-colors',
+        'rounded-full px-2.5 py-1 text-meta transition-colors',
         active ? 'bg-secondary text-foreground' : 'text-text-muted hover:bg-secondary/60 hover:text-foreground',
       )}
     >

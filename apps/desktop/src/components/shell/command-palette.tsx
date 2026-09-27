@@ -129,14 +129,14 @@ export function CommandPalette({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="搜索任务、跳转页面、执行操作…"
-            className="h-6 flex-1 bg-transparent text-[13px] text-foreground outline-none placeholder:text-text-subtle"
+            className="h-6 flex-1 bg-transparent text-body text-foreground outline-none placeholder:text-text-subtle"
           />
-          <kbd className="timecode rounded border border-border px-1.5 py-0.5 text-[10px] text-text-subtle">ESC</kbd>
+          <kbd className="timecode rounded border border-border px-1.5 py-0.5 text-micro text-text-subtle">ESC</kbd>
         </div>
 
         <div className="max-h-[52vh] overflow-y-auto p-1.5">
           {results.length === 0 ? (
-            <p className="px-3 py-6 text-center text-[12px] text-text-subtle">没有匹配结果</p>
+            <p className="px-3 py-6 text-center text-note text-text-subtle">没有匹配结果</p>
           ) : (
             results.map((entry, index) => {
               const active = index === cursor
@@ -162,10 +162,10 @@ export function CommandPalette({
                     )}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] text-foreground">
+                    <span className="block truncate text-body text-foreground">
                       {entry.kind === 'command' ? entry.command.label : entry.task.title}
                     </span>
-                    <span className="block truncate text-[11px] text-text-subtle">
+                    <span className="block truncate text-meta text-text-subtle">
                       {entry.kind === 'command'
                         ? entry.command.hint || ''
                         : `${platformLabel(entry.task.platform)} · ${formatTimecode(entry.task.durationSeconds)}`}
@@ -178,7 +178,7 @@ export function CommandPalette({
           )}
         </div>
 
-        <div className="flex items-center justify-between px-3.5 py-2 text-[10px] text-text-subtle hairline-t">
+        <div className="flex items-center justify-between px-3.5 py-2 text-micro text-text-subtle hairline-t">
           <span>↑↓ 选择 · Enter 执行</span>
           <span className="inline-flex items-center gap-1">
             <Waypoints className="size-3" /> {tasks.length} 个任务

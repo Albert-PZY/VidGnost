@@ -42,8 +42,8 @@ export function StageBoard({ task }: { task: TaskRecord }) {
             <p className="label-eyebrow">
               {task.status === 'failed' ? '处理失败' : running ? '正在处理' : '已停止'}
             </p>
-            <h2 className="mt-1.5 text-[17px] font-semibold tracking-tight text-text-strong">{task.title}</h2>
-            <p className="mt-1 text-[11px] text-text-muted">
+            <h2 className="mt-1.5 text-title font-semibold tracking-tight text-text-strong">{task.title}</h2>
+            <p className="mt-1 text-meta text-text-muted">
               <span className="timecode">{formatTimecode(task.source.durationSeconds)}</span>
               <span className="mx-1.5">·</span>
               {task.source.kind === 'url' ? '在线来源' : '本地文件'}
@@ -52,8 +52,8 @@ export function StageBoard({ task }: { task: TaskRecord }) {
             </p>
           </div>
           <div className="text-right">
-            <p className="metric-value text-[28px] leading-none text-text-strong">{readiness}%</p>
-            <p className="mt-1 text-[10px] text-text-subtle">就绪度</p>
+            <p className="metric-value text-hero leading-none text-text-strong">{readiness}%</p>
+            <p className="mt-1 text-micro text-text-subtle">就绪度</p>
           </div>
         </div>
 
@@ -66,13 +66,13 @@ export function StageBoard({ task }: { task: TaskRecord }) {
 
         {task.error ? (
           <div role="alert" className="mt-3 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2">
-            <p className="text-[12px] font-medium text-destructive">{task.error.message}</p>
-            {task.error.hint ? <p className="mt-1 text-[11px] text-destructive/80">{task.error.hint}</p> : null}
+            <p className="text-note font-medium text-destructive">{task.error.message}</p>
+            {task.error.hint ? <p className="mt-1 text-meta text-destructive/80">{task.error.hint}</p> : null}
           </div>
         ) : null}
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,320px)_minmax(0,1fr)] gap-5 px-6 pb-5">
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,20rem)_minmax(0,1fr)] gap-5 px-6 pb-5">
         <ol className="min-h-0 space-y-0.5 overflow-y-auto pr-1">
           {task.stages.map((stage) => {
             const style = STATUS_STYLE[stage.status]
@@ -86,14 +86,14 @@ export function StageBoard({ task }: { task: TaskRecord }) {
                 )}
               >
                 <Icon className={cn('size-3.5 shrink-0', style.tone, stage.status === 'running' && 'animate-spin')} />
-                <span className="w-[86px] shrink-0 truncate text-[12px] text-foreground">{stage.label}</span>
-                <span className="min-w-0 flex-1 truncate text-[11px] text-text-subtle">
+                <span className="w-[5.375rem] shrink-0 truncate text-note text-foreground">{stage.label}</span>
+                <span className="min-w-0 flex-1 truncate text-meta text-text-subtle">
                   {stage.status === 'running' && stage.progress > 0.01
                     ? `${stage.message || '处理中'} · ${Math.round(stage.progress * 100)}%`
                     : stage.message || (stage.status === 'pending' ? '等待中' : '')}
                 </span>
                 {stage.status === 'succeeded' ? (
-                  <span className="timecode shrink-0 text-[10px] text-text-subtle">{stage.progress >= 1 ? '完成' : ''}</span>
+                  <span className="timecode shrink-0 text-micro text-text-subtle">{stage.progress >= 1 ? '完成' : ''}</span>
                 ) : null}
               </li>
             )
@@ -103,21 +103,21 @@ export function StageBoard({ task }: { task: TaskRecord }) {
         <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-border/60 bg-card/50">
           <div className="flex items-center justify-between px-3.5 py-2 hairline-b">
             <span className="label-eyebrow">阶段日志</span>
-            <span className="text-[10px] text-text-subtle">{logs.length} 条</span>
+            <span className="text-micro text-text-subtle">{logs.length} 条</span>
           </div>
           <div ref={logRef} className="min-h-0 flex-1 overflow-y-auto px-3.5 py-2">
             {logs.length === 0 ? (
-              <p className="py-6 text-center text-[11px] text-text-subtle">等待第一条日志…</p>
+              <p className="py-6 text-center text-meta text-text-subtle">等待第一条日志…</p>
             ) : (
               <ol className="space-y-1">
                 {logs.map((line, index) => (
                   <li key={`${line.at}-${index}`} className="flex gap-2">
-                    <span className="timecode shrink-0 pt-px text-[10px] text-text-subtle">
+                    <span className="timecode shrink-0 pt-px text-micro text-text-subtle">
                       {new Date(line.at).toLocaleTimeString('zh-CN', { hour12: false })}
                     </span>
                     <span
                       className={cn(
-                        'min-w-0 flex-1 break-words text-[11px] leading-relaxed',
+                        'min-w-0 flex-1 break-words text-meta leading-relaxed',
                         line.level === 'error'
                           ? 'text-destructive'
                           : line.level === 'warn'
@@ -137,11 +137,11 @@ export function StageBoard({ task }: { task: TaskRecord }) {
 
       {running ? (
         <div className="flex items-center justify-between px-6 pb-4">
-          <p className="text-[11px] text-text-subtle">处理期间可以关闭窗口，任务会在后端继续执行并保留检查点。</p>
+          <p className="text-meta text-text-subtle">处理期间可以关闭窗口，任务会在后端继续执行并保留检查点。</p>
           <button
             type="button"
             onClick={() => void cancelTask()}
-            className="rounded-md border border-border px-3 py-1.5 text-[11px] text-text-muted transition-colors hover:border-destructive/50 hover:text-destructive"
+            className="rounded-md border border-border px-3 py-1.5 text-meta text-text-muted transition-colors hover:border-destructive/50 hover:text-destructive"
           >
             取消任务
           </button>

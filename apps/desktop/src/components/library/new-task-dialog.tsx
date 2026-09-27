@@ -76,15 +76,15 @@ export function NewTaskDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[min(560px,94vw)] gap-0 overflow-hidden p-0">
         <DialogHeader className="px-5 pb-3 pt-4">
-          <DialogTitle className="text-[15px] font-semibold">新建处理任务</DialogTitle>
-          <DialogDescription className="text-[12px] text-text-muted">
+          <DialogTitle className="text-subhead font-semibold">新建处理任务</DialogTitle>
+          <DialogDescription className="text-note text-text-muted">
             支持本地视频 / 音频文件的绝对路径，也支持 YouTube、Bilibili 与直链视频地址。
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 px-5 pb-4">
           <div className="space-y-2">
-            <Label htmlFor="task-source" className="text-[12px] text-text-muted">
+            <Label htmlFor="task-source" className="text-note text-text-muted">
               来源
             </Label>
             <Textarea
@@ -99,7 +99,7 @@ export function NewTaskDialog({
               }}
               rows={2}
               placeholder="F:\videos\lecture.mp4 或 https://www.bilibili.com/video/BV..."
-              className="resize-none text-[12px]"
+              className="resize-none text-note"
             />
             <div className="flex flex-wrap items-center gap-2">
               {bridge ? (
@@ -107,7 +107,7 @@ export function NewTaskDialog({
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-7 gap-1.5 text-[11px]"
+                  className="h-7 gap-1.5 text-meta"
                   onClick={async () => {
                     const result = await bridge.pickMediaFile()
                     if (!result.canceled && result.path) {
@@ -118,14 +118,14 @@ export function NewTaskDialog({
                   <FileVideo className="size-3.5" /> 选择本地文件
                 </Button>
               ) : null}
-              <span className="inline-flex items-center gap-1 text-[11px] text-text-subtle">
+              <span className="inline-flex items-center gap-1 text-meta text-text-subtle">
                 <Link2 className="size-3" /> 链接会先由 yt-dlp 下载再处理
               </span>
             </div>
           </div>
 
           <div className="space-y-2">
-            <span className="text-[12px] text-text-muted">处理预设</span>
+            <span className="text-note text-text-muted">处理预设</span>
             <div className="grid grid-cols-3 gap-2">
               {PRESETS.map((item) => (
                 <button
@@ -145,8 +145,8 @@ export function NewTaskDialog({
                       : 'border-border/70 hover:border-border-strong hover:bg-secondary/50',
                   )}
                 >
-                  <span className="block text-[12px] font-medium text-foreground">{item.label}</span>
-                  <span className="mt-0.5 block text-[10px] leading-snug text-text-subtle">{item.description}</span>
+                  <span className="block text-note font-medium text-foreground">{item.label}</span>
+                  <span className="mt-0.5 block text-micro leading-snug text-text-subtle">{item.description}</span>
                 </button>
               ))}
             </div>
@@ -154,7 +154,7 @@ export function NewTaskDialog({
 
           <div className="grid grid-cols-2 gap-x-6 gap-y-3">
             <div className="space-y-2">
-              <Label htmlFor="task-language" className="text-[12px] text-text-muted">
+              <Label htmlFor="task-language" className="text-note text-text-muted">
                 语言
               </Label>
               <Input
@@ -162,11 +162,11 @@ export function NewTaskDialog({
                 value={language}
                 onChange={(event) => setLanguage(event.target.value)}
                 placeholder="auto / zh / en"
-                className="h-8 text-[12px]"
+                className="h-8 text-note"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="task-asr" className="text-[12px] text-text-muted">
+              <Label htmlFor="task-asr" className="text-note text-text-muted">
                 转写引擎
               </Label>
               <div className="flex h-8 items-center gap-1 rounded-md border border-border/70 p-0.5">
@@ -176,7 +176,7 @@ export function NewTaskDialog({
                     type="button"
                     onClick={() => setAsr(item)}
                     className={cn(
-                      'h-full flex-1 rounded text-[11px] transition-colors',
+                      'h-full flex-1 rounded text-meta transition-colors',
                       asr === item ? 'bg-secondary text-foreground' : 'text-text-muted hover:text-foreground',
                     )}
                   >
@@ -187,34 +187,34 @@ export function NewTaskDialog({
             </div>
             <label className="flex items-center justify-between gap-3 rounded-lg border border-border/70 px-3 py-2">
               <span>
-                <span className="block text-[12px] text-foreground">画面理解</span>
-                <span className="block text-[10px] text-text-subtle">抽关键帧并做多模态图注</span>
+                <span className="block text-note text-foreground">画面理解</span>
+                <span className="block text-micro text-text-subtle">抽关键帧并做多模态图注</span>
               </span>
               <Switch checked={vision} onCheckedChange={setVision} />
             </label>
             <label className="flex items-center justify-between gap-3 rounded-lg border border-border/70 px-3 py-2">
               <span>
-                <span className="block text-[12px] text-foreground">转写校对</span>
-                <span className="block text-[10px] text-text-subtle">修正同音错字与术语写法</span>
+                <span className="block text-note text-foreground">转写校对</span>
+                <span className="block text-micro text-text-subtle">修正同音错字与术语写法</span>
               </span>
               <Switch checked={proofread} onCheckedChange={setProofread} />
             </label>
           </div>
 
           {error ? (
-            <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
+            <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-meta text-destructive">
               {error}
             </p>
           ) : null}
         </div>
 
         <DialogFooter className="flex-row items-center justify-between gap-2 px-5 py-3 hairline-t sm:justify-between">
-          <span className="text-[10px] text-text-subtle">Ctrl/⌘ + Enter 快速提交</span>
+          <span className="text-micro text-text-subtle">Ctrl/⌘ + Enter 快速提交</span>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} className="h-8 text-[12px]">
+            <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} className="h-8 text-note">
               取消
             </Button>
-            <Button size="sm" onClick={() => void submit()} disabled={submitting} className="h-8 gap-1.5 text-[12px]">
+            <Button size="sm" onClick={() => void submit()} disabled={submitting} className="h-8 gap-1.5 text-note">
               {submitting ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
               开始处理
             </Button>

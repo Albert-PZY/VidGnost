@@ -46,21 +46,21 @@ export function TaskCard({
     >
       <button type="button" onClick={onOpen} className="flex-1 px-4 pb-3 pt-3.5 text-left">
         <div className="flex items-start justify-between gap-3">
-          <h3 className="line-clamp-2 text-[13px] font-medium leading-snug text-text-strong">{task.title}</h3>
-          <span className={cn('mt-0.5 inline-flex shrink-0 items-center gap-1 text-[10px]', STATUS_TONE[task.status])}>
+          <h3 className="line-clamp-2 text-body font-medium leading-snug text-text-strong">{task.title}</h3>
+          <span className={cn('mt-0.5 inline-flex shrink-0 items-center gap-1 text-micro', STATUS_TONE[task.status])}>
             <Icon className={cn('size-3', task.status === 'running' && 'animate-spin')} />
             {statusLabel(task.status)}
           </span>
         </div>
 
-        <p className="mt-2 line-clamp-2 min-h-[32px] text-[11px] leading-relaxed text-text-muted">
+        <p className="mt-2 line-clamp-2 min-h-[2rem] text-meta leading-relaxed text-text-muted">
           {task.tldr || (task.status === 'succeeded' ? '暂无摘要' : '处理完成后会生成摘要与章节')}
         </p>
 
         {task.tags.length > 0 ? (
           <div className="mt-2.5 flex flex-wrap gap-1">
             {task.tags.slice(0, 3).map((tag) => (
-              <span key={tag} className="rounded-full bg-secondary px-2 py-0.5 text-[10px] text-text-muted">
+              <span key={tag} className="rounded-full bg-secondary px-2 py-0.5 text-micro text-text-muted">
                 {tag}
               </span>
             ))}
@@ -75,7 +75,7 @@ export function TaskCard({
             style={{ width: `${Math.max(4, readiness)}%` }}
           />
         </div>
-        <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-text-subtle">
+        <div className="mt-2 flex items-center justify-between gap-2 text-micro text-text-subtle">
           <span className="truncate">
             {platformLabel(task.platform)} · <span className="timecode">{formatTimecode(task.durationSeconds)}</span>
           </span>

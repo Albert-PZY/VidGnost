@@ -8,7 +8,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { useAppStore } from '@/stores/app-store'
-import { useThemeStore, type ThemeMode } from '@/stores/theme-store'
+import {
+  DEFAULT_FONT_SIZE,
+  FONT_SIZE_STEPS,
+  useAppearanceStore,
+  type ThemeMode,
+} from '@/stores/appearance-store'
 
 type Toolchain = Awaited<ReturnType<typeof api.toolchainHealth>>
 
@@ -17,8 +22,10 @@ export function SettingsView() {
   const settings = useAppStore((state) => state.settings)
   const loadConfig = useAppStore((state) => state.loadConfig)
   const saveSettings = useAppStore((state) => state.saveSettings)
-  const themeMode = useThemeStore((state) => state.mode)
-  const setThemeMode = useThemeStore((state) => state.setMode)
+  const themeMode = useAppearanceStore((state) => state.mode)
+  const setThemeMode = useAppearanceStore((state) => state.setMode)
+  const fontSize = useAppearanceStore((state) => state.fontSize)
+  const setFontSize = useAppearanceStore((state) => state.setFontSize)
   const [toolchain, setToolchain] = useState<Toolchain | null>(null)
   const [storageDir, setStorageDir] = useState<string | null>(null)
   const [probing, setProbing] = useState(false)
@@ -72,10 +79,10 @@ export function SettingsView() {
     <div className="h-full overflow-y-auto px-6 pb-10 pt-5">
       <header className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-[20px] font-semibold tracking-tight text-text-strong">设置</h1>
-          <p className="mt-0.5 text-[11px] text-text-muted">这些默认值会在新建任务时自动填入，单个任务仍可单独覆盖。</p>
+          <h1 className="text-page font-semibold tracking-tight text-text-strong">设置</h1>
+          <p className="mt-0.5 text-meta text-text-muted">这些默认值会在新建任务时自动填入，单个任务仍可单独覆盖。</p>
         </div>
-        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-[12px]" onClick={() => void probe()} disabled={probing}>
+        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-note" onClick={() => void probe()} disabled={probing}>
           {probing ? <Loader2 className="size-3.5 animate-spin" /> : <HardDrive className="size-3.5" />}
           检测工具链
         </Button>
@@ -91,21 +98,21 @@ export function SettingsView() {
                 <XCircle className="mt-0.5 size-3.5 shrink-0 text-destructive" />
               )}
               <div className="min-w-0">
-                <p className="text-[12px] text-foreground">{check.name}</p>
-                <p className="truncate text-[11px] text-text-subtle">{check.detail}</p>
+                <p className="text-note text-foreground">{check.name}</p>
+                <p className="truncate text-meta text-text-subtle">{check.detail}</p>
               </div>
-              <span className="timecode ml-auto shrink-0 text-[10px] text-text-subtle">{check.latencyMs}ms</span>
+              <span className="timecode ml-auto shrink-0 text-micro text-text-subtle">{check.latencyMs}ms</span>
             </div>
           ))}
         </section>
       ) : null}
 
-      <section className="mt-6 max-w-[640px] space-y-3">
+      <section className="mt-6 max-w-[40rem] space-y-3">
         <span className="label-eyebrow">外观</span>
         <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-card/40 px-3 py-2.5">
           <div>
-            <p className="text-[12px] text-foreground">主题</p>
-            <p className="mt-0.5 text-[10px] text-text-subtle">
+            <p className="text-note text-foreground">主题</p>
+            <p className="mt-0.5 text-micro text-text-subtle">
               两种主题的语义令牌都经过对比度校验；跟随系统会随系统深浅色自动切换。
             </p>
           </div>
@@ -123,7 +130,7 @@ export function SettingsView() {
                 aria-pressed={themeMode === item.mode}
                 onClick={() => setThemeMode(item.mode)}
                 className={cn(
-                  'rounded px-2.5 py-1 text-[11px] transition-colors',
+                  'rounded px-2.5 py-1 text-meta transition-colors',
                   themeMode === item.mode ? 'bg-secondary text-foreground' : 'text-text-muted hover:text-foreground',
                 )}
               >
@@ -132,9 +139,31 @@ export function SettingsView() {
             ))}
           </div>
         </div>
+
+        <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-card/40 px-3 py-2.5">
+          <div>
+            <p className="text-note text-foreground">界面字号</p>
+            <p className="mt-0.5 text-micro text-text-subtle">
+              正文字号，界面其余部分按同一比例缩放；选好立即生效。
+            </p>
+          </div>
+          <select
+            value={fontSize}
+            onChange={(event) => setFontSize(Number(event.target.value))}
+            aria-label="界面字号"
+            className="h-8 w-[6.5rem] shrink-0 rounded-md border border-border/70 bg-background/60 px-2 text-meta text-foreground outline-none"
+          >
+            {FONT_SIZE_STEPS.map((step) => (
+              <option key={step} value={step}>
+                {step}px
+                {step === DEFAULT_FONT_SIZE ? '（默认）' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
       </section>
 
-      <section className="mt-6 max-w-[640px] space-y-5">
+      <section className="mt-6 max-w-[40rem] space-y-5">
         <span className="label-eyebrow">默认处理参数</span>
 
         <div className="grid grid-cols-2 gap-4">
@@ -142,7 +171,7 @@ export function SettingsView() {
             <select
               value={settings.defaultPreset}
               onChange={(event) => void saveSettings({ settings: { defaultPreset: event.target.value } })}
-              className="h-8 w-full rounded-md border border-border/70 bg-background/60 px-2 text-[12px] text-foreground outline-none"
+              className="h-8 w-full rounded-md border border-border/70 bg-background/60 px-2 text-note text-foreground outline-none"
             >
               <option value="fast">快速</option>
               <option value="balanced">均衡</option>
@@ -158,7 +187,7 @@ export function SettingsView() {
                   void saveSettings({ settings: { defaultLanguage: event.target.value } })
                 }
               }}
-              className="h-8 text-[12px]"
+              className="h-8 text-note"
             />
           </Field>
 
@@ -166,7 +195,7 @@ export function SettingsView() {
             <select
               value={settings.defaultAsr}
               onChange={(event) => void saveSettings({ settings: { defaultAsr: event.target.value } })}
-              className="h-8 w-full rounded-md border border-border/70 bg-background/60 px-2 text-[12px] text-foreground outline-none"
+              className="h-8 w-full rounded-md border border-border/70 bg-background/60 px-2 text-note text-foreground outline-none"
             >
               <option value="auto">自动（在线优先）</option>
               <option value="online">强制在线</option>
@@ -186,7 +215,7 @@ export function SettingsView() {
                   void saveSettings({ settings: { maxConcurrentTasks: value } })
                 }
               }}
-              className="h-8 text-[12px]"
+              className="h-8 text-note"
             />
           </Field>
         </div>
@@ -194,8 +223,8 @@ export function SettingsView() {
         <div className="grid grid-cols-2 gap-3">
           <label className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2.5">
             <span>
-              <span className="block text-[12px] text-foreground">默认开启画面理解</span>
-              <span className="block text-[10px] text-text-subtle">抽关键帧并生成多模态图注</span>
+              <span className="block text-note text-foreground">默认开启画面理解</span>
+              <span className="block text-micro text-text-subtle">抽关键帧并生成多模态图注</span>
             </span>
             <Switch
               checked={settings.defaultVision}
@@ -204,8 +233,8 @@ export function SettingsView() {
           </label>
           <label className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2.5">
             <span>
-              <span className="block text-[12px] text-foreground">默认开启转写校对</span>
-              <span className="block text-[10px] text-text-subtle">用模型修正同音错字与术语写法</span>
+              <span className="block text-note text-foreground">默认开启转写校对</span>
+              <span className="block text-micro text-text-subtle">用模型修正同音错字与术语写法</span>
             </span>
             <Switch
               checked={settings.defaultProofread}
@@ -215,7 +244,7 @@ export function SettingsView() {
         </div>
       </section>
 
-      <section className="mt-8 max-w-[640px]">
+      <section className="mt-8 max-w-[40rem]">
         <span className="label-eyebrow">存储</span>
         <div className="mt-2 grid grid-cols-2 gap-3">
           <InfoRow label="存储目录" value={storageDir ?? '读取中…'} />
@@ -223,7 +252,7 @@ export function SettingsView() {
           <InfoRow label="阶段缓存" value="按输入指纹 + 模型路由计算" />
           <InfoRow label="保留中间媒体" value={settings.keepIntermediateMedia ? '开启' : '关闭'} />
         </div>
-        <p className="mt-3 text-[11px] text-text-muted">
+        <p className="mt-3 text-meta text-text-muted">
           本地转写引擎的模型目录、设备与精度在「模型 → 本地模型」中配置。
         </p>
       </section>
@@ -234,18 +263,19 @@ export function SettingsView() {
 function Field({ children, hint, label }: { children: React.ReactNode; hint?: string; label: string }) {
   return (
     <div className="space-y-1.5">
-      <Label className="text-[12px] text-text-muted">{label}</Label>
+      <Label className="text-note text-text-muted">{label}</Label>
       {children}
-      {hint ? <p className="text-[10px] text-text-subtle">{hint}</p> : null}
+      {hint ? <p className="text-micro text-text-subtle">{hint}</p> : null}
     </div>
   )
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className={cn('rounded-lg border border-border/60 bg-card/40 px-3 py-2')}>
-      <p className="text-[10px] uppercase tracking-wider text-text-subtle">{label}</p>
-      <p className="timecode mt-0.5 text-[11px] text-foreground">{value}</p>
+    <div className={cn('min-w-0 rounded-lg border border-border/60 bg-card/40 px-3 py-2')}>
+      <p className="text-micro uppercase tracking-wider text-text-subtle">{label}</p>
+      {/* 值是不可拆的长串（路径、指纹），字号放大后必须允许断行，否则整块会横向溢出。 */}
+      <p className="timecode mt-0.5 text-meta break-all text-foreground">{value}</p>
     </div>
   )
 }

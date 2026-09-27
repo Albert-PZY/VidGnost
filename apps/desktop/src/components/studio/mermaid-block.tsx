@@ -223,8 +223,8 @@ export function MermaidBlock({
   if (failure) {
     return (
       <div className={cn('space-y-2', className)}>
-        <p className="text-[11px] text-warning">导图图形渲染失败，以下为源码：{failure.slice(0, 160)}</p>
-        <pre className="overflow-x-auto rounded-lg border border-border/60 bg-card/60 p-3 text-[11px] text-text-muted">
+        <p className="text-meta text-warning">导图图形渲染失败，以下为源码：{failure.slice(0, 160)}</p>
+        <pre className="overflow-x-auto rounded-lg border border-border/60 bg-card/60 p-3 text-meta text-text-muted">
           {source}
         </pre>
       </div>
@@ -240,7 +240,7 @@ export function MermaidBlock({
             type="button"
             onClick={() => setZoom(mode)}
             className={cn(
-              'rounded px-2 py-0.5 text-[10px] transition-colors',
+              'rounded px-2 py-0.5 text-micro transition-colors',
               zoom === mode ? 'bg-secondary text-foreground' : 'text-text-subtle hover:text-foreground',
             )}
           >
@@ -248,7 +248,7 @@ export function MermaidBlock({
           </button>
         ))}
       </div>
-      <div ref={containerRef} className="mermaid-host max-h-[520px] overflow-auto [&_svg]:mx-auto" aria-hidden="true" />
+      <div ref={containerRef} className="mermaid-host max-h-[32.5rem] overflow-auto [&_svg]:mx-auto" aria-hidden="true" />
     </div>
   )
 }

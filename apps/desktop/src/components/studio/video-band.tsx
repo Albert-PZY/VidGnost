@@ -29,9 +29,11 @@ export function VideoBand({ chapters, taskId }: { chapters: Chapter[]; taskId: s
   const activeChapter =
     chapters.find((chapter) => currentTime >= chapter.start && currentTime <= chapter.end) || chapters[0] || null
 
+  // flex-wrap：字号放大后中间栏放不下「视频 + 章节卡」时改上下排列，不让章节卡被挤到溢出。
   return (
-    <div className="flex shrink-0 gap-4 px-5 pt-3.5">
-      <div className="group relative w-[300px] shrink-0 overflow-hidden rounded-lg border border-border/60 bg-black">
+    <div className="flex shrink-0 flex-wrap gap-4 px-5 pt-3.5">
+      {/* max-w-full：字号放大后中间栏可能比视频的设计宽度还窄，此时按栏宽收缩而不是把旁边的章节卡挤没。 */}
+      <div className="group relative w-[18.75rem] max-w-full shrink-0 overflow-hidden rounded-lg border border-border/60 bg-black">
         <video
           ref={videoRef}
           src={`${api.mediaUrl(taskId)}#t=0.5`}
@@ -68,12 +70,12 @@ export function VideoBand({ chapters, taskId }: { chapters: Chapter[]; taskId: s
                 {formatTimecode(activeChapter.start)}
               </button>
             </div>
-            <h3 className="mt-1.5 truncate text-[13px] font-medium text-text-strong">{activeChapter.title}</h3>
-            <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-text-muted">{activeChapter.gist}</p>
+            <h3 className="mt-1.5 truncate text-body font-medium text-text-strong">{activeChapter.title}</h3>
+            <p className="mt-1 line-clamp-2 text-meta leading-relaxed text-text-muted">{activeChapter.gist}</p>
             {activeChapter.bullets.length > 0 ? (
               <ul className="mt-2 space-y-1">
                 {activeChapter.bullets.slice(0, 3).map((bullet, index) => (
-                  <li key={index} className="flex gap-2 text-[11px] leading-relaxed text-text-muted">
+                  <li key={index} className="flex gap-2 text-meta leading-relaxed text-text-muted">
                     <span className="mt-[7px] size-1 shrink-0 rounded-full bg-text-subtle" />
                     <span className="line-clamp-1">{bullet}</span>
                   </li>
@@ -82,7 +84,7 @@ export function VideoBand({ chapters, taskId }: { chapters: Chapter[]; taskId: s
             ) : null}
           </>
         ) : (
-          <p className="text-[11px] text-text-subtle">章节结构生成后，这里会跟随播放位置显示当前章节。</p>
+          <p className="text-meta text-text-subtle">章节结构生成后，这里会跟随播放位置显示当前章节。</p>
         )}
       </div>
     </div>

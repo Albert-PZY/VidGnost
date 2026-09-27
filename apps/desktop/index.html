@@ -7,8 +7,8 @@
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <title>VidGnost - 视频知识引擎</title>
     <script>
-      // 在首屏绘制前确定主题，避免浅色用户看到深色闪烁。
-      // 存储键与取值必须与 apps/desktop/src/stores/theme-store.ts 保持一致。
+      // 在首屏绘制前确定主题与界面字号，避免浅色用户看到深色闪烁、或字号跳一下。
+      // 存储键与取值必须与 apps/desktop/src/stores/appearance-store.ts 保持一致。
       ;(function () {
         try {
           var stored = window.localStorage.getItem('vidgnost.theme')
@@ -17,9 +17,20 @@
           var theme = mode || (prefersDark ? 'dark' : 'light')
           document.documentElement.classList.toggle('dark', theme === 'dark')
           document.documentElement.dataset.theme = theme
+
+          // 正文字号是 0.875rem、根字号是 16px，因此比例 = 选定值 / 14 时正文正好是选定值。
+          var size = parseInt(window.localStorage.getItem('vidgnost.fontSize') || '', 10)
+          if (!isFinite(size)) {
+            size = 14
+          }
+          size = Math.min(Math.max(Math.round(size), 12), 26)
+          document.documentElement.style.setProperty('--font-scale', String(size / 14))
+          document.documentElement.dataset.fontSize = String(size)
         } catch (error) {
           document.documentElement.classList.add('dark')
           document.documentElement.dataset.theme = 'dark'
+          document.documentElement.style.setProperty('--font-scale', '1')
+          document.documentElement.dataset.fontSize = '14'
         }
       })()
     </script>

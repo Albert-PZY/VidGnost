@@ -23,7 +23,7 @@ export function SideRail({
   return (
     <nav
       aria-label="主导航"
-      className="flex w-[52px] flex-col items-center gap-1 py-3 hairline-r bg-background/60"
+      className="flex w-[3.25rem] flex-col items-center gap-1 py-3 hairline-r bg-background/60"
     >
       {ITEMS.map((item) => {
         const disabled = item.id === 'studio' && !hasTask
@@ -43,14 +43,14 @@ export function SideRail({
               disabled && 'cursor-not-allowed opacity-35 hover:bg-transparent hover:text-text-muted',
             )}
           >
-            <Icon className="size-[18px]" strokeWidth={1.7} />
+            <Icon className="size-[1.125rem]" strokeWidth={1.7} />
             <span
               className={cn(
-                'absolute -left-[9px] h-5 w-[2px] rounded-full bg-primary transition-opacity',
+                'absolute -left-[0.5625rem] h-5 w-[0.125rem] rounded-full bg-primary transition-opacity',
                 active === item.id ? 'opacity-100' : 'opacity-0',
               )}
             />
-            <span className="pointer-events-none absolute left-12 z-30 hidden whitespace-nowrap rounded-md border border-border bg-popover px-2 py-1 text-[11px] text-foreground shadow-lg group-hover:block">
+            <span className="pointer-events-none absolute left-12 z-30 hidden whitespace-nowrap rounded-md border border-border bg-popover px-2 py-1 text-meta text-foreground shadow-lg group-hover:block">
               {item.label}
             </span>
           </button>

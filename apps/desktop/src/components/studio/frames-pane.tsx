@@ -41,17 +41,17 @@ export function FramesPane({ frames, taskId }: { frames: KeyFrame[] | null; task
                 {formatTimecode(frame.time)}
               </span>
               {frame.slideLike ? (
-                <span className="absolute right-2 top-2 rounded bg-primary/85 px-1.5 py-0.5 text-[10px] text-primary-foreground">
+                <span className="absolute right-2 top-2 rounded bg-primary/85 px-1.5 py-0.5 text-micro text-primary-foreground">
                   信息型画面
                 </span>
               ) : null}
             </div>
             <div className="px-3 py-2.5">
-              <p className="line-clamp-2 text-[12px] leading-relaxed text-foreground/90">
+              <p className="line-clamp-2 text-note leading-relaxed text-foreground/90">
                 {frame.caption || '（无图注）'}
               </p>
               {frame.onScreenText ? (
-                <p className="mt-1.5 line-clamp-2 border-l border-border pl-2 text-[11px] leading-relaxed text-text-subtle">
+                <p className="mt-1.5 line-clamp-2 border-l border-border pl-2 text-meta leading-relaxed text-text-subtle">
                   {frame.onScreenText}
                 </p>
               ) : null}
