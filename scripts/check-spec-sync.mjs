@@ -205,11 +205,34 @@ function isCodePath(targetPath) {
   return !DOC_ONLY_SUFFIXES.has(path.posix.extname(targetPath).toLowerCase());
 }
 
+/**
+ * 只承载构建与工具配置的文件：改动它们不改变产品行为，因此不要求同提交同步规格。
+ * 典型是版本号、依赖、tsconfig 与 vite/vitest/tsup 配置。
+ */
+const MANIFEST_BASENAMES = new Set([
+  "package.json",
+  "tsconfig.json",
+  "tsconfig.base.json",
+  "tsconfig.node.json",
+  "pnpm-workspace.yaml",
+  "pnpm-lock.yaml",
+  ".npmrc",
+]);
+const CONFIG_FILE_RE = /\.config\.(?:[cm]?[jt]s)$/i;
+
+function isManifestOrConfigPath(targetPath) {
+  const basename = path.posix.basename(targetPath);
+  return MANIFEST_BASENAMES.has(basename) || CONFIG_FILE_RE.test(basename);
+}
+
 function isImplementationOrTestPath(targetPath) {
   if (IGNORED_PREFIXES.some((prefix) => targetPath.startsWith(prefix))) {
     return false;
   }
   if (!IMPLEMENTATION_PREFIXES.some((prefix) => targetPath.startsWith(prefix))) {
+    return false;
+  }
+  if (isManifestOrConfigPath(targetPath)) {
     return false;
   }
   return !DOC_ONLY_SUFFIXES.has(path.posix.extname(targetPath).toLowerCase());
