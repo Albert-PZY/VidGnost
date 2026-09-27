@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300"
      role="img" aria-labelledby="spineTitle spineDesc">
-  <title id="spineTitle">Every artifact hangs off one timestamped spine</title>
+  <title id="spineTitle">Every artifact attaches to one timestamped timeline</title>
   <desc id="spineDesc">A horizontal timeline with four real timecode anchors from a processed video.
-    Chapters, summary, mind map, concepts and cited answers all share this single time coordinate system.</desc>
+    Chapters, summary, mind map, concepts and cited answers all attach to this single time coordinate system.</desc>
 
   <defs>
     <radialGradient id="auroraA" cx="0.12" cy="0.05" r="0.75">
@@ -22,8 +22,8 @@
 
   <g id="heading" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif">
     <text x="64" y="66" font-size="19" letter-spacing="2.2" fill="#84868e"
-          font-family="ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace">ONE TIMESTAMPED SPINE</text>
-    <text x="64" y="110" font-size="31" font-weight="600" fill="#f6f7f9">Every artifact hangs off the same timeline</text>
+          font-family="ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace">ONE SHARED TIMELINE</text>
+    <text x="64" y="110" font-size="31" font-weight="600" fill="#f6f7f9">Every artifact attaches to the same timeline</text>
   </g>
 
   <g id="spine">
@@ -56,6 +56,6 @@
 
   <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif"
      font-size="19" fill="#84868e">
-    <text x="64" y="272">Clicking any [mm:ss] jumps the player. Anchors shown from a real run: 7:26 video, 9 chapters, 10 concepts.</text>
+    <text x="64" y="272">Clicking any [mm:ss] jumps the player. Anchors come from the run shown above.</text>
   </g>
 </svg>

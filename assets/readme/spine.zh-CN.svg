@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300"
      role="img" aria-labelledby="spineTitle spineDesc">
-  <title id="spineTitle">所有产物挂在同一条时间码主线上</title>
-  <desc id="spineDesc">一条横向时间轴，标出四个来自真实任务的锚点；章节、摘要、导图、概念与带引用的问答共用这一套时间坐标。</desc>
+  <title id="spineTitle">所有产物都挂在这条时间线上</title>
+  <desc id="spineDesc">一条横向时间轴，标出四个来自真实任务的锚点；章节、摘要、导图、概念与带引用的问答共用同一套时间坐标。</desc>
 
   <defs>
     <radialGradient id="auroraA" cx="0.12" cy="0.05" r="0.75">
@@ -21,8 +21,8 @@
 
   <g id="heading" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', sans-serif">
     <text x="64" y="66" font-size="19" letter-spacing="2.2" fill="#84868e"
-          font-family="ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace">ONE TIMESTAMPED SPINE</text>
-    <text x="64" y="110" font-size="31" font-weight="600" fill="#f6f7f9">所有产物挂在同一条时间码主线上</text>
+          font-family="ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace">共用一条主线</text>
+    <text x="64" y="110" font-size="31" font-weight="600" fill="#f6f7f9">所有产物都挂在这条主线上</text>
   </g>
 
   <g id="spine">
@@ -55,6 +55,6 @@
 
   <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei UI', sans-serif"
      font-size="19" fill="#84868e">
-    <text x="64" y="272">点任意 [mm:ss] 都能跳回原片。锚点取自真实任务：7 分 26 秒的视频，9 章、10 个概念。</text>
+    <text x="64" y="272">点任意 [mm:ss] 都会跳回原片播放；锚点取自上面那次真实运行。</text>
   </g>
 </svg>
