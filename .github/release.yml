@@ -1,0 +1,17 @@
+# Release Notes 分类配置。
+# GitHub 的自动 Release Notes 只认 PR 标签，不认提交前缀（见 docs/git-commit-convention.md §7）。
+# 标签名必须与仓库实际存在的标签一致，可用 `gh label list` 查。
+changelog:
+  categories:
+    - title: 新功能
+      labels:
+        - enhancement
+    - title: 修复
+      labels:
+        - bug
+    - title: 文档与规范
+      labels:
+        - documentation
+    - title: 其他
+      labels:
+        - "*"
