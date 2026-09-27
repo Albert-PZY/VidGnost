@@ -159,6 +159,8 @@ Four workspaces sharing one time coordinate system.
 The interface is dark-first: a graphite canvas with an aurora wash, hairline borders, an 8pt grid,
 monospaced timecodes, and a global `Ctrl/⌘ + K` command palette. The light theme uses the same semantic
 tokens and passes the same contrast bar (`node scripts/check-theme-contrast.mjs`).
+Body text defaults to 14px; the interface font size is selectable from 12 to 26px in Settings → Appearance,
+and the rest of the interface scales with it.
 
 ## Repository layout
 

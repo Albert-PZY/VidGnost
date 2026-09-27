@@ -55,10 +55,13 @@ apps/api/src
   描边（`border / border-strong / input / hairline`）、动作（`primary / secondary / accent`）、
   语义（`success / warning / destructive / info`）、时间锚点（`timestamp / timestamp-surface`）、
   浮层（`scrim`）、噪点强度（`noise-opacity`）
-- 主题控制：`stores/theme-store.ts`（`light / dark / system`，持久化于 `localStorage`）；
-  `index.html` 内联脚本在首屏绘制前应用主题，避免闪烁
+- 外观控制：`stores/appearance-store.ts` 同时管理主题（`light / dark / system`）与界面字号；
+  `index.html` 内联脚本在首屏绘制前应用两者，避免主题闪烁与字号跳动
 - 排版：`--font-sans`（Inter + 系统中文字体栈）、`--font-mono`（JetBrains Mono 栈）；
-  字号阶梯 11/12/13/15/20/28，阅读区行高 1.78
+  语义字号十档（micro 11 / meta 12 / note 13 / body 14 / lead 15 / subhead 16 / head 17 /
+  title 18 / page 22 / hero 30，均为 rem），阅读区行高 1.78
+- 字号缩放：根字号为 `calc(100% * var(--font-scale))`，设置页可选 12-26px，
+  比例 = 选定值 / 14；组件不写死像素字号，容器宽度、栅格模板与阅读区上限也用 rem 跟着缩放
 - 动效：`--ease-out-quint`、140/220/360ms 三档时长，并遵守 `prefers-reduced-motion`
 - 图形：Mermaid 使用与主题对齐的十六进制配色（其解析器不支持 `oklch()`），
   `mindmap` 的 section 色阶在渲染后按主题重写

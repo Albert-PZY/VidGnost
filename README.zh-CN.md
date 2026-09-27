@@ -149,6 +149,7 @@ OPENROUTER_API_KEY=sk-or-v1-xxxx   # OpenRouter（重排序）
 
 界面以暗色为主：石墨画布与极光微光、发丝描边、8pt 栅格、等宽时间码，全局 `Ctrl/⌘ + K` 命令面板。
 浅色主题与暗色主题使用同一套语义令牌，并通过 `node scripts/check-theme-contrast.mjs` 校验到同一个对比度标准。
+正文默认 14px，字号可在「设置 → 外观」里按像素调节（12-26px），界面其余部分按同一比例缩放。
 
 ## 仓库结构
 
