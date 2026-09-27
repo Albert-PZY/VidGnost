@@ -1,4 +1,11 @@
-import type { ModelCatalogEntry, ModelRole, ModelRoute, ProviderId } from "@vidgnost/contracts"
+import type {
+  ModelCatalogEntry,
+  ModelRole,
+  ModelRoute,
+  ProviderConfig,
+  ProviderProtocol,
+  ProviderProtocolInfo,
+} from "@vidgnost/contracts"
 
 /** 阿里云百炼（DashScope）在本次基线中可用的免费模型集合。 */
 export const DASHSCOPE_CATALOG: ModelCatalogEntry[] = [
@@ -198,11 +205,127 @@ export const DEFAULT_ROUTES: ModelRoute[] = [
   { role: "translate", provider: "dashscope", model: "qwen-mt-uni", label: "翻译模型", allowFallback: false },
 ]
 
-export const PROVIDER_LABELS: Record<ProviderId, string> = {
-  dashscope: "阿里云百炼",
-  openrouter: "OpenRouter",
-  "openai-compatible": "OpenAI 兼容",
-  local: "本地运行时",
+/** 内置提供方。id 与协议固定，Base URL 与密钥仍可由用户修改。 */
+export interface BuiltinProviderSpec {
+  baseUrl: string
+  enabled: boolean
+  envVar: string
+  id: string
+  label: string
+  note: string
+  protocol: ProviderProtocol
+}
+
+export const BUILTIN_PROVIDERS: BuiltinProviderSpec[] = [
+  {
+    id: "dashscope",
+    label: "阿里云百炼",
+    protocol: "dashscope",
+    baseUrl: "https://dashscope.aliyuncs.com",
+    envVar: "DASHSCOPE_API_KEY",
+    enabled: true,
+    note: "提供对话、多模态、文件级转写、向量与翻译能力。",
+  },
+  {
+    id: "openrouter",
+    label: "OpenRouter",
+    protocol: "openrouter",
+    baseUrl: "https://openrouter.ai/api/v1",
+    envVar: "OPENROUTER_API_KEY",
+    enabled: true,
+    note: "对话与重排；重排走原生 /rerank 端点。",
+  },
+  {
+    id: "openai-compatible",
+    label: "OpenAI 兼容",
+    protocol: "openai",
+    baseUrl: "https://api.openai.com/v1",
+    envVar: "OPENAI_API_KEY",
+    enabled: false,
+    note: "任意 OpenAI 兼容端点，例如 vLLM、Ollama、LM Studio 或公司内网网关。",
+  },
+  {
+    id: "local",
+    label: "本地运行时（faster-whisper）",
+    protocol: "local",
+    baseUrl: "",
+    envVar: "",
+    enabled: true,
+    note: "使用本机 Python 与 CTranslate2 模型目录推理，不消耗在线额度。",
+  },
+]
+
+/** 协议能力表：界面据此禁用不受支持的能力类型，接口据此拒绝无效登记。 */
+export const PROTOCOL_INFO: ProviderProtocolInfo[] = [
+  {
+    protocol: "openai",
+    label: "OpenAI 兼容",
+    kinds: ["chat", "vision", "embedding", "rerank", "asr", "translation"],
+    streaming: true,
+    defaultBaseUrl: "https://api.openai.com/v1",
+    note: "覆盖 OpenAI、DeepSeek、智谱、Groq、SiliconFlow 以及 vLLM、Ollama、LM Studio 等自建端点。",
+  },
+  {
+    protocol: "anthropic",
+    label: "Anthropic Messages",
+    kinds: ["chat", "vision", "translation"],
+    streaming: true,
+    defaultBaseUrl: "https://api.anthropic.com/v1",
+    note: "Claude 系列；不提供向量化、重排与语音转写。",
+  },
+  {
+    protocol: "gemini",
+    label: "Google Gemini",
+    kinds: ["chat", "vision", "embedding", "translation"],
+    streaming: true,
+    defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    note: "Gemini 对话、多模态与向量化；不提供重排与语音转写。",
+  },
+  {
+    protocol: "dashscope",
+    label: "DashScope 原生",
+    kinds: ["chat", "vision", "embedding", "asr", "translation"],
+    streaming: true,
+    defaultBaseUrl: "https://dashscope.aliyuncs.com",
+    note: "对话走兼容模式，文件级转写与批量翻译走原生端点。",
+  },
+  {
+    protocol: "openrouter",
+    label: "OpenRouter",
+    kinds: ["chat", "vision", "embedding", "rerank", "translation"],
+    streaming: true,
+    defaultBaseUrl: "https://openrouter.ai/api/v1",
+    note: "对话走 OpenAI 兼容端点，重排走原生 /rerank 端点。",
+  },
+  {
+    protocol: "local",
+    label: "本地运行时",
+    kinds: ["asr"],
+    streaming: false,
+    defaultBaseUrl: "",
+    note: "本机 faster-whisper worker，只提供离线转写。",
+  },
+]
+
+export function protocolInfo(protocol: ProviderProtocol): ProviderProtocolInfo | undefined {
+  return PROTOCOL_INFO.find((item) => item.protocol === protocol)
+}
+
+/** 把用户登记的模型转成目录条目，与内置模型共用一套下游逻辑。 */
+export function customModelsToCatalog(
+  provider: Pick<ProviderConfig, "id" | "models">,
+): ModelCatalogEntry[] {
+  return provider.models.map((model) => ({
+    id: model.id,
+    provider: provider.id,
+    kind: model.kind,
+    label: model.label,
+    description: model.description || "用户登记的模型。",
+    tags: model.tags ?? [],
+    contextWindow: model.contextWindow,
+    dimensions: model.dimensions,
+    custom: true,
+  }))
 }
 
 export const EMBEDDING_DIMENSIONS: Record<string, number> = {

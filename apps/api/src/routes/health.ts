@@ -2,8 +2,7 @@ import type { FastifyInstance } from "fastify"
 
 import type { AppContext } from "../server/app-context.js"
 import { runCommand, findCommand } from "../core/io.js"
-import { catalogFor } from "../providers/gateway.js"
-import { MODEL_CATALOG, MODEL_ROLES } from "../providers/catalog.js"
+import { MODEL_ROLES } from "../providers/catalog.js"
 import { probeProviders } from "../providers/health.js"
 
 export async function registerHealthRoutes(app: FastifyInstance, context: AppContext): Promise<void> {
@@ -13,11 +12,11 @@ export async function registerHealthRoutes(app: FastifyInstance, context: AppCon
     version: context.config.version,
     storageDir: context.config.storageDir,
     workspaceRoot: context.config.workspaceRoot,
-    models: MODEL_CATALOG.length,
+    models: (await context.gateway.catalogue()).length,
     roles: MODEL_ROLES.length,
   }))
 
-  app.get(`${context.config.apiPrefix}/health/runtime`, async () => probeProviders(context.gateway, context.config))
+  app.get(`${context.config.apiPrefix}/health/runtime`, async () => probeProviders(context.gateway))
 
   app.get(`${context.config.apiPrefix}/health/toolchain`, async () => {
     const checks = await Promise.all([
@@ -29,14 +28,18 @@ export async function registerHealthRoutes(app: FastifyInstance, context: AppCon
     return { checkedAt: new Date().toISOString(), checks }
   })
 
-  app.get(`${context.config.apiPrefix}/catalog`, async () => ({
-    providers: {
-      dashscope: catalogFor("dashscope"),
-      openrouter: catalogFor("openrouter"),
-      local: catalogFor("local"),
-    },
-    roles: MODEL_ROLES,
-  }))
+  /** 按渠道分组的目录快照，供外部脚本查看当前接入了哪些模型。 */
+  app.get(`${context.config.apiPrefix}/catalog`, async () => {
+    const [models, providers] = await Promise.all([
+      context.gateway.catalogue(),
+      context.gateway.settings.getProviders(),
+    ])
+    const grouped: Record<string, typeof models> = {}
+    for (const provider of providers) {
+      grouped[provider.id] = models.filter((model) => model.provider === provider.id)
+    }
+    return { providers: grouped, roles: MODEL_ROLES }
+  })
 }
 
 async function probeBinary(
