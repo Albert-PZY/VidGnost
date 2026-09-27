@@ -112,19 +112,54 @@ area 用英文（对齐目录），描述用中文——`area` 让 `git log --on
 
 按 area 拆提交时注意顺序：先提交被依赖的一侧（如 `client:` 的纯函数），再提交使用方（如 `ui:`）。
 
-## 5. 分支模型
+## 5. 分支模型与合并
 
-**长期分支是 `master`，它是可交付状态。** 需求改动走「工作分支 → 验证 → 合并」，
+**长期分支是 `master`，它是可交付状态。** 需求改动走「工作分支 → 验证 → PR → 合入 master → 删除分支」，
 不直接往 `master` 上堆提交。
 
 | 规则 | 落地方式 |
 | --- | --- |
 | 需求开工先开分支 | 分支名 = `<前缀>/<模块>-<动作>`，模块名取自 §3 的 area 表 |
 | 分支前缀 | `feat/`（新功能）`fix/`（缺陷）`refactor/`（重构）`docs/` `test/` `tool/` `build/` `chore/` |
-| 未获明确要求不合并 `master` | 合并时机由需求方决定；合并后删除已合并的功能分支 |
+| 默认自动合入 `master` | 验证清单全绿后开 PR 并合入，不再逐次确认；只有需求方明确要求保留时才停在分支上 |
+| 合并后清理分支 | 本地与远程的功能分支一并删除，不留悬挂分支 |
 | 临时集成分支 | 允许，但合并完成后同样要清掉 |
 
-示例：`feat/model-scope-grouping`、`fix/asr-filetrans-retry`、`docs/commit-convention`。
+示例：`feat/model-scope-grouping`、`fix/asr-filetrans-retry`、`docs/merge-flow`。
+
+### 合并前的验证清单（缺一不可）
+
+```bash
+pnpm build                 # 每个提交都要能编译，整条分支更要能
+pnpm -r typecheck
+pnpm -r test               # 全量单测
+node scripts/check-openspec.mjs
+node scripts/check-theme-contrast.mjs
+node scripts/check-spec-sync.mjs
+node scripts/check-commit-convention.mjs
+node scripts/check-commit-rules.mjs
+git diff --check origin/master...HEAD   # 空白错误
+```
+
+远程还有一道 `spec-sync-guard`（GitHub Actions，`.github/workflows/spec-sync.yml`）：
+PR 上跑 `check-spec-sync.mjs` 与 `check-openspec.mjs`，绿了才算能合。
+
+### 标准动作（照抄）
+
+```bash
+git switch -c feat/model-scope-grouping       # 1) 从最新 master 开分支
+# ... 开发与提交，钩子自动校验信息 / 密钥 / 规格同步 ...
+git push -u origin feat/model-scope-grouping  # 2) 推送功能分支
+
+gh pr create --base master --fill             # 3) 开 PR：改了什么 / 解决什么问题 / 怎么验证
+gh pr checks --watch                          #    等 spec-sync-guard 变绿
+gh pr merge --rebase --delete-branch          # 4) 合入，并自动删除本地与远程分支
+
+git switch master && git pull --ff-only       # 5) 本地回到可交付状态
+```
+
+合并方式：分支严格领先 `master` 时用 `--rebase`（等价快进，保持线性、保留逐条 area 提交）；
+单一关注点的小 PR 用 `--squash`（`master` 上一条一件事）。两种都不产生合并气泡。
 
 出现 `index.lock` 之类的锁冲突时：**停下重试**，不要并发执行 git 命令。
 
