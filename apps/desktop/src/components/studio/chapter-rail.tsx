@@ -18,18 +18,18 @@ export function ChapterRail({ chapters }: { chapters: Chapter[] }) {
 
   if (chapters.length === 0) {
     return (
-      <aside className="w-[228px] shrink-0 px-4 py-5 hairline-r">
+      <aside className="w-[14.25rem] shrink-0 px-4 py-5 hairline-r">
         <span className="label-eyebrow">章节</span>
-        <p className="mt-3 text-[11px] leading-relaxed text-text-subtle">处理完成后会在这里生成章节结构。</p>
+        <p className="mt-3 text-meta leading-relaxed text-text-subtle">处理完成后会在这里生成章节结构。</p>
       </aside>
     )
   }
 
   return (
-    <aside className="flex w-[228px] shrink-0 flex-col hairline-r">
+    <aside className="flex w-[14.25rem] shrink-0 flex-col hairline-r">
       <div className="flex items-baseline justify-between px-4 pb-2 pt-4">
         <span className="label-eyebrow">章节</span>
-        <span className="text-[10px] text-text-subtle">{chapters.length}</span>
+        <span className="text-micro text-text-subtle">{chapters.length}</span>
       </div>
 
       <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
@@ -48,7 +48,7 @@ export function ChapterRail({ chapters }: { chapters: Chapter[] }) {
             >
               <span
                 className={cn(
-                  'metric-value mt-px w-4 shrink-0 text-[10px]',
+                  'metric-value mt-px w-4 shrink-0 text-micro',
                   active ? 'text-primary' : 'text-text-subtle',
                 )}
               >
@@ -57,13 +57,13 @@ export function ChapterRail({ chapters }: { chapters: Chapter[] }) {
               <span className="min-w-0 flex-1">
                 <span
                   className={cn(
-                    'block text-[12px] font-medium leading-snug',
+                    'block text-note font-medium leading-snug',
                     active ? 'text-text-strong' : 'text-foreground/90',
                   )}
                 >
                   {chapter.title}
                 </span>
-                <span className="timecode mt-0.5 block text-[10px] text-text-subtle">
+                <span className="timecode mt-0.5 block text-micro text-text-subtle">
                   {formatTimecode(chapter.start)}
                 </span>
               </span>

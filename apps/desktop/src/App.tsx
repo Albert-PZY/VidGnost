@@ -80,15 +80,15 @@ export default function App() {
   if (backendError) {
     return (
       <div className="grid h-full place-items-center px-6">
-        <div className="max-w-[460px] text-center">
-          <h1 className="text-[16px] font-semibold text-text-strong">无法连接本地服务</h1>
-          <p className="mt-2 text-[12px] leading-relaxed text-text-muted">
+        <div className="max-w-[28.75rem] text-center">
+          <h1 className="text-head font-semibold text-text-strong">无法连接本地服务</h1>
+          <p className="mt-2 text-note leading-relaxed text-text-muted">
             VidGnost 需要本地 API 服务（默认 http://127.0.0.1:8666）才能工作。请先启动后端：
           </p>
-          <code className="mt-3 block rounded-lg border border-border/60 bg-card/60 px-3 py-2 text-left text-[11px] text-text-muted">
+          <code className="mt-3 block rounded-lg border border-border/60 bg-card/60 px-3 py-2 text-left text-meta text-text-muted">
             pnpm --filter @vidgnost/api start
           </code>
-          <p className="mt-3 text-[11px] text-text-subtle">{backendError}</p>
+          <p className="mt-3 text-meta text-text-subtle">{backendError}</p>
         </div>
       </div>
     )
@@ -110,7 +110,7 @@ export default function App() {
           onCommandPalette={() => setPaletteOpen(true)}
         />
 
-        <div className="grid min-h-0 grid-cols-[52px_minmax(0,1fr)]">
+        <div className="grid min-h-0 grid-cols-[3.25rem_minmax(0,1fr)]">
           <SideRail
             active={workspace}
             hasTask={Boolean(task)}

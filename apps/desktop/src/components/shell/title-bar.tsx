@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { ChevronsLeft, Minus, Moon, Square, Sun, X } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
-import { useThemeStore } from '@/stores/theme-store'
+import { useAppearanceStore } from '@/stores/appearance-store'
 
 /**
  * 桌面标题栏：左侧品牌与当前位置，中部拖拽区域，右侧窗口控制。
@@ -25,8 +25,8 @@ export function TitleBar({
 }) {
   const bridge = typeof window !== 'undefined' ? window.vidGnostDesktop : undefined
   const [maximized, setMaximized] = useState(false)
-  const theme = useThemeStore((state) => state.resolved)
-  const toggleTheme = useThemeStore((state) => state.toggle)
+  const theme = useAppearanceStore((state) => state.resolved)
+  const toggleTheme = useAppearanceStore((state) => state.toggle)
 
   useEffect(() => {
     if (!bridge) return
@@ -44,12 +44,12 @@ export function TitleBar({
           draggable={false}
           className="size-5 shrink-0 rounded-[5px]"
         />
-        <span className="text-[13px] font-semibold tracking-tight text-text-strong">VidGnost</span>
+        <span className="text-body font-semibold tracking-tight text-text-strong">VidGnost</span>
       </div>
 
       <span className="h-4 w-px bg-border" />
 
-      <span className="truncate text-[12px] text-text-muted">{breadcrumb}</span>
+      <span className="truncate text-note text-text-muted">{breadcrumb}</span>
 
       <div className="flex-1" />
 
@@ -57,10 +57,10 @@ export function TitleBar({
         <button
           type="button"
           onClick={onCommandPalette}
-          className="flex h-7 items-center gap-2 rounded-md border border-border/70 px-2.5 text-[11px] text-text-muted transition-colors hover:border-border-strong hover:text-foreground"
+          className="flex h-7 items-center gap-2 rounded-md border border-border/70 px-2.5 text-meta text-text-muted transition-colors hover:border-border-strong hover:text-foreground"
         >
           <span>搜索与命令</span>
-          <kbd className="timecode rounded border border-border/70 px-1 py-px text-[10px] text-text-subtle">Ctrl K</kbd>
+          <kbd className="timecode rounded border border-border/70 px-1 py-px text-micro text-text-subtle">Ctrl K</kbd>
         </button>
         <button
           type="button"

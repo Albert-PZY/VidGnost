@@ -51,10 +51,10 @@ export function TranscriptPane({ transcript }: { transcript: TranscriptDoc | nul
             onChange={(event) => setQuery(event.target.value)}
             placeholder="在转写中查找"
             aria-label="在转写中查找"
-            className="h-7 w-[220px] pl-8 text-[12px]"
+            className="h-7 w-[13.75rem] pl-8 text-note"
           />
         </div>
-        <span className="text-[11px] text-text-subtle">
+        <span className="text-meta text-text-subtle">
           {query ? `${filtered.length} / ${segments.length} 句` : `${segments.length} 句`}
           <span className="mx-1.5">·</span>
           {transcript.engine === 'faster-whisper' ? '本地 Whisper' : '在线转写'}
@@ -67,7 +67,7 @@ export function TranscriptPane({ transcript }: { transcript: TranscriptDoc | nul
         {filtered.length === 0 ? (
           <EmptyState message={`没有包含「${query}」的句子。`} />
         ) : (
-          <ol className="mx-auto max-w-[760px]">
+          <ol className="mx-auto max-w-[47.5rem]">
             {filtered.map((segment) => {
               const active = segment.id === activeId
               return (
@@ -83,13 +83,13 @@ export function TranscriptPane({ transcript }: { transcript: TranscriptDoc | nul
                     type="button"
                     onClick={() => seek(segment.start)}
                     className={cn(
-                      'timecode mt-[3px] w-[46px] shrink-0 text-left transition-colors',
+                      'timecode mt-[3px] w-[2.875rem] shrink-0 text-left transition-colors',
                       active ? 'text-timestamp' : 'text-text-subtle group-hover:text-timestamp',
                     )}
                   >
                     {formatTimecode(segment.start)}
                   </button>
-                  <p className={cn('min-w-0 flex-1 text-[13px] leading-[1.75]', active ? 'text-text-strong' : 'text-foreground/90')}>
+                  <p className={cn('min-w-0 flex-1 text-body leading-[1.75]', active ? 'text-text-strong' : 'text-foreground/90')}>
                     {segment.text}
                   </p>
                 </li>

@@ -71,10 +71,10 @@ export function LocalRuntimeDialog({
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="sm:max-w-[520px]">
+      <DialogContent className="sm:max-w-[32.5rem]">
         <DialogHeader>
-          <DialogTitle className="text-[15px]">本地运行时</DialogTitle>
-          <DialogDescription className="text-[11px] leading-relaxed">
+          <DialogTitle className="text-subhead">本地运行时</DialogTitle>
+          <DialogDescription className="text-meta leading-relaxed">
             faster-whisper 在本机推理，不需要密钥。模型目录指向 CTranslate2 格式的模型文件夹；
             留空表示尚未准备好离线转写。
           </DialogDescription>
@@ -82,15 +82,15 @@ export function LocalRuntimeDialog({
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
-            <Label className="text-[11px] text-text-muted">模型标识</Label>
-            <Input value={model} onChange={(event) => setModel(event.target.value)} className="h-8 text-[11px]" />
+            <Label className="text-meta text-text-muted">模型标识</Label>
+            <Input value={model} onChange={(event) => setModel(event.target.value)} className="h-8 text-meta" />
           </div>
           <div className="space-y-1">
-            <Label className="text-[11px] text-text-muted">推理设备</Label>
+            <Label className="text-meta text-text-muted">推理设备</Label>
             <select
               value={device}
               onChange={(event) => setDevice(event.target.value)}
-              className="h-8 w-full rounded-md border border-border/70 bg-background/60 px-2 text-[11px] text-foreground outline-none"
+              className="h-8 w-full rounded-md border border-border/70 bg-background/60 px-2 text-meta text-foreground outline-none"
             >
               <option value="auto">自动</option>
               <option value="cpu">CPU</option>
@@ -98,20 +98,20 @@ export function LocalRuntimeDialog({
             </select>
           </div>
           <div className="space-y-1 sm:col-span-2">
-            <Label className="text-[11px] text-text-muted">模型目录（CTranslate2）</Label>
+            <Label className="text-meta text-text-muted">模型目录（CTranslate2）</Label>
             <Input
               value={modelDir}
               onChange={(event) => setModelDir(event.target.value)}
               placeholder="例如 D:\\models\\faster-whisper-large-v3"
-              className="timecode h-8 text-[11px]"
+              className="timecode h-8 text-meta"
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-[11px] text-text-muted">计算精度</Label>
+            <Label className="text-meta text-text-muted">计算精度</Label>
             <select
               value={computeType}
               onChange={(event) => setComputeType(event.target.value)}
-              className="h-8 w-full rounded-md border border-border/70 bg-background/60 px-2 text-[11px] text-foreground outline-none"
+              className="h-8 w-full rounded-md border border-border/70 bg-background/60 px-2 text-meta text-foreground outline-none"
             >
               {['int8', 'int8_float16', 'float16', 'float32'].map((item) => (
                 <option key={item} value={item}>
@@ -121,27 +121,27 @@ export function LocalRuntimeDialog({
             </select>
           </div>
           <div className="space-y-1">
-            <Label className="text-[11px] text-text-muted">Python 可执行文件</Label>
+            <Label className="text-meta text-text-muted">Python 可执行文件</Label>
             <Input
               value={pythonExecutable}
               onChange={(event) => setPythonExecutable(event.target.value)}
               placeholder="留空则从 PATH 查找"
-              className="h-8 text-[11px]"
+              className="h-8 text-meta"
             />
           </div>
         </div>
 
         {error ? (
-          <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-2 text-[11px] text-foreground">
+          <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-2 text-meta text-foreground">
             {error}
           </p>
         ) : null}
 
         <DialogFooter>
-          <Button variant="ghost" size="sm" className="h-8 text-[12px]" onClick={() => onOpenChange(false)}>
+          <Button variant="ghost" size="sm" className="h-8 text-note" onClick={() => onOpenChange(false)}>
             取消
           </Button>
-          <Button size="sm" className="h-8 gap-1.5 text-[12px]" disabled={busy} onClick={() => void submit()}>
+          <Button size="sm" className="h-8 gap-1.5 text-note" disabled={busy} onClick={() => void submit()}>
             {busy ? <Loader2 className="size-3.5 animate-spin" /> : null}
             保存
           </Button>

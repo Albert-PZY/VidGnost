@@ -11,12 +11,12 @@ export function NotesPane({ outline, summary }: { outline: OutlineDoc | null; su
   }
 
   return (
-    <div className="mx-auto max-w-[760px] px-6 py-6">
+    <div className="mx-auto max-w-[47.5rem] px-6 py-6">
       <section>
         <span className="label-eyebrow">总览</span>
         <p className="reading mt-2.5">{summary.tldr}</p>
         {summary.audience ? (
-          <p className="mt-2 text-[11px] text-text-subtle">目标观众：{summary.audience}</p>
+          <p className="mt-2 text-meta text-text-subtle">目标观众：{summary.audience}</p>
         ) : null}
       </section>
 
@@ -29,7 +29,7 @@ export function NotesPane({ outline, summary }: { outline: OutlineDoc | null; su
           <ul className="mt-3 space-y-2.5">
             {summary.highlights.map((highlight, index) => (
               <li key={index} className="flex gap-3">
-                <span className="metric-value mt-[3px] w-4 shrink-0 text-[10px] text-text-subtle">
+                <span className="metric-value mt-[3px] w-4 shrink-0 text-micro text-text-subtle">
                   {String(index + 1).padStart(2, '0')}
                 </span>
                 <p className="reading min-w-0 flex-1">
@@ -50,7 +50,7 @@ export function NotesPane({ outline, summary }: { outline: OutlineDoc | null; su
           </div>
           <ul className="mt-3 space-y-2">
             {summary.actions.map((action, index) => (
-              <li key={index} className="flex gap-2.5 text-[13px] leading-relaxed text-foreground/90">
+              <li key={index} className="flex gap-2.5 text-body leading-relaxed text-foreground/90">
                 <span className="mt-[7px] size-1.5 shrink-0 rounded-full bg-success/70" />
                 <span>{action}</span>
               </li>
@@ -66,17 +66,17 @@ export function NotesPane({ outline, summary }: { outline: OutlineDoc | null; su
             {outline.chapters.map((chapter, index) => (
               <article key={chapter.id} className="border-l border-border/70 pl-4">
                 <header className="flex flex-wrap items-baseline gap-2">
-                  <span className="metric-value text-[10px] text-text-subtle">
+                  <span className="metric-value text-micro text-text-subtle">
                     {String(index + 1).padStart(2, '0')}
                   </span>
-                  <h3 className="text-[14px] font-medium text-text-strong">{chapter.title}</h3>
+                  <h3 className="text-lead font-medium text-text-strong">{chapter.title}</h3>
                   <TimeAnchor seconds={chapter.start} tone="chip" />
                 </header>
-                {chapter.gist ? <p className="mt-1.5 text-[12px] text-text-muted">{chapter.gist}</p> : null}
+                {chapter.gist ? <p className="mt-1.5 text-note text-text-muted">{chapter.gist}</p> : null}
                 {chapter.bullets.length > 0 ? (
                   <ul className="mt-2 space-y-1.5">
                     {chapter.bullets.map((bullet, bulletIndex) => (
-                      <li key={bulletIndex} className="flex gap-2.5 text-[13px] leading-relaxed text-foreground/90">
+                      <li key={bulletIndex} className="flex gap-2.5 text-body leading-relaxed text-foreground/90">
                         <span className="mt-[8px] size-1 shrink-0 rounded-full bg-text-subtle" />
                         <span>{bullet}</span>
                       </li>
@@ -99,8 +99,8 @@ export function NotesPane({ outline, summary }: { outline: OutlineDoc | null; su
             <dl className="mt-3 space-y-2.5">
               {summary.glossary.map((entry) => (
                 <div key={entry.term}>
-                  <dt className="text-[12px] font-medium text-text-strong">{entry.term}</dt>
-                  <dd className="mt-0.5 text-[12px] leading-relaxed text-text-muted">{entry.explanation}</dd>
+                  <dt className="text-note font-medium text-text-strong">{entry.term}</dt>
+                  <dd className="mt-0.5 text-note leading-relaxed text-text-muted">{entry.explanation}</dd>
                 </div>
               ))}
             </dl>
@@ -112,7 +112,7 @@ export function NotesPane({ outline, summary }: { outline: OutlineDoc | null; su
             <span className="label-eyebrow">遗留疑问</span>
             <ul className="mt-3 space-y-2">
               {summary.questions.map((question, index) => (
-                <li key={index} className="text-[12px] leading-relaxed text-text-muted">
+                <li key={index} className="text-note leading-relaxed text-text-muted">
                   {question}
                 </li>
               ))}
@@ -126,8 +126,8 @@ export function NotesPane({ outline, summary }: { outline: OutlineDoc | null; su
 
 export function EmptyState({ message }: { message: string }) {
   return (
-    <div className="flex h-full min-h-[240px] items-center justify-center px-6">
-      <p className="text-[12px] text-text-subtle">{message}</p>
+    <div className="flex h-full min-h-[15rem] items-center justify-center px-6">
+      <p className="text-note text-text-subtle">{message}</p>
     </div>
   )
 }

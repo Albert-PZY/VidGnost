@@ -51,8 +51,8 @@ export function PlayerBar({ chapters }: { chapters: Chapter[] }) {
   return (
     <div className="hairline-t bg-background/85 px-4 py-2.5 backdrop-blur-xl">
       <div className="flex items-center gap-3">
-        <div className="timecode flex w-[92px] shrink-0 items-baseline gap-1 text-text-muted">
-          <span className="text-[12px] text-foreground">{formatTimecode(currentTime)}</span>
+        <div className="timecode flex w-[5.75rem] shrink-0 items-baseline gap-1 text-text-muted">
+          <span className="text-note text-foreground">{formatTimecode(currentTime)}</span>
           <span className="text-text-subtle">/</span>
           <span>{formatTimecode(duration)}</span>
         </div>
@@ -165,7 +165,7 @@ export function PlayerBar({ chapters }: { chapters: Chapter[] }) {
         </div>
       </div>
 
-      <div className="mt-1 flex items-center gap-2 pl-[104px] text-[10px] text-text-subtle">
+      <div className="mt-1 flex items-center gap-2 pl-[6.5rem] text-micro text-text-subtle">
         {activeChapter ? (
           <span className="flex min-w-0 items-center gap-1.5">
             <span className="text-text-muted">{activeChapter.title}</span>

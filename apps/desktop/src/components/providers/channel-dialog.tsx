@@ -126,10 +126,10 @@ export function ChannelDialog({
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent className="sm:max-w-[30rem]">
         <DialogHeader>
-          <DialogTitle className="text-[15px]">{mode === 'edit' ? '渠道设置' : '接入渠道'}</DialogTitle>
-          <DialogDescription className="text-[11px] leading-relaxed">
+          <DialogTitle className="text-subhead">{mode === 'edit' ? '渠道设置' : '接入渠道'}</DialogTitle>
+          <DialogDescription className="text-meta leading-relaxed">
             {mode === 'edit'
               ? 'Base URL 与密钥属于整个渠道，这里的改动会影响该渠道下的所有模型。'
               : `填写 ${protocol.label} 端点的连接信息。密钥只保存在本机配置里，界面上只显示尾码。`}
@@ -143,13 +143,13 @@ export function ChannelDialog({
               value={label}
               onChange={(event) => setLabel(event.target.value)}
               placeholder={NAME_HINTS[protocol.protocol]}
-              className="h-8 text-[12px]"
+              className="h-8 text-note"
             />
           </Field>
 
           <Field label="协议">
             {isBuiltin ? (
-              <p className="text-[11px] text-text-muted">
+              <p className="text-meta text-text-muted">
                 {current.label}（内置渠道的协议固定）
               </p>
             ) : (
@@ -162,7 +162,7 @@ export function ChannelDialog({
                     setBaseUrl(next.defaultBaseUrl)
                   }
                 }}
-                className="h-8 w-full rounded-md border border-border/70 bg-background/60 px-2 text-[12px] text-foreground outline-none"
+                className="h-8 w-full rounded-md border border-border/70 bg-background/60 px-2 text-note text-foreground outline-none"
               >
                 {protocols.map((item) => (
                   <option key={item.protocol} value={item.protocol}>
@@ -180,7 +180,7 @@ export function ChannelDialog({
                   value={baseUrl}
                   onChange={(event) => setBaseUrl(event.target.value)}
                   placeholder={current.defaultBaseUrl}
-                  className="timecode h-8 text-[11px]"
+                  className="timecode h-8 text-meta"
                 />
               </Field>
 
@@ -199,7 +199,7 @@ export function ChannelDialog({
                         ? `留空则读取环境变量 ${provider.auth.envVar}`
                         : '粘贴密钥'
                   }
-                  className="h-8 text-[12px]"
+                  className="h-8 text-note"
                 />
               </Field>
 
@@ -207,20 +207,20 @@ export function ChannelDialog({
                 <button
                   type="button"
                   onClick={() => setClearKey((value) => !value)}
-                  className="text-[11px] text-text-muted underline-offset-2 hover:text-foreground hover:underline"
+                  className="text-meta text-text-muted underline-offset-2 hover:text-foreground hover:underline"
                 >
                   {clearKey ? '已选择清除内联密钥，提交后改读环境变量' : '清除内联密钥，改读环境变量'}
                 </button>
               ) : null}
             </>
           ) : (
-            <p className="rounded-md border border-border/50 bg-background/40 px-2.5 py-2 text-[11px] text-text-muted">
+            <p className="rounded-md border border-border/50 bg-background/40 px-2.5 py-2 text-meta text-text-muted">
               本地运行时不需要 Base URL 与密钥，转写参数在下方「本地运行时」块里设置。
             </p>
           )}
 
           {mode === 'edit' ? (
-            <label className="flex items-center gap-2 text-[11px] text-text-muted">
+            <label className="flex items-center gap-2 text-meta text-text-muted">
               <input
                 type="checkbox"
                 checked={enabled}
@@ -232,7 +232,7 @@ export function ChannelDialog({
           ) : null}
 
           {error ? (
-            <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-2 text-[11px] text-foreground">
+            <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-2 text-meta text-foreground">
               {error}
             </p>
           ) : null}
@@ -241,13 +241,13 @@ export function ChannelDialog({
             <div className="hairline-t pt-3">
               {confirmRemove ? (
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[11px] text-text-muted">
+                  <span className="text-meta text-text-muted">
                     该渠道下已登记的模型会一起消失，引用它们的角色需要重新分配。
                   </span>
                   <Button
                     variant="destructive"
                     size="sm"
-                    className="h-7 text-[11px]"
+                    className="h-7 text-meta"
                     disabled={busy}
                     onClick={async () => {
                       setBusy(true)
@@ -268,7 +268,7 @@ export function ChannelDialog({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 text-[11px]"
+                    className="h-7 text-meta"
                     onClick={() => setConfirmRemove(false)}
                   >
                     取消
@@ -278,7 +278,7 @@ export function ChannelDialog({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 px-0 text-[11px] text-destructive hover:bg-transparent hover:underline"
+                  className="h-7 px-0 text-meta text-destructive hover:bg-transparent hover:underline"
                   onClick={() => setConfirmRemove(true)}
                 >
                   移除渠道
@@ -289,10 +289,10 @@ export function ChannelDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" size="sm" className="h-8 text-[12px]" onClick={() => onOpenChange(false)}>
+          <Button variant="ghost" size="sm" className="h-8 text-note" onClick={() => onOpenChange(false)}>
             取消
           </Button>
-          <Button size="sm" className="h-8 gap-1.5 text-[12px]" disabled={!canSubmit} onClick={() => void submit()}>
+          <Button size="sm" className="h-8 gap-1.5 text-note" disabled={!canSubmit} onClick={() => void submit()}>
             {busy ? <Loader2 className="size-3.5 animate-spin" /> : null}
             {mode === 'edit' ? '保存' : '接入'}
           </Button>
@@ -305,9 +305,9 @@ export function ChannelDialog({
 function Field({ children, label, hint }: { children: React.ReactNode; hint?: string; label: string }) {
   return (
     <div className="space-y-1">
-      <Label className="text-[11px] text-text-muted">{label}</Label>
+      <Label className="text-meta text-text-muted">{label}</Label>
       {children}
-      {hint ? <p className="text-[10px] text-text-subtle">{hint}</p> : null}
+      {hint ? <p className="text-micro text-text-subtle">{hint}</p> : null}
     </div>
   )
 }

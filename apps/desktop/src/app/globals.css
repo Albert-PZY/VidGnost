@@ -36,6 +36,21 @@
   --text-muted: oklch(0.42 0.014 275);
   --text-subtle: oklch(0.47 0.013 275);
 
+  /* 字号阶梯：以 16px 根字号为基准的 rem 值，随 --font-scale 整体缩放。
+     默认档比上一版各加 1px，原先是 10/11/12/13/14/15/16/17/20/28。 */
+  --size-micro: 0.6875rem; /* 11px */
+  --size-meta: 0.75rem; /* 12px */
+  --size-note: 0.8125rem; /* 13px */
+  --size-body: 0.875rem; /* 14px */
+  --size-lead: 0.9375rem; /* 15px */
+  --size-subhead: 1rem; /* 16px */
+  --size-head: 1.0625rem; /* 17px */
+  --size-title: 1.125rem; /* 18px */
+  --size-page: 1.375rem; /* 22px */
+  --size-hero: 1.875rem; /* 30px */
+  /* 用户的字号选择会把它写成 html 的内联样式；这里的 1 是无 JS 时的兜底值。 */
+  --font-scale: 1;
+
   /* 描边 */
   --border: oklch(0.9 0.006 275);
   --border-strong: oklch(0.82 0.009 275);
@@ -193,6 +208,28 @@
   --color-chart-5: var(--chart-5);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
+  /* 语义字号：全部走 rem，跟着根字号的 --font-scale 缩放。
+     组件里不再写 text-[13px] 这类绝对值，否则用户调大字号时它们不会跟着变。 */
+  --text-micro: var(--size-micro);
+  --text-micro--line-height: 1.45;
+  --text-meta: var(--size-meta);
+  --text-meta--line-height: 1.5;
+  --text-note: var(--size-note);
+  --text-note--line-height: 1.55;
+  --text-body: var(--size-body);
+  --text-body--line-height: 1.6;
+  --text-lead: var(--size-lead);
+  --text-lead--line-height: 1.7;
+  --text-subhead: var(--size-subhead);
+  --text-subhead--line-height: 1.5;
+  --text-head: var(--size-head);
+  --text-head--line-height: 1.45;
+  --text-title: var(--size-title);
+  --text-title--line-height: 1.4;
+  --text-page: var(--size-page);
+  --text-page--line-height: 1.3;
+  --text-hero: var(--size-hero);
+  --text-hero--line-height: 1.2;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -210,13 +247,19 @@
     height: 100%;
   }
 
+  /* 根字号是唯一的缩放开关：rem 的字号、间距与圆角都会跟着它变。
+     用百分比而不是固定像素，这样系统级字号偏好仍然生效。 */
+  html {
+    font-size: calc(100% * var(--font-scale));
+  }
+
   body {
     margin: 0;
     background-color: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
-    font-size: 13px;
-    line-height: 1.55;
+    font-size: var(--size-body);
+    line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
     overflow: hidden;
@@ -248,6 +291,43 @@
   ::-webkit-scrollbar-thumb:hover {
     background: color-mix(in oklab, var(--foreground) 30%, transparent);
     background-clip: content-box;
+  }
+}
+
+/*
+ * 排版辅助类放在 components 层，而不是 utilities 层。
+ *
+ * 它们给的是默认值：`.timecode` 默认按等宽数字排版、`.reading` 默认放宽行高。
+ * 调用处一旦写了自己的语义字号（比如 `timecode text-micro`），那个字号必须生效；
+ * 放在 utilities 层会因为同层内顺序靠后而反过来压住调用处，字号就悄悄变了。
+ */
+@layer components {
+  .reading {
+    font-size: var(--size-lead);
+    line-height: 1.78;
+    letter-spacing: 0.002em;
+    color: color-mix(in oklab, var(--foreground) 94%, transparent);
+  }
+
+  .timecode {
+    font-family: var(--font-mono);
+    font-size: var(--size-meta);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+  }
+
+  .metric-value {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  .label-eyebrow {
+    font-size: var(--size-micro);
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-subtle);
   }
 }
 
@@ -314,36 +394,6 @@
     background-image: radial-gradient(currentColor 0.5px, transparent 0.5px);
     background-size: 3px 3px;
     color: var(--foreground);
-  }
-
-  /* -------------------------------------------------------------- 排版 */
-
-  .reading {
-    font-size: 14px;
-    line-height: 1.78;
-    letter-spacing: 0.002em;
-    color: color-mix(in oklab, var(--foreground) 94%, transparent);
-  }
-
-  .timecode {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 0.01em;
-  }
-
-  .metric-value {
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
-    letter-spacing: -0.01em;
-  }
-
-  .label-eyebrow {
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--text-subtle);
   }
 
   /* --------------------------------------------------------------- 动效 */

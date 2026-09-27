@@ -34,7 +34,7 @@ export function AnswerMarkdown({ citations, text }: { citations?: Citation[]; te
             <ol key={index} className="space-y-1.5">
               {block.items.map((item, itemIndex) => (
                 <li key={itemIndex} className="flex gap-2.5">
-                  <span className="metric-value mt-px w-4 shrink-0 text-[10px] text-text-subtle">{itemIndex + 1}</span>
+                  <span className="metric-value mt-px w-4 shrink-0 text-micro text-text-subtle">{itemIndex + 1}</span>
                   <span className="min-w-0 flex-1">
                     <Inline citations={citations} text={item} />
                   </span>
@@ -45,7 +45,7 @@ export function AnswerMarkdown({ citations, text }: { citations?: Citation[]; te
         }
         if (block.kind === 'heading') {
           return (
-            <p key={index} className="pt-1 text-[12px] font-semibold text-text-strong">
+            <p key={index} className="pt-1 text-note font-semibold text-text-strong">
               <Inline citations={citations} text={block.text} />
             </p>
           )
@@ -168,7 +168,7 @@ function Inline({ citations, text }: { citations?: Citation[]; text: string }): 
         }
         if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
           return (
-            <code key={index} className="timecode rounded bg-secondary px-1 py-px text-[12px] text-foreground/90">
+            <code key={index} className="timecode rounded bg-secondary px-1 py-px text-note text-foreground/90">
               {part.slice(1, -1)}
             </code>
           )
