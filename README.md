@@ -140,7 +140,7 @@ Four workspaces sharing one time coordinate system.
 
 <p align="center">
   <img src="./assets/readme/library.jpg" width="100%"
-       alt="Library: every processed video as a card with readiness, tags, duration and scale" />
+       alt="Library: main navigation on the left, search and the new-task button on top, and task cards below with status, tags, duration and scale" />
 </p>
 
 - **Library** — the single entry point: readiness, tags, scale, search and delete.
