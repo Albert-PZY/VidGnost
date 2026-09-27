@@ -177,10 +177,37 @@ git switch master && git pull --ff-only       # 5) 本地回到可交付状态
 
 ## 7. 版本与 Release
 
-- **只有能演示的状态才配打 tag**；tag 走注释标签（`git tag -a v0.2.0 -m "…"`），不要轻量标签。
+### 什么时候打 tag
+
+**只有能演示的状态才配打 tag**——半成品打 tag 等于自己也说不清哪个版本能跑。
+判定标准：能不能当众演示完整链路，而不解释「这里还没做」。
+
+版本号与 `apps/*/package.json` 的 `version` 对齐（当前基线：`apps/api`、`apps/desktop` 均为 `3.0.0`）。
+
+### 怎么打
+
+```bash
+git switch master && git pull --ff-only        # tag 只打在 master 上
+git tag -a v3.0.0 -m "v3.0.0：在线优先的视频知识引擎"   # 注释标签，不要轻量标签
+git push origin v3.0.0                         # 推 tag 不受分支保护限制
+```
+
+### 怎么发 Release
+
+```bash
+gh release create v3.0.0 \
+  --title "v3.0.0：在线优先的视频知识引擎" \
+  --notes-file <手写正文> \
+  --generate-notes        # 自动分类的 PR 列表会追加在手写正文之后
+```
+
+- 正文只写人话：**这一版能干什么 / 怎么跑起来 / 已知问题有哪些**，不要复述提交列表。
 - 安装包与演示素材放 Release 附件，正好绕开 §6 的 100 MiB 限制【GitHub】。
-- 自动 Release Notes **按 PR 标签分类**，不认提交前缀——所以开 PR 时要顺手打标签
-  （仓库自带 `bug` / `enhancement` / `documentation`）。
+- 自动 Release Notes **按 PR 标签分类**，不认提交前缀——所以开 PR 时要顺手打标签；
+  分类规则在 `.github/release.yml`，标签名必须与仓库实际存在的标签一致
+  （`gh label list` 可查：`bug` / `enhancement` / `documentation`）。
+- 当前基线尚**未接打包流程**（`apps/desktop` 只有 `dev` / `build` / `preview`，没有 electron-builder），
+  因此 Release 是源码发布，正文里要写明这一条，别让人去找安装包。
 
 ## 8. AI 参与的标注
 

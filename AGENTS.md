@@ -42,6 +42,9 @@
 - 合并前必须全绿：`pnpm build`、`pnpm -r typecheck`、`pnpm -r test`、`check-openspec`、
   `check-theme-contrast`、`check-spec-sync`、`check-commit-convention`、`check-commit-rules`、
   `git diff --check origin/master...HEAD`；远程 `spec-sync-guard` 也要绿
+- 发版：合并到 `master` 且可当众演示后，打注释 tag（版本号对齐 `apps/*/package.json`）并
+  `gh release create` 发布；正文写「能干什么 / 怎么跑 / 已知问题」，PR 要打标签供自动分类
+  （`docs/git-commit-convention.md` §7）
 
 ## 4) OpenSpec 入口
 
