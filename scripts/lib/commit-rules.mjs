@@ -55,6 +55,13 @@ export const BAN_WORDS = [
   'improve performance',
 ]
 
+/**
+ * 前端 UI 变更的提醒：约束本身在 AGENTS.md §1「前端 UI 约束」，
+ * 这里只在 area 为 `ui` 时把话说一遍，避免规范只躺在文档里。
+ */
+export const UI_SKILL_HINT =
+  '前端 UI 变更需在 oil-frontend 与 ui-ux-pro-max 两个 skill 的约束下完成（AGENTS.md §1「前端 UI 约束」）。'
+
 /** 中文过去式标记：首行要用祈使句（「修复 X」而不是「修复了 X」）。 */
 const PAST_TENSE_HINTS = [
   /修复了/,
@@ -148,6 +155,10 @@ export function validateCommitMessage(raw, config = {}) {
     hints.push(`可用 area：${Object.keys(AREAS).join(' / ')}`)
   } else if (MISSING_SPACE_RE.test(subject)) {
     errors.push('area 与描述之间需要一个半角空格：`area: 描述`。')
+  }
+
+  if (area === 'ui') {
+    hints.push(UI_SKILL_HINT)
   }
 
   const width = displayWidth(subject)

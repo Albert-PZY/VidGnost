@@ -69,6 +69,18 @@ const CASES = [
     message: "Merge branch 'refactor/v3-video-knowledge-engine' into master",
     expect: 'pass',
   },
+  {
+    name: 'UI 变更带上 skill 约束提醒',
+    message: 'ui: 模型卡片去掉发光边框\n\n原先每张卡片都在发光，整页没有主次，去掉后层级重新回到内容上。',
+    expect: 'pass',
+    expectHint: 'oil-frontend',
+  },
+  {
+    name: '非 UI 变更不带该提醒',
+    message: 'pipeline: 取消后清理半成品产物\n\n取消时只停了进程，半成品文件留到下一次续跑才被发现，改为取消即清理。',
+    expect: 'pass',
+    expectHint: null,
+  },
 ]
 
 function verdictOf(message) {
@@ -81,12 +93,21 @@ function verdictOf(message) {
 
 let failed = 0
 for (const testCase of CASES) {
-  const actual = verdictOf(testCase.message)
-  const ok = actual === testCase.expect
-  if (!ok) {
+  const { errors, warnings, hints } = validateCommitMessage(testCase.message)
+  const actual = errors.length > 0 ? 'fail' : warnings.length > 0 ? 'pass-with-warning' : 'pass'
+  const problems = []
+  if (actual !== testCase.expect) {
+    problems.push(`判定为 ${actual}，期望 ${testCase.expect}`)
+  }
+  if (testCase.expectHint !== undefined) {
+    const carried = hints.some((hint) => hint.includes('oil-frontend'))
+    if (carried !== Boolean(testCase.expectHint)) {
+      problems.push(carried ? '多出了 UI skill 提醒' : '缺少 UI skill 提醒')
+    }
+  }
+  if (problems.length > 0) {
     failed += 1
-    console.error(`  ✗ ${testCase.name} → ${actual}（期望 ${testCase.expect}）`)
-    const { errors, warnings } = validateCommitMessage(testCase.message)
+    console.error(`  ✗ ${testCase.name}：${problems.join('；')}`)
     for (const error of errors) console.error(`      ${error}`)
     for (const warning of warnings) console.error(`      ${warning}`)
   }
