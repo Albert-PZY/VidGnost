@@ -184,6 +184,16 @@ export function ProvidersView() {
       ) : null}
 
       <div className="mt-5 space-y-8">
+        {protocols.length === 0 ? (
+          // 前端比后端新时（例如后端进程还跑着旧代码），目录里没有协议能力表，
+          // 此时既无法分组也无法接入；直接说明原因，不要渲染六个空壳类别。
+          <p
+            role="alert"
+            className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2.5 text-[11px] text-foreground"
+          >
+            后端没有返回协议能力表，可能是服务端仍是旧版本。重启后端服务后刷新页面即可恢复。
+          </p>
+        ) : null}
         {sections.map((section) => (
           <section key={section.kind}>
             <div className="flex items-center gap-2.5">
