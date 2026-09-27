@@ -127,8 +127,11 @@ Defaults:
 - **Library** — the single entry point for every processed video: readiness, tags, scale, search and delete.
 - **Studio** — chapter rail / content stage / Copilot, with a persistent player bar at the bottom. Five tabs
   (notes, transcript, mind map, concepts, frames) plus a live stage board while processing.
-- **Models** — provider credential state, role routing, and a runtime self-check that performs real network calls.
-- **Settings** — default processing options, local Whisper configuration and toolchain probing.
+- **Models** — two scopes (online / local) subdivided by provider and capability (chat, multimodal, speech to
+  text, embedding, translation, rerank) down to individual models. Credentials and base URLs live in the
+  provider block, roles are assigned on the model cards, and self-check results attach to their provider.
+- **Settings** — default processing options, storage directory and toolchain probing (local Whisper options
+  live under Models → Local).
 
 The interface is dark-first: graphite canvas with aurora tint, hairline borders, an 8pt grid,
 monospaced timecodes and a global `Ctrl/⌘ + K` command palette.
