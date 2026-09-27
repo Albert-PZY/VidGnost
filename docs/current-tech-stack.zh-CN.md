@@ -73,13 +73,26 @@ apps/api/src
 
 ## 5. 模型与外部运行时
 
-### 5.1 系统依赖
+### 5.1 协议适配层与自定义接入
+
+- 适配层：`apps/api/src/providers/protocols/`，六种协议各自实现可用能力：
+  `openai`（对话/多模态/向量化/重排/转写/翻译）、`anthropic`（对话/多模态/翻译）、
+  `gemini`（对话/多模态/向量化/翻译）、`dashscope`（对话/多模态/向量化/转写/翻译）、
+  `openrouter`（对话/多模态/向量化/重排/翻译）、`local`（本地转写）。
+- 分发：`gateway.ts` 按提供方声明的协议取适配器，不按提供方 id 特判；协议未实现的能力统一报
+  `PROTOCOL_CAPABILITY_UNSUPPORTED`，未实现流式时回退为一次性返回。
+- 自定义渠道：界面可登记提供方（协议 + Base URL + 密钥）与模型（ID、显示名、能力类型、
+  上下文长度、向量维度），落在 `storage/config/settings.json`（版本 4）；
+  与内置目录合并后一并参与角色路由与阶段缓存键。
+- 出参安全：提供方列表只返回凭据来源与脱敏尾码，内联密钥不出后端。
+
+### 5.2 系统依赖
 
 - `ffmpeg` / `ffprobe`：音频抽取、分片、关键帧抽取（场景检测）
 - `yt-dlp`：在线视频下载
 - Python 3.10+ 与 `uv`：仅在启用本地 Whisper 时需要
 
-### 5.2 在线能力（阿里云百炼）
+### 5.3 在线能力（阿里云百炼）
 
 | 能力 | 模型 | 接入方式 |
 | --- | --- | --- |
@@ -97,13 +110,13 @@ apps/api/src
   单个分片上限受策略返回的 `max_file_size_mb` 约束。
 - 推理类模型（`deepseek-v4-pro-0813`）需要较大的 `max_tokens`，否则可能只返回推理内容。
 
-### 5.3 重排序（OpenRouter）
+### 5.4 重排序（OpenRouter）
 
 - 模型：`nvidia/llama-nemotron-rerank-vl-1b-v2:free`
 - 接入：`POST {OPENROUTER_BASE_URL}/rerank`，body 为 `{model, query, documents, top_n}`
 - 不可用时自动回退到 RRF 顺序，并在检索 trace 的 `degradation` 字段说明
 
-### 5.4 本地兜底
+### 5.5 本地兜底
 
 - `faster-whisper`（CTranslate2）：通过 `apps/api/python/transcribe_faster_whisper.py` 子进程调用，
   支持 `--probe` 环境探测与一次性转写；设备与精度由设置页控制
