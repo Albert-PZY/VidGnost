@@ -46,6 +46,8 @@ apps/api/src
 
 ### 3.3 设计系统
 
+- 开发约束：界面的开发、优化与调整必须在 `oil-frontend` 与 `ui-ux-pro-max` 两个 skill 的约束下进行
+  （见 `AGENTS.md` §1「前端 UI 约束」），配色只消费语义令牌并须通过 `scripts/check-theme-contrast.mjs`
 - 文件：`apps/desktop/src/app/globals.css`
 - 主题：`:root` 为浅色（冷纸：微冷近白画布 + 纯白卡片），`.dark` 为深色（石墨：近黑画布 + 抬起的卡片）；
   组件只消费语义令牌，不写死颜色值

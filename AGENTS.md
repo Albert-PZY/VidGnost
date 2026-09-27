@@ -22,6 +22,13 @@
   `apps/api/src/retrieval/**`、`apps/api/src/pipeline/**`、`apps/api/src/providers/**`、
   `apps/api/src/store/**`、`apps/api/src/routes/**`、`apps/desktop/src/components/**`、
   `apps/desktop/src/stores/**`、`packages/contracts/src/**`。
+- 前端 UI 约束：前端界面的开发、优化与调整——`apps/desktop/src/components/**`、
+  `apps/desktop/src/app/globals.css`，以及任何样式、交互与动效改动——**必须在 `oil-frontend`
+  与 `ui-ux-pro-max` 两个 skill 的约束下进行**：动手前先显式加载这两个 skill，交付说明里写明
+  本次遵循了哪些具体约束（视觉层级、间距节奏、动效、可达性等）。
+  这条项目约定等同于需求方的明确要求，因此不受「普通前端请求不自动触发 oil-frontend」的限制；
+  配色仍以 `apps/desktop/src/app/globals.css` 的语义令牌为唯一来源，并须通过
+  `node scripts/check-theme-contrast.mjs`（浅色 / 深色两套都要达标）。
 - 完成需求变更后，自动判断是否需要提交；需要时按 `docs/git-commit-convention.md` 提交并推送，无需再次确认。
 
 ## 2) 核心产品文档
