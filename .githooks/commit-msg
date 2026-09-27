@@ -1,0 +1,14 @@
+#!/bin/sh
+# VidGnost · commit-msg：提交信息规范校验
+# 规则见 docs/git-commit-convention.md §2 §3，实现在 scripts/hooks/commit-msg.mjs
+set -eu
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+if command -v node >/dev/null 2>&1; then
+  exec node "scripts/hooks/commit-msg.mjs" "$1"
+fi
+
+echo "Node.js is required to run git hooks." >&2
+exit 1
