@@ -62,6 +62,20 @@ export const BAN_WORDS = [
 export const UI_SKILL_HINT =
   '前端 UI 变更需在 oil-frontend 与 ui-ux-pro-max 两个 skill 的约束下完成（AGENTS.md §1「前端 UI 约束」）。'
 
+/**
+ * 文案变更的提醒：约束本身在 AGENTS.md §1「文案约束」。
+ * 触及 `docs` / `openspec` / `ui` 三个 area 时都提示一遍，因为这三处产出面向用户的文字。
+ */
+export const COPY_TONE_HINT =
+  '面向用户的文案需在 oil-tone 约束下优化，并及时用 tone_lint.py 自检（AGENTS.md §1「文案约束」）。'
+
+/** area → 需要附带的提醒。 */
+export const AREA_HINTS = {
+  ui: [UI_SKILL_HINT, COPY_TONE_HINT],
+  docs: [COPY_TONE_HINT],
+  openspec: [COPY_TONE_HINT],
+}
+
 /** 中文过去式标记：首行要用祈使句（「修复 X」而不是「修复了 X」）。 */
 const PAST_TENSE_HINTS = [
   /修复了/,
@@ -157,8 +171,8 @@ export function validateCommitMessage(raw, config = {}) {
     errors.push('area 与描述之间需要一个半角空格：`area: 描述`。')
   }
 
-  if (area === 'ui') {
-    hints.push(UI_SKILL_HINT)
+  for (const hint of AREA_HINTS[area] ?? []) {
+    hints.push(hint)
   }
 
   const width = displayWidth(subject)

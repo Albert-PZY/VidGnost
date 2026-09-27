@@ -3,7 +3,7 @@
  * 提交规则回归：用固定用例盯住 scripts/lib/commit-rules.mjs 的判定边界。
  * 规则只写在文档里会被慢慢放宽，这里把「什么必须拦、什么必须放行」钉死。
  */
-import { validateCommitMessage, AREAS } from './lib/commit-rules.mjs'
+import { AREA_HINTS, AREAS, validateCommitMessage } from './lib/commit-rules.mjs'
 
 const CASES = [
   {
@@ -76,6 +76,12 @@ const CASES = [
     expectHint: 'oil-frontend',
   },
   {
+    name: '文案变更带上 oil-tone 提醒',
+    message: 'docs: 收紧 README 的开头\n\n开头写了两遍同一句话，读者要读到第三段才知道它是什么。',
+    expect: 'pass',
+    expectHint: 'oil-tone',
+  },
+  {
     name: '非 UI 变更不带该提醒',
     message: 'pipeline: 取消后清理半成品产物\n\n取消时只停了进程，半成品文件留到下一次续跑才被发现，改为取消即清理。',
     expect: 'pass',
@@ -100,9 +106,14 @@ for (const testCase of CASES) {
     problems.push(`判定为 ${actual}，期望 ${testCase.expect}`)
   }
   if (testCase.expectHint !== undefined) {
-    const carried = hints.some((hint) => hint.includes('oil-frontend'))
-    if (carried !== Boolean(testCase.expectHint)) {
-      problems.push(carried ? '多出了 UI skill 提醒' : '缺少 UI skill 提醒')
+    const registered = Object.values(AREA_HINTS).flat()
+    const carried = registered.filter((hint) => hints.includes(hint))
+    if (testCase.expectHint === null) {
+      if (carried.length > 0) {
+        problems.push(`多出了 ${carried.length} 条 skill 提醒`)
+      }
+    } else if (!carried.some((hint) => hint.includes(testCase.expectHint))) {
+      problems.push(`缺少「${testCase.expectHint}」提醒`)
     }
   }
   if (problems.length > 0) {
