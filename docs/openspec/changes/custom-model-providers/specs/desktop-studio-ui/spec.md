@@ -24,6 +24,9 @@ Status: `implemented`
 - **WHEN** 某协议还没有接入任何渠道
 - **THEN** 该协议分组显示一句话说明它适合接入什么，并提供「接入渠道」入口
 
+#### Scenario: Backend is older than the front end
+- **WHEN** 目录接口没有返回协议能力表（例如后端进程还跑着旧代码）
+- **THEN** 页面显示一句可执行的说明（重启后端后刷新），而不是渲染空壳分组或整页报错
 ### Requirement: Model workspace SHALL allow registering channels and models
 Status: `implemented`
 

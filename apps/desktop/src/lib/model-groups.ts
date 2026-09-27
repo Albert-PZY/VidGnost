@@ -92,7 +92,8 @@ export function assignableRolesFor(model: ModelCatalogEntry, roleMeta: RoleMeta[
 
 export function groupModels(input: {
   models: ModelCatalogEntry[]
-  protocols: ProviderProtocolInfo[]
+  /** 目录接口缺这个字段时按空处理：前端比后端新时要能给出提示，而不是整页抛错。 */
+  protocols?: ProviderProtocolInfo[]
   providers: ProviderConfig[]
   roleMeta: RoleMeta[]
   routes: ModelRoute[]
@@ -105,7 +106,7 @@ export function groupModels(input: {
       .map((route) => route.role),
   })
 
-  const orderedProtocols = [...input.protocols].sort(
+  const orderedProtocols = [...(input.protocols ?? [])].sort(
     (left, right) => PROTOCOL_ORDER.indexOf(left.protocol) - PROTOCOL_ORDER.indexOf(right.protocol),
   )
 

@@ -221,6 +221,9 @@ Status: `implemented`
 - **WHEN** 运行过运行时自检
 - **THEN** 每个渠道的检查项显示在该渠道块内，且同一渠道只显示一次，而不是单独一张表
 
+#### Scenario: Backend is older than the front end
+- **WHEN** 目录接口没有返回协议能力表（例如后端进程还跑着旧代码）
+- **THEN** 页面显示一句可执行的说明（重启后端后刷新），而不是渲染空壳分组或整页报错
 ### Requirement: Role assignment SHALL be expressed on the model card
 Status: `implemented`
 
