@@ -62,7 +62,8 @@ apps/api/src
 - 动效：`--ease-out-quint`、140/220/360ms 三档时长，并遵守 `prefers-reduced-motion`
 - 图形：Mermaid 使用与主题对齐的十六进制配色（其解析器不支持 `oklch()`），
   `mindmap` 的 section 色阶在渲染后按主题重写
-- 桌面壳：`frame: false` + 自定义标题栏 + `-webkit-app-region` 拖拽区；标题栏与导航轨使用不透明画布底色
+- 桌面壳：`frame: false` + 自定义标题栏 + `-webkit-app-region` 拖拽区；标题栏（`bg-background/70` + 背景模糊）
+  与导航轨（`bg-background/60`）使用半透明画布底色，让极光氛围透出，文字与图标对比度由语义令牌保证
 - 对比度校验：`node scripts/check-theme-contrast.mjs`（两种模式下 42 组配对，正文 4.5:1、图标 3:1）
 
 ## 4. 后端技术栈
