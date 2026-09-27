@@ -1,13 +1,26 @@
-import type { ModelRole, ProviderId } from "@vidgnost/contracts"
+import type {
+  CheckResult,
+  ModelCatalogEntry,
+  ModelRole,
+  ProviderConfig,
+  ProviderId,
+} from "@vidgnost/contracts"
 
 import { AppError, describeError } from "../core/errors.js"
 import { logger } from "../core/logger.js"
 import type { AppConfig } from "../core/config.js"
-import { DEFAULT_ROUTES, EMBEDDING_DIMENSIONS, MODEL_CATALOG } from "./catalog.js"
-import { DashScopeProvider, type AsrResult, type ChatMessage, type ChatResult } from "./dashscope.js"
-import { LocalWhisperProvider } from "./local-whisper.js"
-import { OpenRouterProvider } from "./openrouter.js"
-import { SettingsStore, type ResolvedRoute } from "./settings-store.js"
+import { DEFAULT_ROUTES, EMBEDDING_DIMENSIONS, MODEL_CATALOG, customModelsToCatalog } from "./catalog.js"
+import { LocalWhisperProvider, type LocalAsrResult } from "./local-whisper.js"
+import {
+  assertCapability,
+  createAdapters,
+  supportsCapability,
+  type AsrResult,
+  type ChatMessage,
+  type ChatResult,
+  type ProtocolAdapter,
+} from "./protocols/index.js"
+import { SettingsStore, type ProviderRecord, type ResolvedRoute } from "./settings-store.js"
 
 export interface GatewayCallMeta {
   calls: number
@@ -29,16 +42,18 @@ export interface ChatOptions {
 const log = logger.child({ scope: "gateway" })
 
 /**
- * 模型网关：把「角色」解析为具体提供方与模型，统一处理密钥、超时、重试与兜底。
- * 所有在线模型调用都必须经过这里，避免业务层直接依赖具体模型名。
+ * 模型网关：把「角色」解析为具体提供方与模型，再按提供方声明的协议取适配器。
+ * 业务层因此既不依赖模型名，也不依赖提供方 id。
  */
 export class ModelGateway {
-  readonly dashscope: DashScopeProvider
-  readonly openrouter: OpenRouterProvider
-  readonly localWhisper: LocalWhisperProvider
   readonly settings: SettingsStore
+  readonly localWhisper: LocalWhisperProvider
 
-  constructor(private readonly config: AppConfig) {
+  private readonly adapters: Record<string, ProtocolAdapter>
+  private readonly config: AppConfig
+
+  constructor(config: AppConfig) {
+    this.config = config
     this.settings = new SettingsStore(config, {
       settings: {
         defaultPreset: "balanced",
@@ -60,17 +75,14 @@ export class ModelGateway {
       },
       routes: DEFAULT_ROUTES,
     })
-    this.dashscope = new DashScopeProvider({
-      baseUrl: config.dashscopeBaseUrl,
-      uploadModel: "qwen-audio-3.1-asr-flash-filetrans",
-      requestTimeoutMs: config.requestTimeoutMs,
-    })
-    this.openrouter = new OpenRouterProvider({
-      baseUrl: config.openrouterBaseUrl,
+    this.localWhisper = new LocalWhisperProvider()
+    this.adapters = createAdapters({
+      readSettings: () => this.settings.getSettings(),
       requestTimeoutMs: config.requestTimeoutMs,
       siteName: "VidGnost",
+      uploadModel: "qwen-audio-3.1-asr-flash-filetrans",
+      whisper: this.localWhisper,
     })
-    this.localWhisper = new LocalWhisperProvider()
   }
 
   /** 按角色解析路由链（主 + 兜底）。 */
@@ -81,6 +93,14 @@ export class ModelGateway {
     }
     return chain
   }
+
+  /** 内置目录 + 用户登记的模型，供目录接口与健康检查共用。 */
+  async catalogue(): Promise<ModelCatalogEntry[]> {
+    const providers = await this.settings.getProviders()
+    return [...MODEL_CATALOG, ...providers.flatMap((provider) => customModelsToCatalog(provider))]
+  }
+
+  /* ------------------------------------------------------------- 文本生成 */
 
   /** 一次文本生成。失败时按路由链兜底。 */
   async chat(role: ModelRole, options: ChatOptions): Promise<{ text: string; usage: ChatResult["usage"]; model: string }> {
@@ -100,52 +120,47 @@ export class ModelGateway {
     throw AppError.unavailable(`模型调用失败（角色 ${role}）：${errors.join(" | ")}`, { code: "MODEL_CHAIN_FAILED" })
   }
 
-  /** 流式文本生成。流式链路不重试，失败直接向上抛。 */
+  /** 流式文本生成。协议未实现流式时回退为一次性返回。 */
   async *chatStream(role: ModelRole, options: ChatOptions): AsyncGenerator<string, void, unknown> {
-    const chain = await this.chain(role)
-    const route = chain[0]
-    const messages: ChatMessage[] = [
-      ...(options.systemPrompt ? [{ role: "system" as const, content: options.systemPrompt }] : []),
-      { role: "user" as const, content: options.userPrompt },
-    ]
+    const route = (await this.chain(role))[0]
+    const { adapter, provider, apiKey, baseUrl } = await this.resolveAdapter(route.provider)
 
-    if (route.provider !== "dashscope") {
-      const result = await this.chat(role, options)
-      yield result.text
+    if (!supportsCapability(adapter, "chat") || !adapter.chatStream) {
+      const result = await this.runChat(route, options)
+      yield result.content
       return
     }
 
-    const apiKey = await this.apiKeyFor(route.provider)
-    yield* this.dashscope.chatStream({
+    yield* adapter.chatStream({
       apiKey,
-      baseUrl: this.config.dashscopeBaseUrl,
-      messages,
-      model: route.model,
-      temperature: options.temperature ?? route.temperature,
+      baseUrl,
       maxTokens: options.maxTokens ?? route.maxTokens,
+      messages: buildMessages(options),
+      model: route.model,
       signal: options.signal,
+      temperature: options.temperature ?? route.temperature,
       timeoutMs: options.timeoutMs,
     })
+    void provider
   }
+
+  /* --------------------------------------------------------------- 能力 */
 
   async embed(input: { inputs: string[]; signal?: AbortSignal }): Promise<{ vectors: number[][]; dimensions: number; model: string }> {
     const route = (await this.chain("embedding"))[0]
-    if (route.provider === "local") {
-      throw AppError.unavailable("本地向量模型未启用。", { code: "EMBEDDING_LOCAL_UNSUPPORTED" })
-    }
-    const apiKey = await this.apiKeyFor(route.provider)
-    const dimensions = EMBEDDING_DIMENSIONS[route.model]
-    const baseUrl = await this.baseUrlFor(route.provider)
+    const { adapter, provider, apiKey, baseUrl } = await this.resolveAdapter(route.provider)
+    assertCapability(adapter, "embedding", provider.label)
 
+    const dimensions = dimensionsFor(provider, route.model)
     const batches = chunkStrings(input.inputs, 16)
     const vectors: number[][] = []
     for (const batch of batches) {
-      const result = await this.dashscope.embed({
+      const result = await adapter.embed!({
         apiKey,
         baseUrl,
+        dimensions,
         inputs: batch,
         model: route.model,
-        dimensions,
         signal: input.signal,
       })
       vectors.push(...result)
@@ -155,21 +170,21 @@ export class ModelGateway {
 
   async vision(input: { images: string[]; prompt: string; signal?: AbortSignal; systemPrompt?: string }): Promise<string> {
     const route = (await this.chain("vision.primary"))[0]
-    if (route.provider === "local") {
-      throw AppError.unavailable("视觉模型未配置在线提供方。", { code: "VISION_PROVIDER_MISSING" })
-    }
-    const apiKey = await this.apiKeyFor(route.provider)
-    const baseUrl = await this.baseUrlFor(route.provider)
-    return this.dashscope.vision({
+    const { adapter, provider, apiKey, baseUrl } = await this.resolveAdapter(route.provider)
+    assertCapability(adapter, "vision", provider.label)
+
+    const result = await adapter.chat!({
       apiKey,
       baseUrl,
       images: input.images,
-      model: route.model,
-      prompt: input.prompt,
-      systemPrompt: input.systemPrompt,
-      signal: input.signal,
       maxTokens: route.maxTokens ?? 1200,
+      messages: [{ role: "user", content: input.prompt }],
+      model: route.model,
+      signal: input.signal,
+      systemPrompt: input.systemPrompt,
+      temperature: route.temperature,
     })
+    return result.content
   }
 
   async translate(input: {
@@ -179,17 +194,19 @@ export class ModelGateway {
     texts: string[]
   }): Promise<string[]> {
     const route = (await this.chain("translate"))[0]
-    const apiKey = await this.apiKeyFor(route.provider)
-    const baseUrl = await this.baseUrlFor(route.provider)
+    const { adapter, provider, apiKey, baseUrl } = await this.resolveAdapter(route.provider)
+    assertCapability(adapter, "translation", provider.label)
+
     const batches = chunkStrings(input.texts, 20)
     const output: string[] = []
     for (const batch of batches) {
-      const result = await this.dashscope.translate({
+      const result = await adapter.translate!({
         apiKey,
-        texts: batch,
-        targetLang: input.targetLang,
-        sourceLang: input.sourceLang,
+        baseUrl,
+        model: route.model,
         signal: input.signal,
+        targetLanguage: input.targetLang,
+        texts: batch,
       })
       output.push(...result)
     }
@@ -207,20 +224,18 @@ export class ModelGateway {
     } catch (error) {
       return { results: [], model: "", degradation: describeError(error) }
     }
-    if (route.provider === "local") {
-      return { results: [], model: route.model, degradation: "重排模型为本地运行时，当前未实现。" }
-    }
-    const apiKey = await this.apiKeyFor(route.provider)
-    const baseUrl = await this.baseUrlFor(route.provider)
+
     try {
-      const results = await this.openrouter.rerank({
+      const { adapter, provider, apiKey, baseUrl } = await this.resolveAdapter(route.provider)
+      assertCapability(adapter, "rerank", provider.label)
+      const results = await adapter.rerank!({
         apiKey,
         baseUrl,
+        documents: input.documents,
         model: route.model,
         query: input.query,
-        documents: input.documents,
-        topN: input.topN,
         signal: input.signal,
+        topN: input.topN,
       })
       return { results, model: route.model }
     } catch (error) {
@@ -237,51 +252,68 @@ export class ModelGateway {
     signal?: AbortSignal
   }): Promise<AsrResult & { model: string }> {
     const route = (await this.chain("asr.online"))[0]
-    const apiKey = await this.apiKeyFor(route.provider)
-    input.onProgress?.("上传音频到百炼临时空间…")
-    const taskId = await this.dashscope.submitTranscription({
+    const { adapter, provider, apiKey, baseUrl } = await this.resolveAdapter(route.provider)
+    assertCapability(adapter, "asr", provider.label)
+    input.onProgress?.(`使用 ${provider.label} 转写…`)
+    const result = await adapter.transcribe!({
       apiKey,
+      baseUrl,
       filePath: input.filePath,
-      model: route.model,
       language: input.language,
+      model: route.model,
       signal: input.signal,
-    })
-    input.onProgress?.(`转写任务已提交（${taskId.slice(0, 8)}），等待队列…`)
-    const result = await this.dashscope.pollTranscription({
-      apiKey,
-      taskId,
-      signal: input.signal,
-      onTick: (status) => input.onProgress?.(`转写状态：${status}`),
     })
     return { ...result, model: route.model }
   }
 
+  /** 本地离线转写，走本地 worker，不经过在线适配器。 */
+  async transcribeLocal(input: {
+    filePath: string
+    language?: string
+    onProgress?: (message: string) => void
+    onSegment?: (segment: { start: number; end: number; text: string }) => void
+    signal?: AbortSignal
+  }): Promise<LocalAsrResult> {
+    const settings = await this.settings.getSettings()
+    if (!settings.whisper.modelDir) {
+      throw AppError.unavailable("本地 Whisper 模型目录未配置。", {
+        code: "LOCAL_WHISPER_MODEL_MISSING",
+        hint: "在「模型 → 本地模型」里填写 CTranslate2 模型目录。",
+      })
+    }
+    return this.localWhisper.transcribe({
+      audioPath: input.filePath,
+      computeType: settings.whisper.computeType,
+      device: settings.whisper.device,
+      language: input.language,
+      modelDir: settings.whisper.modelDir,
+      onSegment: input.onSegment,
+      onStatus: input.onProgress,
+      pythonExecutable: settings.whisper.pythonExecutable,
+      signal: input.signal,
+    })
+  }
+
+  /* --------------------------------------------------------------- 凭据 */
+
   async apiKeyFor(provider: ProviderId): Promise<string> {
-    const providers = await this.settings.getProviders()
-    const config = providers.find((item) => item.id === provider)
-    if (!config) {
-      throw AppError.unavailable(`提供方 ${provider} 未配置。`, { code: "PROVIDER_MISSING" })
-    }
-    if (!config.enabled) {
-      throw AppError.unavailable(`提供方 ${config.label} 已禁用。`, { code: "PROVIDER_DISABLED" })
-    }
+    const config = await this.requireProvider(provider)
     const key = this.settings.resolveApiKey(config)
     if (!key) {
       throw AppError.unavailable(`提供方 ${config.label} 缺少 API Key。`, {
         code: "PROVIDER_KEY_MISSING",
         hint: config.auth.envVar
-          ? `请设置环境变量 ${config.auth.envVar}，或在设置页填写内联密钥。`
-          : "请在设置页填写密钥。",
+          ? `请设置环境变量 ${config.auth.envVar}，或在模型页填写内联密钥。`
+          : "请在模型页填写密钥。",
       })
     }
     return key
   }
 
   async baseUrlFor(provider: ProviderId): Promise<string> {
-    const providers = await this.settings.getProviders()
-    const config = providers.find((item) => item.id === provider)
-    if (!config?.baseUrl) {
-      throw AppError.unavailable(`提供方 ${provider} 缺少 baseUrl。`, { code: "PROVIDER_BASE_URL_MISSING" })
+    const config = await this.requireProvider(provider)
+    if (!config.baseUrl) {
+      throw AppError.unavailable(`提供方 ${config.label} 缺少 Base URL。`, { code: "PROVIDER_BASE_URL_MISSING" })
     }
     return config.baseUrl
   }
@@ -295,33 +327,102 @@ export class ModelGateway {
     }
   }
 
-  private async runChat(route: ResolvedRoute, options: ChatOptions): Promise<ChatResult> {
-    const messages: ChatMessage[] = [
-      ...(options.systemPrompt ? [{ role: "system" as const, content: options.systemPrompt }] : []),
-      { role: "user" as const, content: options.userPrompt },
-    ]
+  /** 单个提供方的连通性检查，供运行时自检使用。入参是含内联密钥的内部记录。 */
+  async probeProvider(provider: ProviderRecord): Promise<CheckResult[]> {
+    const checks: CheckResult[] = []
+    const adapter = this.adapterFor(provider.protocol)
 
-    if (route.provider === "dashscope") {
-      const apiKey = await this.apiKeyFor(route.provider)
-      return this.dashscope.chat({
-        apiKey,
-        baseUrl: this.config.dashscopeBaseUrl,
-        messages,
-        model: route.model,
-        temperature: options.temperature ?? route.temperature,
-        maxTokens: options.maxTokens ?? route.maxTokens,
-        responseFormat: options.responseFormat,
-        signal: options.signal,
-        timeoutMs: options.timeoutMs,
-      })
+    if (provider.protocol !== "local") {
+      const key = this.settings.resolveApiKey(provider)
+      if (!key) {
+        return [{ name: "凭据", ok: false, detail: provider.auth.envVar ? `缺少环境变量 ${provider.auth.envVar}` : "未填写密钥" }]
+      }
+      if (!adapter.probe) {
+        return [{ name: "协议探针", ok: true, detail: `${adapter.protocol} 没有探针，跳过` }]
+      }
+      try {
+        const started = Date.now()
+        const result = await adapter.probe({ apiKey: key, baseUrl: provider.baseUrl })
+        checks.push({ name: "连通性", ok: true, detail: result.detail, latencyMs: Date.now() - started })
+      } catch (error) {
+        checks.push({ name: "连通性", ok: false, detail: describeError(error) })
+      }
+      return checks
     }
 
-    throw AppError.unavailable(`提供方 ${route.provider} 暂不支持文本生成。`, { code: "PROVIDER_CHAT_UNSUPPORTED" })
+    const settings = await this.settings.getSettings()
+    checks.push({
+      name: "Whisper 模型目录",
+      ok: Boolean(settings.whisper.modelDir),
+      detail: settings.whisper.modelDir || "未配置",
+    })
+    return checks
+  }
+
+  /* ------------------------------------------------------------- 内部 */
+
+  private adapterFor(protocol: ProviderConfig["protocol"]): ProtocolAdapter {
+    const adapter = this.adapters[protocol]
+    if (!adapter) {
+      throw AppError.unavailable(`未知协议：${protocol}`, { code: "PROVIDER_PROTOCOL_UNKNOWN" })
+    }
+    return adapter
+  }
+
+  private async requireProvider(id: ProviderId): Promise<ProviderRecord> {
+    const config = await this.settings.getProvider(id)
+    if (!config) {
+      throw AppError.unavailable(`提供方 ${id} 未配置。`, { code: "PROVIDER_MISSING" })
+    }
+    if (!config.enabled) {
+      throw AppError.unavailable(`提供方 ${config.label} 已禁用。`, { code: "PROVIDER_DISABLED" })
+    }
+    return config
+  }
+
+  private async resolveAdapter(providerId: ProviderId): Promise<{
+    adapter: ProtocolAdapter
+    apiKey: string
+    baseUrl: string
+    provider: ProviderRecord
+  }> {
+    const provider = await this.requireProvider(providerId)
+    return {
+      adapter: this.adapterFor(provider.protocol),
+      apiKey: provider.protocol === "local" ? "" : await this.apiKeyFor(providerId),
+      baseUrl: provider.baseUrl,
+      provider,
+    }
+  }
+
+  private async runChat(route: ResolvedRoute, options: ChatOptions): Promise<ChatResult> {
+    const { adapter, provider, apiKey, baseUrl } = await this.resolveAdapter(route.provider)
+    assertCapability(adapter, "chat", provider.label)
+    return adapter.chat!({
+      apiKey,
+      baseUrl,
+      maxTokens: options.maxTokens ?? route.maxTokens,
+      messages: buildMessages(options),
+      model: route.model,
+      responseFormat: options.responseFormat,
+      signal: options.signal,
+      temperature: options.temperature ?? route.temperature,
+      timeoutMs: options.timeoutMs,
+    })
   }
 }
 
-export function catalogFor(provider: ProviderId) {
-  return MODEL_CATALOG.filter((entry) => entry.provider === provider)
+function buildMessages(options: ChatOptions): ChatMessage[] {
+  return [
+    ...(options.systemPrompt ? [{ role: "system" as const, content: options.systemPrompt }] : []),
+    { role: "user" as const, content: options.userPrompt },
+  ]
+}
+
+/** 向量维度：自定义模型登记的优先，其次内置表。 */
+function dimensionsFor(provider: ProviderRecord, modelId: string): number | undefined {
+  const custom = provider.models.find((model) => model.id === modelId)
+  return custom?.dimensions ?? EMBEDDING_DIMENSIONS[modelId]
 }
 
 function chunkStrings(items: string[], size: number): string[][] {

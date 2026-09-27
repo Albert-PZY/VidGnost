@@ -2,13 +2,42 @@ import type { IsoDateTime } from "./common.js"
 
 /* ------------------------------------------------------------------ 提供方 */
 
-export type ProviderId = "dashscope" | "openrouter" | "openai-compatible" | "local"
+/**
+ * 提供方标识。内置四个 id 见 `BUILTIN_PROVIDER_IDS`，自定义提供方使用任意字符串 id。
+ */
+export type ProviderId = string
+
+/** 内置提供方：不允许删除，但仍可修改 Base URL、密钥与启用状态。 */
+export const BUILTIN_PROVIDER_IDS = ["dashscope", "openrouter", "openai-compatible", "local"] as const
+
+/**
+ * 请求协议。决定用哪套请求形状与端点路径，与提供方是谁无关：
+ * 自建 vLLM、Ollama、LM Studio、公司内网网关都用 `openai`。
+ */
+export type ProviderProtocol = "openai" | "anthropic" | "gemini" | "dashscope" | "openrouter" | "local"
 
 export type ProviderAuthSource = "env" | "inline" | "none"
+
+/** 用户登记的模型条目。 */
+export interface CustomModelEntry {
+  /** 发给提供方的模型名，例如 `qwen2.5-72b-instruct` 或 `gpt-4o-mini`。 */
+  id: string
+  /** 界面显示名。 */
+  label: string
+  kind: ModelKind
+  contextWindow?: number
+  /** 向量维度，仅 `embedding` 使用。 */
+  dimensions?: number
+  description?: string
+  tags?: string[]
+}
 
 export interface ProviderConfig {
   id: ProviderId
   label: string
+  protocol: ProviderProtocol
+  /** 内置提供方不允许删除。 */
+  builtin: boolean
   baseUrl: string
   enabled: boolean
   auth: {
@@ -25,7 +54,51 @@ export interface ProviderConfig {
     masked: string | null
     origin: "env" | "inline" | "missing"
   }
+  /** 用户登记的模型。 */
+  models: CustomModelEntry[]
   note?: string
+}
+
+/** 协议能力说明，由目录接口返回给界面。 */
+export interface ProviderProtocolInfo {
+  protocol: ProviderProtocol
+  label: string
+  /** 该协议支持的能力类型。 */
+  kinds: ModelKind[]
+  streaming: boolean
+  defaultBaseUrl: string
+  /** 一句话说明适用范围。 */
+  note: string
+}
+
+export interface ProviderCreateRequest {
+  label: string
+  protocol: ProviderProtocol
+  /** 省略时取该协议的默认 Base URL。 */
+  baseUrl?: string
+  apiKey?: string
+  enabled?: boolean
+  /** 省略时由名称派生，冲突时追加序号。 */
+  id?: string
+}
+
+export interface ProviderPatchRequest {
+  id: ProviderId
+  label?: string
+  protocol?: ProviderProtocol
+  baseUrl?: string
+  enabled?: boolean
+  /** 传 `null` 表示清除内联密钥，回退到环境变量；省略表示不改动。 */
+  apiKey?: string | null
+}
+
+export interface ProviderModelUpsertRequest {
+  label: string
+  kind: ModelKind
+  contextWindow?: number
+  dimensions?: number
+  description?: string
+  tags?: string[]
 }
 
 /* ------------------------------------------------------------------ 模型 */
@@ -59,6 +132,10 @@ export interface ModelCatalogEntry {
   free?: boolean
   /** 推荐用法，展示在设置页。 */
   recommendedFor?: ModelRole[]
+  /** 用户登记的模型，界面据此显示标记。 */
+  custom?: boolean
+  /** 向量维度，`embedding` 模型使用。 */
+  dimensions?: number
 }
 
 export interface ModelRoute {
