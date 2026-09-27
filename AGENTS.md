@@ -9,6 +9,8 @@
 - 生成文件编码：UTF-8 无 BOM
 - 运行时基线：`apps/desktop + apps/api + packages/*`
 - GitHub 操作：优先使用 `gh` CLI
+- 提交信息：一律写成 `<area>: <中文祈使句>`，area 取自 `docs/git-commit-convention.md` §3 的固定表，
+  不许自创；首行 ≤25 字、结尾不加句号，正文写「为什么」，空话会被 `commit-msg` 钩子拦下
 - 文档风格：一律写成「当前基线」陈述，并与实现保持同步
 - 规格同步规则：代码变更必须同时检查受影响的 OpenSpec 文档；
   新增或变更的接口、状态、参数、约束、错误处理与 UI 行为都要在同一交付里反映到规格中；
@@ -30,7 +32,10 @@
 
 ## 3) Git 工作流
 
-- 提交规范：`docs/git-commit-convention.md`
+- 提交规范：`docs/git-commit-convention.md`（area 表、粒度、分支、红线、AI 标注）
+- 强制手段：`.githooks/commit-msg` 校验提交信息，`.githooks/pre-commit` 扫描暂存区密钥、
+  校验规格同步与规范一致性；钩子由 `core.hooksPath=.githooks` 生效
+- 自检命令：`pnpm run lint:commit`（校验 HEAD）、`pnpm run check:commit-convention`（文档与 area 表是否漂移）
 - 交付分支：使用当前需求指定的工作分支，未获明确要求不要自动合并到 `master`。
 
 ## 4) OpenSpec 入口
@@ -79,6 +84,9 @@
 
 - OpenSpec 校验：`scripts/check-openspec.mjs`（包裹：`.sh` / `.ps1`）
 - 规格同步守卫：`scripts/check-spec-sync.mjs`
+- 提交规范守卫：`scripts/check-commit-convention.mjs`（`docs/git-commit-convention.md` §3 的 area 表
+  必须与 `scripts/lib/commit-rules.mjs` 的 `AREAS` 一致）
+- 提交信息校验：`scripts/hooks/commit-msg.mjs`（钩子）、`scripts/lint-commit.mjs`（手动）
 - 暂存区密钥扫描：`scripts/sanitize-staged-secrets.mjs`
 - 主题对比度校验：`scripts/check-theme-contrast.mjs`（浅色 / 深色两套令牌的语义配色必须全部达标）
 
