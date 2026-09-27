@@ -4,8 +4,8 @@
   <h1>VidGnost</h1>
 
   <p><strong>A video knowledge engine.</strong><br />
-  Turn a video or audio file into one timestamped spine — chapters, summary, mind map, concepts and
-  cited answers all hang off it, and every <code>[mm:ss]</code> jumps back to the source.</p>
+  Turn a video or audio file into one timestamped timeline. Chapters, summary, mind map, concepts and
+  cited answers all attach to it, and every <code>[mm:ss]</code> jumps back to the source.</p>
 
   <p><a href="./README.md">English</a> | <a href="./README.zh-CN.md">中文</a></p>
 
@@ -19,40 +19,39 @@
   </p>
 </div>
 
-## What you get
+## What a run looks like
 
 <p align="center">
   <img src="./assets/readme/studio.jpg" width="100%"
        alt="VidGnost studio: chapter rail with timecodes on the left, a chapter summary with clickable timecode chips in the middle, Copilot on the right, persistent player bar at the bottom" />
 </p>
 
-<p align="center"><sub>A real run from this repository — a 7:26 video that produced 9 chapters and 10 concepts.
-The left rail is the chapter list; every conclusion in the middle carries a timecode you can click;
-Copilot answers cite the clips they came from.</sub></p>
+<p align="center"><sub>Taken from a real run in this repository: a 7:26 video that produced 9 chapters and
+10 concepts. The left rail lists the chapters, every conclusion in the middle carries a clickable timecode,
+and the Copilot panel on the right names the clip each answer came from.</sub></p>
 
-## Why it is different
+## How it differs from transcription tools
 
-Plain transcription hands you a wall of text. Plain summarisation hands you claims you cannot check.
-VidGnost builds the **timestamped structure first**, then attaches every artefact to it — so nothing is
-a dead end.
+Transcription tools return one long block of text. Summarisation tools return conclusions you cannot verify.
+VidGnost builds the timestamped structure first, then attaches every artefact to it.
 
 <p align="center">
   <img src="./assets/readme/spine.svg" width="100%"
-       alt="A timeline with four timecode anchors; chapters, summary, mind map and cited answers all sit on it" />
+       alt="A timeline with four timecode anchors; chapters, summary, mind map and cited answers all attach to it" />
 </p>
 
 1. **Every claim points back to the source.** Summary highlights, transcript lines, mind map nodes,
    concepts and answers share one `seek` implementation: clicking a timecode jumps the player.
-2. **Online first, local fallback.** Alibaba Cloud Model Studio (DashScope) powers chat, vision,
-   embeddings, translation and file-level ASR by default; missing credentials or network failures fall
-   back to local `faster-whisper`.
-3. **Artefacts are structure.** Chapters are the structural unit, retrieval chunks are bound to
+2. **Online models first, local models as fallback.** Alibaba Cloud Model Studio (DashScope) powers chat,
+   vision, embeddings, translation and file-level ASR by default; missing credentials or network failures
+   fall back to the local `faster-whisper`.
+3. **Artefacts carry the structure.** Chapters are the structural unit, retrieval chunks are bound to
    chapters, and the index covers raw text, contextual prefixes and generated question variants.
 
 ## Get started
 
 Requirements: Node.js 18+, `pnpm`, and `ffmpeg`/`ffprobe` on `PATH`.
-Downloading online videos additionally needs `yt-dlp`; local Whisper needs Python 3.10+ and `uv`.
+Downloading online videos also needs `yt-dlp`; local Whisper needs Python 3.10+ and `uv`.
 
 ```bash
 pnpm install
@@ -64,17 +63,18 @@ pnpm dev:backend
 pnpm dev:desktop
 ```
 
-The renderer alone (no Electron shell) is also available for browser debugging:
+To work on the renderer alone, without the Electron shell:
 
 ```bash
 pnpm dev:frontend        # http://127.0.0.1:6221
 ```
 
-Then drop a local file onto the library or paste a link.
+Then drag a local file into the library, or paste a link.
 
 ## How it works
 
-Ten ordered stages, each writing a checkpoint, so an interrupted run resumes instead of restarting:
+Ten ordered stages, each writing a checkpoint, so an interrupted run continues from the last checkpoint
+instead of starting over:
 
 | # | Stage | Output |
 | --- | --- | --- |
@@ -90,17 +90,17 @@ Ten ordered stages, each writing a checkpoint, so an interrupted run resumes ins
 | 10 | `finalize` | Markdown report, JSON pack, translation artefacts |
 
 The stage cache key is `sha1(stage | source fingerprint | relevant model routes | relevant options)`,
-so **switching a model only re-runs the stages it affects**.
+so **changing a model only re-runs the stages it affects**.
 
 ### Retrieval and Q&A
 
 1. Chunking respects chapter boundaries (target 320 tokens, 80-token overlap).
-2. Each chunk gets a 50–80 token contextual prefix and three question variants — this fixes pronoun
+2. Each chunk gets a 50–80 token contextual prefix and three question variants, which handle pronoun
    drop-out and colloquial phrasing.
 3. Vector top-40 and BM25 top-40 recall in parallel, fused with RRF (k=60).
 4. OpenRouter reranks the top 30; the best K (default 8) become evidence.
-5. Global questions ("what is this about overall?") route to chapter-summary map-reduce instead of
-   fragment top-k.
+5. Global questions such as "what is this about overall?" are handled by chapter-summary map-reduce
+   instead of fragment top-k.
 6. Answers stream token by token; the server validates `[mm:ss]` anchors and maps them onto structured
    citations.
 
@@ -124,7 +124,7 @@ The pipeline depends on roles, never on concrete model names:
 | `translate` | `qwen-mt-uni` | DashScope |
 
 Credentials come from environment variables; the Models workspace also accepts inline overrides and
-only ever shows a masked tail:
+shows only a masked tail:
 
 ```bash
 DASHSCOPE_API_KEY=sk-xxxxxxxx      # Alibaba Cloud Model Studio
@@ -133,7 +133,7 @@ OPENROUTER_API_KEY=sk-or-v1-xxxx   # OpenRouter (rerank)
 
 ## Workbench
 
-Four workspaces, one shared time coordinate system.
+Four workspaces sharing one time coordinate system.
 
 <p align="center">
   <img src="./assets/readme/library.jpg" width="100%"
@@ -141,7 +141,7 @@ Four workspaces, one shared time coordinate system.
 </p>
 
 - **Library** — the single entry point: readiness, tags, scale, search and delete.
-- **Studio** — chapter rail / content stage / Copilot, with a persistent player bar. Five tabs (notes,
+- **Studio** — chapter rail, content stage and Copilot, with a persistent player bar. Five tabs (notes,
   transcript, mind map, concepts, frames) plus a live stage board while processing.
 - **Models** — two scopes (online / local) subdivided by provider and capability down to individual
   models; credentials and base URLs live in the provider block, roles are assigned on the model cards.
@@ -152,9 +152,9 @@ Four workspaces, one shared time coordinate system.
        alt="Models workspace: online and local scopes, provider blocks with credential state, models grouped by capability with role assignment" />
 </p>
 
-The interface is dark-first: graphite canvas with an aurora wash, hairline borders, an 8pt grid,
-monospaced timecodes, a global `Ctrl/⌘ + K` command palette, and a light theme verified to the same
-contrast bar (`node scripts/check-theme-contrast.mjs`).
+The interface is dark-first: a graphite canvas with an aurora wash, hairline borders, an 8pt grid,
+monospaced timecodes, and a global `Ctrl/⌘ + K` command palette. The light theme uses the same semantic
+tokens and passes the same contrast bar (`node scripts/check-theme-contrast.mjs`).
 
 ## Repository layout
 
@@ -179,7 +179,7 @@ VidGnost/
 ├─ packages/
 │  ├─ contracts/              # shared domain contracts (zod-validated request bodies)
 │  └─ shared/                 # shared constants
-├─ assets/readme/             # README visuals (diagram + screenshots)
+├─ assets/readme/             # README visuals (diagram and interface screenshots)
 ├─ docs/openspec/             # proposals, design and capability specs
 ├─ storage/                   # runtime data (tasks, artefacts, indexes, config)
 └─ scripts/                   # validation and operations scripts
@@ -198,7 +198,7 @@ node scripts/check-spec-sync.mjs                      # code changes keep specs 
 
 ## Documentation
 
-- [OpenSpec index](./docs/openspec/README.md) — proposals, design and the nine capability specs
+- [OpenSpec index](./docs/openspec/README.md): proposals, design and the nine capability specs
 - [Current tech stack (zh-CN)](./docs/current-tech-stack.zh-CN.md)
 - [Commit and release convention](./docs/git-commit-convention.md)
 
