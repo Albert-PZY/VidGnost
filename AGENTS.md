@@ -35,7 +35,8 @@
 - 提交规范：`docs/git-commit-convention.md`（area 表、粒度、分支、红线、AI 标注）
 - 强制手段：`.githooks/commit-msg` 校验提交信息，`.githooks/pre-commit` 扫描暂存区密钥、
   校验规格同步与规范一致性；钩子由 `core.hooksPath=.githooks` 生效
-- 自检命令：`pnpm run lint:commit`（校验 HEAD）、`pnpm run check:commit-convention`（文档与 area 表是否漂移）
+- 自检命令：`pnpm run lint:commit`（校验 HEAD）、`pnpm run check:commit-convention`（文档与 area 表是否漂移）、
+  `pnpm run check:commit-rules`（规则判定边界回归）
 - 交付分支：使用当前需求指定的工作分支，未获明确要求不要自动合并到 `master`。
 
 ## 4) OpenSpec 入口
@@ -86,6 +87,7 @@
 - 规格同步守卫：`scripts/check-spec-sync.mjs`
 - 提交规范守卫：`scripts/check-commit-convention.mjs`（`docs/git-commit-convention.md` §3 的 area 表
   必须与 `scripts/lib/commit-rules.mjs` 的 `AREAS` 一致）
+- 提交规则回归：`scripts/check-commit-rules.mjs`（固定用例盯住判定边界：什么必须拦、什么必须放行）
 - 提交信息校验：`scripts/hooks/commit-msg.mjs`（钩子）、`scripts/lint-commit.mjs`（手动）
 - 暂存区密钥扫描：`scripts/sanitize-staged-secrets.mjs`
 - 主题对比度校验：`scripts/check-theme-contrast.mjs`（浅色 / 深色两套令牌的语义配色必须全部达标）
