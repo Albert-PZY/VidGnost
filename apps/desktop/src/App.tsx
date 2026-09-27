@@ -13,7 +13,7 @@ import { useAppStore, type Workspace } from '@/stores/app-store'
 const WORKSPACE_LABEL: Record<Workspace, string> = {
   library: '资产库',
   studio: '工作台',
-  providers: '模型与密钥',
+  providers: '模型',
   settings: '设置',
 }
 
@@ -69,7 +69,7 @@ export default function App() {
       hint: task ? task.title : '先打开一个任务',
       run: () => task && setWorkspace('studio'),
     },
-    { id: 'nav-providers', label: '前往模型与密钥', hint: '提供方与角色路由', run: () => setWorkspace('providers') },
+    { id: 'nav-providers', label: '前往模型', hint: '模型类别、协议与渠道', run: () => setWorkspace('providers') },
     { id: 'nav-settings', label: '前往设置', hint: '默认处理参数与本地 Whisper', run: () => setWorkspace('settings') },
     { id: 'refresh-library', label: '刷新资产库', hint: '重新拉取任务列表', run: () => void refreshLibrary() },
     ...(task

@@ -1,10 +1,20 @@
-import type { ModelCatalogEntry, ModelKind, ModelRole, ModelRoute, ProviderConfig, ProviderId } from '@vidgnost/contracts'
+import type {
+  ModelCatalogEntry,
+  ModelKind,
+  ModelRole,
+  ModelRoute,
+  ProviderConfig,
+  ProviderProtocol,
+  ProviderProtocolInfo,
+} from '@vidgnost/contracts'
 
 /**
- * 模型页的派生视图：把「模型目录 + 角色路由 + 提供方状态」整理成
- * 「在线模型 / 本地模型 → 提供方 → 模型类型 → 模型」四层结构。
+ * 模型页的派生视图：把「模型目录 + 渠道配置 + 角色路由」整理成
+ * 「模型类别 → 协议 → 渠道 → 模型」四层。
  *
- * 之所以放在这里而不是页面内：分组与角色兼容性是纯函数，可以在没有界面的情况下验证。
+ * 之所以按类别分而不是按服务商分：用户要找的是「能向量化的模型」，
+ * 服务商与协议只是达成手段；渠道（提供方记录）挂在协议下面，由用户自行接入。
+ * 分组与角色兼容性都是纯函数，可以在没有界面的情况下验证。
  */
 
 export interface RoleMeta {
@@ -14,90 +24,66 @@ export interface RoleMeta {
   role: ModelRole
 }
 
-export type ModelScope = 'online' | 'local'
-
 export interface ModelCard {
-  /** 该模型可以承担哪些角色（按能力与提供方推导，不含已被其他角色占用的限制）。 */
+  /** 该模型可以承担哪些角色（按能力与渠道推导）。 */
   assignableRoles: ModelRole[]
   /** 该模型当前承担的角色。 */
   assignedRoles: ModelRole[]
   model: ModelCatalogEntry
 }
 
-export interface KindGroup {
-  kind: ModelKind
-  label: string
+export interface ChannelGroup {
+  /** 渠道即提供方记录：协议 + Base URL + 凭据 + 已登记的模型。 */
+  provider: ProviderConfig
   models: ModelCard[]
 }
 
-export interface ProviderGroup {
-  /** 本地运行时没有凭据概念，因此可以为 null。 */
-  provider: ProviderConfig | null
-  providerId: ProviderId
+export interface ProtocolGroup {
+  protocol: ProviderProtocol
   label: string
   note: string
-  models: ModelCard[]
-  kinds: KindGroup[]
+  /** 该协议在该类别下已接入的渠道。 */
+  channels: ChannelGroup[]
+  modelCount: number
 }
 
-export interface ScopeGroup {
-  description: string
+export interface KindSection {
+  kind: ModelKind
   label: string
-  providers: ProviderGroup[]
-  scope: ModelScope
+  modelCount: number
+  protocols: ProtocolGroup[]
 }
 
 export const KIND_LABELS: Record<ModelKind, string> = {
   chat: '对话模型',
-  translation: '翻译模型',
-  asr: '语音转文字',
-  embedding: '向量化模型',
   vision: '多模态模型',
+  embedding: '向量化模型',
   rerank: '重排序模型',
+  asr: '语音转文字',
+  translation: '翻译模型',
 }
 
-export const SCOPE_LABELS: Record<ModelScope, { description: string; label: string }> = {
-  online: {
-    label: '在线模型',
-    description: '通过 API 调用，无需本地算力；未配置密钥时对应角色会回退或失败。',
-  },
-  local: {
-    label: '本地模型',
-    description: '在本机运行，离线可用；当前仅用于语音转写兜底。',
-  },
-}
+/** 类别顺序按流水线里的使用频率排：先对话，再视觉，其余按检索链路。 */
+const KIND_ORDER: ModelKind[] = ['chat', 'vision', 'embedding', 'rerank', 'asr', 'translation']
 
-const SCOPE_ORDER: ModelScope[] = ['online', 'local']
-const ONLINE_PROVIDER_ORDER: ProviderId[] = ['dashscope', 'openrouter', 'openai-compatible']
-const KIND_ORDER: ModelKind[] = ['chat', 'vision', 'asr', 'embedding', 'translation', 'rerank']
-
-/** 模型的稳定标识：提供方 + 模型 id。角色归属判断与列表 key 都用它对齐。 */
-export function modelKey(model: Pick<ModelCatalogEntry, 'id' | 'provider'>): string {
-  return `${model.provider}:${model.id}`
-}
+/** 协议顺序：默认可用的 DashScope 在前，其余按通用性排。 */
+const PROTOCOL_ORDER: ProviderProtocol[] = ['dashscope', 'openai', 'anthropic', 'gemini', 'openrouter', 'local']
 
 /** 只有本地运行时能承担的角色。 */
 const LOCAL_ONLY_ROLES: ModelRole[] = ['asr.local']
 
-/** 本地运行时没有提供方记录，标题与说明在此固定，避免界面上出现 `local` 这样的裸标识。 */
-const LOCAL_RUNTIME = {
-  label: '本地运行时（faster-whisper）',
-  note: '使用本机 Python 与 CTranslate2 模型目录推理，不消耗在线额度。',
-} as const
-
-export function scopeOf(provider: ProviderId): ModelScope {
-  return provider === 'local' ? 'local' : 'online'
+/** 模型的稳定标识：渠道 + 模型 id。角色归属判断与列表 key 都用它对齐。 */
+export function modelKey(model: Pick<ModelCatalogEntry, 'id' | 'provider'>): string {
+  return `${model.provider}:${model.id}`
 }
 
-/** 模型能否承担某角色：先看能力类型是否一致，再看提供方是否支持该角色。 */
+/** 模型能否承担某角色：先看能力类型是否一致，再看它是否属于本地运行时。 */
 export function canServe(model: ModelCatalogEntry, role: ModelRole, roleKind: ModelKind): boolean {
   if (roleKind !== model.kind) {
     return false
   }
-  if (model.provider === 'local') {
-    return LOCAL_ONLY_ROLES.includes(role)
-  }
-  return !LOCAL_ONLY_ROLES.includes(role)
+  const isLocal = model.provider === 'local'
+  return LOCAL_ONLY_ROLES.includes(role) ? isLocal : !isLocal
 }
 
 export function assignableRolesFor(model: ModelCatalogEntry, roleMeta: RoleMeta[]): ModelRole[] {
@@ -106,12 +92,11 @@ export function assignableRolesFor(model: ModelCatalogEntry, roleMeta: RoleMeta[
 
 export function groupModels(input: {
   models: ModelCatalogEntry[]
+  protocols: ProviderProtocolInfo[]
   providers: ProviderConfig[]
   roleMeta: RoleMeta[]
   routes: ModelRoute[]
-}): ScopeGroup[] {
-  const providerById = new Map(input.providers.map((provider) => [provider.id, provider]))
-
+}): KindSection[] {
   const toCard = (model: ModelCatalogEntry): ModelCard => ({
     model,
     assignableRoles: assignableRolesFor(model, input.roleMeta),
@@ -120,42 +105,64 @@ export function groupModels(input: {
       .map((route) => route.role),
   })
 
-  return SCOPE_ORDER.map((scope) => {
-    const providerIds =
-      scope === 'online'
-        ? ONLINE_PROVIDER_ORDER.filter((id) => Boolean(providerById.get(id)))
-        : (['local'] as ProviderId[])
+  const orderedProtocols = [...input.protocols].sort(
+    (left, right) => PROTOCOL_ORDER.indexOf(left.protocol) - PROTOCOL_ORDER.indexOf(right.protocol),
+  )
 
-    const providers: ProviderGroup[] = providerIds.map((providerId) => {
-      const provider = providerById.get(providerId) ?? null
-      const models = input.models.filter((model) => model.provider === providerId)
-      const cards = models.map(toCard)
-      const kinds: KindGroup[] = KIND_ORDER.filter((kind) => cards.some((card) => card.model.kind === kind)).map(
-        (kind) => ({
-          kind,
-          label: KIND_LABELS[kind],
-          models: cards
-            .filter((card) => card.model.kind === kind)
-            .sort((left, right) => left.model.label.localeCompare(right.model.label, 'zh-CN')),
-        }),
-      )
+  return KIND_ORDER.map((kind) => {
+    const protocols: ProtocolGroup[] = orderedProtocols
+      .filter((info) => info.kinds.includes(kind))
+      .map((info) => {
+        const channels: ChannelGroup[] = input.providers
+          .filter((provider) => provider.protocol === info.protocol)
+          .map((provider) => ({
+            provider,
+            models: input.models
+              .filter((model) => model.provider === provider.id && model.kind === kind)
+              .map(toCard)
+              .sort((left, right) => left.model.label.localeCompare(right.model.label, 'zh-CN')),
+          }))
+          // 没有该类模型的渠道只在启用时保留，否则会在六个类别里重复出现。
+          .filter((channel) => channel.models.length > 0 || channel.provider.enabled)
 
-      return {
-        provider,
-        providerId,
-        label: provider?.label ?? LOCAL_RUNTIME.label,
-        note: provider?.note ?? LOCAL_RUNTIME.note,
-        models: cards,
-        kinds,
-      }
-    })
+        return {
+          protocol: info.protocol,
+          label: info.label,
+          note: info.note,
+          channels,
+          modelCount: channels.reduce((sum, channel) => sum + channel.models.length, 0),
+        }
+      })
 
-    return { scope, ...SCOPE_LABELS[scope], providers }
+    return {
+      kind,
+      label: KIND_LABELS[kind],
+      modelCount: protocols.reduce((sum, group) => sum + group.modelCount, 0),
+      protocols,
+    }
   })
 }
 
+/** 某渠道在某类别下已登记的模型数量。 */
+export function channelModelCount(providers: ProviderConfig[], providerId: string, kind: ModelKind): number {
+  const provider = providers.find((item) => item.id === providerId)
+  return provider ? provider.models.filter((model) => model.kind === kind).length : 0
+}
+
+/** 渠道是否被角色引用，返回占用它的角色标签。界面据此禁用删除。 */
+export function rolesUsingChannel(routes: ModelRoute[], providerId: string): string[] {
+  return routes.filter((route) => route.provider === providerId).map((route) => route.label || route.role)
+}
+
+/** 某个模型是否被角色引用，返回占用它的角色标签。 */
+export function rolesUsingModel(routes: ModelRoute[], providerId: string, modelId: string): string[] {
+  return routes
+    .filter((route) => route.provider === providerId && route.model === modelId)
+    .map((route) => route.label || route.role)
+}
+
 /**
- * 把某个角色指给一个模型。角色是「谁来做这件事」，因此同一角色只保留一个模型：
+ * 把某个角色指给一个模型。角色回答的是「谁来做这件事」，因此同一角色只保留一个模型：
  * 目标模型接管该角色，其余路由保持不变。
  */
 export function assignRole(input: {

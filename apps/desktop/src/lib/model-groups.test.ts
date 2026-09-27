@@ -1,8 +1,18 @@
 import { describe, expect, it } from 'vitest'
 
-import type { ModelCatalogEntry, ModelRoute, ProviderConfig } from '@vidgnost/contracts'
+import type { ModelCatalogEntry, ModelRoute, ProviderConfig, ProviderProtocolInfo } from '@vidgnost/contracts'
 
-import { assignRole, assignableRolesFor, canServe, groupModels, modelKey, scopeOf, type RoleMeta } from './model-groups'
+import {
+  assignRole,
+  assignableRolesFor,
+  canServe,
+  channelModelCount,
+  groupModels,
+  modelKey,
+  rolesUsingChannel,
+  rolesUsingModel,
+  type RoleMeta,
+} from './model-groups'
 
 const ROLE_META: RoleMeta[] = [
   { role: 'llm.fast', label: '快速模型', purpose: '', kind: 'chat' },
@@ -16,6 +26,49 @@ const ROLE_META: RoleMeta[] = [
   { role: 'translate', label: '翻译模型', purpose: '', kind: 'translation' },
 ]
 
+const PROTOCOLS: ProviderProtocolInfo[] = [
+  {
+    protocol: 'dashscope',
+    label: 'DashScope 原生',
+    kinds: ['chat', 'vision', 'embedding', 'asr', 'translation'],
+    streaming: true,
+    defaultBaseUrl: 'https://dashscope.aliyuncs.com',
+    note: '',
+  },
+  {
+    protocol: 'openai',
+    label: 'OpenAI 兼容',
+    kinds: ['chat', 'vision', 'embedding', 'rerank', 'asr', 'translation'],
+    streaming: true,
+    defaultBaseUrl: 'https://api.openai.com/v1',
+    note: '自建端点也走这里',
+  },
+  {
+    protocol: 'anthropic',
+    label: 'Anthropic Messages',
+    kinds: ['chat', 'vision', 'translation'],
+    streaming: true,
+    defaultBaseUrl: 'https://api.anthropic.com/v1',
+    note: '不提供向量化与重排',
+  },
+  {
+    protocol: 'gemini',
+    label: 'Google Gemini',
+    kinds: ['chat', 'vision', 'embedding', 'translation'],
+    streaming: true,
+    defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+    note: '还没有接入任何渠道',
+  },
+  {
+    protocol: 'local',
+    label: '本地运行时',
+    kinds: ['asr'],
+    streaming: false,
+    defaultBaseUrl: '',
+    note: '离线转写',
+  },
+]
+
 const MODELS: ModelCatalogEntry[] = [
   { id: 'qwen3.8-flash', provider: 'dashscope', kind: 'chat', label: 'Qwen3.8 Flash', description: '', tags: [], free: true },
   { id: 'qwen3.8-27b', provider: 'dashscope', kind: 'chat', label: 'Qwen3.8 27B', description: '', tags: [], free: true },
@@ -23,24 +76,41 @@ const MODELS: ModelCatalogEntry[] = [
   { id: 'qwen-audio-asr', provider: 'dashscope', kind: 'asr', label: 'Qwen Audio ASR', description: '', tags: [] },
   { id: 'embedding-flash', provider: 'dashscope', kind: 'embedding', label: 'Embedding Flash', description: '', tags: [] },
   { id: 'nemotron-rerank', provider: 'openrouter', kind: 'rerank', label: 'Nemotron Rerank', description: '', tags: [] },
+  { id: 'bge-m3', provider: 'my-gateway', kind: 'embedding', label: 'BGE M3', description: '', tags: [], dimensions: 1024, custom: true },
+  { id: 'claude-sonnet', provider: 'anthropic-cn', kind: 'chat', label: 'Claude Sonnet', description: '', tags: [], custom: true },
   { id: 'faster-whisper', provider: 'local', kind: 'asr', label: 'Faster Whisper', description: '', tags: [] },
 ]
 
-function provider(id: ProviderConfig['id'], label: string): ProviderConfig {
+function provider(
+  id: string,
+  label: string,
+  protocol: ProviderConfig['protocol'],
+  models: ProviderConfig['models'] = [],
+  enabled = true,
+): ProviderConfig {
   return {
     id,
     label,
+    protocol,
+    builtin: !models.length && id !== 'my-gateway',
     baseUrl: `https://${id}.example.com`,
-    enabled: true,
+    enabled,
     auth: { source: 'env', envVar: 'X' },
     credentialStatus: { present: true, masked: 'sk-…1234', origin: 'env' },
+    models,
   }
 }
 
 const PROVIDERS: ProviderConfig[] = [
-  provider('dashscope', '阿里云百炼'),
-  provider('openrouter', 'OpenRouter'),
-  provider('openai-compatible', 'OpenAI 兼容'),
+  provider('dashscope', '阿里云百炼', 'dashscope'),
+  provider('openrouter', 'OpenRouter', 'openrouter'),
+  provider('my-gateway', '内网网关', 'openai', [
+    { id: 'bge-m3', label: 'BGE M3', kind: 'embedding', dimensions: 1024 },
+  ]),
+  provider('anthropic-cn', 'Claude 中转', 'anthropic', [
+    { id: 'claude-sonnet', label: 'Claude Sonnet', kind: 'chat' },
+  ]),
+  provider('local', '本地运行时（faster-whisper）', 'local'),
 ]
 
 const ROUTES: ModelRoute[] = [
@@ -50,157 +120,198 @@ const ROUTES: ModelRoute[] = [
   { role: 'asr.local', provider: 'local', model: 'faster-whisper', label: '本地转写', allowFallback: false },
 ]
 
-describe('scopeOf', () => {
-  it('splits local from online providers', () => {
-    expect(scopeOf('local')).toBe('local')
-    expect(scopeOf('dashscope')).toBe('online')
-    expect(scopeOf('openrouter')).toBe('online')
-    expect(scopeOf('openai-compatible')).toBe('online')
-  })
+const SECTIONS = groupModels({
+  models: MODELS,
+  protocols: PROTOCOLS,
+  providers: PROVIDERS,
+  roleMeta: ROLE_META,
+  routes: ROUTES,
 })
 
-describe('modelKey', () => {
-  it('identifies a model by provider and id together', () => {
-    expect(modelKey({ provider: 'dashscope', id: 'qwen3.8-flash' })).toBe('dashscope:qwen3.8-flash')
-    expect(modelKey({ provider: 'local', id: 'faster-whisper' })).toBe('local:faster-whisper')
-  })
+function section(kind: ModelCatalogEntry['kind']) {
+  const found = SECTIONS.find((item) => item.kind === kind)
+  if (!found) {
+    throw new Error(`缺少类别：${kind}`)
+  }
+  return found
+}
 
-  it('keeps the same model id on different providers apart', () => {
-    expect(modelKey({ provider: 'openrouter', id: 'qwen3.8-flash' })).not.toBe(
-      modelKey({ provider: 'dashscope', id: 'qwen3.8-flash' }),
-    )
+function protocolGroup(kind: ModelCatalogEntry['kind'], protocol: ProviderConfig['protocol']) {
+  const found = section(kind).protocols.find((item) => item.protocol === protocol)
+  if (!found) {
+    throw new Error(`类别 ${kind} 下缺少协议：${protocol}`)
+  }
+  return found
+}
+
+describe('modelKey', () => {
+  it('combines channel and model so同名模型不会互相覆盖', () => {
+    expect(modelKey({ id: 'bge-m3', provider: 'my-gateway' })).toBe('my-gateway:bge-m3')
+    expect(modelKey({ id: 'bge-m3', provider: 'other' })).not.toBe(modelKey({ id: 'bge-m3', provider: 'my-gateway' }))
   })
 })
 
 describe('canServe', () => {
-  const chat = MODELS[0]
-  const localAsr = MODELS[6]
-
-  it('requires a matching capability kind', () => {
-    expect(canServe(chat, 'llm.fast', 'chat')).toBe(true)
-    expect(canServe(chat, 'vision.primary', 'vision')).toBe(false)
+  it('keeps local transcription to the local runtime', () => {
+    const localModel = MODELS.find((model) => model.id === 'faster-whisper')!
+    const onlineModel = MODELS.find((model) => model.id === 'qwen-audio-asr')!
+    expect(canServe(localModel, 'asr.local', 'asr')).toBe(true)
+    expect(canServe(onlineModel, 'asr.local', 'asr')).toBe(false)
+    expect(canServe(localModel, 'asr.online', 'asr')).toBe(false)
+    expect(canServe(onlineModel, 'asr.online', 'asr')).toBe(true)
   })
 
-  it('lets online models take online roles only', () => {
-    expect(canServe(chat, 'asr.online', 'asr')).toBe(false)
-    expect(canServe(MODELS[3], 'asr.online', 'asr')).toBe(true)
-    expect(canServe(MODELS[3], 'asr.local', 'asr')).toBe(false)
-  })
-
-  it('lets the local runtime take only the local transcription role', () => {
-    expect(canServe(localAsr, 'asr.local', 'asr')).toBe(true)
-    expect(canServe(localAsr, 'asr.online', 'asr')).toBe(false)
-    expect(canServe(localAsr, 'embedding', 'embedding')).toBe(false)
+  it('requires the capability kind to match', () => {
+    const chatModel = MODELS.find((model) => model.id === 'qwen3.8-flash')!
+    expect(canServe(chatModel, 'embedding', 'embedding')).toBe(false)
   })
 })
 
 describe('assignableRolesFor', () => {
-  it('lists every chat role for a chat model', () => {
-    expect(assignableRolesFor(MODELS[0], ROLE_META)).toEqual(['llm.fast', 'llm.balanced', 'llm.fallback'])
-  })
-
-  it('gives the local runtime a single option', () => {
-    expect(assignableRolesFor(MODELS[6], ROLE_META)).toEqual(['asr.local'])
+  it('lists only the roles of the same kind', () => {
+    const embedding = MODELS.find((model) => model.id === 'bge-m3')!
+    expect(assignableRolesFor(embedding, ROLE_META)).toEqual(['embedding'])
   })
 })
 
 describe('groupModels', () => {
-  const groups = groupModels({ models: MODELS, providers: PROVIDERS, roleMeta: ROLE_META, routes: ROUTES })
-
-  it('returns exactly two top-level scopes in order', () => {
-    expect(groups.map((group) => group.scope)).toEqual(['online', 'local'])
-    expect(groups[0].label).toBe('在线模型')
-    expect(groups[1].label).toBe('本地模型')
-  })
-
-  it('keeps only online providers under the online scope', () => {
-    expect(groups[0].providers.map((group) => group.providerId)).toEqual(['dashscope', 'openrouter', 'openai-compatible'])
-    expect(groups[1].providers.map((group) => group.providerId)).toEqual(['local'])
-  })
-
-  it('assigns each model to its provider', () => {
-    const dashscope = groups[0].providers.find((group) => group.providerId === 'dashscope')
-    expect(dashscope?.models.map((card) => card.model.id)).toEqual([
-      'qwen3.8-flash',
-      'qwen3.8-27b',
-      'qwen3.8-omni-flash',
-      'qwen-audio-asr',
-      'embedding-flash',
+  it('orders sections by category, not by provider', () => {
+    expect(SECTIONS.map((item) => item.kind)).toEqual([
+      'chat',
+      'vision',
+      'embedding',
+      'rerank',
+      'asr',
+      'translation',
     ])
   })
 
-  it('subdivides models by capability kind', () => {
-    const dashscope = groups[0].providers.find((group) => group.providerId === 'dashscope')
-    expect(dashscope?.kinds.map((kind) => kind.kind)).toEqual(['chat', 'vision', 'asr', 'embedding'])
-    expect(dashscope?.kinds[0].label).toBe('对话模型')
+  it('groups everything of one kind under its protocol', () => {
+    // 对话模型下同时出现内置的 DashScope 渠道与自定义的 Anthropic 渠道。
+    expect(protocolGroup('chat', 'dashscope').modelCount).toBe(2)
+    expect(protocolGroup('chat', 'anthropic').modelCount).toBe(1)
+    expect(protocolGroup('chat', 'anthropic').channels[0].provider.label).toBe('Claude 中转')
   })
 
-  it('reports the roles each model currently serves', () => {
-    const dashscope = groups[0].providers.find((group) => group.providerId === 'dashscope')
-    const flash = dashscope?.models.find((card) => card.model.id === 'qwen3.8-flash')
-    const omni = dashscope?.models.find((card) => card.model.id === 'qwen3.8-omni-flash')
-    expect(flash?.assignedRoles).toEqual(['llm.fast'])
-    expect(omni?.assignedRoles).toEqual([])
+  it('drops protocols that cannot serve the kind', () => {
+    const embeddingProtocols = section('embedding').protocols.map((item) => item.protocol)
+    expect(embeddingProtocols).not.toContain('anthropic')
+    expect(embeddingProtocols).not.toContain('local')
+
+    // 本地运行时只出现在转写类别里。
+    const asrProtocols = section('asr').protocols.map((item) => item.protocol)
+    expect(asrProtocols).toContain('local')
+    expect(section('rerank').protocols.map((item) => item.protocol)).not.toContain('dashscope')
   })
 
-  it('keeps a provider with no models visible so its credentials stay reachable', () => {
-    const compatible = groups[0].providers.find((group) => group.providerId === 'openai-compatible')
-    expect(compatible?.models).toEqual([])
-    expect(compatible?.provider).not.toBeNull()
+  it('keeps protocols without any channel so one can be added there', () => {
+    const gemini = protocolGroup('chat', 'gemini')
+    expect(gemini.channels).toHaveLength(0)
+    expect(gemini.modelCount).toBe(0)
+    expect(gemini.note).toBe('还没有接入任何渠道')
   })
 
-  it('names the local runtime instead of exposing the raw provider id', () => {
-    const local = groups[1].providers[0]
-    expect(local.label).toBe('本地运行时（faster-whisper）')
-    expect(local.note).not.toBe('')
+  it('lists an enabled channel under every kind its protocol supports', () => {
+    // 内网网关是 OpenAI 兼容渠道：它在转写类别下没有模型，但仍要出现，才能继续接入转写模型。
+    const asr = protocolGroup('asr', 'openai')
+    expect(asr.channels.map((channel) => channel.provider.id)).toEqual(['my-gateway'])
+    expect(asr.modelCount).toBe(0)
   })
 
-  it('carries the provider record for credential rendering', () => {
-    const dashscope = groups[0].providers.find((group) => group.providerId === 'dashscope')
-    expect(dashscope?.provider?.credentialStatus.present).toBe(true)
-    const local = groups[1].providers[0]
-    expect(local.provider).toBeNull()
+  it('counts models per section from the channels below it', () => {
+    expect(section('chat').modelCount).toBe(3)
+    expect(section('embedding').modelCount).toBe(2)
+    expect(section('translation').modelCount).toBe(0)
+  })
+
+  it('marks custom models and reports the roles each one carries', () => {
+    const custom = protocolGroup('embedding', 'openai').channels[0].models[0]
+    expect(custom.model.custom).toBe(true)
+    expect(custom.model.dimensions).toBe(1024)
+
+    const flash = protocolGroup('chat', 'dashscope').channels[0].models.find(
+      (card) => card.model.id === 'qwen3.8-flash',
+    )!
+    expect(flash.assignedRoles).toEqual(['llm.fast'])
+  })
+
+  it('hides a disabled channel that has nothing to show in this kind', () => {
+    const sections = groupModels({
+      models: MODELS,
+      protocols: PROTOCOLS,
+      providers: [...PROVIDERS, provider('idle', '停用的渠道', 'openai', [], false)],
+      roleMeta: ROLE_META,
+      routes: ROUTES,
+    })
+    const openai = sections.find((item) => item.kind === 'chat')!.protocols.find((item) => item.protocol === 'openai')!
+    expect(openai.channels.map((channel) => channel.provider.id)).not.toContain('idle')
+  })
+
+  it('keeps a disabled channel that still owns models', () => {
+    const sections = groupModels({
+      models: MODELS,
+      protocols: PROTOCOLS,
+      providers: PROVIDERS.map((item) =>
+        item.id === 'my-gateway' ? { ...item, enabled: false } : item,
+      ),
+      roleMeta: ROLE_META,
+      routes: ROUTES,
+    })
+    const openai = sections.find((item) => item.kind === 'embedding')!.protocols.find((item) => item.protocol === 'openai')!
+    expect(openai.channels.map((channel) => channel.provider.id)).toContain('my-gateway')
+  })
+})
+
+describe('rolesUsingChannel / rolesUsingModel', () => {
+  it('reports which roles block a deletion', () => {
+    expect(rolesUsingChannel(ROUTES, 'dashscope')).toEqual(['快速模型', '均衡模型'])
+    expect(rolesUsingChannel(ROUTES, 'anthropic-cn')).toEqual([])
+    expect(rolesUsingModel(ROUTES, 'dashscope', 'qwen3.8-flash')).toEqual(['快速模型'])
+    expect(rolesUsingModel(ROUTES, 'dashscope', 'qwen3.8-27b')).toEqual(['均衡模型'])
+  })
+})
+
+describe('channelModelCount', () => {
+  it('counts only the requested kind', () => {
+    expect(channelModelCount(PROVIDERS, 'my-gateway', 'embedding')).toBe(1)
+    expect(channelModelCount(PROVIDERS, 'my-gateway', 'chat')).toBe(0)
+    expect(channelModelCount(PROVIDERS, 'missing', 'chat')).toBe(0)
   })
 })
 
 describe('assignRole', () => {
-  it('moves a role to the target model and keeps the canonical role order', () => {
-    const next = assignRole({ model: MODELS[1], role: 'llm.fast', roleMeta: ROLE_META, routes: ROUTES })
-    const fast = next.find((route) => route.role === 'llm.fast')
-    expect(fast?.model).toBe('qwen3.8-27b')
-    expect(fast?.provider).toBe('dashscope')
-    // 顺序按角色元信息排列，与输入路由的书写顺序无关。
-    expect(next.map((route) => route.role)).toEqual(['llm.fast', 'llm.balanced', 'asr.local', 'rerank'])
-  })
+  it('moves the role to the new model and keeps every other route', () => {
+    const target = MODELS.find((model) => model.id === 'claude-sonnet')!
+    const next = assignRole({ model: target, role: 'llm.fast', roleMeta: ROLE_META, routes: ROUTES })
 
-  it('never lets two models claim the same role', () => {
-    const next = assignRole({ model: MODELS[1], role: 'llm.fast', roleMeta: ROLE_META, routes: ROUTES })
-    expect(next.filter((route) => route.role === 'llm.fast')).toHaveLength(1)
-    expect(next.some((route) => route.role === 'llm.fast' && route.model === 'qwen3.8-flash')).toBe(false)
-  })
-
-  it('keeps the role label describing the role, not the model', () => {
-    const next = assignRole({ model: MODELS[0], role: 'vision.primary', roleMeta: ROLE_META, routes: ROUTES })
-    expect(next.find((route) => route.role === 'vision.primary')?.label).toBe('视觉模型')
-  })
-
-  it('preserves fallback and sampling settings of the route it replaces', () => {
-    const withOptions: ModelRoute[] = [{ role: 'llm.fast', provider: 'dashscope', model: 'qwen3.8-flash', label: '快速模型', allowFallback: false, temperature: 0.9, maxTokens: 1234 }]
-    const next = assignRole({ model: MODELS[1], role: 'llm.fast', roleMeta: ROLE_META, routes: withOptions })
-    expect(next[0].allowFallback).toBe(false)
-    expect(next[0].temperature).toBe(0.9)
-    expect(next[0].maxTokens).toBe(1234)
-  })
-
-  it('starts a brand new role with safe defaults', () => {
-    const next = assignRole({ model: MODELS[6], role: 'asr.local', roleMeta: ROLE_META, routes: [] })
-    expect(next).toHaveLength(1)
-    expect(next[0]).toMatchObject({ role: 'asr.local', provider: 'local', model: 'faster-whisper', allowFallback: true })
-  })
-
-  it('lets the local runtime take over local transcription', () => {
-    const next = assignRole({ model: MODELS[6], role: 'asr.local', roleMeta: ROLE_META, routes: ROUTES })
-    expect(next.find((route) => route.role === 'asr.local')?.model).toBe('faster-whisper')
+    const fast = next.find((route) => route.role === 'llm.fast')!
+    expect(fast.provider).toBe('anthropic-cn')
+    expect(fast.model).toBe('claude-sonnet')
+    // label 描述角色本身，不跟着模型走。
+    expect(fast.label).toBe('快速模型')
     expect(next).toHaveLength(ROUTES.length)
+  })
+
+  it('keeps the previous generation parameters of the role', () => {
+    const routes: ModelRoute[] = [
+      { role: 'llm.fast', provider: 'dashscope', model: 'a', label: '快速模型', allowFallback: false, temperature: 1.1, maxTokens: 4096 },
+    ]
+    const target = MODELS.find((model) => model.id === 'claude-sonnet')!
+    const next = assignRole({ model: target, role: 'llm.fast', roleMeta: ROLE_META, routes })
+    expect(next[0].temperature).toBe(1.1)
+    expect(next[0].maxTokens).toBe(4096)
+    expect(next[0].allowFallback).toBe(false)
+  })
+
+  it('returns routes ordered by the role table', () => {
+    const target = MODELS.find((model) => model.id === 'claude-sonnet')!
+    const next = assignRole({ model: target, role: 'llm.fallback', roleMeta: ROLE_META, routes: ROUTES })
+    expect(next.map((route) => route.role)).toEqual([
+      'llm.fast',
+      'llm.balanced',
+      'llm.fallback',
+      'asr.local',
+      'rerank',
+    ])
   })
 })

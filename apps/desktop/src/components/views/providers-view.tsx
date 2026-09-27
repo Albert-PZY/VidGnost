@@ -1,20 +1,32 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, AlertTriangle, CheckCircle2, Cpu, KeyRound, Loader2, PlugZap } from 'lucide-react'
+import { Activity, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
 
-import type { ModelKind, ModelRole, ProviderConfig, ProviderId, RuntimeHealth } from '@vidgnost/contracts'
+import type {
+  CustomModelEntry,
+  ModelKind,
+  ModelRole,
+  ProviderConfig,
+  ProviderCreateRequest,
+  ProviderModelUpsertRequest,
+  ProviderPatchRequest,
+  ProviderProtocolInfo,
+  RuntimeHealth,
+} from '@vidgnost/contracts'
 
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import {
+  KIND_LABELS,
   assignRole,
   groupModels,
   modelKey,
   type ModelCard,
-  type ProviderGroup,
-  type ScopeGroup,
+  type ProtocolGroup,
 } from '@/lib/model-groups'
+import { ChannelDialog } from '@/components/providers/channel-dialog'
+import { LocalRuntimeDialog } from '@/components/providers/local-runtime-dialog'
+import { ModelDialog } from '@/components/providers/model-dialog'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { useAppStore } from '@/stores/app-store'
 
@@ -27,26 +39,54 @@ const KIND_TONE: Record<ModelKind, string> = {
   rerank: 'text-destructive',
 }
 
+/** 每个类别一句话说明它在流水线里做什么，用户据此判断自己缺哪一类模型。 */
+const KIND_HINTS: Record<ModelKind, string> = {
+  chat: '分段、章节、摘要、导图与问答的文字生成。',
+  vision: '关键帧图注与屏上文字提取。',
+  embedding: '检索切块的向量化，决定能不能按语义搜到内容。',
+  rerank: '对混合召回的结果重新排序，提升引用的准确度。',
+  asr: '把音频转写成带时间戳的文本，是整条管线的起点。',
+  translation: '字幕与段落的批量翻译。',
+}
+
+type ChannelDialogState =
+  | { mode: 'create'; protocol: ProviderProtocolInfo }
+  | { mode: 'edit'; protocol: ProviderProtocolInfo; provider: ProviderConfig }
+  | null
+
+type ModelDialogState = {
+  kind: ModelKind
+  mode: 'create' | 'edit'
+  model?: CustomModelEntry
+  provider: ProviderConfig
+} | null
+
 /**
- * 模型页：按「在线模型 / 本地模型 → 提供方 → 模型类型 → 模型」组织。
+ * 模型页：先按模型类别分（对话、多模态、向量化、重排、转写、翻译），
+ * 每个类别下再按协议列出已接入的渠道；渠道是协议加连接信息，模型登记在渠道下。
  * 角色分配落在模型卡片上——用户问的是「这个模型在做什么」，而不是「这个抽象角色对应谁」。
  */
 export function ProvidersView() {
   const providers = useAppStore((state) => state.providers)
   const routes = useAppStore((state) => state.routes)
   const models = useAppStore((state) => state.models)
+  const protocols = useAppStore((state) => state.protocols)
   const roleMeta = useAppStore((state) => state.roleMeta)
-  const settings = useAppStore((state) => state.settings)
   const loadConfig = useAppStore((state) => state.loadConfig)
   const saveProvider = useAppStore((state) => state.saveProvider)
+  const addProvider = useAppStore((state) => state.addProvider)
+  const removeProvider = useAppStore((state) => state.removeProvider)
+  const saveProviderModel = useAppStore((state) => state.saveProviderModel)
+  const removeProviderModel = useAppStore((state) => state.removeProviderModel)
   const saveRoutes = useAppStore((state) => state.saveRoutes)
-  const saveSettings = useAppStore((state) => state.saveSettings)
 
   const [probeState, setProbeState] = useState<'idle' | 'running' | 'done'>('idle')
   const [probeResult, setProbeResult] = useState<RuntimeHealth | null>(null)
-  const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [pendingModelKey, setPendingModelKey] = useState<string | null>(null)
   const [lastChange, setLastChange] = useState<string | null>(null)
+  const [channelDialog, setChannelDialog] = useState<ChannelDialogState>(null)
+  const [modelDialog, setModelDialog] = useState<ModelDialogState>(null)
+  const [localOpen, setLocalOpen] = useState(false)
 
   useEffect(() => {
     if (providers.length === 0) {
@@ -62,13 +102,28 @@ export function ProvidersView() {
     return () => clearTimeout(timer)
   }, [lastChange])
 
-  const scopes: ScopeGroup[] = useMemo(
-    () => groupModels({ models, providers, roleMeta, routes }),
-    [models, providers, roleMeta, routes],
+  const sections = useMemo(
+    () => groupModels({ models, protocols, providers, roleMeta, routes }),
+    [models, providers, protocols, roleMeta, routes],
   )
 
+  /** 自检结果按渠道展示，但同一渠道可能出现在多个类别里，只在第一次出现时渲染。 */
+  const healthOwner = useMemo(() => {
+    const owner = new Map<string, ModelKind>()
+    for (const section of sections) {
+      for (const group of section.protocols) {
+        for (const channel of group.channels) {
+          if (!owner.has(channel.provider.id)) {
+            owner.set(channel.provider.id, section.kind)
+          }
+        }
+      }
+    }
+    return owner
+  }, [sections])
+
   const healthByProvider = useMemo(() => {
-    const map = new Map<ProviderId, RuntimeHealth['providers'][number]>()
+    const map = new Map<string, RuntimeHealth['providers'][number]>()
     for (const entry of probeResult?.providers ?? []) {
       map.set(entry.provider, entry)
     }
@@ -101,8 +156,9 @@ export function ProvidersView() {
       <header className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-[20px] font-semibold tracking-tight text-text-strong">模型</h1>
-          <p className="mt-0.5 text-[11px] text-text-muted">
-            在线模型开箱即用，本地模型离线兜底。每个角色只由一个模型承担，切换后仅相关阶段会在下次处理时重跑。
+          <p className="mt-0.5 max-w-[720px] text-[11px] leading-relaxed text-text-muted">
+            先按模型类别分，每个类别下再按协议列出已接入的渠道。渠道是一份连接信息（协议 + Base URL + 密钥），
+            模型登记在渠道下面；角色决定它在流水线里做什么，切换后只有相关阶段会在下次处理时重新执行。
           </p>
         </div>
         <Button
@@ -128,283 +184,389 @@ export function ProvidersView() {
       ) : null}
 
       <div className="mt-5 space-y-8">
-        {scopes.map((scope) => (
-          <section key={scope.scope}>
-            <div className="flex items-baseline gap-2.5">
-              {scope.scope === 'local' ? (
-                <Cpu className="size-3.5 self-center text-text-muted" strokeWidth={1.8} />
-              ) : (
-                <PlugZap className="size-3.5 self-center text-text-muted" strokeWidth={1.8} />
-              )}
-              <h2 className="text-[15px] font-semibold tracking-tight text-text-strong">{scope.label}</h2>
-              <span className="text-[10px] text-text-subtle">
-                {scope.providers.reduce((sum, group) => sum + group.models.length, 0)} 个模型
-              </span>
+        {sections.map((section) => (
+          <section key={section.kind}>
+            <div className="flex items-center gap-2.5">
+              <span className={cn('size-1.5 rounded-full bg-current', KIND_TONE[section.kind])} />
+              <h2 className="text-[15px] font-semibold tracking-tight text-text-strong">{section.label}</h2>
+              <span className="text-[10px] text-text-subtle">{section.modelCount} 个模型</span>
             </div>
-            <p className="mt-1 text-[11px] text-text-muted">{scope.description}</p>
+            <p className="mt-1 text-[11px] text-text-muted">{KIND_HINTS[section.kind]}</p>
 
             <div className="mt-3 space-y-3">
-              {scope.providers.map((group) => (
-                <ProviderBlock
-                  key={`${scope.scope}-${group.providerId}`}
+              {section.protocols.map((group) => (
+                <ProtocolBlock
+                  key={`${section.kind}-${group.protocol}`}
                   group={group}
-                  health={healthByProvider.get(group.providerId)}
-                  draft={drafts[group.providerId] ?? ''}
-                  onDraftChange={(value) => setDrafts((state) => ({ ...state, [group.providerId]: value }))}
-                  onSaveProvider={async (patch) => {
-                    await saveProvider(patch)
-                    setDrafts((state) => ({ ...state, [group.providerId]: '' }))
+                  health={healthByProvider}
+                  healthHere={healthOwner}
+                  kind={section.kind}
+                  onAddChannel={() => {
+                    const info = protocols.find((item) => item.protocol === group.protocol)
+                    if (info) {
+                      setChannelDialog({ mode: 'create', protocol: info })
+                    }
                   }}
+                  onAddModel={(provider) => setModelDialog({ kind: section.kind, mode: 'create', provider })}
                   onAssign={assign}
-                  pendingModelKey={pendingModelKey}
-                  whisper={settings?.whisper}
-                  onSaveWhisper={async (patch) => {
-                    await saveSettings({ settings: { whisper: patch } })
+                  onDeleteModel={async (provider, model) => {
+                    await removeProviderModel(provider.id, model.id)
+                    setLastChange(`已移除模型：${model.label}`)
                   }}
+                  onEditChannel={(provider) => {
+                    const info = protocols.find((item) => item.protocol === provider.protocol)
+                    if (info) {
+                      setChannelDialog({ mode: 'edit', protocol: info, provider })
+                    }
+                  }}
+                  onEditModel={(provider, model) =>
+                    setModelDialog({ kind: section.kind, mode: 'edit', model, provider })
+                  }
+                  onOpenLocalRuntime={() => setLocalOpen(true)}
+                  onToggleChannel={(provider, enabled) => void saveProvider({ id: provider.id, enabled })}
+                  pendingModelKey={pendingModelKey}
                 />
               ))}
             </div>
           </section>
         ))}
       </div>
+
+      {channelDialog ? (
+        <ChannelDialog
+          mode={channelDialog.mode}
+          onDelete={
+            channelDialog.mode === 'edit'
+              ? async () => {
+                  await removeProvider(channelDialog.provider.id)
+                  setLastChange(`已移除渠道：${channelDialog.provider.label}`)
+                }
+              : undefined
+          }
+          onOpenChange={(open) => {
+            if (!open) setChannelDialog(null)
+          }}
+          onSubmit={async (input) => {
+            if (channelDialog.mode === 'edit') {
+              await saveProvider(input as ProviderPatchRequest)
+              setLastChange(`已更新渠道：${channelDialog.provider.label}`)
+            } else {
+              await addProvider(input as ProviderCreateRequest)
+              setLastChange(`已接入渠道：${(input as ProviderCreateRequest).label}`)
+            }
+          }}
+          open
+          protocol={channelDialog.protocol}
+          protocols={protocols}
+          provider={channelDialog.mode === 'edit' ? channelDialog.provider : undefined}
+        />
+      ) : null}
+
+      {modelDialog ? (
+        <ModelDialog
+          kind={modelDialog.kind}
+          mode={modelDialog.mode}
+          model={modelDialog.model}
+          onOpenChange={(open) => {
+            if (!open) setModelDialog(null)
+          }}
+          onSubmit={async (modelId, input: ProviderModelUpsertRequest) => {
+            await saveProviderModel(modelDialog.provider.id, modelId, input)
+            setLastChange(
+              modelDialog.mode === 'edit' ? `已更新模型：${input.label}` : `已接入模型：${input.label}`,
+            )
+          }}
+          open
+          provider={modelDialog.provider}
+        />
+      ) : null}
+
+      <LocalRuntimeDialog onOpenChange={setLocalOpen} open={localOpen} />
     </div>
   )
 }
 
-function ProviderBlock({
-  draft,
+function ProtocolBlock({
   group,
   health,
+  healthHere,
+  kind,
+  onAddChannel,
+  onAddModel,
   onAssign,
-  onDraftChange,
-  onSaveProvider,
-  onSaveWhisper,
+  onDeleteModel,
+  onEditChannel,
+  onEditModel,
+  onOpenLocalRuntime,
+  onToggleChannel,
   pendingModelKey,
-  whisper,
 }: {
-  draft: string
-  group: ProviderGroup
-  health: RuntimeHealth['providers'][number] | undefined
+  group: ProtocolGroup
+  health: Map<string, RuntimeHealth['providers'][number]>
+  healthHere: Map<string, ModelKind>
+  kind: ModelKind
+  onAddChannel: () => void
+  onAddModel: (provider: ProviderConfig) => void
   onAssign: (card: ModelCard, role: ModelRole) => Promise<void>
-  onDraftChange: (value: string) => void
-  onSaveProvider: (patch: { id: string; apiKey?: string | null; baseUrl?: string; enabled?: boolean }) => Promise<void>
-  onSaveWhisper: (patch: Record<string, string>) => Promise<void>
+  onDeleteModel: (provider: ProviderConfig, model: CustomModelEntry) => Promise<void>
+  onEditChannel: (provider: ProviderConfig) => void
+  onEditModel: (provider: ProviderConfig, model: CustomModelEntry) => void
+  onOpenLocalRuntime: () => void
+  onToggleChannel: (provider: ProviderConfig, enabled: boolean) => void
   pendingModelKey: string | null
-  whisper: { computeType: string; device: string; model: string; modelDir: string; pythonExecutable: string } | undefined
 }) {
-  const [editingKey, setEditingKey] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const provider: ProviderConfig | null = group.provider
+  return (
+    <article className="overflow-hidden rounded-xl border border-border/60 bg-card/40">
+      <header className="flex flex-wrap items-center gap-x-2.5 gap-y-2 px-4 py-2.5 hairline-b">
+        <span className="text-[12px] font-medium text-text-strong">{group.label}</span>
+        <span className="text-[10px] text-text-subtle">
+          {group.channels.length === 0
+            ? '还没有接入渠道'
+            : group.modelCount > 0
+              ? `${group.modelCount} 个模型`
+              : '本类别下还没有模型'}
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          className="ml-auto h-7 text-[11px]"
+          onClick={onAddChannel}
+        >
+          ＋ 接入渠道
+        </Button>
+      </header>
+
+      {group.channels.length === 0 ? (
+        // 空态只说明这个协议适合接什么，不渲染无法操作的控件。
+        <p className="px-4 py-3 text-[11px] leading-relaxed text-text-muted">{group.note}</p>
+      ) : (
+        <div className="divide-y divide-border/50">
+          {group.channels.map((channel) => (
+            <ChannelBlock
+              key={channel.provider.id}
+              health={health.get(channel.provider.id)}
+              showHealth={healthHere.get(channel.provider.id) === kind}
+              models={channel.models}
+              onAddModel={() => onAddModel(channel.provider)}
+              onAssign={onAssign}
+              onDeleteModel={(model) => onDeleteModel(channel.provider, model)}
+              onEditChannel={() => onEditChannel(channel.provider)}
+              onEditModel={(model) => onEditModel(channel.provider, model)}
+              onOpenLocalRuntime={onOpenLocalRuntime}
+              onToggle={(enabled) => onToggleChannel(channel.provider, enabled)}
+              pendingModelKey={pendingModelKey}
+              provider={channel.provider}
+            />
+          ))}
+        </div>
+      )}
+    </article>
+  )
+}
+
+function ChannelBlock({
+  health,
+  models,
+  onAddModel,
+  onAssign,
+  onDeleteModel,
+  onEditChannel,
+  onEditModel,
+  onOpenLocalRuntime,
+  onToggle,
+  pendingModelKey,
+  provider,
+  showHealth,
+}: {
+  health: RuntimeHealth['providers'][number] | undefined
+  models: ModelCard[]
+  onAddModel: () => void
+  onAssign: (card: ModelCard, role: ModelRole) => Promise<void>
+  onDeleteModel: (model: CustomModelEntry) => Promise<void>
+  onEditChannel: () => void
+  onEditModel: (model: CustomModelEntry) => void
+  onOpenLocalRuntime: () => void
+  onToggle: (enabled: boolean) => void
+  pendingModelKey: string | null
+  provider: ProviderConfig
+  showHealth: boolean
+}) {
+  const isLocal = provider.protocol === 'local'
+  const credential = provider.credentialStatus
 
   return (
-    <article className="overflow-hidden rounded-xl border border-border/60 bg-card/50">
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 hairline-b">
-        <span className="text-[13px] font-medium text-text-strong">{group.label}</span>
+    <div className="px-4 py-3">
+      <header className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
+        <span className="text-[12px] text-text-strong">{provider.label}</span>
 
-        {provider ? (
+        {isLocal ? (
+          <span className="rounded-full bg-secondary px-2 py-px text-[10px] text-text-muted">无需密钥</span>
+        ) : (
           <span
             className={cn(
               'rounded-full px-2 py-px text-[10px]',
-              provider.credentialStatus.present ? 'bg-success/15 text-success' : 'bg-destructive/15 text-destructive',
+              credential.present ? 'bg-success/15 text-success' : 'bg-destructive/15 text-destructive',
             )}
           >
-            {provider.credentialStatus.present ? `密钥已就绪 · ${provider.credentialStatus.masked}` : '缺少密钥'}
+            {credential.present ? `密钥已就绪 · ${credential.masked}` : '缺少密钥'}
           </span>
-        ) : (
-          <span className="rounded-full bg-secondary px-2 py-px text-[10px] text-text-muted">无需密钥</span>
         )}
 
-        {group.models.length > 0 ? (
-          <span className="text-[10px] text-text-subtle">{group.models.length} 个模型</span>
+        {provider.baseUrl ? (
+          <span className="timecode max-w-[300px] truncate text-[10px] text-text-subtle">{provider.baseUrl}</span>
         ) : null}
+        <span className="text-[10px] text-text-subtle">{models.length} 个模型</span>
 
         <div className="ml-auto flex items-center gap-2">
-          {provider && provider.credentialStatus.origin === 'env' ? (
-            <span className="timecode text-[10px] text-text-subtle">{provider.auth.envVar}</span>
-          ) : null}
-          {provider ? (
-            <Switch
-              checked={provider.enabled}
-              onCheckedChange={(checked) => void onSaveProvider({ id: provider.id, enabled: checked })}
-              aria-label={`启用 ${group.label}`}
-            />
-          ) : null}
+          <Switch
+            checked={provider.enabled}
+            onCheckedChange={onToggle}
+            aria-label={`启用 ${provider.label}`}
+          />
+          <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={onAddModel}>
+            ＋ 模型
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-[11px]"
+            onClick={isLocal ? onOpenLocalRuntime : onEditChannel}
+          >
+            {isLocal ? '转写参数' : '设置'}
+          </Button>
         </div>
       </header>
 
-      <div className="space-y-3 px-4 py-3">
-        {provider ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <Input
-              defaultValue={provider.baseUrl}
-              onBlur={(event) => {
-                if (event.target.value !== provider.baseUrl) {
-                  void onSaveProvider({ id: provider.id, baseUrl: event.target.value })
-                }
-              }}
-              aria-label={`${group.label} Base URL`}
-              className="h-8 max-w-[420px] flex-1 text-[11px]"
-            />
-            {editingKey ? (
-              <>
-                <Input
-                  autoFocus
-                  type="password"
-                  value={draft}
-                  onChange={(event) => onDraftChange(event.target.value)}
-                  placeholder="粘贴 API Key"
-                  className="h-8 w-[220px] text-[12px]"
-                />
-                <Button
-                  size="sm"
-                  className="h-8 text-[11px]"
-                  disabled={busy || !draft.trim()}
-                  onClick={async () => {
-                    setBusy(true)
-                    try {
-                      await onSaveProvider({ id: provider.id, apiKey: draft.trim() })
-                      setEditingKey(false)
-                    } finally {
-                      setBusy(false)
-                    }
-                  }}
-                >
-                  保存
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 text-[11px]"
-                  onClick={() => {
-                    setEditingKey(false)
-                    onDraftChange('')
-                  }}
-                >
-                  取消
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 gap-1.5 text-[11px]"
-                  onClick={() => setEditingKey(true)}
-                >
-                  <KeyRound className="size-3" /> {provider.credentialStatus.present ? '替换密钥' : '填写密钥'}
-                </Button>
-                {provider.credentialStatus.origin === 'inline' ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 text-[11px]"
-                    disabled={busy}
-                    onClick={async () => {
-                      setBusy(true)
-                      try {
-                        await onSaveProvider({ id: provider.id, apiKey: null })
-                      } finally {
-                        setBusy(false)
-                      }
-                    }}
-                  >
-                    改回环境变量
-                  </Button>
-                ) : null}
-              </>
-            )}
-          </div>
-        ) : null}
+      {!provider.enabled ? (
+        <p className="mt-2 text-[11px] text-text-muted">
+          已停用：引用它的角色会在调用时失败，重新打开开关即可恢复。
+        </p>
+      ) : null}
 
-        {group.providerId === 'local' && whisper ? (
-          <WhisperConfig onSave={onSaveWhisper} whisper={whisper} />
-        ) : null}
+      {showHealth && health ? (
+        <ul className="mt-2 space-y-1.5 rounded-lg border border-border/50 bg-background/40 px-3 py-2">
+          {health.checks.map((check) => (
+            <li key={check.name} className="flex items-center gap-2 text-[11px]">
+              {check.ok ? (
+                <CheckCircle2 className="size-3 shrink-0 text-success" />
+              ) : (
+                <AlertTriangle className="size-3 shrink-0 text-destructive" />
+              )}
+              <span className="shrink-0 text-text-muted">{check.name}</span>
+              <span className="min-w-0 flex-1 truncate text-text-subtle">{check.detail}</span>
+              {check.latencyMs !== undefined ? (
+                <span className="timecode shrink-0 text-[10px] text-text-subtle">{check.latencyMs}ms</span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
 
-        {health ? (
-          <ul className="space-y-1.5 rounded-lg border border-border/50 bg-background/40 px-3 py-2">
-            {health.checks.map((check) => (
-              <li key={check.name} className="flex items-center gap-2 text-[11px]">
-                {check.ok ? (
-                  <CheckCircle2 className="size-3 shrink-0 text-success" />
-                ) : (
-                  <AlertTriangle className="size-3 shrink-0 text-destructive" />
-                )}
-                <span className="shrink-0 text-text-muted">{check.name}</span>
-                <span className="min-w-0 flex-1 truncate text-text-subtle">{check.detail}</span>
-                {check.latencyMs !== undefined ? (
-                  <span className="timecode shrink-0 text-[10px] text-text-subtle">{check.latencyMs}ms</span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-
-        {group.kinds.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-border/70 px-3 py-2.5 text-[11px] text-text-subtle">
-            该提供方未登记可用模型，暂时无法被角色引用。
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {group.kinds.map((kindGroup) => (
-              <div key={kindGroup.kind}>
-                <div className="flex items-center gap-2 px-0.5 pb-1.5">
-                  <span className={cn('size-1.5 rounded-full bg-current', KIND_TONE[kindGroup.kind])} />
-                  <span className="text-[11px] font-medium text-text-muted">{kindGroup.label}</span>
-                </div>
-                <div className="grid gap-1.5 xl:grid-cols-2">
-                  {kindGroup.models.map((card) => (
-                    <ModelRow
-                      key={modelKey(card.model)}
-                      card={card}
-                      onAssign={onAssign}
-                      pendingModelKey={pendingModelKey}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+      <div className="mt-2 grid gap-1.5 xl:grid-cols-2">
+        {models.map((card) => (
+          <ModelRow
+            key={modelKey(card.model)}
+            card={card}
+            onAssign={onAssign}
+            onDelete={() => onDeleteModel({ id: card.model.id, kind: card.model.kind, label: card.model.label })}
+            onEdit={() => onEditModel({ id: card.model.id, kind: card.model.kind, label: card.model.label })}
+            pendingModelKey={pendingModelKey}
+          />
+        ))}
       </div>
-    </article>
+    </div>
   )
 }
 
 function ModelRow({
   card,
   onAssign,
+  onDelete,
+  onEdit,
   pendingModelKey,
 }: {
   card: ModelCard
   onAssign: (card: ModelCard, role: ModelRole) => Promise<void>
+  onDelete: () => Promise<void>
+  onEdit: () => void
   pendingModelKey: string | null
 }) {
   const roleMeta = useAppStore((state) => state.roleMeta)
+  const routes = useAppStore((state) => state.routes)
+  const [removing, setRemoving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
   const assignedLabels = card.assignedRoles.map(
     (role) => roleMeta.find((meta) => meta.role === role)?.label || role,
   )
-  const serving = card.assignedRoles.length > 0
   const available = card.assignableRoles.filter((role) => !card.assignedRoles.includes(role))
   const assigningHere = pendingModelKey === modelKey(card.model)
+  // 内置模型由目录维护，用户只能对自定义模型改名或移除。
+  const custom = Boolean(card.model.custom)
+  const usedBy = routes.filter((route) => route.provider === card.model.provider && route.model === card.model.id)
 
   return (
-    // 是否在服务由角色 chip 单独表达；卡片本身保持中性，避免整页都在发光。
     <div className="rounded-lg border border-border/50 bg-background/40 px-3 py-2.5 transition-colors">
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-1.5">
             <span className="truncate text-[12px] font-medium text-foreground">{card.model.label}</span>
+            {custom ? (
+              <span className="rounded bg-secondary px-1.5 py-px text-[10px] text-text-muted">自定义</span>
+            ) : null}
             {card.model.free ? (
               <span className="rounded bg-success/15 px-1.5 py-px text-[10px] text-success">免费</span>
             ) : null}
           </div>
           <p className="timecode mt-0.5 truncate text-[10px] text-text-subtle">{card.model.id}</p>
           <p className="mt-1 text-[11px] leading-relaxed text-text-muted">{card.model.description}</p>
+          {card.model.contextWindow || card.model.dimensions ? (
+            <p className="mt-1 text-[10px] text-text-subtle">
+              {card.model.contextWindow ? `上下文 ${card.model.contextWindow.toLocaleString('zh-CN')}` : ''}
+              {card.model.contextWindow && card.model.dimensions ? ' · ' : ''}
+              {card.model.dimensions ? `${card.model.dimensions} 维` : ''}
+            </p>
+          ) : null}
         </div>
+
+        {custom ? (
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={onEdit}
+              className="rounded px-1.5 py-0.5 text-[10px] text-text-muted transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              编辑
+            </button>
+            <button
+              type="button"
+              disabled={removing || usedBy.length > 0}
+              title={
+                usedBy.length > 0
+                  ? `仍被角色占用：${usedBy.map((route) => route.label || route.role).join('、')}`
+                  : undefined
+              }
+              onClick={async () => {
+                setRemoving(true)
+                setError(null)
+                try {
+                  await onDelete()
+                } catch {
+                  setError('移除失败：该模型仍被角色引用，请先改到别的模型。')
+                } finally {
+                  setRemoving(false)
+                }
+              }}
+              className="rounded px-1.5 py-0.5 text-[10px] text-text-muted transition-colors hover:bg-destructive/15 hover:text-destructive disabled:pointer-events-none disabled:opacity-50"
+            >
+              移除
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
-        {serving ? (
+        {card.assignedRoles.length > 0 ? (
           assignedLabels.map((label, index) => (
             <span
               key={`${label}-${index}`}
@@ -445,89 +607,12 @@ function ModelRow({
           </label>
         ) : null}
       </div>
-    </div>
-  )
-}
 
-function WhisperConfig({
-  onSave,
-  whisper,
-}: {
-  onSave: (patch: Record<string, string>) => Promise<void>
-  whisper: { computeType: string; device: string; model: string; modelDir: string; pythonExecutable: string }
-}) {
-  return (
-    <div className="grid gap-3 rounded-lg border border-border/50 bg-background/40 px-3 py-2.5 sm:grid-cols-2 lg:grid-cols-4">
-      <Field label="模型标识">
-        <Input
-          defaultValue={whisper.model}
-          onBlur={(event) => {
-            if (event.target.value !== whisper.model) {
-              void onSave({ model: event.target.value })
-            }
-          }}
-          className="h-8 text-[11px]"
-        />
-      </Field>
-      <Field label="模型目录（CTranslate2）">
-        <Input
-          defaultValue={whisper.modelDir}
-          placeholder="留空表示未配置"
-          onBlur={(event) => {
-            if (event.target.value !== whisper.modelDir) {
-              void onSave({ modelDir: event.target.value })
-            }
-          }}
-          className="h-8 text-[11px]"
-        />
-      </Field>
-      <Field label="推理设备">
-        <select
-          value={whisper.device}
-          onChange={(event) => void onSave({ device: event.target.value })}
-          className="h-8 w-full rounded-md border border-border/70 bg-background/60 px-2 text-[11px] text-foreground outline-none"
-        >
-          <option value="auto">自动</option>
-          <option value="cpu">CPU</option>
-          <option value="cuda">CUDA</option>
-        </select>
-      </Field>
-      <Field label="计算精度">
-        <select
-          value={whisper.computeType}
-          onChange={(event) => void onSave({ computeType: event.target.value })}
-          className="h-8 w-full rounded-md border border-border/70 bg-background/60 px-2 text-[11px] text-foreground outline-none"
-        >
-          {['int8', 'int8_float16', 'float16', 'float32'].map((item) => (
-            <option key={item} value={item}>
-              {item}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <div className="sm:col-span-2 lg:col-span-4">
-        <Field label="Python 可执行文件">
-          <Input
-            defaultValue={whisper.pythonExecutable}
-            placeholder="留空则从 PATH 查找 python"
-            onBlur={(event) => {
-              if (event.target.value !== whisper.pythonExecutable) {
-                void onSave({ pythonExecutable: event.target.value })
-              }
-            }}
-            className="h-8 text-[11px]"
-          />
-        </Field>
-      </div>
+      {error ? (
+        <p role="alert" className="mt-1.5 text-[10px] text-destructive">
+          {error}
+        </p>
+      ) : null}
     </div>
-  )
-}
-
-function Field({ children, label }: { children: React.ReactNode; label: string }) {
-  return (
-    <label className="block space-y-1">
-      <span className="block text-[10px] uppercase tracking-wider text-text-subtle">{label}</span>
-      {children}
-    </label>
   )
 }
