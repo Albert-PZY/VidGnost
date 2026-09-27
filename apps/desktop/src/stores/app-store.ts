@@ -7,6 +7,7 @@ import type {
   KnowledgeGraphDoc,
   MindMapDoc,
   ModelCatalogEntry,
+  ModelKind,
   ModelRole,
   ModelRoute,
   OutlineDoc,
@@ -86,7 +87,7 @@ interface AppState {
   routes: ModelRoute[]
   providers: ProviderConfig[]
   models: ModelCatalogEntry[]
-  roleMeta: Array<{ role: ModelRole; label: string; purpose: string; kind: string }>
+  roleMeta: Array<{ role: ModelRole; label: string; purpose: string; kind: ModelKind }>
   configLoading: boolean
   loadConfig: () => Promise<void>
   saveSettings: (patch: unknown) => Promise<void>
