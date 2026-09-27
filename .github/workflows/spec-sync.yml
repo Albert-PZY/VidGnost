@@ -29,9 +29,11 @@ jobs:
 
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             base_ref="${{ github.base_ref }}"
-            git fetch origin "${base_ref}" --depth=1
+            # 不能用 --depth=1：浅取的 origin/master 没有父链，三点比较会报
+            # "no merge base"，守卫就时好时坏。checkout 已经取全量历史，直接引用即可。
+            git fetch origin "${base_ref}"
             echo "diff_range=origin/${base_ref}...HEAD" >> "$GITHUB_OUTPUT"
-            git diff --name-only "origin/${base_ref}"...HEAD > changed-files.txt
+            git diff --name-only "origin/${base_ref}...HEAD" > changed-files.txt
           else
             before_sha="${{ github.event.before }}"
             if [[ -n "${before_sha}" && "${before_sha}" != "0000000000000000000000000000000000000000" ]]; then
