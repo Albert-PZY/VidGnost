@@ -103,6 +103,7 @@ const CAPABILITY_RULES = [
       "apps/desktop/src/app/",
       "apps/desktop/src/lib/api.ts",
       "apps/desktop/src/lib/format.ts",
+      "apps/desktop/src/lib/model-groups",
     ],
   },
 ];
@@ -286,8 +287,8 @@ function main() {
     }
   }
 
-  if (codePaths.length > 0 && triggeredCapabilities.length === 0 && specPaths.length === 0) {
-    errors.push("检测到项目代码变更，但当前提交未包含任何 OpenSpec 同步更新。");
+  if (implementationPaths.length > 0 && triggeredCapabilities.length === 0 && specPaths.length === 0) {
+    errors.push("检测到产品代码变更（apps/ 或 packages/），但当前提交未包含任何 OpenSpec 同步更新。");
   }
 
   if (promotedTaskLines.length > 0 && implementationPaths.length === 0) {
