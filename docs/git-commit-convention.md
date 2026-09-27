@@ -206,6 +206,9 @@ gh release create v3.0.0 \
 - 自动 Release Notes **按 PR 标签分类**，不认提交前缀——所以开 PR 时要顺手打标签；
   分类规则在 `.github/release.yml`，标签名必须与仓库实际存在的标签一致
   （`gh label list` 可查：`bug` / `enhancement` / `documentation`）。
+- 仓库**首个 Release 要手工收尾**：没有上一个 tag 作基准时，GitHub 会把仓库起点以来的 PR 全列进
+  「What's Changed」（v3.0.0 就把旧基线时期的 #1–#18 列了进来），发布后用
+  `gh release edit <tag> --notes-file <正文>` 裁掉不属于本版的条目。
 - 当前基线尚**未接打包流程**（`apps/desktop` 只有 `dev` / `build` / `preview`，没有 electron-builder），
   因此 Release 是源码发布，正文里要写明这一条，别让人去找安装包。
 
