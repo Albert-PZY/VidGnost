@@ -37,7 +37,11 @@
   校验规格同步与规范一致性；钩子由 `core.hooksPath=.githooks` 生效
 - 自检命令：`pnpm run lint:commit`（校验 HEAD）、`pnpm run check:commit-convention`（文档与 area 表是否漂移）、
   `pnpm run check:commit-rules`（规则判定边界回归）
-- 交付分支：使用当前需求指定的工作分支，未获明确要求不要自动合并到 `master`。
+- 交付流程：需求分支完成后按「跑合并前验证清单 → 开 PR → 合入 `master` → 删除本地与远程分支」执行；
+  验证全绿即自动合并，无需逐次确认，只有需求方明确要求保留分支时才停在分支上
+- 合并前必须全绿：`pnpm build`、`pnpm -r typecheck`、`pnpm -r test`、`check-openspec`、
+  `check-theme-contrast`、`check-spec-sync`、`check-commit-convention`、`check-commit-rules`、
+  `git diff --check origin/master...HEAD`；远程 `spec-sync-guard` 也要绿
 
 ## 4) OpenSpec 入口
 
