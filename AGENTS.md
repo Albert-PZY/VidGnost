@@ -29,6 +29,13 @@
   这条项目约定等同于需求方的明确要求，因此不受「普通前端请求不自动触发 oil-frontend」的限制；
   配色仍以 `apps/desktop/src/app/globals.css` 的语义令牌为唯一来源，并须通过
   `node scripts/check-theme-contrast.mjs`（浅色 / 深色两套都要达标）。
+- 文案约束：所有面向用户的文字——`README.md`、`README.zh-CN.md`、`docs/**`、界面文案、
+  OpenSpec 规格与提案、tag 与 Release 说明——**都要在 `oil-tone` 的约束下完成优化与调整**：
+  写之前加载该 skill，写完之后运行
+  `python <oil-tone 目录>/scripts/tone_lint.py <文件>` 自检，`FAIL` 必须修改，
+  `WARN` 结合上下文判断。
+  事实准确优先于表达：不编造经历、用户反馈、数据与来源；保留原文的姓名、数字、链接、
+  代码与产品名；标题只作内容标签，不添加口号或转折判断。
 - 完成需求变更后，自动判断是否需要提交；需要时按 `docs/git-commit-convention.md` 提交并推送，无需再次确认。
 
 ## 2) 核心产品文档
